@@ -49,6 +49,10 @@ export class FakeRouteStore {
   readonly administrators = new Map<string, string[]>();
   /** The clock claims are stamped with. */
   now = new Date("2026-10-05T09:00:30.000Z");
+  /** Workspaces with an active Slack connection. */
+  readonly slackConnected = new Set<string>();
+  /** Slack routes with a bound channel or the on-call DM, keyed `org|kind`. */
+  readonly slackTargets = new Set<string>();
 
   /**
    * Store a route directly, as a seed or another surface would.
@@ -90,7 +94,9 @@ export class FakeRouteStore {
    */
   repository(): NotificationRoutesRepository {
     const effective = (route: StoredRoute): EffectiveRouteRow => {
-      const lockedReason = channelLock(route.channel);
+      const lockedReason = channelLock(route.channel, {
+        slackConnected: this.slackConnected.has(route.organizationId),
+      });
 
       return {
         kind: route.kind,
@@ -140,6 +146,12 @@ export class FakeRouteStore {
         return Promise.resolve();
       },
       transaction: <T>(work: (trx: Transaction<Database>) => Promise<T>) => work(TRX),
+      reach: (organizationId: string) =>
+        Promise.resolve({ slackConnected: this.slackConnected.has(organizationId) }),
+      slackTargeted: (_trx: Transaction<Database>, organizationId: string, kind: string) =>
+        Promise.resolve(
+          kind === "needs_you_dm" || this.slackTargets.has(`${organizationId}|${kind}`),
+        ),
       mailingRoutes: () =>
         Promise.resolve(
           [...this.routes.values()]

@@ -367,7 +367,7 @@ seeds: connection(app v2.4) · 3 channels · 6-message stream (refs live) ·
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BZ.1 | #535 ✅ | 🟢 Done | ouroboros-rest: [BZ.1] Slack app — install, endpoints & identity | OAuth install, signature-verified events/interactivity/slash, linking | mvp, chatops, rest | N (after BY.1/BY.3) | Y | L | ouroboros-rest |
-| BZ.2 | #536 | 🟡 Open | ouroboros-rest: [BZ.2] Card renderer & event publisher | Block Kit kinds, outbox publishing, chat.update lifecycle | mvp, chatops, rest, inbox | N (after BY.2, BN.1, BR.3) | Y | L | ouroboros-rest |
+| BZ.2 | #536 ✅ | 🟢 Done | ouroboros-rest: [BZ.2] Card renderer & event publisher | Block Kit kinds, outbox publishing, chat.update lifecycle | mvp, chatops, rest, inbox | N (after BY.2, BN.1, BR.3) | Y | L | ouroboros-rest |
 | BZ.3 | #537 ✅ | 🟢 Done | ouroboros-rest: [BZ.3] `/ouro` grammar & dispatcher | The command registry + nine bindings; console mount contract | mvp, chatops, rest | N (after BZ.1, plane APIs) | Y | L | ouroboros-rest |
 | BZ.4 | #538 | 🟡 Open | ouroboros-rest: [BZ.4] Interactive answers & escalation | Button→BN.2 flows, session-confirm gating, timers (C5) | mvp, chatops, rest, inbox | N (after BZ.2, BN.2) | Y | M | ouroboros-rest |
 | BZ.5 | #539 | 🟡 Open | ouroboros-ui: [BZ.5] In-app command console | The `/ouro` surface in ⌘K (H.3 extension) with completions | mvp, chatops, ui | N (after BZ.3, H.3) | Y | M | ouroboros-ui |
@@ -413,7 +413,13 @@ POST /slack/interactivity ─▶ verify sig+ts ─▶ ack ≤3s ─▶ async han
 
 ### Issue BZ.2 — ouroboros-rest: [BZ.2] Card renderer & event publisher
 
-> **GitHub issue:** #536 · **Status:** 🟡 Open · **Parent epic:** #528
+> **GitHub issue:** #536 ✅ · **Status:** 🟢 Done · **Parent epic:** #528
+>
+> **Delivered (#536 — `V134__chat_outbox_slack_route_lock.sql`, `ouroboros-rest` 0.41.26 (`src/modules/chat/`, the Slack backend in `src/modules/slack/`), `ouroboros-ui` 0.156.3 (generated schema only), `ouroboros-docs` 0.4.1):** **the card model** (`chat.card.ts`: severity, mark, headline, fact lines, mono stats line, actions, footnote — no platform in it) with a Slack **Block Kit backend** behind the `ChatBackend` port and a golden payload per archetype (`slack.blockkit.golden.json`); a fixture backend renders every archetype as plain text, and a spec refuses any `slack/` import in the module. **Decision cards** take their headline and body from the kind registry's rendered question and why (#457), their buttons from the kind's actions — answering ones carrying a **signed value** (`ouro1|item|action|nonce|keyRef|mac`, HMAC under the workspace's action-token key; `ChatComposer.verifiedAction` is #538's check), `navigate.*` ones as links — and the footnote `paused 4m · escalates to the Needs-you inbox in 26m` from the kind's `escalation_window`. **Resolved form** (no buttons, outcome and actor) and the **system line**. **Event cards**: `loop_finished`, `build_green`, `build_failed`, `digest` (the #440 assembly); the stats line prints cost only when every usage event was priced and the model only when on record. **Publisher**: `enqueueChatIntent` evaluates the workspace's Slack routes and writes `chat_outbox` rows in the caller's transaction; `ChatDispatcher` claims `for update skip locked`, leases, sends one message at a time per connection, writes the `chat_messages` row before the post, absorbs a duplicate on `chat_messages_dedupe_key`, retries with #487's backoff honouring `Retry-After` (which parks the rest of that connection's batch), and dead-letters after eight attempts; the health signal is `delivery` on `GET /api/v1/slack/connection`. **Update lifecycle**: a `DecisionLifecycle` listener enqueues the card on *filed* and, on *resolved*, a `chat.update` of every posted card plus the system line. **DMs** ride the same path (`conversations.open`, a `chat_channels` row tagged `dm`). **Digest**: a one-minute pass enqueues the weekly digest on its route's slot.
+>
+> **Decided with the user:** the outbox is a **new table** (`chat_outbox`, V134) — so this ticket also touches `ouroboros-db`; **only events with a source are wired** (decisions, loop finished on merge, the weekly digest); the routes are **mockup 19's custom kinds** (`custom:blocking-questions` + DM on-call, `custom:loop-finished`, `custom:build-failures`, `custom:weekly-insights`, `custom:stage-transitions`), with the core kinds delivering too when bound to Slack; **the Slack route lock is lifted** for a workspace with an active connection (the view and `channelLock`), while the inbox's *Answer from anywhere* Slack row waits for #538.
+>
+> **Not delivered, and why:** nothing was run against a real Slack workspace — post → resolve → `chat.update` → system line (acceptance criterion 3) is verified end to end against a fake backend only. `build_green` and `build_failed` are rendered, golden-tested and have an entry point (`enqueueBuildCard`) but **no caller**: no plane reports a build's result as an event. A card's countdown is as of when it was posted — nothing re-renders it, and escalation timers are #538's. A *refreshed* decision does not re-post or edit its card. No API binds a route to a channel or designates the on-call member (#541/#542); the seed does. The dev seed's Slack connection seals no real token, so on a seeded stack every publish retries and then dead-letters as `bot_token_unreadable`. BL.1's (#448) on-demand *Send to Slack* button is not part of this. Fallout: the seeded workspace's Notifications card changes (the Slack DM route is unlocked), so `tests/e2e` `settings-*.png` baselines need regenerating (e2e not run here).
 
 - **Problem Statement:** Typed cards with edit lifecycles (C2): decision
   kinds and event families rendered once, published reliably, updated on
@@ -881,7 +887,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    (#79), #41/#46/#16, driver + sandbox + test Slack workspace.
 2. **Phase 1 — Domain:** BY.1 (#531) ✅ → { BY.2 (#532) ✅ ⊕ BY.3 (#533) ✅ } →
    BY.4 (#534) ✅
-3. **Phase 2 — App & services:** BZ.1 (#535) ✅ → { BZ.2 (#536) ⊕ BZ.3 (#537) ✅ }
+3. **Phase 2 — App & services:** BZ.1 (#535) ✅ → { BZ.2 (#536) ✅ ⊕ BZ.3 (#537) ✅ }
    → { BZ.4 (#538) ⊕ BZ.5 (#539) } → BZ.6 (#540)
 4. **Phase 3 — UI:** CA.1 (#541) → { CA.2 (#542) ⊕ CA.3 (#543) ⊕
    CA.4 (#544) } → **CA.5 (#545) ✅** *(MVP gate, amending #56)*

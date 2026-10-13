@@ -1614,10 +1614,10 @@
       "ready": "#settings-notifications-title",
       "clip": "section[aria-labelledby='settings-notifications-title']",
       "caption": "Notifications: the workspace's notification routes, where each one goes and when.",
-      "alt": "The Notifications section: Needs-you decisions → Slack DM, locked — connect Slack first, with See Slack in Integrations; Daily digest 09:00 UTC → email, switched on, merges, spend, interventions since yesterday, with Daily digest time (UTC) set to 09:00; Loop failures → PagerDuty, locked — connect PagerDuty first; and Weekly insights report → email, switched on, Mondays, from the Insights screen to eng-leads@acme-robotics.dev, with the Weekly insights recipients field.",
-      "capturedAt": "2026-10-09T03:32:28.422Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "e924ed75bd6fe6b994e5995e5381615aede01064"
+      "alt": "The Notifications section: Needs-you decisions → Slack DM, switched off, approvals, waivers, allow-once requests; Daily digest 09:00 UTC → email, switched on, merges, spend, interventions since yesterday, with Daily digest time (UTC) set to 09:00; Loop failures → PagerDuty, locked — connect PagerDuty first, with See PagerDuty in Integrations; Weekly insights report → email, switched on, Mondays, from the Insights screen, to eng-leads@acme-robotics.dev, with Weekly insights recipients; then five Slack routes — custom:blocking-questions, custom:build-failures, custom:loop-finished and custom:weekly-insights switched on, and custom:stage-transitions switched off.",
+      "capturedAt": "2026-10-12T22:07:16.337Z",
+      "uiVersion": "0.156.2",
+      "seedRef": "e2688502bae2a47c2fb7886b6f959b4580d51d62"
     },
     {
       "id": "administration.retention",

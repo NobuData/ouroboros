@@ -97,6 +97,24 @@ describe("the Slack connection on the wire", () => {
     },
   );
 
+  it("matches SlackConnection with a dead letter on its delivery", () => {
+    const answer = connectionResource({
+      ...BASE,
+      connection: CONNECTION,
+      delivery: {
+        pending: 1,
+        retrying: 2,
+        deadLettered: 1,
+        lastError: "channel_not_found",
+        lastDeadLetteredAt: new Date("2026-10-12T14:00:00Z"),
+        lastSentAt: new Date("2026-10-12T13:00:00Z"),
+      },
+    });
+
+    expect(connection(wire(answer))).toBeUndefined();
+    expect(validatorFor("SlackDelivery")(wire(answer.delivery))).toBeUndefined();
+  });
+
   it("refuses a status that grew a token field", () => {
     const leaked = {
       ...connectionResource({ ...BASE, connection: CONNECTION }),

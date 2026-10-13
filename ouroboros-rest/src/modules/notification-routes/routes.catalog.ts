@@ -12,9 +12,10 @@
  * **The lock is the locked-row rule.** `notification_routes_effective` derives it for stored rows;
  * {@link channelLock} states the same rule for a route that is about to be written (so an enable
  * can be refused before it is stored) and for a kind with no stored row yet. The two say the same
- * thing because they are the same three cases: email delivers, Slack waits on mockup 19 (Chat Ops)
- * and PagerDuty on the v2 connector (BT.3). When either lands, its ticket replaces the view's branch
- * and this one together.
+ * thing because they are the same three cases: email delivers; Slack delivers exactly while the
+ * workspace has an active Slack connection (V134, #536 — until then, *connect Slack first*); and
+ * PagerDuty waits on the v2 connector (BT.3). When that lands, its ticket replaces the view's
+ * branch and this one together.
  *
  * **The config check mirrors `notification_route_config_valid`** so a malformed body is a `422`
  * naming the field rather than a constraint violation.
@@ -101,18 +102,28 @@ export function defaultChannel(kind: string): NotificationRouteChannel {
   return DEFAULT_CHANNELS[kind as CoreRouteKind] ?? "email";
 }
 
+/** What a workspace has connected, as far as the locked-row rule cares. */
+export interface RouteReach {
+  /** The workspace has an active Slack connection (#535). */
+  readonly slackConnected: boolean;
+}
+
+/** Why a Slack route with nowhere to post cannot be switched on. */
+export const SLACK_TARGET_REQUIRED = "choose a Slack channel first";
+
 /**
- * Why a channel cannot deliver in this build, or `null` when it can — the locked-row rule.
+ * Why a channel cannot deliver for a workspace, or `null` when it can — the locked-row rule.
  *
  * @param channel - The channel.
- * @returns The reason the card prints (*connect PagerDuty first*), or null for email.
+ * @param reach - What the workspace has connected.
+ * @returns The reason the card prints (*connect PagerDuty first*), or null.
  */
-export function channelLock(channel: NotificationRouteChannel): string | null {
+export function channelLock(channel: NotificationRouteChannel, reach: RouteReach): string | null {
   switch (channel) {
     case "email":
       return null;
     case "slack":
-      return "connect Slack first";
+      return reach.slackConnected ? null : "connect Slack first";
     case "pagerduty":
       return "connect PagerDuty first";
   }

@@ -54,6 +54,7 @@ import { ServiceAccountsModule } from "../service-accounts/service-accounts.modu
 import { WebhooksModule } from "../webhooks/webhooks.module";
 import { IntegrationsModule } from "../integrations/integrations.module";
 import { NotificationRoutesModule } from "../notification-routes/notification-routes.module";
+import { ChatModule } from "../chat/chat.module";
 import { SlackModule } from "../slack/slack.module";
 import { ChatopsModule } from "../chatops/chatops.module";
 import { RetentionModule } from "../retention/retention.module";
@@ -423,6 +424,9 @@ export class AppModule {
         // Slack adapter above hands every command to. Its bindings call the planes' own services
         // (`chatops/planes/`), so it comes after them.
         ChatopsModule,
+        // BZ.2 ([#536](https://github.com/NobuData/ouroboros/issues/536)) — the card renderer and the
+        // outbox publisher behind every message Ouroboros posts to a channel.
+        ChatModule,
         // K.4 ([#102](https://github.com/NobuData/ouroboros/issues/102)) — the poller that
         // fills `github_issues`. After `GithubModule`, which it imports for the client and
         // for the *which workspaces have a token* question; it declares no route at all, so

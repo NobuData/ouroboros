@@ -18,7 +18,8 @@ import type {
 } from "../db/schema";
 import { rolesFrom } from "../tenancy/organization.repository";
 import { ADMINISTRATORS } from "../tenancy/roles.guard";
-import { MAILING_KINDS, type MailingKind } from "./routes.catalog";
+import { DM_ROUTE_KIND } from "../chat/chat.outbox";
+import { MAILING_KINDS, type MailingKind, type RouteReach } from "./routes.catalog";
 
 /** One route as `notification_routes_effective` derives it. */
 export interface EffectiveRouteRow {
@@ -137,6 +138,54 @@ export class NotificationRoutesRepository {
       .where("kind", "=", kind)
       .forUpdate()
       .executeTakeFirst();
+  }
+
+  /**
+   * What the workspace has connected — the fact `notification_routes_effective` derives the
+   * Slack lock from (V134), asked directly for a route with no stored row.
+   *
+   * @param organizationId - The workspace.
+   * @param trx - A save's transaction, when the read belongs to one.
+   * @returns Whether an active Slack connection exists.
+   */
+  async reach(organizationId: string, trx?: Transaction<Database>): Promise<RouteReach> {
+    const connection = await (trx ?? this.database.db)
+      .selectFrom("chat_connections_public")
+      .select("id")
+      .where("organization_id", "=", organizationId)
+      .where("platform", "=", "slack")
+      .where("status", "=", "active")
+      .executeTakeFirst();
+
+    return { slackConnected: connection !== undefined };
+  }
+
+  /**
+   * Whether a Slack route of this kind would have somewhere to post: a bound channel, the on-call
+   * DM, or the kind that is a DM by nature (`notification_routes_slack_target`, V130).
+   *
+   * @param trx - The save's transaction.
+   * @param organizationId - The workspace.
+   * @param kind - The route.
+   * @returns True when it has a target.
+   */
+  async slackTargeted(
+    trx: Transaction<Database>,
+    organizationId: string,
+    kind: string,
+  ): Promise<boolean> {
+    if (kind === DM_ROUTE_KIND) {
+      return true;
+    }
+
+    const row = await trx
+      .selectFrom("notification_routes")
+      .select(["chat_channel_id", "dm_on_call"])
+      .where("organization_id", "=", organizationId)
+      .where("kind", "=", kind)
+      .executeTakeFirst();
+
+    return row !== undefined && (row.chat_channel_id !== null || row.dm_on_call);
   }
 
   /**

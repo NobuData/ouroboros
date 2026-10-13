@@ -4,6 +4,7 @@
  * integrations tile, the inbox's channel rows and the Chat Ops health strip (#541) read.
  */
 
+import type { ChatDeliveryHealthRow } from "../chat/chat.outbox";
 import type { ChatConnectionPublic } from "../db/schema";
 import { SLACK_BOT_SCOPES, SLACK_PATH_PREFIX } from "./slack.app";
 
@@ -45,13 +46,77 @@ export interface SlackConnectionResource {
   readonly channels: { readonly total: number; readonly joined: number };
   /** Whether this deployment reaches Slack over Socket Mode — development only. */
   readonly socketMode: boolean;
+  /** How the messages Ouroboros publishes through this connection are faring (#536). */
+  readonly delivery: SlackDeliveryResource;
+}
+
+/**
+ * How publishing stands.
+ *
+ * - `idle` — nothing has been published and nothing is waiting.
+ * - `healthy` — messages are going out.
+ * - `retrying` — at least one message failed and will be tried again.
+ * - `dead_lettered` — at least one message ran out of attempts in the last seven days and was
+ *   not delivered. This is the state a banner is drawn for.
+ */
+export type SlackDeliveryState = "idle" | "healthy" | "retrying" | "dead_lettered";
+
+/** The publisher's outbox for a connection, as counts. */
+export interface SlackDeliveryResource {
+  readonly state: SlackDeliveryState;
+  /** Messages waiting for their first attempt. */
+  readonly pending: number;
+  /** Messages that failed and will be retried. */
+  readonly retrying: number;
+  /** Messages given up on in the last seven days. */
+  readonly deadLettered: number;
+  /** The most recent dead letter's error and instant — `null` when there is none. */
+  readonly lastError: string | null;
+  readonly lastDeadLetteredAt: string | null;
+  /** When a message was last delivered. */
+  readonly lastSentAt: string | null;
+}
+
+/** The delivery of a connection that has published nothing — or of no connection at all. */
+export const NO_DELIVERY: ChatDeliveryHealthRow = {
+  pending: 0,
+  retrying: 0,
+  deadLettered: 0,
+  lastError: null,
+  lastDeadLetteredAt: null,
+  lastSentAt: null,
+};
+
+/**
+ * Compose the delivery resource.
+ *
+ * @param health - The outbox's counts.
+ * @returns The resource. The worst thing true of the outbox is its state.
+ */
+export function deliveryResource(health: ChatDeliveryHealthRow): SlackDeliveryResource {
+  return {
+    state:
+      health.deadLettered > 0
+        ? "dead_lettered"
+        : health.retrying > 0
+          ? "retrying"
+          : health.pending > 0 || health.lastSentAt !== null
+            ? "healthy"
+            : "idle",
+    pending: health.pending,
+    retrying: health.retrying,
+    deadLettered: health.deadLettered,
+    lastError: health.lastError,
+    lastDeadLetteredAt: health.lastDeadLetteredAt?.toISOString() ?? null,
+    lastSentAt: health.lastSentAt?.toISOString() ?? null,
+  };
 }
 
 /**
  * Compose the status resource.
  *
  * @param input - Whether the deployment has an app, the workspace's connection if any, its
- *   channel counts, and whether Socket Mode is on.
+ *   channel counts, whether Socket Mode is on, and how its published messages are faring.
  * @returns The resource.
  */
 export function connectionResource(input: {
@@ -59,6 +124,7 @@ export function connectionResource(input: {
   connection: ChatConnectionPublic | undefined;
   channels: { total: number; joined: number };
   socketMode: boolean;
+  delivery?: ChatDeliveryHealthRow;
 }): SlackConnectionResource {
   const { configured, connection } = input;
   const scopes = connection?.install_meta.scopes ?? [];
@@ -92,5 +158,6 @@ export function connectionResource(input: {
     lastVerifiedAt: connection?.last_verified_at?.toISOString() ?? null,
     channels: input.channels,
     socketMode: input.socketMode,
+    delivery: deliveryResource(input.delivery ?? NO_DELIVERY),
   };
 }

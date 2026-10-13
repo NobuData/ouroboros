@@ -13,6 +13,11 @@
 
 import { Injectable } from "@nestjs/common";
 
+import {
+  DM_PURPOSE_TAG,
+  readChatDeliveryHealth,
+  type ChatDeliveryHealthRow,
+} from "../chat/chat.outbox";
 import { DatabaseService } from "../db/db.service";
 import type {
   ChatChannel,
@@ -284,15 +289,30 @@ export class SlackRepository {
    * A connection's channels.
    *
    * @param connectionId - The connection.
-   * @returns Every known channel, by name.
+   * @returns Every known channel, by name. DM conversations the publisher opened (#536) are
+   *   stored in the same table and are not channels: they are left out.
    */
   async channels(connectionId: string): Promise<ChatChannel[]> {
     return this.database.db
       .selectFrom("chat_channels")
       .selectAll()
       .where("connection_id", "=", connectionId)
+      .where((eb) =>
+        eb.or([eb("purpose_tag", "is", null), eb("purpose_tag", "<>", DM_PURPOSE_TAG)]),
+      )
       .orderBy("channel_name")
       .execute();
+  }
+
+  /**
+   * How a connection's outgoing messages stand — the publisher's outbox, read for the status.
+   *
+   * @param connectionId - The connection.
+   * @param now - The instant the dead-letter window is measured from.
+   * @returns The counts.
+   */
+  deliveryHealth(connectionId: string, now: Date): Promise<ChatDeliveryHealthRow> {
+    return readChatDeliveryHealth(this.database.db, connectionId, now);
   }
 
   /**

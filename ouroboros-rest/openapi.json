@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.41.25",
+    "version": "0.41.26",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -9691,7 +9691,7 @@
           "chatops"
         ],
         "summary": "Where Slack stands for this workspace",
-        "description": "The connection status (#535) — one source for every surface that says whether Slack is\nconnected: the workspace, the app version it was installed at, the scopes granted and any\nthe app asks for that were not, when the token was last seen to work, and the platform's\nreason when it does not. `state` separates a deployment with no Slack app\n(`not_configured`) from a workspace that has not installed it (`not_connected`). **Never\nthe bot token**, sealed or otherwise. Any member may read it.",
+        "description": "The connection status (#535) — one source for every surface that says whether Slack is\nconnected: the workspace, the app version it was installed at, the scopes granted and any\nthe app asks for that were not, when the token was last seen to work, and the platform's\nreason when it does not; `delivery` says how the cards and lines published through it are\nfaring (#536), dead letters included. `state` separates a deployment with no Slack app\n(`not_configured`) from a workspace that has not installed it (`not_connected`). **Never\nthe bot token**, sealed or otherwise. Any member may read it.",
         "operationId": "getSlackConnection",
         "parameters": [
           {
@@ -10049,7 +10049,7 @@
           "notification-routes"
         ],
         "summary": "The org notification routes",
-        "description": "The Settings notifications card ([#488](https://github.com/NobuData/ouroboros/issues/488)):\nthe workspace's **org-level** routes, layered above each person's own preferences\n(`/api/v1/inbox/notifications`), which they never change. The four core kinds are always\nlisted in the card's order — a kind nobody saved shows its default binding, switched off\n(`stored: false`) — then any stored `custom:*` kind, and every channel's availability.\nA route whose channel has no connection in this build is `locked` with the reason the card\nprints (`connect PagerDuty first`). Any member may read it.",
+        "description": "The Settings notifications card ([#488](https://github.com/NobuData/ouroboros/issues/488)):\nthe workspace's **org-level** routes, layered above each person's own preferences\n(`/api/v1/inbox/notifications`), which they never change. The four core kinds are always\nlisted in the card's order — a kind nobody saved shows its default binding, switched off\n(`stored: false`) — then any stored `custom:*` kind, and every channel's availability.\nA route whose channel cannot deliver is `locked` with the reason the card prints\n(`connect PagerDuty first`). **A Slack route is locked exactly while the workspace has no\nactive Slack connection** ([#536](https://github.com/NobuData/ouroboros/issues/536)) —\n`connect Slack first` — and unlocked once it has one. Any member may read it.",
         "operationId": "listNotificationRoutes",
         "parameters": [
           {
@@ -10193,7 +10193,7 @@
           "notification-routes"
         ],
         "summary": "Save an org notification route",
-        "description": "Re-bind a route's channel, replace its `config`, or switch it\n([#488](https://github.com/NobuData/ouroboros/issues/488)). Every field is optional; a body\ncarrying none reads back the route. **The locked-row rule is enforced here**: a save that\nwould leave a route *enabled* on a channel that cannot deliver in this build is refused\n`409 notification_route_locked`, with `details.reason` the sentence the card prints — a\nlocked route may still be stored disabled. The daily digest route mails the workspace's\nopen decisions at `config.time`, and the weekly insights route the Insights digest at\n`config.weekday`/`config.time`, to `config.recipients` (else the owners and admins). Every\nchange is audited as `notification_route.updated` with its before and after values.\nOwners and admins only.",
+        "description": "Re-bind a route's channel, replace its `config`, or switch it\n([#488](https://github.com/NobuData/ouroboros/issues/488)). Every field is optional; a body\ncarrying none reads back the route. **The locked-row rule is enforced here**: a save that\nwould leave a route *enabled* on a channel that cannot deliver is refused\n`409 notification_route_locked`, with `details.reason` the sentence the card prints — a\nlocked route may still be stored disabled. A Slack route additionally needs somewhere to\npost — a bound channel, the on-call DM, or the `needs_you_dm` kind, which DMs whoever is on\ncall — and is refused the same way without one (`choose a Slack channel first`); binding a\nchannel is not part of this body yet. The daily digest route mails the workspace's\nopen decisions at `config.time`, and the weekly insights route the Insights digest at\n`config.weekday`/`config.time`, to `config.recipients` (else the owners and admins). Every\nchange is audited as `notification_route.updated` with its before and after values.\nOwners and admins only.",
         "operationId": "updateNotificationRoute",
         "parameters": [
           {
@@ -10274,7 +10274,7 @@
             }
           },
           "409": {
-            "description": "`notification_route_locked` — the route's channel cannot deliver in this build, so it\ncannot be enabled; `details` carries `kind`, `channel`, `locked: true` and `reason`.",
+            "description": "`notification_route_locked` — the route's channel cannot deliver (or a Slack route\nhas no channel to post to), so it cannot be enabled; `details` carries `kind`,\n`channel`, `locked: true` and `reason`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -29954,7 +29954,7 @@
           "inbox"
         ],
         "summary": "The decision channels, as they truly stand",
-        "description": "The *Answer From Anywhere* card's truth payload (#463, BN.3, X5), which BO.4 renders\nverbatim so no UI code hand-maintains what is connected. Four rows, in the card's order:\n\n| channel | state |\n|---|---|\n| `slack` | always `unavailable-until` `Chat Ops` — it arrives with mockup 19 (#536/#538) |\n| `email` | `connected` while this deployment has a mail server (`OURO_SMTP_URL`), else `available` with the reason |\n| `push` | always `unavailable-until` `BP.2` (#472) |\n| `github` | `connected` while the workspace has a source whose provider can comment on a PR through the SPI, else `available` |\n\n**No fake ✓**: a channel that does not exist never reads `connected`. A `connected` row has\nno `reason`; every other row says why in a sentence. **Every member.**",
+        "description": "The *Answer From Anywhere* card's truth payload (#463, BN.3, X5), which BO.4 renders\nverbatim so no UI code hand-maintains what is connected. Four rows, in the card's order:\n\n| channel | state |\n|---|---|\n| `slack` | always `unavailable-until` `Chat Ops` — cards are published to Slack (#536), but answering from one arrives with #538 |\n| `email` | `connected` while this deployment has a mail server (`OURO_SMTP_URL`), else `available` with the reason |\n| `push` | always `unavailable-until` `BP.2` (#472) |\n| `github` | `connected` while the workspace has a source whose provider can comment on a PR through the SPI, else `available` |\n\n**No fake ✓**: a channel that does not exist never reads `connected`. A `connected` row has\nno `reason`; every other row says why in a sentence. **Every member.**",
         "operationId": "readInboxChannels",
         "parameters": [
           {
@@ -73868,7 +73868,8 @@
           "installedAt",
           "lastVerifiedAt",
           "channels",
-          "socketMode"
+          "socketMode",
+          "delivery"
         ],
         "properties": {
           "state": {
@@ -74010,6 +74011,76 @@
           "socketMode": {
             "type": "boolean",
             "description": "Whether this deployment reaches Slack over Socket Mode — development only."
+          },
+          "delivery": {
+            "$ref": "#/components/schemas/SlackDelivery"
+          }
+        }
+      },
+      "SlackDelivery": {
+        "type": "object",
+        "title": "SlackDelivery",
+        "description": "How the messages Ouroboros publishes through the connection are faring\n([#536](https://github.com/NobuData/ouroboros/issues/536)) — the publisher's outbox, as\ncounts. Every message is retried with backoff (honouring Slack's `Retry-After`) and, when\nits attempts run out, kept as a dead letter with its error rather than dropped.",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "pending",
+          "retrying",
+          "deadLettered",
+          "lastError",
+          "lastDeadLetteredAt",
+          "lastSentAt"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "healthy",
+              "retrying",
+              "dead_lettered"
+            ],
+            "description": "`idle` — nothing published, nothing waiting. `healthy` — messages are going out.\n`retrying` — at least one failed and will be tried again. `dead_lettered` — at least\none ran out of attempts in the last seven days and was not delivered."
+          },
+          "pending": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Messages waiting for their first attempt."
+          },
+          "retrying": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Messages that failed and will be retried."
+          },
+          "deadLettered": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Messages given up on in the last seven days."
+          },
+          "lastError": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The most recent dead letter's error.",
+            "examples": [
+              "channel_not_found"
+            ]
+          },
+          "lastDeadLetteredAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastSentAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a message was last delivered."
           }
         }
       },
@@ -74418,7 +74489,7 @@
           },
           "locked": {
             "type": "boolean",
-            "description": "The route's channel has no connection in this build."
+            "description": "The route's channel cannot deliver: PagerDuty always, Slack while the workspace has no\nactive Slack connection."
           },
           "lockedReason": {
             "type": [

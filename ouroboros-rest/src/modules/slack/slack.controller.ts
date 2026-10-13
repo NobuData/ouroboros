@@ -424,7 +424,13 @@ export class SlackConnectionController {
   @Get()
   async status(@CurrentTenant() tenant: Organization): Promise<SlackConnectionResource> {
     const connection = await this.repository.connectionOf(tenant.id);
-    const channels = connection === undefined ? [] : await this.repository.channels(connection.id);
+    const [channels, delivery] =
+      connection === undefined
+        ? [[], undefined]
+        : await Promise.all([
+            this.repository.channels(connection.id),
+            this.repository.deliveryHealth(connection.id, new Date()),
+          ]);
 
     return connectionResource({
       configured: this.installs.credentials() !== undefined,
@@ -434,6 +440,7 @@ export class SlackConnectionController {
         joined: channels.filter((channel) => channel.joined && !channel.archived).length,
       },
       socketMode: this.config.slackSocketMode,
+      delivery,
     });
   }
 

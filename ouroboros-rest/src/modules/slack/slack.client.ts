@@ -39,6 +39,24 @@ export const REVOKED_ERRORS: ReadonlySet<string> = new Set([
 export type SlackResult<T> =
   ({ readonly ok: true } & T) | { readonly ok: false; readonly error: string };
 
+/**
+ * A message call's answer: what was asked for, or Slack's error code — and, when Slack rate
+ * limited the call, how long it asked to be left alone (`Retry-After`, in seconds).
+ */
+export type SlackDelivery<T> =
+  | ({ readonly ok: true } & T)
+  | { readonly ok: false; readonly error: string; readonly retryAfterSeconds?: number };
+
+/** A message as `chat.postMessage` and `chat.update` take it. */
+export interface SlackMessage {
+  /** The notification text, and the fallback where blocks cannot draw. */
+  readonly text: string;
+  /** Top-level blocks, when the message has any. */
+  readonly blocks?: readonly unknown[];
+  /** Attachments — how a card gets its coloured border. */
+  readonly attachments?: readonly unknown[];
+}
+
 /** What `oauth.v2.access` grants. */
 export interface SlackInstallGrant {
   /** The bot token (`xoxb-…`) — sealed at once, never logged. */
@@ -138,6 +156,45 @@ export interface SlackApi {
   openSocket(appToken: string): Promise<SlackResult<{ url: string }>>;
 
   /**
+   * Post a message to a channel or a DM conversation (`chat.postMessage`).
+   *
+   * @param botToken - The token.
+   * @param channel - Slack's id for the conversation (`C071LOOPS`, `D0123`).
+   * @param message - The message.
+   * @returns The message's `ts` — what {@link updateMessage} addresses — or Slack's error.
+   */
+  postMessage(
+    botToken: string,
+    channel: string,
+    message: SlackMessage,
+  ): Promise<SlackDelivery<{ ts: string }>>;
+
+  /**
+   * Edit a message in place (`chat.update`).
+   *
+   * @param botToken - The token.
+   * @param channel - Slack's id for the conversation.
+   * @param ts - The message's `ts`.
+   * @param message - What it should now say. Blocks and attachments not given are cleared.
+   * @returns The `ts` again, or Slack's error.
+   */
+  updateMessage(
+    botToken: string,
+    channel: string,
+    ts: string,
+    message: SlackMessage,
+  ): Promise<SlackDelivery<{ ts: string }>>;
+
+  /**
+   * Open a direct-message conversation with one person (`conversations.open`).
+   *
+   * @param botToken - The token.
+   * @param userId - The Slack user's id.
+   * @returns Slack's id for the conversation, or its error.
+   */
+  openDm(botToken: string, userId: string): Promise<SlackDelivery<{ channelId: string }>>;
+
+  /**
    * Answer an interaction or a slash command after its acknowledgement.
    *
    * @param responseUrl - The `response_url` Slack sent with it. Only `https://hooks.slack.com`
@@ -146,6 +203,43 @@ export interface SlackApi {
    * @returns Whether Slack took it.
    */
   respond(responseUrl: string, reply: SlackReply): Promise<SlackResult<object>>;
+}
+
+/** One Web API call's answer, before a method has read its body. */
+type CallAnswer =
+  { ok: true; body: unknown } | { ok: false; error: string; retryAfterSeconds?: number };
+
+/**
+ * A message as form fields: Slack takes `blocks` and `attachments` as JSON strings there.
+ *
+ * `chat.update` keeps whatever is not sent, so both are always sent — empty when the message
+ * has none — and an edit to a card with no buttons really removes the buttons.
+ *
+ * @param message - The message.
+ * @returns The fields.
+ */
+function messageForm(message: SlackMessage): Record<string, string> {
+  return {
+    text: message.text,
+    blocks: JSON.stringify(message.blocks ?? []),
+    attachments: JSON.stringify(message.attachments ?? []),
+  };
+}
+
+/**
+ * The `ts` of a message call's answer.
+ *
+ * @param answer - What the call answered.
+ * @returns The timestamp, or the failure as it was.
+ */
+function stamped(answer: CallAnswer): SlackDelivery<{ ts: string }> {
+  if (!answer.ok) {
+    return answer;
+  }
+
+  const ts = text(answer.body, "ts");
+
+  return ts === undefined ? { ok: false, error: "incomplete_answer" } : { ok: true, ts };
 }
 
 /** Hosts a `response_url` may name. Anything else is not Slack's and is not posted to. */
@@ -378,6 +472,53 @@ export class HttpSlackApi implements SlackApi {
   }
 
   /** @inheritdoc */
+  async postMessage(
+    botToken: string,
+    channel: string,
+    message: SlackMessage,
+  ): Promise<SlackDelivery<{ ts: string }>> {
+    const answer = await this.call("chat.postMessage", {
+      token: botToken,
+      form: { channel, ...messageForm(message), unfurl_links: "false", unfurl_media: "false" },
+    });
+
+    return stamped(answer);
+  }
+
+  /** @inheritdoc */
+  async updateMessage(
+    botToken: string,
+    channel: string,
+    ts: string,
+    message: SlackMessage,
+  ): Promise<SlackDelivery<{ ts: string }>> {
+    const answer = await this.call("chat.update", {
+      token: botToken,
+      form: { channel, ts, ...messageForm(message) },
+    });
+
+    return stamped(answer);
+  }
+
+  /** @inheritdoc */
+  async openDm(botToken: string, userId: string): Promise<SlackDelivery<{ channelId: string }>> {
+    const answer = await this.call("conversations.open", {
+      token: botToken,
+      form: { users: userId },
+    });
+
+    if (!answer.ok) {
+      return answer;
+    }
+
+    const channelId = text(part(answer.body, "channel"), "id");
+
+    return channelId === undefined
+      ? { ok: false, error: "incomplete_answer" }
+      : { ok: true, channelId };
+  }
+
+  /** @inheritdoc */
   async respond(responseUrl: string, reply: SlackReply): Promise<SlackResult<object>> {
     let target: URL;
 
@@ -416,7 +557,7 @@ export class HttpSlackApi implements SlackApi {
   private async call(
     method: string,
     request: { token?: string; form?: Record<string, string> },
-  ): Promise<{ ok: true; body: unknown } | { ok: false; error: string }> {
+  ): Promise<CallAnswer> {
     try {
       const response = await this.fetchImpl(`${SLACK_API_URL}/${method}`, {
         method: "POST",
@@ -433,7 +574,14 @@ export class HttpSlackApi implements SlackApi {
         return { ok: true, body };
       }
 
-      return { ok: false, error: text(body, "error") ?? `http_${response.status}` };
+      const retryAfter = Number(response.headers?.get("retry-after"));
+
+      return {
+        ok: false,
+        error: text(body, "error") ?? `http_${response.status}`,
+        // Slack sends whole seconds with a 429; anything else is not a number worth passing on.
+        ...(Number.isFinite(retryAfter) && retryAfter > 0 ? { retryAfterSeconds: retryAfter } : {}),
+      };
     } catch {
       return { ok: false, error: "unreachable" };
     }

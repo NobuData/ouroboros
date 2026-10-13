@@ -208,6 +208,81 @@ describe("saving a route", () => {
   });
 });
 
+describe("Slack routes once Slack is connected (#536)", () => {
+  it("unlocks the default needs-you DM and lists Slack as an available channel", async () => {
+    const { service, store } = harness();
+    store.slackConnected.add(ORG);
+
+    const card = await service.list(ORG);
+
+    expect(card.items.find((route) => route.kind === "needs_you_dm")).toMatchObject({
+      channel: "slack",
+      locked: false,
+      lockedReason: null,
+      enabled: false,
+      delivering: false,
+    });
+    expect(card.channels).toContainEqual({ channel: "slack", available: true, reason: null });
+    expect(card.channels).toContainEqual({
+      channel: "pagerduty",
+      available: false,
+      reason: "connect PagerDuty first",
+    });
+  });
+
+  it("enables the needs-you DM, which needs no channel — it DMs whoever is on call", async () => {
+    const { service, store } = harness();
+    store.slackConnected.add(ORG);
+
+    const route = await service.update(ORG, "user-ken", "needs_you_dm", { enabled: true });
+
+    expect(route).toMatchObject({
+      channel: "slack",
+      enabled: true,
+      locked: false,
+      delivering: true,
+    });
+  });
+
+  it("refuses to enable a Slack route that has nowhere to post, in the lock's own words", async () => {
+    const { service, store } = harness();
+    store.slackConnected.add(ORG);
+
+    const error = await refusal(
+      service.update(ORG, "user-ken", "weekly_insights", { channel: "slack", enabled: true }),
+    );
+
+    expect(error).toMatchObject({ code: "notification_route_locked" });
+    expect(error.envelope().details).toMatchObject({ reason: "choose a Slack channel first" });
+    expect(store.routes.has(`${ORG}|weekly_insights`)).toBe(false);
+  });
+
+  it("enables a Slack route whose channel is already bound", async () => {
+    const { service, store } = harness();
+    store.slackConnected.add(ORG);
+    store.route(ORG, "custom:loop-finished", { channel: "slack", config: {}, enabled: false });
+    store.slackTargets.add(`${ORG}|custom:loop-finished`);
+
+    const route = await service.update(ORG, "user-ken", "custom:loop-finished", { enabled: true });
+
+    expect(route).toMatchObject({ enabled: true, delivering: true });
+  });
+
+  it("locks every Slack route again when the connection goes", async () => {
+    const { service, store } = harness();
+    store.slackConnected.add(ORG);
+    await service.update(ORG, "user-ken", "needs_you_dm", { enabled: true });
+    store.slackConnected.delete(ORG);
+
+    expect(await service.read(ORG, "needs_you_dm")).toMatchObject({
+      enabled: true,
+      locked: true,
+      lockedReason: "connect Slack first",
+      delivering: false,
+    });
+  });
+});
+
 describe("the audit of a route change", () => {
   it("records before and after, field by field", async () => {
     const { service, store, trail } = harness();
@@ -279,7 +354,7 @@ describe("the helpers", () => {
   });
 
   it("default a custom kind to email, off and unlocked", () => {
-    expect(defaultRoute("custom:release-notes")).toMatchObject({
+    expect(defaultRoute("custom:release-notes", { slackConnected: false })).toMatchObject({
       channel: "email",
       enabled: false,
       locked: false,

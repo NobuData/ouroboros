@@ -166,8 +166,14 @@ select pg_temp.must_hold(
 
 select pg_temp.must_hold(
   not exists (select 1 from ouroboros.notification_routes_effective r
-               where r.channel <> 'email' and (r.delivering or not r.locked or r.locked_reason is null)),
-  'notification_routes_lock_derived: only email delivers in this build — every Slack or PagerDuty route reads locked, with a reason');
+               where (r.channel = 'pagerduty' and (r.delivering or not r.locked or r.locked_reason is null))
+                  or (r.channel = 'slack'
+                      and r.locked = exists (select 1 from ouroboros.chat_connections c
+                                              where c.organization_id = r.organization_id
+                                                and c.platform = 'slack' and c.status = 'active'))
+                  or r.locked <> (r.locked_reason is not null)
+                  or r.delivering <> (r.enabled and not r.locked)),
+  'notification_routes_lock_derived: PagerDuty routes read locked with a reason; a Slack route is locked exactly while its workspace has no active Slack connection (#536); delivering is enabled and not locked');
 
 -- Seeded audit lines only (`5eed…` ids): a developer's own trail may name things since deleted —
 -- provider.deleted is exactly that event.

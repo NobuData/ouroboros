@@ -18,6 +18,8 @@
  * Unsealed keys are cached in memory for the process's life; they never leave it.
  */
 
+import { createHmac, timingSafeEqual } from "node:crypto";
+
 import { Injectable } from "@nestjs/common";
 
 import type { DecisionChannel } from "../../db/schema";
@@ -126,6 +128,51 @@ export class ActionTokenService {
    */
   spend(token: InspectedActionToken): Promise<ActionTokenUse> {
     return this.repository.use(token.hash);
+  }
+
+  /**
+   * Sign a message under the workspace's live key — for a value this service hands out and
+   * must later recognise as its own, such as a chat card's button (#536).
+   *
+   * The caller domain-separates its message; nothing signed here can be mistaken for a token's
+   * hash, because a token's hash is over the token itself, which begins `ouro_act_`.
+   *
+   * @param organizationId - The workspace.
+   * @param message - What to sign.
+   * @returns The key's ref and HMAC-SHA256 of the message, lower-case hex.
+   */
+  async sign(organizationId: string, message: string): Promise<{ keyRef: string; mac: string }> {
+    const { keyRef, key } = await this.liveKey(organizationId);
+
+    return { keyRef, mac: createHmac("sha256", key).update(message, "utf8").digest("hex") };
+  }
+
+  /**
+   * Whether a MAC is this workspace's signature of a message.
+   *
+   * @param organizationId - The workspace the message claims to be for.
+   * @param keyRef - The key the signature names.
+   * @param message - What was signed.
+   * @param mac - The presented HMAC, hex.
+   * @returns True only when the key exists, belongs to that workspace, and the MAC matches —
+   *   compared in constant time.
+   */
+  async verifySignature(
+    organizationId: string,
+    keyRef: string,
+    message: string,
+    mac: string,
+  ): Promise<boolean> {
+    const opened = await this.keyByRef(keyRef);
+
+    if (opened === undefined || opened.organizationId !== organizationId) {
+      return false;
+    }
+
+    const expected = createHmac("sha256", opened.key).update(message, "utf8").digest();
+    const presented = Buffer.from(mac, "hex");
+
+    return presented.length === expected.length && timingSafeEqual(presented, expected);
   }
 
   /**

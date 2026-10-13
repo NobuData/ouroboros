@@ -22,6 +22,7 @@ import {
   REPLIES,
   SlackInboundService,
   interactionPayload,
+  opensOnlyLinks,
   slackReply,
   subcommandOf,
 } from "./slack.inbound.service";
@@ -130,14 +131,17 @@ function command(text: string, overrides: Record<string, string> = {}): Record<s
 }
 
 /** An interactivity form, parsed. */
-function press(userId: string = SLACK_MAYA): Record<string, string> {
+function press(
+  userId: string = SLACK_MAYA,
+  actionIds: readonly string[] = ["ouro_answer:allow_once"],
+): Record<string, string> {
   return {
     payload: JSON.stringify({
       type: "block_actions",
       team: { id: TEAM },
       user: { id: userId },
       response_url: RESPONSE_URL,
-      actions: [{ action_id: "allow_once" }],
+      actions: actionIds.map((action_id) => ({ action_id })),
     }),
   };
 }
@@ -570,6 +574,29 @@ describe("slash commands", () => {
 });
 
 describe("interactivity", () => {
+  it("says nothing when a card's link button is followed — the browser already opened the page (#536)", async () => {
+    const { inbound, slack, store } = await setup();
+
+    expect(inbound.interaction(press(SLACK_MAYA, ["ouro_link:view_pr"]))).toEqual({});
+    await inbound.idle();
+
+    expect(slack.replies).toEqual([]);
+    expect(store.links).toEqual([]);
+  });
+
+  it("still answers a press that includes a button which is not a link", async () => {
+    const { inbound, slack } = await setup();
+
+    inbound.interaction(press(SLACK_MAYA, ["ouro_link:view_pr", "ouro_answer:deny"]));
+    await inbound.idle();
+
+    expect(slack.replies).toHaveLength(1);
+    expect(opensOnlyLinks({ actions: [] })).toBe(false);
+    expect(opensOnlyLinks({})).toBe(false);
+    expect(opensOnlyLinks(undefined)).toBe(false);
+    expect(opensOnlyLinks({ actions: [{ action_id: "ouro_link:x" }, "nonsense"] })).toBe(false);
+  });
+
   it("answers an unlinked person's button press with the link prompt — the second way in", async () => {
     const { inbound, slack, store } = await setup();
 

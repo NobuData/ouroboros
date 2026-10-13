@@ -254,6 +254,68 @@ describe("GET /slack/connection", () => {
     });
   });
 
+  it("reports how publishing stands, and counts channels — not the DMs the publisher opened", async () => {
+    const store = new FakeSlackStore();
+    const at = new Date("2026-10-12T14:00:00Z");
+
+    await store.saveInstall({
+      id: "c5360000-0000-4000-8000-000000000001",
+      organizationId: ORG,
+      workspaceId: "T024AB",
+      workspaceName: "acme-robotics",
+      botTokenSealed: "sealed",
+      botUserId: "U07OUROBOT",
+      installMeta: {},
+      installedBy: KEN.userId,
+      at,
+    });
+    await store.saveChannels(
+      { id: "c5360000-0000-4000-8000-000000000001", organization_id: ORG },
+      [
+        {
+          id: "C071LOOPS",
+          name: "ouroboros-loops",
+          isPrivate: false,
+          isMember: true,
+          isArchived: false,
+          memberCount: 24,
+        },
+      ],
+      at,
+    );
+    // A DM conversation is stored beside channels, tagged, and is not one.
+    store.channelRows.push({
+      ...store.channelRows[0],
+      id: "dm-row",
+      channel_id: "D07KEN",
+      purpose_tag: "dm",
+    });
+    store.deliveries.set("c5360000-0000-4000-8000-000000000001", {
+      pending: 0,
+      retrying: 0,
+      deadLettered: 2,
+      lastError: "channel_not_found",
+      lastDeadLetteredAt: at,
+      lastSentAt: null,
+    });
+
+    const answer = await status(store).status(TENANT);
+
+    expect(answer.channels).toEqual({ total: 1, joined: 1 });
+    expect(answer.delivery).toMatchObject({
+      state: "dead_lettered",
+      deadLettered: 2,
+      lastError: "channel_not_found",
+    });
+  });
+
+  it("reports an idle delivery where Slack was never installed", async () => {
+    expect((await status(new FakeSlackStore()).status(TENANT)).delivery).toMatchObject({
+      state: "idle",
+      deadLettered: 0,
+    });
+  });
+
   it("answers the verification result with the status after it", async () => {
     const answer = await status(new FakeSlackStore()).verify(TENANT);
 

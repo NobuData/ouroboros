@@ -33,6 +33,7 @@
 import { Injectable } from "@nestjs/common";
 import { sql, type Transaction } from "kysely";
 
+import { enqueueLoopFinished } from "../../chat/chat.outbox";
 import { DatabaseService } from "../../db/db.service";
 import type {
   Database,
@@ -766,6 +767,9 @@ class PgMergeTransaction implements MergeTransaction {
 
     // `run.merged` and `pr.merged` for the webhook pipeline (#487), in the merge's transaction.
     await enqueueRunEvent(this.trx, "merged", merged);
+    // And the *loop finished* card, wherever the workspace routes it (#536) — the same
+    // transaction, so the card is intended exactly when the run is merged.
+    await enqueueLoopFinished(this.trx, organizationId, runId);
 
     return true;
   }

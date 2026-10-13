@@ -43,15 +43,19 @@ Owner or Maintainer changes it and chooses **Save changes**.
 
 | Route | What it carries | Goes to |
 | --- | --- | --- |
-| **Needs-you decisions → Slack DM** | Approvals, waivers, allow-once requests. | Slack — **locked**: connect Slack first. |
+| **Needs-you decisions → Slack DM** | Approvals, waivers, allow-once requests. | Slack, as a direct message to the on-call person — **locked** (*connect Slack first*) until Slack is connected. |
 | **Daily digest → email** | Merges, spend and interventions since yesterday. | The workspace's Owners and Maintainers, at **Daily digest time (UTC)** — 09:00 unless you change it. |
 | **Loop failures → PagerDuty** | A loop that stops and cannot recover on its own. | PagerDuty — **locked**: connect PagerDuty first. |
 | **Weekly insights report → email** | The week's figures from [Insights](../user-guide/insights.mdx). | **Weekly insights recipients** — addresses separated by commas or new lines; left empty, the Owners and Maintainers. Mondays. |
 
+A workspace with Slack routes lists them under these four, by name — such as
+`custom:loop-finished → Slack`. What each posts is in
+[Chat Ops — connecting Slack](./chatops.mdx#where-messages-go).
+
 Switch a route on or off with its switch. A **locked** route cannot be switched on: its channel
-cannot deliver in this version. PagerDuty cannot be connected yet. Slack can be connected — see
-[Chat Ops — connecting Slack](./chatops.mdx) — but decisions are not delivered to it yet, so
-its route stays locked whether or not Slack is connected.
+cannot deliver. PagerDuty cannot be connected yet. A Slack route is locked only until Slack is
+connected — see [Chat Ops — connecting Slack](./chatops.mdx), which also covers what Slack
+routes post and the parts that cannot be set up in the app yet.
 
 The routes are the workspace's own mail, and they are separate from each person's mail:
 
@@ -259,8 +263,9 @@ secrets for a moment while you switch. Rotate whenever the secret may have been 
   the REST service's log, and try the server with mailpit's settings first.
 - **The daily digest or weekly report never arrives.** Its route is switched off, or it went to
   the Owners and Maintainers because **Weekly insights recipients** is empty.
-- **A route cannot be switched on.** It is **locked**: PagerDuty cannot be connected yet, and
-  decisions are not delivered to Slack yet, even when Slack is connected.
+- **A route cannot be switched on.** It is **locked**: PagerDuty cannot be connected yet, and a
+  Slack route is locked until [Slack is connected](./chatops.mdx). A Slack route that reads
+  *choose a Slack channel first* has no channel to post to.
 - **Saving an endpoint is refused because of its URL.** It is not `https`, or its host resolves
   to an internal address. Use a public address, or ask the deployment administrator to allow
   the collector in `OURO_WEBHOOK_INTERNAL_ALLOWLIST`.

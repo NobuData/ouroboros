@@ -27,7 +27,9 @@ import { AuditService } from "../audit/audit.service";
 import type { NotificationRouteConfig } from "../db/schema";
 import {
   CORE_ROUTE_KINDS,
+  SLACK_TARGET_REQUIRED,
   channelLock,
+  type RouteReach,
   configProblems,
   defaultChannel,
   isRouteKind,
@@ -73,17 +75,21 @@ export class NotificationRoutesService {
    * @returns The card.
    */
   async list(organizationId: string): Promise<NotificationRoutesResource> {
-    const stored = new Map((await this.routes.list(organizationId)).map((row) => [row.kind, row]));
+    const [rows, reach] = await Promise.all([
+      this.routes.list(organizationId),
+      this.routes.reach(organizationId),
+    ]);
+    const stored = new Map(rows.map((row) => [row.kind, row]));
     const core: NotificationRouteResource[] = CORE_ROUTE_KINDS.map((kind) => {
       const row = stored.get(kind);
 
-      return row === undefined ? defaultRoute(kind) : routeResource(row);
+      return row === undefined ? defaultRoute(kind, reach) : routeResource(row);
     });
     const custom = [...stored.values()]
       .filter((row) => !(CORE_ROUTE_KINDS as readonly string[]).includes(row.kind))
       .map(routeResource);
 
-    return { items: [...core, ...custom], channels: channelsResource() };
+    return { items: [...core, ...custom], channels: channelsResource(reach) };
   }
 
   /**
@@ -101,7 +107,9 @@ export class NotificationRoutesService {
 
     const row = (await this.routes.list(organizationId)).find((route) => route.kind === kind);
 
-    return row === undefined ? defaultRoute(kind) : routeResource(row);
+    return row === undefined
+      ? defaultRoute(kind, await this.routes.reach(organizationId))
+      : routeResource(row);
   }
 
   /**
@@ -156,10 +164,21 @@ export class NotificationRoutesService {
         return undefined;
       }
 
-      const lock = channelLock(after.channel);
+      const lock = channelLock(after.channel, await this.routes.reach(organizationId, trx));
 
       if (after.enabled && lock !== null) {
         throw routeLocked(kind, after.channel, lock);
+      }
+
+      // A Slack route delivers to its bound channel or to the on-call person (V130). One with
+      // neither has nowhere to post, and the database would refuse it as a constraint violation;
+      // it is refused here instead, in the lock's own words.
+      if (
+        after.enabled &&
+        after.channel === "slack" &&
+        !(await this.routes.slackTargeted(trx, organizationId, kind))
+      ) {
+        throw routeLocked(kind, after.channel, SLACK_TARGET_REQUIRED);
       }
 
       await this.routes.upsert(trx, organizationId, kind, { ...after, updatedBy: actorId });
@@ -259,11 +278,12 @@ export function routeResource(row: EffectiveRouteRow): NotificationRouteResource
  * A kind nobody saved: its default binding, switched off, its lock derived by the same rule.
  *
  * @param kind - The route.
+ * @param reach - What the workspace has connected.
  * @returns The resource.
  */
-export function defaultRoute(kind: string): NotificationRouteResource {
+export function defaultRoute(kind: string, reach: RouteReach): NotificationRouteResource {
   const channel = defaultChannel(kind);
-  const lockedReason = channelLock(channel);
+  const lockedReason = channelLock(channel, reach);
 
   return {
     kind,
