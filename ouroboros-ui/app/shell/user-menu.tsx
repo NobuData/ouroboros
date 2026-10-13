@@ -17,6 +17,7 @@ import { SETTINGS_PATH } from "@/app/paths";
 import { describeTheme, resolveTheme, type Theme } from "@/app/theme";
 import { useTheme } from "@/app/theme-provider";
 import { useFontScale } from "@/app/use-font-scale";
+import { APP_VERSION, versionLabel } from "@/app/version";
 
 import { type AccountView, type MenuWorkspace, accountMenuLabel, accountView } from "./account";
 import { signOutOfSession } from "./actions";
@@ -637,6 +638,17 @@ export function UserMenu() {
               </button>
             </form>
           </div>
+
+          {/*
+            Which build this is, at the foot of the panel. Outside the `role="menu"` for the
+            reason the identity block is: it is a fact to read, not an item to press. It is
+            here rather than in the frame because the frame is on every page — the version is
+            what a person looks up when they are about to report something, and the menu is
+            where they already look for what the application knows about their session.
+          */}
+          <p className="shell-menu__version">
+            Ouroboros <span className="shell-menu__build">{versionLabel(APP_VERSION)}</span>
+          </p>
 
           {failure !== null && (
             // role="alert" because it appears in answer to a press: somebody who has just

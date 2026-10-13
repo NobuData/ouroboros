@@ -162,11 +162,11 @@
       ],
       "ready": "[role=\"group\"][aria-label=\"Theme\"]",
       "clip": ".shell-menu:not(.shell-menu--start) > .shell-menu__panel",
-      "caption": "The account menu: font size, theme, workspace settings, keyboard shortcuts and sign out.",
-      "alt": "The account menu open under the avatar, showing your name and email, the Font size stepper, the Theme choices Light, Dark and System, and the Workspace settings, Keyboard shortcuts and Sign out items.",
-      "capturedAt": "2026-10-08T21:31:08.279Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "918e4c4ea5693566ae2f575c4ee5d9b243a71a23"
+      "caption": "The account menu: font size, theme, workspace settings, keyboard shortcuts, sign out and the version.",
+      "alt": "The account menu open under the avatar, showing your name and email, the Font size stepper, the Theme choices Light, Dark and System, the Workspace settings, Keyboard shortcuts and Sign out items, and the application's version on the last line.",
+      "capturedAt": "2026-10-13T19:10:02.841Z",
+      "uiVersion": "0.163.0",
+      "seedRef": "125fe7c40d4f308df36365718a37d1d0bd8febbf"
     },
     {
       "id": "user-guide.issues",

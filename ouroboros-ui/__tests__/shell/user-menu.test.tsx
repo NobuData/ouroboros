@@ -13,6 +13,7 @@ import { renderThemed } from "../helpers/theme";
 import { FONT_SCALE_ATTRIBUTE, setFontScale } from "@/app/font-scale";
 import { SETTINGS_PATH } from "@/app/paths";
 import { resetLeaveGuard, setLeaveGuard } from "@/app/shell/leave-guard";
+import manifest from "@/package.json";
 
 /**
  * The account menu, now that it has a session to draw
@@ -388,6 +389,26 @@ describe("signing out", () => {
     proceed?.();
 
     expect(signOutOfSession).toHaveBeenCalledOnce();
+  });
+});
+
+describe("the version", () => {
+  it("is the one ouroboros-ui's manifest states, at the foot of the panel", () => {
+    renderThemed(<UserMenu />);
+    open();
+
+    expect(screen.getByText(`v${manifest.version}`)).toBeInTheDocument();
+  });
+
+  it("is a fact beside the menu, not an item in it", () => {
+    // A menu's children are menu items; a line of text among them is one a screen reader in
+    // menu mode may skip, and one the arrow keys would have to step over.
+    renderThemed(<UserMenu />);
+    open();
+
+    const version = screen.getByText(`v${manifest.version}`);
+    expect(version.closest('[role="menu"]')).toBeNull();
+    expect(version).not.toHaveAttribute("role");
   });
 });
 

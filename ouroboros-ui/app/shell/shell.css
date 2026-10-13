@@ -866,6 +866,24 @@
   display: contents;
 }
 
+/*
+ * The build's version at the panel's foot: ruled off from the items the way the identity
+ * block is ruled off above them, and as quiet as a caption — it is read once, when somebody
+ * is about to report something.
+ */
+.shell-menu__version {
+  margin: var(--sp-4) 0 0;
+  padding: var(--sp-4) var(--sp-5) 0;
+  border-top: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+/* The number itself, in the mono face every identifier in this product is set in. */
+.shell-menu__build {
+  font-family: var(--f-mono);
+}
+
 .shell-menu__failure {
   margin: var(--sp-4) 0 0;
   padding: 0 var(--sp-5);

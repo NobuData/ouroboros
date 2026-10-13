@@ -12,6 +12,14 @@ export const DEFAULT_SITE_URL = "https://docs.ouroboros.build";
 /** The footer copyright, exactly as roadmap decision D3 states it. */
 export const COPYRIGHT = "Copyright © 2025-2026 NobuData LLC";
 
+/**
+ * The release these pages describe, as the navbar prints it. A release name, not a version:
+ * the application's own version is `ouroboros-ui/package.json`'s, shown in its account menu
+ * (`docs/CONVENTIONS.md` § 8), and moves with every change; this moves when a release is cut
+ * (`docs/ROADMAP_OOE_RC1.md`).
+ */
+export const RELEASE = "RC1";
+
 /** The repository the site's sources live in — the navbar and footer GitHub links. */
 export const REPO_URL = "https://github.com/NobuData/ouroboros";
 

@@ -570,6 +570,14 @@ invent a second place to write one, the module keeps one file and its
 is what makes `ouroboros-runner version` and every `hello` frame report a real version instead
 of a constant somebody forgot to bump.
 
+**Where a version is shown.** A person reads the application's version at the foot of the
+account menu: `ouroboros-ui/app/version.ts` imports the module's own `package.json`, so the
+string is the manifest's and is written nowhere else. `ouroboros-rest` reports its own on
+`GET /api/v1` and in `info.version`. The documentation site prints no module version: the end
+of its navbar names the **release** its pages describe — `RC1` today — from `RELEASE` in
+`ouroboros-docs/site.constants.ts`, which changes when a release is cut
+([`ROADMAP_OOE_RC1.md`](ROADMAP_OOE_RC1.md)), not when a module is bumped.
+
 ## 9. CI
 
 Workflows are **path-filtered** so a PR only runs the checks it can affect

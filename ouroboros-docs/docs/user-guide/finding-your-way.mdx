@@ -63,7 +63,8 @@ From left to right:
 - **The bell** — not available yet: notifications arrive with a later release, and the bell
   does nothing today.
 - **Your avatar** — the account menu: [appearance](#appearance), workspace switching,
-  **Workspace settings**, **Keyboard shortcuts** and **Sign out**.
+  **Workspace settings**, **Keyboard shortcuts** and **Sign out**, and at its foot the
+  [version](#version) of Ouroboros you are using.
 
 The live-loop and Needs-you pills are hidden while their count is zero.
 
@@ -148,6 +149,18 @@ The same two settings, with a preview sentence, are on the **Appearance** card o
 
 Animations follow your operating system's reduced-motion setting; there is no separate
 switch in Ouroboros.
+
+## Version
+
+The last line of the account menu names the version of the application you are signed in
+to — **Ouroboros v0.163.0**, for example. Quote it when you report a problem.
+<Since version="0.163.0" module="ouroboros-ui" />
+
+This site names the release it describes instead — **RC1**, at the right-hand end of the
+top bar.
+
+The number is the application's own. The service behind it is versioned separately and
+reports its version from the [REST API](../cli/rest-api.mdx).
 
 ## Keyboard shortcuts
 

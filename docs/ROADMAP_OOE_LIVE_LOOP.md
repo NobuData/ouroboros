@@ -4,6 +4,12 @@
 
 > Live Loop: make the first real issue-to-merge run happen. Ouroboros has shipped a control plane proven by simulated runs, but no autonomous run has ever executed: workflow execution, live model invocation, guardrail enforcement and loop-created pull requests are open v2 issues. Promote and order that execution chain, decide the engine (with an option to execute stages through an agent harness), and deliver a thin vertical slice from one GitHub issue to one draft pull request, with real-run ingestion replacing the simulated driver.
 
+> **Release.** The Live Loop MVP is the content of **Release Candidate 1**:
+> [`ROADMAP_OOE_RC1.md`](ROADMAP_OOE_RC1.md) orders it, with the open defects, and its
+> issues sit on the [`RC1`](https://github.com/NobuData/ouroboros/milestone/61) milestone
+> rather than `Live Loop MVP` (2026-10-13). Where this document says a promoted issue moves
+> to `Live Loop MVP`, read `RC1`; the six epics and the `Live Loop v2` set are unchanged.
+
 This document succeeds [`ROADMAP_OOE_MVP.md`](ROADMAP_OOE_MVP.md). That plan
 ordered the control plane and ended with an open decision it could not settle:
 promote the chain executor (`AF.2`, #235) and the task skeleton (`6.5`, #54)

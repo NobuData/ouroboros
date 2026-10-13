@@ -109,3 +109,13 @@ html[data-theme="dark"] {
 .footer {
   border-top: 1px solid var(--line);
 }
+
+/* The release at the navbar's end (`RELEASE`, site.constants.ts): a caption, in the mono face
+   identifiers are set in, and never wrapped — it is one token. */
+.navbar__release {
+  padding: 0 var(--sp-4);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}

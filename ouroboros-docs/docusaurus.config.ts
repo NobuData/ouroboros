@@ -10,6 +10,7 @@ import {
   DEFAULT_SITE_URL,
   EDIT_URL,
   MARKETING_URL,
+  RELEASE,
   REPO_URL,
   SECTIONS,
 } from "./site.constants";
@@ -142,6 +143,11 @@ const config: Config = {
   // scripts/csp.ts), and baseUrl is fixed at "/", so the banner has nothing to report.
   baseUrlIssueBanner: false,
 
+  // Read by anything in src/ that needs to name the release (`useDocusaurusContext`).
+  customFields: {
+    release: RELEASE,
+  },
+
   organizationName: "NobuData",
   projectName: "ouroboros",
 
@@ -226,6 +232,12 @@ const config: Config = {
         // Right side: search, GitHub, then the theme's own colour-mode toggle.
         { type: "search", position: "right" },
         { href: REPO_URL, label: "GitHub", position: "right" },
+        // Last: which release these pages describe, on every page.
+        {
+          type: "html",
+          position: "right",
+          value: `<span class="navbar__release" title="The Ouroboros release these pages describe">${RELEASE}</span>`,
+        },
       ],
     },
     footer: {
