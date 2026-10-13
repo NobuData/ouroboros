@@ -524,7 +524,8 @@ describe("event cards", () => {
 
     expect((green.model as ChatCard).headline).toBe("Loop #1847 build 3 green — 63/63");
     expect((failed.model as ChatCard).headline).toBe("Loop #1847 build 3 failed — 2 of 63 failing");
-    expect(failed.facts).toEqual({ passed: 61, total: 63 });
+    // With which build it was, so the channel mirror can say the same headline (#542).
+    expect(failed.facts).toEqual({ passed: 61, total: 63, build_number: 3 });
     expect(failed.digestParts).toEqual(["build_failed", RUN_1846, "3"]);
   });
 });

@@ -45,6 +45,11 @@ vi.mock("@/app/chatops/chatops-actions", () => ({
   unbindChannel: (id: unknown) => unbindChannel(id),
 }));
 
+// The channel mirror's composer (#542) is the console's: its Server Actions and the session it
+// keys its history by are stubbed, as the palette's suites stub them.
+vi.mock("@/app/api/auth-client", async () => (await import("../helpers/account")).authClientModule());
+vi.mock("@/app/shell/console-actions", async () => (await import("../helpers/console")).consoleActionsModule());
+
 const { ChatOpsScreen } = await import("@/app/chatops/chatops-screen");
 
 beforeEach(() => {
@@ -64,6 +69,7 @@ function openPicker(list: SlackChannels = channels()): HTMLElement {
   render(
     <ChatOpsScreen
       mayAdminister
+      mirror={{ read: () => new Promise(() => undefined) }}
       page={{ ok: true, value: chatOpsPage({ channels: list }) }}
       poll={{ read: () => new Promise(() => undefined) }}
       readAt={CHATOPS_READ_AT}

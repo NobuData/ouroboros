@@ -66,13 +66,16 @@ export async function readConsoleCompletions(
  * Run a line as the signed-in member.
  *
  * @param text What was typed after `/ouro`.
+ * @param channelId The bound channel the line was typed under, from the Chat Ops mirror's
+ *   composer (#542). Omitted by the palette.
  * @returns What the dispatcher answered — a denial and an unknown command are answers, not
  *   refusals — or the refusal for a line it would not read at all.
  */
 export async function runConsoleCommand(
   text: string,
+  channelId?: string,
 ): Promise<ConsoleAnswer<ConsoleCommandResult>> {
-  return answerOf(() => consoleApi.run(text));
+  return answerOf(() => consoleApi.run(text, channelId === undefined ? {} : { channelId }));
 }
 
 /**

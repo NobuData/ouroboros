@@ -1,7 +1,16 @@
 import type { ChannelPurpose, SlackChannel, SlackChannels, SlackConnection } from "@/app/api/chatops";
+import type {
+  ChatMirror,
+  ChatMirrorEntry,
+  MirrorAction,
+  MirrorCommand,
+  MirrorResolution,
+  MirrorSeverity,
+} from "@/app/api/chatops-mirror";
 import type { Reading } from "@/app/api/reading";
-import { relativeAgo } from "@/app/format";
+import { ageOfSeconds, relativeAgo } from "@/app/format";
 import { settingsSectionPath } from "@/app/paths";
+import { CONSOLE_PREFIX } from "@/app/shell/console";
 
 /**
  * What the Chat Ops page says and decides (CA.1,
@@ -735,4 +744,514 @@ export function refused<T extends object>(outcome: ChatOpsOutcome<T>): outcome i
  */
 export function refusalText(message: string, fallback: string): string {
   return message.trim() === "" ? fallback : message;
+}
+
+/* ------------------------------------------------------------------ the channel mirror */
+
+/*
+ * CA.2 ([#542](https://github.com/NobuData/ouroboros/issues/542)). The card draws **records** —
+ * what Ouroboros published to a channel and what was invoked there — and every word of an entry
+ * is the service's. What is written below is only the frame around them: the label that says
+ * this is a mirror, the composer's honesty about what it can send, and the card's own states.
+ */
+
+/** Where the browser reads a channel's mirror from. */
+export const MIRROR_ENDPOINT = "/api/chatops/mirror";
+
+/** The address parameter that names the channel whose mirror is showing. */
+export const MIRROR_PARAM = "channel";
+
+/** What is said when the mirror could not be reached, and when its answer could not be read. */
+export const UNREACHABLE_MIRROR = "The channel mirror could not be reached.";
+export const UNREADABLE_MIRROR = "The channel mirror could not be read.";
+
+/** The card's own unread state, and the banner over a stream that could not be re-read. */
+export const MIRROR_UNREAD = "The channel mirror could not be read.";
+export const MIRROR_STALE_HEADLINE = "The channel mirror could not be re-read.";
+
+/** What the card says before its first answer. */
+export const MIRROR_READING = "Reading the mirror…";
+
+/**
+ * Where one page of a channel's mirror is read from.
+ *
+ * @param channelId The channel.
+ * @param before An `olderCursor`, for the page before it. The latest page when omitted.
+ * @returns `/api/chatops/mirror?channel=…`, with the cursor when there is one.
+ */
+export function mirrorEndpoint(channelId: string, before?: string | null): string {
+  const asked = new URLSearchParams({ [MIRROR_PARAM]: channelId });
+
+  if (before !== undefined && before !== null && before !== "") asked.set("before", before);
+
+  return `${MIRROR_ENDPOINT}?${asked.toString()}`;
+}
+
+/**
+ * The page's address with a channel's mirror showing.
+ *
+ * @param channelId The channel.
+ * @returns `?channel=…` — relative, so whatever path the page is served under is kept.
+ */
+export function mirrorAddress(channelId: string): string {
+  return `?${new URLSearchParams({ [MIRROR_PARAM]: channelId }).toString()}`;
+}
+
+/**
+ * Whether a value is a page of a mirror — the guard on what the route answered.
+ *
+ * @param value What arrived.
+ * @returns True when it carries a channel and a list of entries.
+ */
+export function isChatMirror(value: unknown): value is ChatMirror {
+  if (typeof value !== "object" || value === null) return false;
+
+  const page = value as { channel?: unknown; entries?: unknown };
+
+  return typeof page.channel === "object" && page.channel !== null && Array.isArray(page.entries);
+}
+
+/**
+ * Which channel's mirror the page shows.
+ *
+ * @param channels The workspace's channels, as served.
+ * @param wanted The channel the address names, or null when it names none.
+ * @returns The named channel when it is a bound one, else the first bound channel — or null
+ *   when nothing is bound, which is the post-install step's page and not the mirror's.
+ */
+export function mirrorChannel(channels: readonly SlackChannel[], wanted: string | null): SlackChannel | null {
+  const bound = boundChannels(channels);
+
+  return bound.find((channel) => channel.id === wanted) ?? bound[0] ?? null;
+}
+
+/* ---- the card's head ---- */
+
+/** The platforms a mirror can be of, as the tag and the segment name them. */
+export const PLATFORM_LABELS: Readonly<Record<ChatMirror["platform"], string>> = { slack: "Slack" };
+
+/** The segment's accessible name, and its second, not-yet-available half. */
+export const PLATFORM_SEGMENT_LABEL = "Chat platform";
+export const TEAMS_LABEL = "Teams";
+
+/** Why Teams cannot be chosen — printed beside the segment, not only on it. */
+export const TEAMS_REASON = "arrives with CB.2 (#547)";
+
+/** The chip that says what this card is, and the note behind it. */
+export const MIRROR_LABEL = "mirror";
+export const MIRROR_TOOLTIP =
+  "this is Ouroboros's record of what it published — the conversation lives in Slack";
+
+/** The accessible name of the control that opens that note. */
+export const MIRROR_TIP_LABEL = "What mirror means";
+
+/**
+ * The card's accessible name.
+ *
+ * @param channel The channel.
+ * @returns `Mirror of #ouroboros-loops`.
+ */
+export function mirrorName(channel: Pick<SlackChannel, "name">): string {
+  return `Mirror of ${channelName(channel)}`;
+}
+
+/**
+ * The head's meta line, from connection truth.
+ *
+ * @param memberCount How many people are in the channel, or null when Slack did not say.
+ * @param appVersion The installed app's version, or null when the connection does not say.
+ * @returns `24 members · Ouroboros app v2.4`, either half alone, or null — never a placeholder.
+ */
+export function mirrorMeta(memberCount: number | null, appVersion: string | null): string | null {
+  const app = appText(appVersion);
+  const parts = [membersText(memberCount), app === null ? null : `Ouroboros ${app}`].filter(
+    (part): part is string => part !== null,
+  );
+
+  return parts.length === 0 ? null : parts.join(` ${FACT_SEPARATOR} `);
+}
+
+/**
+ * What the freshness tag reads.
+ *
+ * @param updatedAt When the mirror was last read or confirmed, epoch milliseconds — or null
+ *   before the first answer.
+ * @param nowSeconds The reader's clock, in whole seconds.
+ * @returns `updated 12s ago`, or `reading…`.
+ */
+export function mirrorFreshness(updatedAt: number | null, nowSeconds: number): string {
+  if (updatedAt === null) return MIRROR_FRESH_READING;
+
+  return `updated ${ageOfSeconds(nowSeconds - updatedAt / 1000)} ago`;
+}
+
+/** The freshness tag before the first answer, and what pressing it does. */
+export const MIRROR_FRESH_READING = "reading…";
+export const MIRROR_FRESH_TITLE = "Read the mirror again now";
+
+/* ---- the stream ---- */
+
+/** The stream's accessible name. */
+export const STREAM_LABEL = "Published and invoked";
+
+/** Who a card is from: the app, marked as one. */
+export const BOT_NAME = "Ouroboros";
+export const APP_TAG = "APP";
+
+/** The marker on a command that was typed in this app rather than in Slack. */
+export const CONSOLE_SURFACE_MARK = "console";
+
+/** Who ran a command nobody is linked to, and what stands where their initials would. */
+export const UNKNOWN_AUTHOR = "Unlinked member";
+export const UNKNOWN_INITIALS = "?";
+
+/** The annotation on a question that was escalated. */
+export const ESCALATED_MARK = "⚠ escalated";
+
+/** What a command still waiting for its result says under its acknowledgement. */
+export const PENDING_NOTE = "still running — the result appears here when it finishes";
+
+/** The control that pages backwards, and what it says while a page is on its way. */
+export const LOAD_EARLIER_LABEL = "Load earlier";
+export const LOADING_EARLIER_LABEL = "Loading earlier…";
+export const EARLIER_FAILED = "Earlier entries could not be read. Try again.";
+
+/** A zone seam: the reader's own when omitted, a fixed one in a test. */
+type Zone = string | undefined;
+
+/**
+ * An instant as the stream's clock writes it.
+ *
+ * @param iso The instant.
+ * @param timeZone The zone. The reader's own when omitted.
+ * @returns `14:11` — twenty-four hours, in the reader's zone — or `""` for a stamp that cannot
+ *   be read.
+ */
+export function clockText(iso: string, timeZone?: Zone): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+
+  return new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }).format(at);
+}
+
+/**
+ * The local day an instant falls on, as a sortable key.
+ *
+ * @param at The instant.
+ * @param timeZone The zone. The reader's own when omitted.
+ * @returns `2026-10-12`.
+ */
+export function dayKey(at: Date, timeZone?: Zone): string {
+  return new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone }).format(at);
+}
+
+/** The two days that are named rather than dated. */
+export const TODAY_LABEL = "Today";
+export const YESTERDAY_LABEL = "Yesterday";
+
+/** A day, in milliseconds. */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * What a day's divider says.
+ *
+ * @param at Any instant of the day.
+ * @param now The reader's clock.
+ * @param timeZone The zone. The reader's own when omitted.
+ * @returns `Today`, `Yesterday`, or `Mon 5 Oct` — with the year once it is not this one.
+ */
+export function dayLabel(at: Date, now: Date, timeZone?: Zone): string {
+  const key = dayKey(at, timeZone);
+
+  if (key === dayKey(now, timeZone)) return TODAY_LABEL;
+  if (key === dayKey(new Date(now.getTime() - DAY_MS), timeZone)) return YESTERDAY_LABEL;
+
+  const sameYear = key.slice(0, 4) === dayKey(now, timeZone).slice(0, 4);
+
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: sameYear ? undefined : "numeric",
+    timeZone,
+  })
+    .format(at)
+    .replace(",", "");
+}
+
+/** One local day of the stream. */
+export interface MirrorDay {
+  /** The day, as {@link dayKey} writes it. */
+  readonly key: string;
+  /** What its divider says. */
+  readonly label: string;
+  /** Its entries, oldest first. */
+  readonly entries: readonly ChatMirrorEntry[];
+}
+
+/**
+ * The key an entry is held and drawn by. A card and a command are rows of two tables, so an id
+ * alone is not enough.
+ *
+ * @param entry The entry.
+ * @returns `card:<id>`.
+ */
+export function entryKey(entry: Pick<ChatMirrorEntry, "type" | "id">): string {
+  return `${entry.type}:${entry.id}`;
+}
+
+/**
+ * The entries held, with a page read since folded in.
+ *
+ * A page replaces what is held of the entries it carries — a question that was open is now
+ * resolved, a command that was pending now has its result — and adds the ones not seen before.
+ * Nothing held is dropped: the latest page slides forward as the channel is written to, and the
+ * entries that fall off its start are still the reader's, as are the earlier pages they loaded.
+ *
+ * @param held What is on screen.
+ * @param page What was read.
+ * @returns Both, by instant and then by id — the order the service pages in.
+ */
+export function mergeMirror(
+  held: readonly ChatMirrorEntry[],
+  page: readonly ChatMirrorEntry[],
+): readonly ChatMirrorEntry[] {
+  const byKey = new Map<string, ChatMirrorEntry>();
+
+  for (const entry of held) byKey.set(entryKey(entry), entry);
+  for (const entry of page) byKey.set(entryKey(entry), entry);
+
+  return [...byKey.values()].sort((left, right) => {
+    const gap = Date.parse(left.at) - Date.parse(right.at);
+    if (gap !== 0 && !Number.isNaN(gap)) return gap;
+
+    return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+  });
+}
+
+/**
+ * The stream, grouped by the reader's local day.
+ *
+ * @param entries The entries, oldest first.
+ * @param now The reader's clock.
+ * @param timeZone The zone. The reader's own when omitted.
+ * @returns The days, oldest first.
+ */
+export function mirrorDays(entries: readonly ChatMirrorEntry[], now: Date, timeZone?: Zone): readonly MirrorDay[] {
+  const days: { key: string; label: string; entries: ChatMirrorEntry[] }[] = [];
+
+  for (const entry of entries) {
+    const at = new Date(entry.at);
+    const key = Number.isNaN(at.getTime()) ? "" : dayKey(at, timeZone);
+    const last = days.at(-1);
+
+    if (last !== undefined && last.key === key) last.entries.push(entry);
+    else days.push({ key, label: key === "" ? "" : dayLabel(at, now, timeZone), entries: [entry] });
+  }
+
+  return days;
+}
+
+/**
+ * How a resolved question reads where its buttons were.
+ *
+ * @param resolution The answer, who gave it and when.
+ * @param timeZone The zone. The reader's own when omitted.
+ * @returns `resolved: allow once — Maya Chen (14:11)`; without the dash part when nobody is
+ *   named, and without the time when the stamp cannot be read.
+ */
+export function resolutionText(resolution: MirrorResolution, timeZone?: Zone): string {
+  const clock = clockText(resolution.at, timeZone);
+  const who = resolution.actor === null || resolution.actor.trim() === "" ? "" : ` — ${resolution.actor.trim()}`;
+
+  return `resolved: ${resolution.outcome}${who}${clock === "" ? "" : ` (${clock})`}`;
+}
+
+/**
+ * A person's initials, for their avatar.
+ *
+ * @param name Their name, or null when the command is nobody's we know.
+ * @returns `KS` for *Ken Suenobu*, `K` for *Ken*, {@link UNKNOWN_INITIALS} for nobody.
+ */
+export function initials(name: string | null | undefined): string {
+  const words = (name ?? "").trim().split(/\s+/).filter((word) => word !== "");
+
+  if (words.length === 0) return UNKNOWN_INITIALS;
+
+  const first = [...words[0]!][0] ?? "";
+  const last = words.length > 1 ? ([...words.at(-1)!][0] ?? "") : "";
+
+  return `${first}${last}`.toUpperCase();
+}
+
+/**
+ * Whether an address is a page of this application.
+ *
+ * @param href The address.
+ * @returns True for a path — `/prs/512` — and false for anything with an origin of its own.
+ */
+export function isInApp(href: string): boolean {
+  return href.startsWith("/") && !href.startsWith("//");
+}
+
+/** The button treatment each of a card action's styles takes. */
+export const ACTION_TONES: Readonly<Record<MirrorAction["style"], "primary" | "danger" | "ghost">> = {
+  primary: "primary",
+  danger: "danger",
+  default: "ghost",
+};
+
+/** The severities the sheet draws; anything else is drawn as `info`. */
+export const MIRROR_SEVERITIES: readonly MirrorSeverity[] = ["ok", "warn", "accent", "err", "info"];
+
+/**
+ * The severity a card is drawn in.
+ *
+ * @param severity What the record says.
+ * @returns It, or `info` for one this build has no treatment for — the words are still the
+ *   record's.
+ */
+export function cardSeverity(severity: string): MirrorSeverity {
+  return (MIRROR_SEVERITIES as readonly string[]).includes(severity) ? (severity as MirrorSeverity) : "info";
+}
+
+/**
+ * Whether a command's reply is drawn as a failure.
+ *
+ * @param outcome How the command came out.
+ * @returns True for `error`, `denied` and `unlinked`. The words stay the stored ones.
+ */
+export function replyFailed(outcome: MirrorCommand["outcome"]): boolean {
+  return outcome === "error" || outcome === "denied" || outcome === "unlinked";
+}
+
+/* ---- the card's states ---- */
+
+/** What a bound channel with nothing in its mirror says. */
+export const MIRROR_EMPTY_TITLE = "Nothing has been published to this channel yet";
+
+/**
+ * The line under that title.
+ *
+ * @param channel The channel.
+ * @returns What will appear here, once there is something.
+ */
+export function mirrorEmptyNote(channel: Pick<SlackChannel, "name">): string {
+  return `What Ouroboros posts to ${channelName(channel)}, and the commands run there, will be recorded here.`;
+}
+
+/**
+ * The warning on a channel the bot was removed from.
+ *
+ * @param channel The channel.
+ * @returns What happened, what it costs and how to mend it — in #541's words for the invite.
+ */
+export function removedNote(channel: Pick<SlackChannel, "name">): string {
+  return `Ouroboros was removed from ${channelName(channel)}, so nothing new is being posted there. In Slack, open the channel and send ${INVITE_COMMAND} to bring it back.`;
+}
+
+/**
+ * The warning on a channel archived in Slack.
+ *
+ * @param channel The channel.
+ * @returns What it means for the mirror.
+ */
+export function archivedNote(channel: Pick<SlackChannel, "name">): string {
+  return `${channelName(channel)} is archived in Slack, so nothing new is being posted there.`;
+}
+
+/**
+ * What stands over the stream when the channel is not one Ouroboros can post to.
+ *
+ * @param channel The channel, as the mirror last read it.
+ * @returns The warning, or null for a channel in good standing.
+ */
+export function standingNote(channel: Pick<SlackChannel, "name" | "joined" | "archived">): string | null {
+  if (channel.archived) return archivedNote(channel);
+
+  return channel.joined ? null : removedNote(channel);
+}
+
+/* ---- the composer ---- */
+
+/** The composer's accessible name, its button and the button while a line is out. */
+export const COMPOSER_LABEL = "Run a command";
+export const SEND_LABEL = "Send";
+export const SENDING_LABEL = "Sending…";
+
+/** Why plain text cannot be sent — said, beside the way to where it can be. */
+export const PLAIN_TEXT_HINT = "messages live in Slack — commands work here";
+
+/** What the composer says while it holds nothing that is not a command. */
+export const COMPOSER_HINT = "commands work here — start with /ouro";
+
+/** Why **Send** is inert while the box holds no command yet. */
+export const SEND_NEEDS_COMMAND = "Type a command after /ouro first.";
+
+/**
+ * The composer's placeholder.
+ *
+ * @param channel The channel.
+ * @returns `Message #ouroboros-loops — or /ouro …`.
+ */
+export function composerPlaceholder(channel: Pick<SlackChannel, "name">): string {
+  return `Message ${channelName(channel)} — or ${CONSOLE_PREFIX} …`;
+}
+
+/** What the composer's box holds, as far as sending goes. */
+export type ComposerMode =
+  /** Nothing. */
+  | "empty"
+  /** The start of the prefix, or the prefix with no command after it yet. */
+  | "prefix"
+  /** A command: it can be sent. */
+  | "command"
+  /** Anything else — a message, which lives in Slack. */
+  | "plain";
+
+/**
+ * What the box holds.
+ *
+ * @param text The box's whole content.
+ * @returns See {@link ComposerMode}. A prefix still being typed is not yet a message: the reader
+ *   is not told their command cannot be sent three letters into typing it.
+ */
+export function composerMode(text: string): ComposerMode {
+  const typed = text.toLowerCase();
+
+  if (typed.trim() === "") return "empty";
+  if (CONSOLE_PREFIX.startsWith(typed)) return "prefix";
+  if (!typed.startsWith(`${CONSOLE_PREFIX} `)) return "plain";
+
+  return typed.slice(CONSOLE_PREFIX.length).trim() === "" ? "prefix" : "command";
+}
+
+/**
+ * Why **Send** cannot be pressed.
+ *
+ * @param mode What the box holds.
+ * @param sending Whether a line is out.
+ * @returns The reason, or undefined when it can be pressed.
+ */
+export function sendReason(mode: ComposerMode, sending: boolean): string | undefined {
+  if (sending) return SENDING_LABEL;
+  if (mode === "plain") return PLAIN_TEXT_HINT;
+
+  return mode === "command" ? undefined : SEND_NEEDS_COMMAND;
+}
+
+/* ---- the bound list's way in ---- */
+
+/** A bound row's control for showing its mirror, and what it reads on the row that is showing. */
+export const SHOW_MIRROR_LABEL = "Show mirror";
+export const SHOWING_MIRROR_LABEL = "Showing";
+
+/**
+ * The accessible name of a row's **Show mirror**.
+ *
+ * @param channel The channel.
+ * @returns `Show the mirror of #helios-alerts`.
+ */
+export function showMirrorName(channel: Pick<SlackChannel, "name">): string {
+  return `Show the mirror of ${channelName(channel)}`;
 }

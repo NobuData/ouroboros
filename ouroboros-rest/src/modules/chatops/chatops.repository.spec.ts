@@ -62,6 +62,7 @@ function command(overrides: Partial<SlackRecord> = {}): SlackRecord {
     args: { ticket: "acme/helios#485", workflow: "standard-fix" },
     rawText: "/ouro queue #485 standard-fix",
     ended: { outcome: "ok" },
+    reply: { text: "Queued #485 on standard-fix." },
     ref: { run: "run-1848" },
     invokedAt: INVOKED,
     completedAt: COMPLETED,
@@ -226,6 +227,8 @@ describe("ChatopsRepository", () => {
         error_detail: null,
         invoked_at: INVOKED,
         completed_at: COMPLETED,
+        // What it said at once, kept on the row (V137).
+        reply: JSON.stringify({ text: "Queued #485 on standard-fix." }),
       });
     });
 
@@ -349,7 +352,67 @@ describe("ChatopsRepository", () => {
         error_detail: null,
         invoked_at: INVOKED,
         completed_at: COMPLETED,
+        reply: JSON.stringify({ text: "Queued #485 on standard-fix." }),
       });
+    });
+
+    it("records the channel a console command was typed under, and still no message (V137, #542)", async () => {
+      const written = await commands.record(
+        consoleCommand({ channelId: CHANNEL_ROW, withReplyMessage: true }),
+      );
+
+      // The mirror reads the reply off the command: nothing was posted to Slack.
+      expect(written).toEqual({ id: COMMAND, messageId: null });
+      expect(database.sql().some((sql) => sql.startsWith(INSERT_MESSAGE))).toBe(false);
+      expect(inserted(statementOf(database, INSERT_COMMAND))).toMatchObject({
+        surface: "console",
+        connection_id: null,
+        channel_id: CHANNEL_ROW,
+        invoker_link_id: null,
+        platform_user_id: null,
+      });
+    });
+
+    it.each([
+      [
+        "a refusal",
+        { outcome: "denied" },
+        { text: "`/ouro route` is for workspace owners and admins." },
+      ],
+      ["an unlinked attempt", { outcome: "unlinked" }, { text: "You're not linked." }],
+      [
+        "a failure",
+        { outcome: "error", detail: "bad_arguments" },
+        { text: "Usage: queue <ticket>" },
+      ],
+      [
+        "an acknowledgement",
+        { outcome: "async_pending" },
+        { text: "Rehearsing — the result follows." },
+      ],
+    ] as const)("keeps what %s said at once", async (_which, ended, reply) => {
+      await commands.record(command({ ended, reply, ref: undefined, withReplyMessage: false }));
+
+      expect(inserted(statementOf(database, INSERT_COMMAND)).reply).toBe(JSON.stringify(reply));
+    });
+
+    it("keeps a reply's link as the CHECK knows it, and nothing for a reply with no words", async () => {
+      const link = { label: "Open in the backlog", url: "https://app.example.test/backlog" };
+
+      await commands.record(
+        command({ reply: { text: "Queued.", link, extra: "dropped" } as never }),
+      );
+      await commands.record(
+        command({ id: "0b0c6a9e-6f0b-4c53-9d6f-0d1c6f8a1b12", reply: { text: "" } }),
+      );
+      await commands.record(command({ id: "0b0c6a9e-6f0b-4c53-9d6f-0d1c6f8a1b13", reply: null }));
+
+      const replies = database.statements
+        .filter((statement) => statement.sql.startsWith(INSERT_COMMAND))
+        .map((statement) => inserted(statement).reply);
+
+      // `chat_commands_reply_shape` refuses empty text and any key but text and link.
+      expect(replies).toEqual([JSON.stringify({ text: "Queued.", link }), null, null]);
     });
 
     it("writes no reply message for a console command even when one is asked for", async () => {
@@ -404,6 +467,7 @@ describe("ChatopsRepository", () => {
     const PENDING = {
       organization_id: ORG,
       channel_id: CHANNEL_ROW,
+      surface: "slack",
       result_ref: { dryRun: "dr-1", message: "message-ack" },
     };
 
@@ -449,6 +513,19 @@ describe("ChatopsRepository", () => {
         JSON.stringify(RESULT),
         COMMAND,
         "async_pending",
+      ]);
+    });
+
+    it("writes no result message for a console command typed under a channel (#542)", async () => {
+      database.answers({ rows: [{ ...PENDING, surface: "console", result_ref: null }] });
+
+      expect(await commands.settle(COMMAND, { outcome: "ok" }, COMPLETED, RESULT)).toBe(true);
+
+      expect(database.sql().some((sql) => sql.startsWith(INSERT_MESSAGE))).toBe(false);
+      // Its result is on the row, which is where the mirror and the console read it.
+      expect(statementOf(database, UPDATE_COMMAND).parameters.slice(3, 5)).toEqual([
+        null,
+        JSON.stringify(RESULT),
       ]);
     });
 
@@ -570,7 +647,7 @@ describe("ChatopsRepository", () => {
 
       expect(database.statements).toHaveLength(1);
       expect(statement.sql).toBe(
-        'select "id", "command", "outcome", "raw_text", "invoked_at", "completed_at", "settled_reply", "error_detail" ' +
+        'select "id", "command", "outcome", "raw_text", "invoked_at", "completed_at", "reply", "settled_reply", "error_detail" ' +
           'from "ouroboros"."chat_commands" ' +
           'where "id" = $1 and "organization_id" = $2 and "surface" = $3 and "invoker_user_id" = $4',
       );

@@ -307,6 +307,7 @@ export function record(over: Partial<ConsoleCommandRecord> = {}): ConsoleCommand
     rawText: "dry-run #486",
     invokedAt: "2026-10-12T14:00:00.000Z",
     completedAt: "2026-10-12T14:00:41.000Z",
+    reply: null,
     settledReply: {
       text: "Dry run of #486 passed: 4 stages, 0 writes.",
       link: { label: "Open the dry run", url: "/workflows/dry-runs/41" },
@@ -320,7 +321,8 @@ export function record(over: Partial<ConsoleCommandRecord> = {}): ConsoleCommand
 export const consoleActions = {
   readConsoleGrammar: vi.fn<() => Promise<ConsoleAnswer<ConsoleGrammar>>>(),
   readConsoleCompletions: vi.fn<(text: string) => Promise<ConsoleAnswer<ConsoleCompletions>>>(),
-  runConsoleCommand: vi.fn<(text: string) => Promise<ConsoleAnswer<ConsoleCommandResult>>>(),
+  runConsoleCommand:
+    vi.fn<(text: string, channelId?: string) => Promise<ConsoleAnswer<ConsoleCommandResult>>>(),
   readConsoleCommand: vi.fn<(id: string) => Promise<ConsoleAnswer<ConsoleCommandRecord>>>(),
 };
 
@@ -347,7 +349,12 @@ export function consoleActionsModule(): Record<string, unknown> {
   return {
     readConsoleGrammar: () => consoleActions.readConsoleGrammar(),
     readConsoleCompletions: (text: string) => consoleActions.readConsoleCompletions(text),
-    runConsoleCommand: (text: string) => consoleActions.runConsoleCommand(text),
+    // The channel is passed on only when one was named, so the palette's cases still see a
+    // call with the line alone.
+    runConsoleCommand: (text: string, channelId?: string) =>
+      channelId === undefined
+        ? consoleActions.runConsoleCommand(text)
+        : consoleActions.runConsoleCommand(text, channelId),
     readConsoleCommand: (id: string) => consoleActions.readConsoleCommand(id),
   };
 }

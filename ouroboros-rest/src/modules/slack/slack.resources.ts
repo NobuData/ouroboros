@@ -226,6 +226,36 @@ export function channelUrl(workspaceId: string, platformChannelId: string): stri
 }
 
 /**
+ * Compose one channel — the shape the list, and the channel mirror (#542), answer with.
+ *
+ * @param connection - The connection the channel belongs to; its Slack workspace is in the URL.
+ * @param row - The channel row.
+ * @param routes - The workspace's Slack routes that post to a channel.
+ * @returns The resource.
+ */
+export function channelResource(
+  connection: Pick<ChatConnectionPublic, "workspace_id">,
+  row: ChatChannel,
+  routes: readonly ChannelRouteRow[],
+): SlackChannelResource {
+  return {
+    id: row.id,
+    platformChannelId: row.channel_id,
+    name: row.channel_name,
+    isPrivate: row.is_private,
+    joined: row.joined,
+    memberCount: row.member_count,
+    purpose: isChannelPurpose(row.purpose_tag) ? row.purpose_tag : null,
+    archived: row.archived,
+    url: channelUrl(connection.workspace_id, row.channel_id),
+    routes: routes
+      .filter((route) => route.chatChannelId === row.id)
+      .map((route) => route.kind)
+      .sort(),
+  };
+}
+
+/**
  * Compose the channel list.
  *
  * @param input - The workspace's connection if any, its channel rows, and the Slack routes that
@@ -247,23 +277,7 @@ export function channelsResource(input: {
 
   const rows = input.channels.filter((row) => row.purpose_tag !== DM_PURPOSE_TAG);
   const newest = rows.reduce((latest, row) => Math.max(latest, row.updated_at.getTime()), 0);
-  const channels = rows.map((row): SlackChannelResource => {
-    return {
-      id: row.id,
-      platformChannelId: row.channel_id,
-      name: row.channel_name,
-      isPrivate: row.is_private,
-      joined: row.joined,
-      memberCount: row.member_count,
-      purpose: isChannelPurpose(row.purpose_tag) ? row.purpose_tag : null,
-      archived: row.archived,
-      url: channelUrl(connection.workspace_id, row.channel_id),
-      routes: input.routes
-        .filter((route) => route.chatChannelId === row.id)
-        .map((route) => route.kind)
-        .sort(),
-    };
-  });
+  const channels = rows.map((row) => channelResource(connection, row, input.routes));
 
   /** A bound channel's place among the purposes; an unbound one sorts after them all. */
   const rank = (channel: SlackChannelResource): number =>

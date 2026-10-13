@@ -340,6 +340,29 @@ export class SlackRepository {
   }
 
   /**
+   * A channel of a workspace that is **bound** — it has a purpose, and is not one of the DM
+   * conversations the publisher opened (#536), which share the table and are not channels.
+   *
+   * What a console command typed under a channel's mirror must name (#542).
+   *
+   * @param organizationId - The workspace.
+   * @param id - The row's id — a UUID; the caller has checked its shape.
+   * @returns The row's id, or `undefined` for another workspace's, an unbound or a DM row.
+   */
+  async boundChannel(organizationId: string, id: string): Promise<string | undefined> {
+    const row = await this.database.db
+      .selectFrom("chat_channels")
+      .select("id")
+      .where("organization_id", "=", organizationId)
+      .where("id", "=", id)
+      .where("purpose_tag", "is not", null)
+      .where("purpose_tag", "<>", DM_PURPOSE_TAG)
+      .executeTakeFirst();
+
+    return row?.id;
+  }
+
+  /**
    * The workspace's Slack routes that post to a channel.
    *
    * @param organizationId - The workspace.

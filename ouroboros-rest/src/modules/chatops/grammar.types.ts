@@ -232,6 +232,12 @@ export interface ConsoleDispatchInput extends DispatchInputBase {
   readonly console: {
     readonly organizationId: string;
     readonly userId: string;
+    /**
+     * The bound channel whose mirror the command was typed under (#542) — a `chat_channels` id
+     * the route has already checked is this workspace's. Absent or null for the palette, whose
+     * commands belong to no channel and show in no mirror.
+     */
+    readonly channelId?: string | null;
   };
 }
 

@@ -338,6 +338,53 @@ select '5eed009c-0000-4000-8000-000000000107'::uuid, cmd.organization_id, cmd.ch
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
+-- What each command said at once (#542) — kept on the command row, which is what the channel
+-- mirror reads. Written as an update, and only while the row has none, so a database seeded
+-- before V137 gets it too and applying this twice writes nothing.
+--
+-- The words are the ones the command's binding says (ouroboros-rest, chatops/planes/replies.ts):
+-- `statusLine` for status, `DRY_RUN_STARTED` with `copilotLink` for dry-run.
+-- ---------------------------------------------------------------------------
+-- The status line's loops, queue, spend and needs-you are the figures its reply message stores,
+-- not a second count, so the two cannot disagree. The farm figure is the one the message never
+-- held: the workspace's runners that are up, out of those not removed.
+update ouroboros.chat_commands cmd
+   set reply = jsonb_build_object('text',
+         (said.facts ->> 'loops_live')
+           || case (said.facts ->> 'loops_live')::bigint when 1 then ' loop' else ' loops' end || ' live'
+           || ' · ' || (said.facts ->> 'queued') || ' queued'
+           || ' · farm ' || farm.online || '/' || farm.total || ' online'
+           || ' · spend today $'
+           || to_char(coalesce((said.facts ->> 'spend_today_cents')::numeric, 0) / 100, 'FM999999990.00')
+           || ' · needs-you: ' || (said.facts ->> 'needs_you'))
+  from ouroboros.chat_messages said,
+       lateral (select count(*) filter (where r.status in ('online', 'building', 'draining')) as online,
+                       count(*) as total
+                  from ouroboros.runners r
+                 where r.organization_id = said.organization_id
+                   and r.status <> 'removed') farm
+ where cmd.id = '5eed009c-0000-4000-8000-000000000201'
+   and cmd.reply is null
+   and said.id = (cmd.result_ref ->> 'message')::uuid
+   and said.kind = 'command_reply'
+   and ${ouro_dev_seed};
+
+-- The dry run's acknowledgement, and its one link: the workflow's Copilot page. The dispatcher
+-- stores that link on the deployment's own UI origin; a seed knows no origin, so it stores the
+-- page's path, which is the same page on whichever origin serves this database.
+update ouroboros.chat_commands cmd
+   set reply = jsonb_build_object(
+         'text', 'Dry run started — no writes, no PRs. Results in ~3 min → follow in Workflow Copilot',
+         'link', jsonb_build_object('label', 'Workflow Copilot',
+                                    'url', '/workflows/' || workflow.slug || '/copilot'))
+  from ouroboros.workflows workflow
+ where cmd.id = '5eed009c-0000-4000-8000-000000000202'
+   and cmd.reply is null
+   and workflow.organization_id = cmd.organization_id
+   and workflow.slug = cmd.args ->> 'workflow'
+   and ${ouro_dev_seed};
+
+-- ---------------------------------------------------------------------------
 -- 14:31 — the build card: Loop #1847 (run #482), its pull request, its all-green test run's count.
 -- ---------------------------------------------------------------------------
 insert into ouroboros.chat_messages (id, organization_id, channel_id, platform_ts, kind, card_kind,

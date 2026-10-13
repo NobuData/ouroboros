@@ -4794,8 +4794,10 @@ surface's commands take.
 ```
 GET  /api/v1/chat/grammar             any member · the registry as a document, with what the caller may run
 GET  /api/v1/chat/completions?text=   any member (a person) · what could be typed next
-POST /api/v1/chat/commands            any member (a person) · run what was typed in the console (#539)
+POST /api/v1/chat/commands            any member (a person) · run what was typed in the console (#539),
+                                      optionally under a channel's mirror (`channelId`, #542)
 GET  /api/v1/chat/commands/{id}       the person who typed it · their own console command, for an async result
+GET  /api/v1/chat/channels/{id}/mirror  any member · a channel's stream, from our records (#542, below)
 
 grammar.registry.ts   the versioned registry: id, aliases, arguments, requirement, confirm, mode, stage
 grammar.parser.ts     tokens → command (longest name wins) → arguments, with errors that name the argument
@@ -4864,9 +4866,20 @@ console  session (workspace, person) ──────────────�
   text that really does it — what was typed, then `confirm`. The dispatcher sets it on both
   surfaces; Slack's reply already ends with the same text.
 - **What is recorded** (`V136`): `surface = 'console'`, `invoker_user_id` the session's person,
-  and no connection, channel, platform user or identity link. A reply is a `chat_messages` row
-  only where there is a channel, so the console writes none. The audit detail is `surface`,
-  `command`, `outcome`, `grammarVersion` — its provenance is the actor.
+  and no connection, platform user or identity link. A reply is a `chat_messages` row only for
+  a Slack command in a joined channel, so the console writes none. The audit detail is
+  `surface`, `command`, `outcome`, `grammarVersion` — its provenance is the actor.
+- **Typed under a channel's mirror** (`V137`, [#542](https://github.com/NobuData/ouroboros/issues/542)).
+  The body may carry `channelId` — the bound channel whose mirror the command was typed in. The
+  route checks it first (`SlackRepository.boundChannel`: this workspace's, bound, not a DM;
+  otherwise `404 chat_channel_not_found` and nothing runs) and the row records it in
+  `channel_id`, which is what makes the command an entry of that channel's mirror. Nothing is
+  posted to Slack. The palette sends none; its commands appear in no mirror.
+- **Every reply is kept** (`V137`). What a command said at once is written to
+  `chat_commands.reply` — on both surfaces, for every outcome that said something: an answer,
+  a refusal, a bad-argument message, a destructive command's preview, an async command's
+  acknowledgement. `help` records no row, so it keeps nothing. `GET /api/v1/chat/commands/{id}`
+  answers it as `reply`, beside `settledReply`.
 - **An async result is kept on the row.** When `dry-run` settles, what it said is written to
   `settled_reply` on both surfaces. Slack is also told through its `response_url`; the console
   has no such address and polls `GET /api/v1/chat/commands/{id}` until `outcome` leaves
@@ -4886,6 +4899,61 @@ console  session (workspace, person) ──────────────�
   two to the same outcome, reply, recorded command, settled reply, audit event and binding
   context — differing only in where the command came from. The one text that differs is the
   `help` list, which prints each surface's own built-ins: `link` and `unlink` are Slack's.
+
+## The channel mirror
+
+> **Issue:** [#542](https://github.com/NobuData/ouroboros/issues/542) — *[CA.2] Channel mirror
+> card* · epic [#528](https://github.com/NobuData/ouroboros/issues/528) · schema `V137`
+
+`GET /api/v1/chat/channels/{id}/mirror?before=&limit=` is a channel's stream as the Chat Ops
+page draws it — **from our records, never from Slack and never from a sample**
+(`src/modules/chat-mirror/`).
+
+```
+chat_messages   event_card     facts + refs ─▶ chat.record.ts ─▶ loopFinishedCard · build… · digestRecordCard
+                decision_card  item + pinned kind ─▶ decisionCard | resolvedDecisionCard
+                system_line    facts {action, answered_by} + the kind ─▶ decisionSystemLine
+                command_reply  never an entry — the command carries its reply
+chat_commands   raw_text · who typed it · reply (at once) · settled_reply (an async result)
+```
+
+- **A module of its own.** The mirror is where the platform-neutral card model (`chat/`, which
+  imports nothing of Slack's), the Slack channel (`slack/`) and the command trail (`chatops/`)
+  meet; `chat-mirror/` imports each and none imports it, so no boundary moves.
+- **One set of words.** A card is composed by the functions the publisher posts with; the
+  mirror service and its resources hold no sentence (a test reads their source for one).
+  `chat.record.ts` holds both directions — what the composer writes to `chat_messages.facts`
+  and how the mirror reads it back — and `chat.record.spec.ts` holds *card → record → card* to
+  identity.
+- **The record is the authority for figures.** Counts, cycle time, model and cost are the row's
+  `facts`. `cost_cents` is recorded only for a fully priced run, so the pricing rule is applied
+  once, at posting, and a row without it mirrors with no cost. A build row now also records
+  `build_number` and `revision`; one written before reads *build* and *PR #514* without them.
+- **Looked up by id, nothing more:** the run's loop number and the pull request (for the
+  headline and links — the PR by its ref, else the run's PR with the number the facts name),
+  the decision item and its pinned kind (the inbox owns a question's words), the answerer's
+  name, and a waiting card's escalation timer, which its footnote counts down from as of the
+  request.
+- **Links are in-app paths.** The card model's absolute UI-origin URLs lose their origin
+  (`inAppHref`); a card link that would lead off the origin is dropped. A reply's link is a
+  path when it is on the UI origin (or already a path) and the absolute URL otherwise.
+- **Nothing is answered here.** An open question's answer actions keep their labels and styles
+  and lead to `/inbox?item=<id>`; nothing is signed. A resolved question has no actions, the
+  card model's resolved form (`severity: info`, `✓`), and `resolution` — the action's label in
+  words, the answerer's name and the instant, from the row's `outcome`, `resolved_by` and
+  `resolved_at`.
+- **Order and paging.** Messages (by `posted_at`) and commands (by `invoked_at`) are one stream,
+  `instant desc, id desc`; a cursor is that pair, carried as PostgreSQL's microsecond text, and
+  bounds both queries. Pages are answered oldest first; `olderCursor` is null at the start of
+  history. A cursor this service did not issue is `422 chat_cursor_invalid`.
+- **A row that cannot be drawn never fails the page.** Skipped: an event family with no card,
+  an event card naming no run or holding no counts, a decision card whose item is gone, a row
+  whose composition throws (logged). Drawn with less: a digest (headline, window and link from
+  its record — no KPI lines), and a system line whose item is gone (the action as its id in
+  words). A skipped row still counts towards its page.
+- **Whose channel.** Any member reads any channel of the workspace, bound or not. An id that is
+  not a UUID, another workspace's channel and a DM conversation the publisher opened are one
+  `404 chat_channel_not_found`. Every read names the workspace.
 
 ## The chat publisher
 

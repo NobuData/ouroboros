@@ -651,13 +651,31 @@
       "id": "user-guide.chatops",
       "route": "/chatops",
       "workspace": "acme-robotics",
-      "ready": ".chatops__health",
+      "ready": ".chatops-mirror__msg",
       "clip": "page",
       "caption": "Chat Ops: how Slack is connected, and the channels Ouroboros posts to.",
-      "alt": "The Chat Ops page, headed The loop reports where your team already lives., with + Add channel and Open #ouroboros-loops at the top right; the connection strip reading acme-robotics, app v2.4, 3 scopes missing: groups:read, im:write, users:read.email, active, verified 27m ago, with Verify now; and Bound channels listing #ouroboros-loops for Loops with 24 members and the routes custom:blocking-questions, custom:loop-finished and custom:stage-transitions, #helios-alerts for Alerts with 11 members and custom:build-failures, and the private #eng-leads for Leads with 5 members and custom:weekly-insights, each with Open and Unbind; then Manage in Settings.",
-      "capturedAt": "2026-10-13T02:09:08.959Z",
-      "uiVersion": "0.157.0",
-      "seedRef": "c6994c0a81655b77a6c4ba67b509d3d367379838"
+      "alt": "The Chat Ops page, headed The loop reports where your team already lives., with + Add channel and Open #ouroboros-loops at the top right; the connection strip reading acme-robotics, app v2.4, 3 scopes missing: groups:read, im:write, users:read.email, active, verified 0s ago, with Verify now; the channel mirror of #ouroboros-loops, marked mirror, showing the /ouro status and /ouro dry-run commands with their answers, a Loop #1847 build green card and the start of an open question card; and, beside it, Bound channels listing #ouroboros-loops for Loops with 24 members and the routes custom:blocking-questions, custom:loop-finished and custom:stage-transitions, #helios-alerts for Alerts with 11 members and custom:build-failures, and the private #eng-leads for Leads with 5 members and custom:weekly-insights, each with Showing or Show mirror, Open and Unbind.",
+      "capturedAt": "2026-10-13T03:59:51.440Z",
+      "uiVersion": "0.158.0",
+      "seedRef": "8a9e0c80970f809f81bde6b4262fe3fd7f8e4b70"
+    },
+    {
+      "id": "user-guide.chatops.mirror",
+      "route": "/chatops",
+      "workspace": "acme-robotics",
+      "ready": ".chatops-mirror__msg",
+      "actions": [
+        {
+          "press": "Home",
+          "on": ".chatops-mirror__stream"
+        }
+      ],
+      "clip": ".chatops-mirror",
+      "caption": "The channel mirror: Ouroboros's record of what it published to a channel and the commands run there.",
+      "alt": "The channel mirror of #ouroboros-loops: the heading with Slack, a Slack and Teams switch where Teams is struck out and marked arrives with CB.2 (#547), 24 members, Ouroboros app v2.4, the mirror chip, updated 0s ago and Open; then, under Yesterday, a green card Loop #1839 finished — PR #512 merged for #474 Debounce e-stop interrupt handler, with 14/14 checks, 11m cycle, claude-fable-5 and a Run console button; an answered question card Accept a re-size of #479 from M to L? with no buttons, reading resolved: keep the old size — Maya Chen (14:11); the notice Maya Chen answered: keep the old size — issue #479; Ken Suenobu's /ouro status with the boxed answer 3 loops live, 12 queued, farm 4/5 online, spend today $18.60, needs-you: 3; and his /ouro dry-run #486 feature-loop. Under the stream, the box Message #ouroboros-loops — or /ouro …, a Send button, and the hint commands work here — start with /ouro.",
+      "capturedAt": "2026-10-13T03:59:22.675Z",
+      "uiVersion": "0.158.0",
+      "seedRef": "8a9e0c80970f809f81bde6b4262fe3fd7f8e4b70"
     },
     {
       "id": "user-guide.chatops.console",

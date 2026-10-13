@@ -7967,7 +7967,10 @@ export type ChatCommandSurface = "slack" | "console";
 /** `chat_commands.outcome` (V131) — `async_pending` exactly while `completed_at` is null. */
 export type ChatCommandOutcome = "ok" | "error" | "denied" | "unlinked" | "async_pending";
 
-/** `chat_commands.settled_reply` (V136) — a reply's text and its one link, as every surface draws it. */
+/**
+ * `chat_commands.reply` (V137) and `chat_commands.settled_reply` (V136) — a reply's text and its
+ * one link, as every surface draws it.
+ */
 export interface ChatSettledReply {
   text: string;
   link?: { label: string; url: string };
@@ -7985,8 +7988,9 @@ export interface ChatCommandsTable {
   /** The connection a Slack command arrived through; null for a console command (V136, #539). */
   connection_id: string | null;
   /**
-   * The `chat_channels` row it was typed in; null for a DM or a channel the app has not joined,
-   * and always for a console command.
+   * The `chat_channels` row it was typed in; null for a DM or a channel the app has not joined.
+   * A console command names one only when it was typed under a channel's mirror (V137, #542);
+   * the palette's stay null.
    */
   channel_id: string | null;
   /** The invoker's identity link; null for an unlinked attempt, and always for a console command. */
@@ -8015,6 +8019,12 @@ export interface ChatCommandsTable {
    * row settles; null for a command that answered at once.
    */
   settled_reply: ColumnType<ChatSettledReply | null, string | null | undefined, string | null>;
+  /**
+   * What the command said **at once** (V137, #542), on both surfaces — the reply to the
+   * invocation itself, where `settled_reply` is an async command's later word. Null for a row
+   * written before V137 and for a command that said nothing.
+   */
+  reply: ColumnType<ChatSettledReply | null, string | null | undefined, string | null>;
 }
 
 export interface Database {
@@ -8904,6 +8914,7 @@ export const TABLE_COLUMNS = {
     "completed_at",
     "invoker_user_id",
     "settled_reply",
+    "reply",
   ],
   chat_outbox: [
     "id",

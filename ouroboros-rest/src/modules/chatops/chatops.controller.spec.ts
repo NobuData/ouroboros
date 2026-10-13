@@ -19,7 +19,12 @@ import {
   ChatCompletionsQuery,
   commandText,
 } from "./chatops.dto";
-import { CHAT_COMMAND_NOT_FOUND, CHAT_PERSON_REQUIRED } from "./chatops.errors";
+import type { SlackRepository } from "../slack/slack.repository";
+import {
+  CHAT_CHANNEL_NOT_FOUND,
+  CHAT_COMMAND_NOT_FOUND,
+  CHAT_PERSON_REQUIRED,
+} from "./chatops.errors";
 import { deniedText } from "./chatops.replies";
 import type { ChatopsRepository, OwnConsoleCommand } from "./chatops.repository";
 import type { ChatDispatcher } from "./dispatcher.service";
@@ -55,6 +60,7 @@ const ROW: OwnConsoleCommand = {
   raw_text: "/ouro dry-run #486",
   invoked_at: new Date("2026-10-12T16:00:00.000Z"),
   completed_at: new Date("2026-10-12T16:00:41.000Z"),
+  reply: { text: "Rehearsing #486 with no writes — the result follows." },
   settled_reply: {
     text: "Dry run of #486 finished: no writes.",
     link: { label: "Open the dry run", url: "https://app.example.test/copilot/dr-1" },
@@ -83,19 +89,29 @@ const APPROVE: CommandDefinition = {
  * @param explicit - The caller's explicit `can_approve_loops`.
  * @param result - What the dispatcher answers.
  * @param row - The console command the trail holds for the caller; `null` for none.
- * @returns The controller, and what the completion port, capability read, dispatcher and trail
- *   were asked.
+ * @param bound - The ids of the workspace's bound channels.
+ * @returns The controller, and what the completion port, capability read, dispatcher, trail and
+ *   channel store were asked.
  */
 function setup(
   grammar: Grammar = GRAMMAR,
   explicit: boolean | null = true,
   result: DispatchResult = RAN,
   row: OwnConsoleCommand | null = ROW,
+  bound: readonly string[] = [],
 ) {
   const asked: unknown[][] = [];
   const capabilityReads: unknown[][] = [];
   const dispatched: DispatchInput[] = [];
   const lookups: unknown[][] = [];
+  const channelReads: unknown[][] = [];
+  const channels = {
+    boundChannel: (organizationId: string, id: string) => {
+      channelReads.push([organizationId, id]);
+
+      return Promise.resolve(bound.includes(id) ? id : undefined);
+    },
+  } as unknown as SlackRepository;
   const dispatcher = {
     dispatch: (input: DispatchInput) => {
       dispatched.push(input);
@@ -126,7 +142,15 @@ function setup(
   } as unknown as CapabilityRepository;
 
   return {
-    controller: new ChatopsController(grammar, sources, capabilities, dispatcher, commands),
+    controller: new ChatopsController(
+      grammar,
+      sources,
+      capabilities,
+      dispatcher,
+      commands,
+      channels,
+    ),
+    channelReads,
     asked,
     capabilityReads,
     dispatched,
@@ -469,7 +493,7 @@ describe("ChatopsController (#537, #539)", () => {
         {
           surface: "console",
           text: "status",
-          console: { organizationId: "org-acme", userId: "user-maya" },
+          console: { organizationId: "org-acme", userId: "user-maya", channelId: null },
         },
       ]);
       expect(answer).toEqual({
@@ -600,6 +624,74 @@ describe("ChatopsController (#537, #539)", () => {
     });
   });
 
+  describe("POST /chat/commands under a channel's mirror (#542)", () => {
+    const CHANNEL = "5eed009c-0000-4000-8000-0000000000a1";
+
+    it("hands the dispatcher the bound channel it was typed under", async () => {
+      const { controller, dispatched, channelReads } = setup(GRAMMAR, true, RAN, ROW, [CHANNEL]);
+
+      await asMaya(() => controller.run(ORG, { text: "/ouro status", channelId: CHANNEL }));
+
+      expect(channelReads).toEqual([["org-acme", CHANNEL]]);
+      expect(dispatched).toEqual([
+        {
+          surface: "console",
+          text: "status",
+          console: { organizationId: "org-acme", userId: "user-maya", channelId: CHANNEL },
+        },
+      ]);
+    });
+
+    it("refuses a channel that is not a bound channel of this workspace, and runs nothing", async () => {
+      // Another workspace's, an unbound one and a DM row are all one answer from the store.
+      const { controller, dispatched } = setup(GRAMMAR, true, RAN, ROW, []);
+
+      const refused = asMaya(() => controller.run(ORG, { text: "pause all", channelId: CHANNEL }));
+
+      await expect(refused).rejects.toBeInstanceOf(NotFoundError);
+      await expect(refused).rejects.toMatchObject({ code: CHAT_CHANNEL_NOT_FOUND, status: 404 });
+      expect(dispatched).toEqual([]);
+    });
+
+    it("asks the channel store nothing for the palette, which names no channel", async () => {
+      const { controller, channelReads } = setup();
+
+      await asMaya(() => controller.run(ORG, { text: "status" }));
+
+      expect(channelReads).toEqual([]);
+    });
+
+    it.each([["not-a-uuid"], [""], [7], [null]])(
+      "refuses a channelId that is not a UUID before the route runs (%p)",
+      (channelId) => {
+        const errors = validateSync(
+          plainToInstance(ChatCommandRequest, { text: "status", channelId }),
+        );
+
+        // `null` is read as absent by `@IsOptional()`: the palette's body, not a refusal.
+        expect(errors.map((error) => error.property)).toEqual(
+          channelId === null ? [] : ["channelId"],
+        );
+      },
+    );
+
+    it("accepts a body with a UUID channelId, and one with none", () => {
+      expect(
+        validateSync(plainToInstance(ChatCommandRequest, { text: "status", channelId: CHANNEL })),
+      ).toEqual([]);
+      expect(validateSync(plainToInstance(ChatCommandRequest, { text: "status" }))).toEqual([]);
+    });
+
+    it("reads a null channelId as none: the palette's command, checked against no channel", async () => {
+      const { controller, dispatched, channelReads } = setup();
+
+      await asMaya(() => controller.run(ORG, { text: "status", channelId: null }));
+
+      expect(channelReads).toEqual([]);
+      expect(dispatched[0]).toMatchObject({ console: { channelId: null } });
+    });
+  });
+
   describe("GET /chat/commands/{id}", () => {
     it("answers the caller's own console command, asked for by workspace, person and id", async () => {
       const { controller, lookups } = setup();
@@ -614,6 +706,8 @@ describe("ChatopsController (#537, #539)", () => {
         rawText: "/ouro dry-run #486",
         invokedAt: "2026-10-12T16:00:00.000Z",
         completedAt: "2026-10-12T16:00:41.000Z",
+        // What it said at once, beside what it said when it finished (#542).
+        reply: { text: "Rehearsing #486 with no writes — the result follows." },
         settledReply: {
           text: "Dry run of #486 finished: no writes.",
           link: { label: "Open the dry run", url: "https://app.example.test/copilot/dr-1" },

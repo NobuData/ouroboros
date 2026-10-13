@@ -5,7 +5,7 @@
  */
 
 import { Transform } from "class-transformer";
-import { IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { IsOptional, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
 
 /** The longest text completions are read from — a slash command's own bound. */
 export const COMPLETION_TEXT_LIMIT = 4000;
@@ -15,6 +15,9 @@ export const COMMAND_TEXT_LIMIT = 2000;
 
 /** What a console command is refused with when its text is blank or too long. */
 export const COMMAND_TEXT_MESSAGE = `text must be 1 to ${String(COMMAND_TEXT_LIMIT)} characters`;
+
+/** What a console command is refused with when its `channelId` is not a UUID. */
+export const CHANNEL_ID_MESSAGE = "channelId must be a channel's id (a UUID)";
 
 /** `/ouro` at the start of what was typed, whatever its case, with the space after it. */
 const TYPED_PREFIX = /^\/ouro(?:\s+|$)/i;
@@ -56,4 +59,13 @@ export class ChatCommandRequest {
   @MinLength(1, { message: COMMAND_TEXT_MESSAGE })
   @MaxLength(COMMAND_TEXT_LIMIT, { message: COMMAND_TEXT_MESSAGE })
   text!: string;
+
+  /**
+   * The bound channel whose mirror the command was typed under (#542) — a `chat_channels` id.
+   * Left out — or null — by the palette, whose commands belong to no channel. A UUID that names
+   * no bound channel of the workspace is the route's `404 chat_channel_not_found`.
+   */
+  @IsOptional()
+  @IsUUID(undefined, { message: CHANNEL_ID_MESSAGE })
+  channelId?: string | null;
 }

@@ -166,7 +166,7 @@ function counted(count: number, noun: string): string {
  * @param interventions - Times a loop needed a human.
  * @returns The sentence.
  */
-function headlineOf(mergedPrs: number, interventions: number): string {
+export function headlineOf(mergedPrs: number, interventions: number): string {
   const merged =
     mergedPrs === 0 ? "No PRs merged this week." : `${counted(mergedPrs, "PR")} merged this week.`;
   const humans =

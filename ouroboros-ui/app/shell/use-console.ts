@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { ConsoleCompletion, ConsoleCompletions, ConsoleGrammar } from "@/app/api/console";
+import type {
+  ConsoleCommandResult,
+  ConsoleCompletion,
+  ConsoleCompletions,
+  ConsoleGrammar,
+} from "@/app/api/console";
 
 import {
   COMMANDS_LABEL,
@@ -101,6 +106,24 @@ export interface ConsoleOptions {
   readonly userId: string;
   /** The workspace the session acts in, or empty when it has none. */
   readonly workspaceId: string;
+  /**
+   * The bound channel the lines are typed under — the Chat Ops mirror's composer (CA.2,
+   * [#542](https://github.com/NobuData/ouroboros/issues/542)). Each line run is recorded against
+   * it. The palette names none.
+   */
+  readonly channelId?: string;
+  /**
+   * What the box holds once a line has run. The bare prefix when omitted — the palette's box,
+   * ready for the next command; the composer empties it instead.
+   */
+  readonly cleared?: string;
+  /**
+   * Called with what running a line answered — the dispatcher's result, or the service's refusal
+   * to read the line at all — after this hook has drawn it.
+   *
+   * @param answer The answer.
+   */
+  readonly onSettled?: (answer: ConsoleAnswer<ConsoleCommandResult>) => void;
 }
 
 /** What the palette draws, and what its keys ask. */
@@ -185,6 +208,9 @@ export function useConsole({
   place,
   userId,
   workspaceId,
+  channelId,
+  cleared,
+  onSettled,
 }: ConsoleOptions): ConsoleState {
   /**
    * The grammar, or why it could not be read. Null until the first answer.
@@ -327,8 +353,9 @@ export function useConsole({
     setPending(line);
     setWalk(null);
 
-    runConsoleCommand(line)
-      .catch(() => ({ error: RUN_FAILED, code: "" }))
+    // One dispatcher for both surfaces: the composer differs only in naming its channel.
+    (channelId === undefined ? runConsoleCommand(line) : runConsoleCommand(line, channelId))
+      .catch((): ConsoleAnswer<ConsoleCommandResult> => ({ error: RUN_FAILED, code: "" }))
       .then((result) => {
         running.current = false;
         setPending(null);
@@ -337,6 +364,7 @@ export function useConsole({
           // The line never ran, so it is neither remembered nor cleared: it is still in the
           // box for the reader to mend.
           setReply(refusalView(line, result.error));
+          onSettled?.(result);
           return;
         }
 
@@ -347,7 +375,8 @@ export function useConsole({
         }
 
         setReply(replyView(line, result));
-        place(consoleQuery(""));
+        place(cleared ?? consoleQuery(""));
+        onSettled?.(result);
       });
   }
 

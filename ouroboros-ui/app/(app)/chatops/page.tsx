@@ -2,6 +2,7 @@ import { requireWorkspace } from "@/app/api/access";
 import { mayAdminister } from "@/app/api/membership";
 import { readChatOps } from "@/app/chatops/chatops-data";
 import { ChatOpsScreen } from "@/app/chatops/chatops-screen";
+import { MIRROR_PARAM } from "@/app/chatops/view";
 
 /**
  * Chat Ops (CA.1, [#541](https://github.com/NobuData/ouroboros/issues/541)) — mockup 19's
@@ -21,11 +22,27 @@ import { ChatOpsScreen } from "@/app/chatops/chatops-screen";
  * unbinding a channel are an `owner`'s or an `admin`'s; everyone else sees what is missing and
  * who can fix it.
  *
+ * **`?channel=<id>` names the channel whose mirror shows** (CA.2,
+ * [#542](https://github.com/NobuData/ouroboros/issues/542)). It is only passed on: which channel
+ * that turns out to be — the named one when it is bound, else the first bound — is
+ * `mirrorChannel`'s to decide, from the channels the page actually read.
+ *
+ * @param props.searchParams The address's query.
  * @returns The Chat Ops page, for the workspace this request is operating in.
  */
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: Readonly<{ searchParams?: Promise<Record<string, string | string[] | undefined>> }> = {}) {
   const access = await requireWorkspace();
-  const { page, readAt } = await readChatOps();
+  const [{ page, readAt }, params] = await Promise.all([readChatOps(), searchParams]);
+  const named = params?.[MIRROR_PARAM];
 
-  return <ChatOpsScreen mayAdminister={mayAdminister(access.membership.roles)} page={page} readAt={readAt} />;
+  return (
+    <ChatOpsScreen
+      channel={typeof named === "string" && named !== "" ? named : null}
+      mayAdminister={mayAdminister(access.membership.roles)}
+      page={page}
+      readAt={readAt}
+    />
+  );
 }

@@ -21,8 +21,12 @@ import { Injectable } from "@nestjs/common";
 import { AppConfigService } from "../config/config.service";
 import { DecisionKindRegistry } from "../decisions/decision-kind.registry";
 import { refsOf } from "../decisions/inbox.compose";
-import { InboxRepository } from "../decisions/inbox.repository";
-import type { DecisionRef, PublishedDecisionKind } from "../decisions/decision.types";
+import { InboxRepository, type InboxItemRow } from "../decisions/inbox.repository";
+import type {
+  DecisionRef,
+  PublishedDecisionKind,
+  RenderedDecision,
+} from "../decisions/decision.types";
 import { ActionTokenService } from "../inbox-channels/tokens/action-token.service";
 import { DIGEST_RANGE, assembleDigest } from "../insights/digest/digest.assembly";
 import { InsightsPageService } from "../insights/page/page.service";
@@ -48,6 +52,7 @@ import {
   type BuildFacts,
 } from "./chat.cards.events";
 import { ChatEscalationRepository } from "./chat.escalation.repository";
+import { buildRecord, loopFinishedRecord } from "./chat.record";
 import { ChatRepository, type ChatMessageResolution, type ClaimedChatRow } from "./chat.repository";
 
 /** A message ready to render, and what its `chat_messages` row records. */
@@ -167,16 +172,8 @@ export class ChatComposer {
     }
 
     const kind = await this.registry.pinnedKind(item.kindId, item.kindVersion);
-    const refs = refsOf(item.refs);
-    const subject: DecisionCardSubject = {
-      itemId: item.id,
-      kind,
-      rendered: this.registry.render(kind, item.payload),
-      severity: item.severity,
-      refs,
-      sourceRef: item.sourceRef,
-      askedAt: item.createdAt,
-    };
+    const subject = decisionSubject(item, kind, this.registry.render(kind, item.payload));
+    const { refs } = subject;
     const resolution = await this.repository.resolution(item.id);
 
     if (row.messageKind === "system_line") {
@@ -302,20 +299,7 @@ export class ChatComposer {
       model: card,
       refs,
       // Only what was printed: an unpriced run records no cost key at all.
-      facts: {
-        outcome: "merged",
-        ...(facts.issueNumber === null ? {} : { issue_number: facts.issueNumber }),
-        ...(facts.issueTitle === null ? {} : { issue_title: facts.issueTitle }),
-        ...(facts.prNumber === null ? {} : { pr_number: facts.prNumber }),
-        ...(facts.checksPassed === null || facts.checksTotal === null
-          ? {}
-          : { checks_passed: facts.checksPassed, checks_total: facts.checksTotal }),
-        ...(facts.cycleSeconds === null ? {} : { cycle_seconds: Math.round(facts.cycleSeconds) }),
-        ...(facts.costCents === null || facts.unpricedEvents > 0
-          ? {}
-          : { cost_cents: Number(facts.costCents) }),
-        ...(facts.model === null ? {} : { model: facts.model }),
-      },
+      facts: loopFinishedRecord(facts),
       state: null,
       resolution: null,
       digestParts: ["loop_finished", facts.runId],
@@ -381,12 +365,38 @@ export class ChatComposer {
           ? buildGreenCard(facts, this.config.uiUrl)
           : buildFailedCard(facts, this.config.uiUrl),
       refs,
-      facts: { passed: facts.passed, total: facts.total },
+      // With which build and revision, so the channel mirror can say the same headline (#542).
+      facts: buildRecord(facts),
       state: null,
       resolution: null,
       digestParts: [row.cardKind, facts.runId, String(facts.buildNumber ?? "")],
     };
   }
+}
+
+/**
+ * The part of a decision its cards are composed from — the one place an inbox item becomes a
+ * card's subject, for the publisher and for the channel mirror (#542) alike.
+ *
+ * @param item - The decision item.
+ * @param kind - The kind version it pinned.
+ * @param rendered - The kind's question and why, rendered from the item's facts as plain text.
+ * @returns The subject.
+ */
+export function decisionSubject(
+  item: InboxItemRow,
+  kind: PublishedDecisionKind,
+  rendered: RenderedDecision,
+): DecisionCardSubject {
+  return {
+    itemId: item.id,
+    kind,
+    rendered,
+    severity: item.severity,
+    refs: refsOf(item.refs),
+    sourceRef: item.sourceRef,
+    askedAt: item.createdAt,
+  };
 }
 
 /**

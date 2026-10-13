@@ -69,6 +69,41 @@
   min-width: 0;
 }
 
+/*
+ * With bound channels the body is mockup 19's grid (#542): the channel mirror in the main column
+ * and the cards about it beside it, so it takes the pane's width rather than a reading measure.
+ */
+.chatops__body--wide {
+  max-width: 84rem;
+}
+
+/* The connection strip keeps the body's edge, whichever measure the body takes. */
+.chatops:has(.chatops__body--wide) .chatops__health {
+  max-width: 84rem;
+}
+
+/* Seven parts to five, as the mockup's `c-7` / `c-5` — and one column once both will not fit. */
+.chatops__columns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-8);
+  min-width: 0;
+}
+
+.chatops__main {
+  flex: 7 1 28rem;
+  min-width: 0;
+}
+
+.chatops__side {
+  display: flex;
+  flex: 5 1 20rem;
+  flex-direction: column;
+  gap: var(--sp-8);
+  min-width: 0;
+}
+
 .chatops__foot {
   display: flex;
   justify-content: flex-end;

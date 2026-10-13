@@ -119,6 +119,8 @@ export interface ChatCommandResource {
   readonly invokedAt: string;
   /** Null exactly while `outcome` is `async_pending`. */
   readonly completedAt: string | null;
+  /** What it said at once (#542); null for a command recorded before replies were kept, or one that said nothing. */
+  readonly reply: SettledReply | null;
   /** What an async command said when it finished; null while pending and for a command that answered at once. */
   readonly settledReply: SettledReply | null;
   /** The stable reason of an `error` outcome — `bad_arguments`, a plane's code; else null. */
@@ -139,6 +141,7 @@ export function toCommand(row: OwnConsoleCommand): ChatCommandResource {
     rawText: row.raw_text,
     invokedAt: row.invoked_at.toISOString(),
     completedAt: row.completed_at === null ? null : row.completed_at.toISOString(),
+    reply: row.reply === null ? null : settledReply(row.reply),
     settledReply: row.settled_reply === null ? null : settledReply(row.settled_reply),
     errorDetail: row.error_detail,
   };

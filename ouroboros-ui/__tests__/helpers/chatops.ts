@@ -1,4 +1,11 @@
 import type { SlackChannel, SlackChannels, SlackConnection } from "@/app/api/chatops";
+import type {
+  ChatMirror,
+  ChatMirrorEntry,
+  MirrorCard,
+  MirrorCommand,
+  MirrorLine,
+} from "@/app/api/chatops-mirror";
 import type { ChatOpsPage } from "@/app/chatops/view";
 
 /**
@@ -163,4 +170,187 @@ export function deferred<T>() {
   });
 
   return { promise, resolve };
+}
+
+/* ------------------------------------------------------------------ the channel mirror (#542) */
+
+/** The day every mirror fixture is posted on, at noon UTC — one local day in any zone but the two at the date line. */
+export const MIRROR_DAY = "2026-10-12";
+
+/**
+ * An instant on the fixtures' day.
+ *
+ * @param clock `HH:MM`, UTC.
+ * @param day The day. Defaults to {@link MIRROR_DAY}.
+ * @returns The instant, ISO 8601.
+ */
+export function at(clock: string, day: string = MIRROR_DAY): string {
+  return `${day}T${clock}:00.000Z`;
+}
+
+/**
+ * A card — a finished loop, unless told otherwise.
+ *
+ * @param over What differs.
+ * @returns The card.
+ */
+export function mirrorCard(over: Partial<MirrorCard> = {}): MirrorCard {
+  return {
+    type: "card",
+    id: "5eed0542-0000-4000-8000-000000000001",
+    at: at("11:58"),
+    family: "loop_finished",
+    severity: "ok",
+    mark: "✓",
+    headline: "Loop #1846 finished — PR #512 merged",
+    lines: ["#474 Debounce e-stop interrupt handler"],
+    stats: "14/14 checks · 11m cycle · $0.94 · claude-fable-5",
+    actions: [
+      { id: "pr", label: "View PR ↗", href: "/prs/5eed0512", style: "default" },
+      { id: "run", label: "Run console", href: "/runs/5eed1846", style: "default" },
+    ],
+    footnote: null,
+    state: null,
+    resolution: null,
+    escalatedAt: null,
+    ...over,
+  };
+}
+
+/** A blocking question, still open: its answers lead to the inbox item. */
+export function openQuestion(over: Partial<MirrorCard> = {}): MirrorCard {
+  return mirrorCard({
+    id: "5eed0542-0000-4000-8000-000000000002",
+    at: at("12:07"),
+    family: "protected_path",
+    severity: "warn",
+    mark: "⏸",
+    headline: "Build paused — a question for you",
+    lines: ["Loop #1851 (#479 OTA rollback): wants to add one line to boot/rollback_flag.c — a protected path. Allow?"],
+    stats: null,
+    actions: [
+      { id: "allow_once", label: "Allow once", href: "/inbox?item=5eed0460", style: "primary" },
+      { id: "deny", label: "Deny", href: "/inbox?item=5eed0460", style: "danger" },
+      { id: "diff", label: "View diff →", href: "/prs/5eed0514/verification", style: "default" },
+    ],
+    footnote: "paused 4m · escalates to the Needs-you inbox in 26m",
+    state: "open",
+    ...over,
+  });
+}
+
+/** The same question once somebody answered it: no actions, and who answered. */
+export function resolvedQuestion(over: Partial<MirrorCard> = {}): MirrorCard {
+  return openQuestion({
+    actions: [],
+    footnote: null,
+    state: "resolved",
+    resolution: { outcome: "allow once", actor: "Maya Chen", at: at("12:11") },
+    ...over,
+  });
+}
+
+/**
+ * A system line.
+ *
+ * @param over What differs.
+ * @returns The line.
+ */
+export function mirrorLine(over: Partial<MirrorLine> = {}): MirrorLine {
+  return {
+    type: "line",
+    id: "5eed0542-0000-4000-8000-000000000003",
+    at: at("12:11"),
+    text: "✓ Maya Chen answered: allow once — loop #1851 resumed (14:11)",
+    ...over,
+  };
+}
+
+/**
+ * A command — `/ouro status`, typed in Slack and answered at once — unless told otherwise.
+ *
+ * @param over What differs.
+ * @returns The command.
+ */
+export function mirrorCommand(over: Partial<MirrorCommand> = {}): MirrorCommand {
+  return {
+    type: "command",
+    id: "5eed0542-0000-4000-8000-000000000004",
+    at: at("12:12"),
+    surface: "slack",
+    text: "/ouro status",
+    author: { name: "Ken Suenobu" },
+    outcome: "ok",
+    reply: {
+      text: "3 loops live · 12 queued · farm 4/5 online · spend today $18.60 · needs-you: 3",
+      link: null,
+      at: at("12:12"),
+    },
+    result: null,
+    ...over,
+  };
+}
+
+/** A dry run acknowledged and still running: a reply with a link, and no result yet. */
+export function pendingDryRun(over: Partial<MirrorCommand> = {}): MirrorCommand {
+  return mirrorCommand({
+    id: "5eed0542-0000-4000-8000-000000000005",
+    at: at("12:13"),
+    text: "/ouro dry-run #486 feature-loop",
+    outcome: "async_pending",
+    reply: {
+      text: "Dry run started — no writes, no PRs. Results in ~3 min → follow in Workflow Copilot",
+      link: { label: "Open Copilot →", href: "/workflows/copilot?run=5eed0562" },
+      at: at("12:13"),
+    },
+    ...over,
+  });
+}
+
+/** A green build, publishing its PR. */
+export function buildGreen(over: Partial<MirrorCard> = {}): MirrorCard {
+  return mirrorCard({
+    id: "5eed0542-0000-4000-8000-000000000006",
+    at: at("12:31"),
+    family: "build_green",
+    severity: "accent",
+    mark: "⟳",
+    headline: "Loop #1847 build 3 green — 63/63 · publishing PR #514 rev 2",
+    lines: [],
+    stats: null,
+    actions: [{ id: "verification", label: "PR verification →", href: "/prs/5eed0514/verification", style: "default" }],
+    ...over,
+  });
+}
+
+/** The seeded stream: a completion, a resolved question, its line, two commands and a green build. */
+export function mirrorEntries(): ChatMirrorEntry[] {
+  return [mirrorCard(), resolvedQuestion(), mirrorLine(), mirrorCommand(), pendingDryRun(), buildGreen()];
+}
+
+/**
+ * One page of a channel's mirror — `#ouroboros-loops`, the seeded stream, the start of history.
+ *
+ * @param over What differs.
+ * @returns The page.
+ */
+export function mirror(over: Partial<ChatMirror> = {}): ChatMirror {
+  return {
+    channel: channel("ouroboros-loops", { purpose: "loops", routes: ["blocking_question", "loop_finished"] }),
+    platform: "slack",
+    appVersion: "v2.4",
+    entries: mirrorEntries(),
+    olderCursor: null,
+    ...over,
+  };
+}
+
+/**
+ * A poll's answer carrying a page of a mirror.
+ *
+ * @param payload The page.
+ * @returns The answer.
+ */
+export function freshMirror(payload: ChatMirror = mirror()) {
+  return { state: "fresh" as const, payload, etag: null, pollAfterSeconds: 15 };
 }

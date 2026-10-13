@@ -55,6 +55,7 @@ import { WebhooksModule } from "../webhooks/webhooks.module";
 import { IntegrationsModule } from "../integrations/integrations.module";
 import { NotificationRoutesModule } from "../notification-routes/notification-routes.module";
 import { ChatModule } from "../chat/chat.module";
+import { ChatMirrorModule } from "../chat-mirror/chat-mirror.module";
 import { SlackModule } from "../slack/slack.module";
 import { ChatopsModule } from "../chatops/chatops.module";
 import { RetentionModule } from "../retention/retention.module";
@@ -427,6 +428,10 @@ export class AppModule {
         // BZ.2 ([#536](https://github.com/NobuData/ouroboros/issues/536)) — the card renderer and the
         // outbox publisher behind every message Ouroboros posts to a channel.
         ChatModule,
+        // CA.2 ([#542](https://github.com/NobuData/ouroboros/issues/542)) — the channel mirror,
+        // `GET /api/v1/chat/channels/{id}/mirror`: a distinct literal segment beside the chat
+        // routes above. It reads the publisher's records and redraws them with its cards.
+        ChatMirrorModule,
         // K.4 ([#102](https://github.com/NobuData/ouroboros/issues/102)) — the poller that
         // fills `github_issues`. After `GithubModule`, which it imports for the client and
         // for the *which workspaces have a token* question; it declares no route at all, so

@@ -27,6 +27,8 @@ import {
   REVOKED_NOTE,
   SETUP_GUIDE_HREF,
   SETUP_STEPS,
+  SHOWING_MIRROR_LABEL,
+  SHOW_MIRROR_LABEL,
   STALE_HEADLINE,
   UNREAD_HEADLINE,
   VERIFY_FAILED,
@@ -41,6 +43,9 @@ import {
   connection,
   deferred,
   fresh,
+  freshMirror,
+  mirror,
+  mirrorLine,
   notConfigured,
   notConnected,
   revoked,
@@ -66,6 +71,11 @@ vi.mock("@/app/chatops/chatops-actions", () => ({
   unbindChannel: (id: unknown) => unbindChannel(id),
 }));
 
+// The channel mirror's composer (#542) is the console's: its Server Actions and the session it
+// keys its history by are stubbed, as the palette's suites stub them.
+vi.mock("@/app/api/auth-client", async () => (await import("../helpers/account")).authClientModule());
+vi.mock("@/app/shell/console-actions", async () => (await import("../helpers/console")).consoleActionsModule());
+
 const { ChatOpsScreen } = await import("@/app/chatops/chatops-screen");
 
 beforeEach(() => {
@@ -86,6 +96,8 @@ function Screen(over: Partial<ChatOpsScreenProps> = {}) {
     <ChatOpsScreen
       mayAdminister
       page={{ ok: true, value: chatOpsPage() }}
+      // Neither poll answers unless a case says so: the page is what the server read.
+      mirror={{ read: () => new Promise(() => undefined) }}
       poll={{ read: () => new Promise(() => undefined) }}
       readAt={CHATOPS_READ_AT}
       {...over}
@@ -453,7 +465,8 @@ describe("the bound channels", () => {
     unmount();
 
     render(on(BOUND, false));
-    expect(within(list()).queryByRole("button")).toBeNull();
+    // Showing a row's mirror (#542) is every member's; unbinding is not.
+    expect(within(list()).queryByRole("button", { name: /^Unbind/ })).toBeNull();
     expect(within(list()).getAllByRole("link")).toHaveLength(2);
   });
 
@@ -566,6 +579,97 @@ describe("staying current", () => {
     expect(screen.getByText("Slack did not answer.")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: FIRST_CHANNELS_TITLE })).toBeNull();
     expect(screen.queryByRole("link", { name: /^Open #/ })).toBeNull();
+  });
+});
+
+describe("the channel mirror", () => {
+  const [LOOPS, ALERTS] = boundChannelList() as [ReturnType<typeof boundChannelList>[number], ReturnType<typeof boundChannelList>[number]];
+
+  /** Each channel's own page, so which mirror is showing can be read off the stream. */
+  const read = vi.fn((id: string) =>
+    Promise.resolve(
+      freshMirror(
+        mirror({
+          channel: id === ALERTS.id ? ALERTS : LOOPS,
+          entries: [mirrorLine({ text: id === ALERTS.id ? "the alerts record" : "the loops record" })],
+        }),
+      ),
+    ),
+  );
+
+  beforeEach(() => {
+    read.mockClear();
+    window.history.replaceState(null, "", "/chatops");
+  });
+
+  it("shows the first bound channel's mirror beside the bound list", async () => {
+    render(<Screen mirror={{ read, visible: () => true }} page={{ ok: true, value: BOUND }} />);
+
+    const card = screen.getByRole("region", { name: "Mirror of #ouroboros-loops" });
+
+    expect(await within(card).findByText("the loops record")).toBeInTheDocument();
+    expect(read).toHaveBeenCalledWith(LOOPS.id, null);
+    expect(card.closest(".chatops__main")).not.toBeNull();
+    expect(screen.getByRole("region", { name: BOUND_TITLE }).closest(".chatops__side")).not.toBeNull();
+    expect(card.closest(".chatops__body")).toHaveClass("chatops__body--wide");
+  });
+
+  it("shows the channel the address names", async () => {
+    render(<Screen channel={ALERTS.id} mirror={{ read, visible: () => true }} page={{ ok: true, value: BOUND }} />);
+
+    expect(await screen.findByText("the alerts record")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Mirror of #helios-alerts" })).toBeInTheDocument();
+    expect(read).not.toHaveBeenCalledWith(LOOPS.id, null);
+  });
+
+  it("falls back to the first bound channel when the address names one that is not bound", async () => {
+    render(<Screen channel="not-a-channel" mirror={{ read, visible: () => true }} page={{ ok: true, value: BOUND }} />);
+
+    expect(await screen.findByText("the loops record")).toBeInTheDocument();
+  });
+
+  it("lets every row show its mirror, says which is showing, and keeps the choice in the address", async () => {
+    render(<Screen mayAdminister={false} mirror={{ read, visible: () => true }} page={{ ok: true, value: BOUND }} />);
+
+    const loops = screen.getByRole("button", { name: "Show the mirror of #ouroboros-loops" });
+    const alerts = screen.getByRole("button", { name: "Show the mirror of #helios-alerts" });
+
+    expect(loops).toHaveAttribute("aria-pressed", "true");
+    expect(loops).toHaveTextContent(SHOWING_MIRROR_LABEL);
+    expect(alerts).toHaveAttribute("aria-pressed", "false");
+    expect(alerts).toHaveTextContent(SHOW_MIRROR_LABEL);
+
+    fireEvent.click(alerts);
+
+    expect(await screen.findByText("the alerts record")).toBeInTheDocument();
+    expect(screen.queryByText("the loops record")).toBeNull();
+    expect(alerts).toHaveAttribute("aria-pressed", "true");
+    expect(window.location.search).toBe(`?channel=${ALERTS.id}`);
+    expect(window.location.pathname).toBe("/chatops");
+  });
+
+  it("draws no mirror on a page with nothing bound, or with no connection", () => {
+    const { unmount } = render(<Screen mirror={{ read, visible: () => true }} />);
+
+    expect(screen.queryByRole("region", { name: /^Mirror of/ })).toBeNull();
+    expect(screen.getByRole("region", { name: FIRST_CHANNELS_TITLE })).toBeInTheDocument();
+    unmount();
+
+    render(<Screen mirror={{ read, visible: () => true }} page={{ ok: true, value: chatOpsPage({ connection: notConnected() }) }} />);
+
+    expect(screen.queryByRole("region", { name: /^Mirror of/ })).toBeNull();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("moves to the next bound channel when the one showing is unbound", async () => {
+    unbindChannel.mockResolvedValueOnce(channels([{ ...LOOPS, purpose: null, routes: [] }, ALERTS]));
+    render(<Screen mirror={{ read, visible: () => true }} page={{ ok: true, value: BOUND }} />);
+
+    await screen.findByText("the loops record");
+    fireEvent.click(screen.getByRole("button", { name: "Unbind #ouroboros-loops" }));
+
+    expect(await screen.findByRole("region", { name: "Mirror of #helios-alerts" })).toBeInTheDocument();
+    expect(await screen.findByText("the alerts record")).toBeInTheDocument();
   });
 });
 
