@@ -1,7 +1,5 @@
 "use client";
 
-import Image from "next/image";
-
 import type {
   ChatMirrorEntry,
   MirrorAction,
@@ -11,21 +9,14 @@ import type {
   MirrorReply,
   MirrorSeverity,
 } from "@/app/api/chatops-mirror";
-import { Button } from "@/app/ui";
 import { cx } from "@/app/ui/class-names";
 
+import { BotMessage, Clock, PersonMessage, RefButton, SystemLine } from "./message";
 import {
   ACTION_TONES,
-  APP_TAG,
-  BOT_NAME,
-  CONSOLE_SURFACE_MARK,
   ESCALATED_MARK,
   PENDING_NOTE,
-  UNKNOWN_AUTHOR,
   cardSeverity,
-  clockText,
-  initials,
-  isInApp,
   replyFailed,
   resolutionText,
 } from "./view";
@@ -39,7 +30,8 @@ import {
  * different records: the hue is the record's `severity`, the glyph its `mark`, and every word —
  * headline, lines, figures, button labels, footnote — is the service's, recomposed from the
  * stored row by the card model the Slack publisher renders. What is written in this file is only
- * who a message is from and the frame around a reply.
+ * the frame around a reply; who a message is from is drawn by `message.tsx`, which the
+ * AI-presence card shares.
  *
  * **A resolved question has no buttons**, whatever the record's `actions` hold: it reads its
  * outcome and its actor where they were, as the channel does after the edit.
@@ -62,92 +54,6 @@ const HEADLINE_CLASSES: Readonly<Record<MirrorSeverity, string>> = {
   err: "chatops-mirror__headline--err",
   info: "chatops-mirror__headline--info",
 };
-
-/** The app mark's drawn size, in CSS pixels — the sheet sizes it in rem. */
-const MARK_SIZE = 22;
-
-/**
- * An instant on the stream's clock.
- *
- * @param props.at The instant, ISO 8601.
- * @returns The time, or nothing for a stamp that cannot be read.
- */
-function Clock({ at }: Readonly<{ at: string }>) {
-  const text = clockText(at);
-
-  return text === "" ? null : (
-    <time className="chatops-mirror__ts" dateTime={at}>
-      {text}
-    </time>
-  );
-}
-
-/**
- * A message from the app: its mark, its name with the tag that says it is an app, and the time.
- *
- * @param props.at When it was posted.
- * @param props.children What it said.
- * @returns The message.
- */
-function BotMessage({ at, children }: Readonly<{ at: string; children: React.ReactNode }>) {
-  return (
-    <div className="chatops-mirror__msg">
-      <span aria-hidden className="chatops-mirror__avatar">
-        <Image
-          alt=""
-          className="chatops-mirror__mark chatops-mirror__mark--light"
-          height={MARK_SIZE}
-          src="/brand/icon-light.png"
-          width={MARK_SIZE}
-        />
-        <Image
-          alt=""
-          className="chatops-mirror__mark chatops-mirror__mark--dark"
-          height={MARK_SIZE}
-          src="/brand/icon-dark.png"
-          width={MARK_SIZE}
-        />
-      </span>
-      <div className="chatops-mirror__body">
-        <div className="chatops-mirror__meta">
-          <span className="chatops-mirror__name chatops-mirror__name--bot">
-            {BOT_NAME}
-            <span className="chatops-mirror__app">{APP_TAG}</span>
-          </span>
-          <Clock at={at} />
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-/**
- * A small button that goes where a record points.
- *
- * A path of this application stays in the tab; an address with an origin of its own opens in a
- * new one.
- *
- * @param props.href Where.
- * @param props.label What the button says.
- * @param props.tone Its treatment.
- * @returns The link.
- */
-function RefButton({
-  href,
-  label,
-  tone,
-}: Readonly<{ href: string; label: string; tone: "primary" | "danger" | "ghost" }>) {
-  return isInApp(href) ? (
-    <Button href={href} size="sm" tone={tone}>
-      {label}
-    </Button>
-  ) : (
-    <Button href={href} rel="noopener noreferrer" size="sm" target="_blank" tone={tone}>
-      {label}
-    </Button>
-  );
-}
 
 /**
  * A card's buttons.
@@ -219,7 +125,7 @@ function CardEntry({ card }: Readonly<{ card: MirrorCard }>) {
  * @returns The line.
  */
 function LineEntry({ line }: Readonly<{ line: MirrorLine }>) {
-  return <div className="chatops-mirror__sys">{line.text}</div>;
+  return <SystemLine>{line.text}</SystemLine>;
 }
 
 /**
@@ -255,7 +161,6 @@ function ReplyMessage({
  * @returns The person's line, the reply, and the result once there is one.
  */
 function CommandEntry({ command }: Readonly<{ command: MirrorCommand }>) {
-  const known = command.author !== null && command.author.name.trim() !== "";
   const waiting = command.outcome === "async_pending" && command.result === null;
   // An outcome is the command's last word: once a result has arrived it describes the result,
   // and the acknowledgement above it was only ever an acknowledgement.
@@ -263,30 +168,11 @@ function CommandEntry({ command }: Readonly<{ command: MirrorCommand }>) {
 
   return (
     <>
-      <div className="chatops-mirror__msg" data-surface={command.surface}>
-        <span
-          aria-hidden
-          className={cx(
-            "chatops-mirror__avatar",
-            "chatops-mirror__avatar--human",
-            !known && "chatops-mirror__avatar--unknown",
-          )}
-        >
-          {initials(command.author?.name)}
-        </span>
-        <div className="chatops-mirror__body">
-          <div className="chatops-mirror__meta">
-            <span className="chatops-mirror__name">{known ? command.author?.name : UNKNOWN_AUTHOR}</span>
-            {command.surface === "console" && (
-              <span className="chatops-mirror__surface">{CONSOLE_SURFACE_MARK}</span>
-            )}
-            <Clock at={command.at} />
-          </div>
-          <div className="chatops-mirror__mono">
-            <span className="chatops-mirror__cmd">{command.text}</span>
-          </div>
+      <PersonMessage at={command.at} name={command.author?.name} surface={command.surface}>
+        <div className="chatops-mirror__mono">
+          <span className="chatops-mirror__cmd">{command.text}</span>
         </div>
-      </div>
+      </PersonMessage>
       {command.reply !== null && (
         <ReplyMessage
           at={command.at}

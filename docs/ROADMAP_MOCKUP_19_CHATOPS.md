@@ -596,7 +596,7 @@ the #16 tokens (both themes; the mockup is dark-only).
 | CA.1 | #541 ✅ | 🟢 Done | ouroboros-ui: [CA.1] ChatOps route, head & connection flow | Frame, add-channel, open-channel, install/setup states | mvp, chatops, ui, design | N (after #41, BZ.1, BA-D.5) | Y | M | ouroboros-ui |
 | CA.2 | #542 ✅ | 🟢 Done | ouroboros-ui: [CA.2] Channel mirror card | The truthful stream (C7): all archetypes + composer console | mvp, chatops, ui, design | N (after CA.1, BZ.2) | Y | L | ouroboros-ui |
 | CA.3 | #543 ✅ | 🟢 Done | ouroboros-ui: [CA.3] Commands & routing cards | Registry-driven command list; BR.4 binding editors | mvp, chatops, ui, design | N (after CA.1, BZ.3, BR.4) | Y | M | ouroboros-ui |
-| CA.4 | #544 | 🟡 Open | ouroboros-ui: [CA.4] AI-presence card & honest preview | The C8 designed preview + the CB.1 activation slot | mvp, chatops, ui, design | N (after CA.1) | Y | S | ouroboros-ui |
+| CA.4 | #544 ✅ | 🟢 Done | ouroboros-ui: [CA.4] AI-presence card & honest preview | The C8 designed preview + the CB.1 activation slot | mvp, chatops, ui, design | N (after CA.1) | Y | S | ouroboros-ui |
 | CA.5 | #545 | 🟡 Open | ouroboros-ui: [CA.5] ChatOps states & e2e leg | No-connection/unlinked/error states; full-chain e2e | mvp, chatops, ui, ci | N (after CA.2–CA.4) | Y | M | ouroboros-ui, .github |
 
 ### Issue CA.1 — ouroboros-ui: [CA.1] ChatOps route, head & connection flow
@@ -704,7 +704,11 @@ Blocking questions → [#ouroboros-loops ▾] + DM on-call (Ken · rotations arr
 
 ### Issue CA.4 — ouroboros-ui: [CA.4] AI-presence card & honest preview
 
-> **GitHub issue:** #544 · **Status:** 🟡 Open · **Parent epic:** #529
+> **GitHub issue:** #544 ✅ · **Status:** 🟢 Done · **Parent epic:** #529
+>
+> **Delivered (#544 — `ouroboros-ui` 0.161.0, `ouroboros-docs` 0.5.7; no REST change, no migration):** the **AI PRESENCE** card in `/chatops`'s side column, under **WHAT GETS PUBLISHED WHERE** as in the mockup (`app/chatops/ai-presence-card.tsx`, `presence-view.ts`, `chatops-presence.css`). The mockup's exchange, marked three ways: a `preview` chip and `arrives with AI presence (#546)` against the title, a dashed frame around the thread (named a preview to a screen reader), and the closing system line drawn faint and italic between dashed rules — the mirror's real ones are green between solid rules. **Apply** is inert (`aria-disabled`, focusable) with its reason as tooltip, as its description and in words under it; **Open Analyzer →** links `/analyzer`; the caption reads *When it lands: anything the UI can do, a sentence can do — same permissions, same audit trail.*; and *today, the `/ouro` commands do this deterministically →* jumps to the commands card (`#chatops-commands`). **Activation slot:** the card draws a `PresenceSource` — `preview` (the default) or `live` (`thread`, `onConfirm`, `composer`) — and both are one `PresenceThread` shape drawn by the same components. Those components (`app/chatops/message.tsx`: `BotMessage`, `PersonMessage`, `SystemLine`, `RefButton`) were lifted out of the mirror's `mirror-entry.tsx`, so the mirror's stream and this card are made of the same parts. The contract is written at the top of `presence-view.ts`.
+>
+> **Not delivered, and why:** the live branch is exercised by jsdom specs only — nothing supplies a live source until #546, and no composer is built here. **Apply**'s reason is always visible under the button rather than shown only on hover/focus: a tooltip cannot be reached by keyboard or touch, and an in-flow note that appears on hover would move the card. Both themes and the 125% step are held by the rem/token style suite and the docs captures, not by an automated visual comparison. The card shows only where the side column does (a connected workspace with bound channels). e2e is CA.5's (#545).
 
 - **Problem Statement:** The sentence interface is v2 (C8); the card must
   show the design without faking the capability.
@@ -784,7 +788,11 @@ e2e: install ✓ · publish→mirror ✓ · button→resume→update ✓ · comm
   button is the same BV.5/BZ.4 machinery, policy-checked + audited as the
   mockup's system line promises); `explain pr <n>` (AW evidence → plain-
   language summary, provenance-labeled); Slack mention + thread support;
-  the CA.4 preview flips live; cost accounting per answer.
+  the CA.4 preview flips live — by handing `AiPresenceCard` a `live`
+  `PresenceSource` (the activation contract at the top of
+  `ouroboros-ui/app/chatops/presence-view.ts`, #544): a data change plus
+  the composer, no change to the card's layout or components; cost
+  accounting per answer.
 - **Acceptance Criteria:** The mockup's exchange reproduces on seeds
   (attribution cited to the queue-correlation finding; Apply routes
   through the real suggestion with confirm); no direct mutations from
@@ -920,7 +928,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 3. **Phase 2 — App & services:** BZ.1 (#535) ✅ → { BZ.2 (#536) ✅ ⊕ BZ.3 (#537) ✅ }
    → { BZ.4 (#538) ✅ ⊕ BZ.5 (#539) ✅ } → BZ.6 (#540)
 4. **Phase 3 — UI:** CA.1 (#541) ✅ → { CA.2 (#542) ✅ ⊕ CA.3 (#543) ✅ ⊕
-   CA.4 (#544) } → **CA.5 (#545) ✅** *(MVP gate, amending #56)*
+   CA.4 (#544) ✅ } → **CA.5 (#545) ✅** *(MVP gate, amending #56)*
 5. **v2:** CB.1 (#546) after AF.2 (#235); CB.2 (#547) ⊕ CB.3 (#548) ⊕
    CB.4 (#549) ⊕ CB.5 (#550) after their dependencies.
 
@@ -1011,7 +1019,7 @@ Issue-level impact:
 | Issue | GitHub | Status | Amendment |
 |---|:---:|:---:|---|
 | CA.1 | #541 ✅ | 🟢 Done | In-app surfaces (palette console mount, settings cards) render inside the shell (palette portals over the content pane and locks its scroll); no sidebar entry is added |
-| CA.2, CA.3, CA.4 | #542, #543, #544 | 🟡 Open | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
+| CA.2, CA.3, CA.4 | #542 ✅, #543 ✅, #544 ✅ | 🟢 Done | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
 | CA.5 | #545 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 | BZ.5 | #539 ✅ | 🟢 Done | The ⌘K command console portals over the content pane and restores its scroll on close; rem-based type |
 

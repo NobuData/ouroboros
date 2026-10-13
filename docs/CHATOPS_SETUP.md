@@ -190,6 +190,9 @@ CA.3 (#543) adds the page's **commands card** (generated from the `/ouro` regist
 **routing card**: each Slack route's channel and switch — the same routes Settings → Notifications
 lists — and who is on call for decisions, chosen from the members who have linked Slack.
 
+CA.4 (#544) adds the **AI presence** card as a labelled preview: nothing in it runs, and it
+becomes real with CB.1 (#546).
+
 Where a message goes is the workspace's notification routes. A route is bound to a channel on the
 Chat Ops page (#541). Build-green and
 build-failed cards are rendered and tested but nothing reports a build result to publish yet.

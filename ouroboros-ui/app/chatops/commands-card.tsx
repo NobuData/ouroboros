@@ -6,6 +6,7 @@ import { InfoTip } from "@/app/inbox/info-tip";
 import { Button, Card, CardHead, EmptyState, Tag } from "@/app/ui";
 import { cx } from "@/app/ui/class-names";
 
+import { COMMANDS_ANCHOR } from "./presence-view";
 import {
   COMMANDS_CAPTION,
   COMMANDS_EMPTY,
@@ -60,14 +61,15 @@ export interface CommandsCardProps {
  * nothing: the reader finishes the line and sends it themselves.
  *
  * The caption is the mockup's, with its Teams third qualified — Teams is not here yet. A long
- * grammar scrolls inside the card, never the pane.
+ * grammar scrolls inside the card, never the pane. The card carries an id: the AI-presence
+ * card's pointer to what works today (#544) lands on it.
  *
  * @param props See {@link CommandsCardProps}.
  * @returns The card.
  */
 export function CommandsCard({ grammar, titleId, onTry }: CommandsCardProps) {
   return (
-    <Card aria-labelledby={titleId} as="section" className="chatops-side__commands">
+    <Card aria-labelledby={titleId} as="section" className="chatops-side__commands" id={COMMANDS_ANCHOR}>
       <CardHead title={COMMANDS_TITLE} titleId={titleId} />
 
       {!grammar.ok && <EmptyState note={grammar.reason} title={COMMANDS_UNREAD} variant="flush" />}

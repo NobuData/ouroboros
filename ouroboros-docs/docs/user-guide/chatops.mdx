@@ -219,6 +219,30 @@ These are the same routes as the **Notifications** section of Settings: a change
 shows in the other. **Manage in Settings →** at the foot of the card opens that section — see
 [Notifications, email & webhooks](../administration/notifications-and-webhooks.mdx).
 
+### The AI presence card
+
+**AI PRESENCE**, under **WHAT GETS PUBLISHED WHERE**, is a **preview**. It shows what asking
+Ouroboros a question in plain words will look like. It is not available yet, and nothing in it
+is a real conversation. <Since version="0.161.0" module="ouroboros-ui" />
+
+<Screenshot id="user-guide.chatops.ai-preview" />
+
+- The **preview** chip and **arrives with AI presence (#546)**, beside the title, say so.
+- The exchange inside the dashed frame — a question about issue #479, and an answer that
+  suggests a change — is an illustration. So is the line under it,
+  *✓ applied · policy-checked · audit-logged*: it is drawn faint, between dashed rules, where a
+  real notice in [the channel mirror](#the-channel-mirror) is green between solid ones.
+- **Apply** is switched off. The reason is under it: **Apply is part of the preview — it
+  arrives with AI presence (#546).**
+- **Open Analyzer →** is a real link. It opens the [Build Analyzer](./analyzer.mdx).
+
+The caption is what the feature will hold to: *When it lands: anything the UI can do, a
+sentence can do — same permissions, same audit trail.*
+
+To do these things today, use the `/ouro` commands. **today, the `/ouro` commands do this
+deterministically →**, at the foot of the card, goes to [the commands card](#the-commands-card);
+every command is described in [/ouro chat commands](../cli/ouro.mdx).
+
 ### When Slack is not connected yet
 
 The page then explains what is missing instead:
