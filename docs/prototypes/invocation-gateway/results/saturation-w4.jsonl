@@ -1,0 +1,12 @@
+{"label":"direct","concurrency":1,"calls":2397,"errors":0,"firstError":null,"ttftP50":5.8,"ttftP95":6.9,"ttftP99":7.5,"totalP50":8.4,"totalP95":9.6,"tokensPerSecond":239652,"gatewayCpuPercent":43}
+{"label":"4-A","concurrency":1,"calls":1389,"errors":0,"firstError":null,"ttftP50":8.9,"ttftP95":10.7,"ttftP99":12.1,"totalP50":14.2,"totalP95":17.2,"tokensPerSecond":138868,"gatewayCpuPercent":61}
+{"label":"litellm-only","concurrency":1,"calls":33,"errors":0,"firstError":null,"ttftP50":15.3,"ttftP95":18.6,"ttftP99":352.2,"totalP50":497.9,"totalP95":929.3,"tokensPerSecond":3298,"gatewayCpuPercent":100}
+{"label":"4-B","concurrency":1,"calls":33,"errors":0,"firstError":null,"ttftP50":17.2,"ttftP95":20.2,"ttftP99":36.6,"totalP50":540.1,"totalP95":945.7,"tokensPerSecond":3260,"gatewayCpuPercent":115}
+{"label":"direct","concurrency":10,"calls":4495,"errors":0,"firstError":null,"ttftP50":20.8,"ttftP95":31.9,"ttftP99":38.4,"totalP50":44.3,"totalP95":58.4,"tokensPerSecond":449113,"gatewayCpuPercent":86}
+{"label":"4-A","concurrency":10,"calls":3134,"errors":0,"firstError":null,"ttftP50":20.2,"ttftP95":41.6,"ttftP99":51.4,"totalP50":64.1,"totalP95":77.9,"tokensPerSecond":312612,"gatewayCpuPercent":95}
+{"label":"litellm-only","concurrency":10,"calls":115,"errors":0,"firstError":null,"ttftP50":184.7,"ttftP95":2259.5,"ttftP99":2763.6,"totalP50":1524.3,"totalP95":4166.1,"tokensPerSecond":10372,"gatewayCpuPercent":333}
+{"label":"4-B","concurrency":10,"calls":97,"errors":0,"firstError":null,"ttftP50":467.3,"ttftP95":2204.3,"ttftP99":2593.2,"totalP50":2044.6,"totalP95":3532.8,"tokensPerSecond":8295,"gatewayCpuPercent":310}
+{"label":"direct","concurrency":50,"calls":4864,"errors":0,"firstError":null,"ttftP50":89.3,"ttftP95":130.5,"ttftP99":146.3,"totalP50":207.6,"totalP95":264.5,"tokensPerSecond":485029,"gatewayCpuPercent":111}
+{"label":"4-A","concurrency":50,"calls":3291,"errors":0,"firstError":null,"ttftP50":79.2,"ttftP95":148.7,"ttftP99":237.2,"totalP50":316.6,"totalP95":359.8,"tokensPerSecond":324224,"gatewayCpuPercent":98}
+{"label":"litellm-only","concurrency":50,"calls":132,"errors":0,"firstError":null,"ttftP50":3476.4,"ttftP95":8478.9,"ttftP99":10212.8,"totalP50":8888.8,"totalP95":11787.2,"tokensPerSecond":10908,"gatewayCpuPercent":394}
+{"label":"4-B","concurrency":50,"calls":135,"errors":0,"firstError":null,"ttftP50":3440.8,"ttftP95":9965.6,"ttftP99":12180,"totalP50":9022.9,"totalP95":13569.6,"tokensPerSecond":10118,"gatewayCpuPercent":404}
