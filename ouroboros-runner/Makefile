@@ -91,7 +91,7 @@ dev:
 # other code that runs there (#248). -x follows the suite's source of scripts/lib/checks.sh.
 lint:
 	golangci-lint run ./...
-	shellcheck -x install.sh tests/*.sh
+	shellcheck -x install.sh refresh-releases.sh tests/*.sh
 
 # Checked, not applied: a pull request that skipped `make fmt` fails rather than being
 # silently reformatted by CI, which is the same bargain `ruff format --check` strikes in
@@ -123,6 +123,7 @@ typecheck:
 test:
 	go test -race ./...
 	sh tests/install.test.sh
+	sh tests/refresh-releases.test.sh
 
 # The container executor (#246) against a REAL Docker or Podman daemon: a first pull of a
 # small pinned image with its progress, a job's exit code and output, and a cancellation.
