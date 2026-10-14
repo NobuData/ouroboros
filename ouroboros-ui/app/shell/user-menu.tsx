@@ -17,6 +17,7 @@ import { SETTINGS_PATH } from "@/app/paths";
 import { describeTheme, resolveTheme, type Theme } from "@/app/theme";
 import { useTheme } from "@/app/theme-provider";
 import { useFontScale } from "@/app/use-font-scale";
+import { DOCS_URL, EXTERNAL_LINK, REPOSITORY_URL } from "@/app/external";
 import { APP_VERSION, versionLabel } from "@/app/version";
 
 import { type AccountView, type MenuWorkspace, accountMenuLabel, accountView } from "./account";
@@ -616,6 +617,22 @@ export function UserMenu() {
             </button>
 
             {/*
+              Help, here as well as in the header: below 768px the header has no room for its
+              Help control, and this is where a phone finds it. A link that leaves the
+              application, so a new tab; the menu closes behind it.
+            */}
+            <a
+              className="shell-menu__item"
+              href={DOCS_URL}
+              role="menuitem"
+              tabIndex={-1}
+              onClick={() => close(false)}
+              {...EXTERNAL_LINK}
+            >
+              Help
+            </a>
+
+            {/*
               A form, because signing out is a write only the server can finish — see
               `app/shell/actions.ts`. role="none" keeps the transport out of the
               accessibility tree, so the button inside it is the menu's own child.
@@ -647,7 +664,20 @@ export function UserMenu() {
             where they already look for what the application knows about their session.
           */}
           <p className="shell-menu__version">
-            Ouroboros <span className="shell-menu__build">{versionLabel(APP_VERSION)}</span>
+            Ouroboros{" "}
+            {/*
+              The number is a link to the project on GitHub: somebody reading it is usually
+              about to report something, and that is where reports go. A plain link, in a new
+              tab — it is still not an item of the menu above.
+            */}
+            <a
+              aria-label={`${versionLabel(APP_VERSION)} — Ouroboros on GitHub, opens in a new tab`}
+              className="shell-menu__build"
+              href={REPOSITORY_URL}
+              {...EXTERNAL_LINK}
+            >
+              {versionLabel(APP_VERSION)}
+            </a>
           </p>
 
           {failure !== null && (

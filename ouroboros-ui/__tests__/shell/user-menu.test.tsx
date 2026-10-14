@@ -392,6 +392,21 @@ describe("signing out", () => {
   });
 });
 
+describe("Help", () => {
+  it("is an item of the menu that opens the documentation in a new tab", () => {
+    // The header's Help control is not drawn below 768px; this is where a phone finds it.
+    renderThemed(<UserMenu />);
+    open();
+
+    const help = screen.getByRole("menuitem", { name: "Help" });
+
+    expect(help).toHaveAttribute("href", "https://docs.ouroboros.build/");
+    expect(help).toHaveAttribute("target", "_blank");
+    expect(help).toHaveAttribute("rel", "noopener noreferrer");
+    expect(help.closest('[role="menu"]')).not.toBeNull();
+  });
+});
+
 describe("the version", () => {
   it("is the one ouroboros-ui's manifest states, at the foot of the panel", () => {
     renderThemed(<UserMenu />);
@@ -409,6 +424,19 @@ describe("the version", () => {
     const version = screen.getByText(`v${manifest.version}`);
     expect(version.closest('[role="menu"]')).toBeNull();
     expect(version).not.toHaveAttribute("role");
+  });
+
+  it("links to the project on GitHub, in a new tab", () => {
+    renderThemed(<UserMenu />);
+    open();
+
+    const version = screen.getByRole("link", { name: new RegExp(`^v${manifest.version}`) });
+
+    expect(version).toHaveTextContent(`v${manifest.version}`);
+    expect(version).toHaveAttribute("href", "https://github.com/NobuData/ouroboros");
+    expect(version).toHaveAttribute("target", "_blank");
+    expect(version).toHaveAttribute("rel", "noopener noreferrer");
+    expect(version).toHaveAccessibleName(/GitHub, opens in a new tab/);
   });
 });
 

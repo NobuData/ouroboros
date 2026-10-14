@@ -1,7 +1,8 @@
-import { Bell } from "lucide-react";
+import { Bell, CircleHelp } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
+import { DOCS_URL, EXTERNAL_LINK } from "@/app/external";
 import { DASHBOARD_PATH } from "@/app/paths";
 
 import { LoopPills } from "./loop-pills";
@@ -89,6 +90,22 @@ export function ShellHeader() {
           this slot rather than a pair of noughts.
         */}
         <LoopPills />
+
+        {/*
+          Help: the documentation site, in a new tab so the page somebody was on is still
+          there when they come back. A link rather than a button, because it goes somewhere.
+          Below 768px the stylesheet does not draw it — there is no room — and the account
+          menu's own Help item is the way there.
+        */}
+        <a
+          aria-label="Help — opens the documentation in a new tab"
+          className="shell-icon-button shell-header__help"
+          href={DOCS_URL}
+          title="Help"
+          {...EXTERNAL_LINK}
+        >
+          <CircleHelp size={16} aria-hidden />
+        </a>
 
         {/*
           The notifications affordance § 1.1 asks for. aria-disabled rather than disabled, the

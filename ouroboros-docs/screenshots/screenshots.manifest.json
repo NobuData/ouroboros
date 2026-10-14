@@ -129,10 +129,10 @@
         ".dash-runs td.ou-table__cell--mono.ou-table__cell--end"
       ],
       "caption": "The app shell: the sidebar on the left, the header across the top, and the screen you are on in between.",
-      "alt": "The Ouroboros app on the Mission Control dashboard: the sidebar listing Dashboard to Insights with Needs You and Settings at its foot, and the header with the workspace chip, Search, the live-loop and Needs you pills, the bell and the account avatar.",
-      "capturedAt": "2026-10-10T01:38:14.472Z",
-      "uiVersion": "0.145.0",
-      "seedRef": "7349bd6fa267d18bf070fc00d32a8e15b6c57b82"
+      "alt": "The Ouroboros app on the Mission Control dashboard: the sidebar listing Dashboard to Insights with Needs You and Settings at its foot, and the header with the workspace chip, Search, the live-loop and Needs you pills, the Help button, the bell and the account avatar.",
+      "capturedAt": "2026-10-14T03:59:03.579Z",
+      "uiVersion": "0.166.0",
+      "seedRef": "50206e0b9cdd44e2336e458eac466816fff0ddc2"
     },
     {
       "id": "user-guide.command-palette",
