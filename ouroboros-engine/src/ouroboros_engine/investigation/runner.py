@@ -1,6 +1,6 @@
 """Where investigations run inside this process — a small set of background threads.
 
-The engine's task model (queue and workers) is #54 and does not exist yet, so this is the
+This predates the engine's task queue (#54, :mod:`ouroboros_engine.tasks`) and is the
 least that can run a loop for minutes without holding a request open: ``submit`` starts a
 thread and returns at once.
 
@@ -9,8 +9,8 @@ live in ``ouroboros-rest``. A process that dies takes its threads with it (they 
 threads: a deployment must be able to stop the engine without waiting out a deep dive), and
 the control plane — which sees an investigation ``running`` whose checkpoint has stopped
 moving — submits it again. A process that still holds it answers ``already_running`` and
-starts nothing; one that does not resumes it from the checkpoint. When #54 lands, this class is what it
-replaces; the loop and the contract do not change.
+starts nothing; one that does not resumes it from the checkpoint. Moving it onto the task queue
+replaces this class; the loop and the contract do not change.
 """
 
 from __future__ import annotations

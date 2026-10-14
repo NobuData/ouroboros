@@ -9,6 +9,7 @@ rather than a caller reading a specification the service does not honour.
 """
 
 import json
+import uuid
 from pathlib import Path
 
 import pytest
@@ -81,6 +82,9 @@ from ouroboros_engine.planning.outline_planner import OutlinePlanner
 from ouroboros_engine.settings import Settings
 from ouroboros_engine.skills import contract as skills_contract
 from ouroboros_engine.skills.runner import SkillRunner
+from ouroboros_engine.tasks.contract import TaskError, TaskRecord, TaskSubmitRequest
+from ouroboros_engine.tasks.queue import TaskQueue
+from ouroboros_engine.tasks.registry import default_registry as default_task_registry
 from ouroboros_engine.workflows.contract import (
     DryRunEdge,
     DryRunStep,
@@ -126,6 +130,9 @@ _DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
     "Liveness": Liveness,
     "ServiceIdentity": ServiceIdentity,
     "ServiceStatus": ServiceStatus,
+    "TaskSubmitRequest": TaskSubmitRequest,
+    "TaskError": TaskError,
+    "TaskRecord": TaskRecord,
     "EchoRequest": EchoRequest,
     "EchoResponse": EchoResponse,
     "IssueContext": IssueContext,
@@ -289,6 +296,26 @@ def _documented_request(operation: dict) -> dict | None:
     """
     body = operation.get("requestBody")
     return None if body is None else body["content"]["application/json"]["example"]
+
+
+def _concrete_path(path: str, operation: dict, document: dict) -> str:
+    """Fill an operation's path parameters with their documented examples.
+
+    Args:
+        path: The templated path, e.g. ``/v0/tasks/{task_id}``.
+        operation: One operation from :func:`_operations`.
+        document: The document, for a parameter shared under ``components``.
+
+    Returns:
+        The path a request is sent to.
+    """
+    for parameter in operation.get("parameters", []):
+        if "$ref" in parameter:
+            name = parameter["$ref"].removeprefix("#/components/parameters/")
+            parameter = document["components"]["parameters"][name]
+        if parameter["in"] == "path":
+            path = path.replace(f"{{{parameter['name']}}}", str(parameter["example"]))
+    return path
 
 
 def _documented_bodies(document: dict) -> list[tuple[str, dict]]:
@@ -478,7 +505,7 @@ class _IdleLoop:
 
 
 @pytest.fixture
-def fixture_remotes(client: TestClient, tmp_path: Path) -> TestClient:
+def fixture_remotes(client: TestClient, tmp_path: Path, document: dict) -> TestClient:
     """The authenticated client, its code routes reading the seeded fixture."""
     seeded = build_repo(tmp_path / "remote" / "helios-firmware.git")
     client.app.state.code_clones = _FixtureRemotes(  # type: ignore[attr-defined]
@@ -494,6 +521,18 @@ def fixture_remotes(client: TestClient, tmp_path: Path) -> TestClient:
     client.app.state.skills = SkillRunner(  # type: ignore[attr-defined]
         ScriptedModel(json.dumps(ROADMAP))
     )
+    # And the task routes that take an id find one: a queue whose first issued id is the
+    # documented example, holding an `echo` task under it.
+    documented_id = document["components"]["parameters"]["TaskId"]["example"]
+    issued = iter([documented_id])
+    tasks = TaskQueue(
+        default_task_registry(), id_factory=lambda: next(issued, str(uuid.uuid4()))
+    )
+    portal = client.portal  # type: ignore[attr-defined]
+    portal.call(client.app.state.tasks.stop)  # type: ignore[attr-defined]
+    portal.call(tasks.start)
+    client.app.state.tasks = tasks  # type: ignore[attr-defined]
+    portal.call(tasks.submit, "echo", {})
     return client
 
 
@@ -505,7 +544,11 @@ def test_each_documented_operation_is_reachable(
     # rather than one that was plausible when it was written.
     client = fixture_remotes
     for (path, method), operation in _operations(document).items():
-        response = client.request(method, path, json=_documented_request(operation))
+        response = client.request(
+            method,
+            _concrete_path(path, operation, document),
+            json=_documented_request(operation),
+        )
 
         # The documented success status: `200` everywhere but an operation that accepts
         # background work, which documents — and answers — `202`.
