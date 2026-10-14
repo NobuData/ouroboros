@@ -5,8 +5,8 @@
 > [#51](https://github.com/NobuData/ouroboros/issues/51); the versioned contract — the
 > echo round trip and the error envelope — with
 > [#52](https://github.com/NobuData/ouroboros/issues/52). It ships as a container since
-> [#53](https://github.com/NobuData/ouroboros/issues/53). The work it will eventually
-> broker is [#54](https://github.com/NobuData/ouroboros/issues/54).
+> [#53](https://github.com/NobuData/ouroboros/issues/53). Its task queue and worker pool
+> arrived with [#54](https://github.com/NobuData/ouroboros/issues/54).
 
 ## Purpose
 
@@ -84,6 +84,7 @@ That is the command the image runs, minus the `uv` — see [Container](#containe
 | `GET /healthz` | no | `{"status":"ok"}` — liveness, for a container platform's probe |
 | `GET /` | yes | The service name and its installed version |
 | `GET /v0/status` | yes | Version and uptime — what `ouroboros-rest`'s readiness probe reads |
+| `POST /v0/tasks` · `GET /v0/tasks/{task_id}` · `POST /v0/tasks/{task_id}/cancel` | yes | The in-process task queue: submit (`202`), poll, cancel; see [The task queue](#the-task-queue) — #54 |
 | `POST /v0/tasks/echo` | yes | The contract exemplar: `{task_kind, payload}` back as `{accepted, echo, engine_version}` |
 | `POST /v0/estimate` | yes | Size one issue: `{issue, context}` in, one version of K.2's estimate row out |
 | `POST /v0/workflows/validate` | yes | The engine's findings on a workflow definition — the publish gate's second opinion |
@@ -546,6 +547,25 @@ writes, and that every operation leaves a clone's — and the remote's — bytes
 fixture repository (`tests/code_fixtures.py`) is built commit by commit with fixed dates, so its
 ids are the same everywhere and the documented examples are what it answers.
 
+## The task queue
+
+`ouroboros_engine/tasks/` (#54) is a registry of task kinds, an in-process `asyncio.Queue` and a pool
+of 4 worker coroutines started by the application's lifespan. Two kinds are registered: `sleep`
+(`{"seconds": 0…300}`) and `echo`. A record moves `queued → running → done | failed | cancelled`.
+
+```console
+$ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" -H 'content-type: application/json' \
+    -d '{"task_kind":"sleep","payload":{"seconds":2}}' localhost:8000/v0/tasks && echo
+{"task_id":"5f0c…","task_kind":"sleep","status":"queued",…}
+$ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" localhost:8000/v0/tasks/5f0c… && echo
+{"task_id":"5f0c…","status":"done","result":{"slept_seconds":2.0},…}
+```
+
+**Nothing is durable.** A graceful shutdown cancels running tasks (`engine_shutdown`); after any
+restart every old id answers `404 task_not_found` and `ouroboros-rest` resubmits. The restart
+behaviour and the counts that would justify an external queue are
+[DECISION_TASK_QUEUE.md](../docs/DECISION_TASK_QUEUE.md).
+
 ## The investigation loop
 
 `POST /v0/investigate` (CM.1, [#620](https://github.com/NobuData/ouroboros/issues/620)) accepts an
@@ -572,8 +592,8 @@ investigation, answers `202`, and runs `loop-v1` in the background. `ouroboros_e
 - `control.py` — the control plane's `/internal/research/*` routes: start, tool operation,
   checkpoint, brief, finish.
 - `runner.py` — daemon threads, at most four investigations at once (`503
-  investigation_capacity` past that). It stands in for the task model
-  ([#54](https://github.com/NobuData/ouroboros/issues/54)).
+  investigation_capacity` past that). It predates the task queue
+  ([#54](https://github.com/NobuData/ouroboros/issues/54)) and has not been moved onto it.
 
 **Nothing durable lives here.** The lifecycle row, the citation ledger, the checkpoint and the
 usage rows are `ouroboros-rest`'s. A restarted engine has forgotten every investigation;
@@ -969,7 +989,7 @@ ouroboros-engine/
 │   │   ├── health.py   #   GET /healthz — the one public path
 │   │   ├── root.py     #   GET /
 │   │   ├── status.py   #   GET /v0/status
-│   │   ├── tasks.py    #   POST /v0/tasks/echo — the contract exemplar
+│   │   ├── tasks.py    #   /v0/tasks — submit, poll, cancel · #54; /echo — the contract exemplar
 │   │   ├── estimate.py #   POST /v0/estimate — size one issue                   · #105
 │   │   ├── workflows.py#   POST /v0/workflows/validate · /dry-run               · #144
 │   │   ├── plan.py     #   POST /v0/plan — draft a batch of tickets             · #277
@@ -1026,6 +1046,7 @@ ouroboros-engine/
 │   ├── code/           # clones, ReadOnlyRepo, blame/history/deps, bisect line  · #617
 │   ├── investigation/  # loop-v1: plan → tools → synthesize → brief; citation gate · #620
 │   ├── dryrun/         # the deep dry-run harness: virtual workspace, tool guard, stages · #560
+│   ├── tasks/          # task registry, asyncio queue & worker pool; nothing durable · #54
 │   ├── skills/         # skill execution: procedure as prompt, validated output, one re-ask · #624
 │   ├── dev.py          # `uv run dev` entry point; not imported by the application
 │   ├── main.py         # create_app() and the `app` uvicorn serves

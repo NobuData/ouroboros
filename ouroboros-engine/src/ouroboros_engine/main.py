@@ -17,6 +17,8 @@ committed file this module loads rather than a document FastAPI derives from the
 
 import importlib
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -58,6 +60,8 @@ from ouroboros_engine.openapi import document
 from ouroboros_engine.planning.outline_planner import OutlinePlanner
 from ouroboros_engine.settings import Settings, load_settings
 from ouroboros_engine.skills.runner import SkillRunner
+from ouroboros_engine.tasks.queue import TaskQueue
+from ouroboros_engine.tasks.registry import default_registry as default_task_registry
 
 #: The paths served without the internal key. Liveness only, and it is the route module
 #: that says so — see :mod:`ouroboros_engine.api.health`. The OpenAPI document is
@@ -66,6 +70,28 @@ from ouroboros_engine.skills.runner import SkillRunner
 #: operation but this one carries the ``InternalKey`` requirement — and
 #: ``tests/test_openapi.py`` asserts the two agree.
 _PUBLIC_PATHS = (health.HEALTH_PATH,)
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Run the task worker pool for as long as the application serves.
+
+    Reads ``app.state.tasks`` at startup and again at shutdown, so a queue a test installs
+    in place of the default is the one stopped. On shutdown running tasks are cancelled and
+    every record is dropped with the process — see :mod:`ouroboros_engine.tasks.queue`.
+
+    Args:
+        app: The application.
+
+    Yields:
+        Nothing; the application serves while suspended here.
+    """
+    await app.state.tasks.start()
+    try:
+        yield
+    finally:
+        tasks: TaskQueue = app.state.tasks
+        await tasks.stop()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -111,6 +137,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title=info["title"],
         description=info["description"],
         version=info["version"],
+        lifespan=_lifespan,
     )
 
     def committed_document() -> dict:
@@ -219,6 +246,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             UrllibGateway(),
         )
     )
+
+    # The task queue (#54): an in-process asyncio queue and worker pool behind
+    # `/v0/tasks`. Its workers start with the lifespan above and nothing it holds survives
+    # the process; `ouroboros-rest` resubmits what a restart lost.
+    app.state.tasks = TaskQueue(default_task_registry())
 
     # Added before any route is registered, and the only middleware there is, so it is
     # the outermost thing a request meets: the guard cannot be bypassed by a path that

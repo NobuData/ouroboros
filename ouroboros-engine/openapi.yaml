@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.7.30
+  version: 0.7.31
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -157,9 +157,8 @@ paths:
       tags: [v0]
       summary: Echo a task back
       description: |-
-        Accept a task and hand it straight back. The engine has no real work to do yet —
-        the task registry, the queue and the worker model are
-        [#54](https://github.com/NobuData/ouroboros/issues/54) — and this route exists to
+        Accept a task and hand it straight back, without queueing it — the queue is
+        `POST /v0/tasks`. This route was the first under `/v0`, and exists to
         settle, with one working round trip, what every later operation would otherwise
         settle again: how a request body is described, how it is validated, what a
         refusal looks like, and where the version of the answering build is reported.
@@ -200,6 +199,130 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
+
+  /v0/tasks:
+    post:
+      tags: [v0]
+      summary: Submit a task to the queue
+      description: |-
+        Validate a task against its registered kind and put it on this engine's in-process
+        queue ([#54](https://github.com/NobuData/ouroboros/issues/54)). A fixed pool of
+        workers runs queued tasks in submission order; poll `GET /v0/tasks/{task_id}` for
+        the outcome.
+
+        Two kinds are registered: `sleep` (`{"seconds": 0…300}`, answers
+        `{"slept_seconds": …}`) and `echo` (any object, answered back as the result).
+
+        **Nothing is durable.** Records live in this process's memory: after a restart
+        every id it issued answers `404 task_not_found`, and the caller resubmits. A
+        graceful shutdown cancels running tasks first. See
+        `docs/DECISION_TASK_QUEUE.md`.
+      operationId: submitTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskSubmitRequest"
+            example:
+              task_kind: sleep
+              payload:
+                seconds: 0.5
+      responses:
+        "202":
+          description: The task, accepted and `queued`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskRecord"
+              example:
+                task_id: 5f0c6a52-6a1c-4e3b-9a55-1c2f0f9d6a10
+                task_kind: sleep
+                status: queued
+                payload:
+                  seconds: 0.5
+                result: null
+                error: null
+                created_at: "2026-10-14T18:00:00Z"
+                started_at: null
+                finished_at: null
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/TaskUnprocessable"
+        "503":
+          $ref: "#/components/responses/TaskQueueFull"
+
+  /v0/tasks/{task_id}:
+    get:
+      tags: [v0]
+      summary: Read a task's status
+      description: |-
+        The task as this process knows it: `queued`, `running`, `done` (with `result`),
+        `failed` (with `error`) or `cancelled`. The last three are final. The oldest
+        finished records are forgotten past the retention bound (1000), and nothing
+        survives a restart; either way the id answers `404 task_not_found`.
+      operationId: getTask
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: The task's record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskRecord"
+              example:
+                task_id: 5f0c6a52-6a1c-4e3b-9a55-1c2f0f9d6a10
+                task_kind: sleep
+                status: done
+                payload:
+                  seconds: 0.5
+                result:
+                  slept_seconds: 0.5
+                error: null
+                created_at: "2026-10-14T18:00:00Z"
+                started_at: "2026-10-14T18:00:00.010Z"
+                finished_at: "2026-10-14T18:00:00.512Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TaskNotFound"
+
+  /v0/tasks/{task_id}/cancel:
+    post:
+      tags: [v0]
+      summary: Cancel a task
+      description: |-
+        Cancel a `queued` or `running` task. The answer is already final: a queued task is
+        `cancelled` and never starts, a running task's handler is cancelled and the record
+        is `cancelled` at once. A task that had already finished is answered unchanged, so
+        a caller reads `status` to learn whether its cancel won.
+      operationId: cancelTask
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: The task's record after the call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskRecord"
+              example:
+                task_id: 5f0c6a52-6a1c-4e3b-9a55-1c2f0f9d6a10
+                task_kind: sleep
+                status: cancelled
+                payload:
+                  seconds: 0.5
+                result: null
+                error: null
+                created_at: "2026-10-14T18:00:00Z"
+                started_at: "2026-10-14T18:00:00.010Z"
+                finished_at: "2026-10-14T18:00:00.200Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/TaskNotFound"
 
   /v0/estimate:
     post:
@@ -2221,6 +2344,16 @@ components:
         other credential and no other scheme — no bearer token, no user identity. This
         is a service-to-service header, and it is generated per environment.
 
+  parameters:
+    TaskId:
+      name: task_id
+      in: path
+      required: true
+      description: The id `POST /v0/tasks` issued.
+      schema:
+        type: string
+      example: 5f0c6a52-6a1c-4e3b-9a55-1c2f0f9d6a10
+
   responses:
     Unauthorized:
       description: |-
@@ -2316,6 +2449,43 @@ components:
             code: code_remote_auth
             message: The repository could not be fetched.
             details: {}
+    TaskUnprocessable:
+      description: '`validation_failed` — the body, or the payload against its kind''s payload model, is malformed,
+        with one entry per field (payload fields as `payload.<field>`); or `task_kind_unknown` — the kind is
+        well-formed but nothing is registered under it. Nothing was queued.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: task_kind_unknown
+            message: No task kind 'build' is registered on this engine.
+            details:
+              task_kind: build
+              registered: [echo, sleep]
+    TaskQueueFull:
+      description: '`task_queue_full` — the queue already holds its bound of waiting tasks (1000), or the worker
+        pool is not running. Nothing was queued; submit it again later.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: task_queue_full
+            message: The task queue is not accepting work right now. Submit it again in a moment.
+            details: {}
+    TaskNotFound:
+      description: '`task_not_found` — this process holds no task under that id: never submitted here, forgotten
+        past the finished-record bound, or issued by a process that has since restarted.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: task_not_found
+            message: This engine process holds no task with that id. It may have restarted; submit the task again.
+            details:
+              task_id: 5f0c6a52-6a1c-4e3b-9a55-1c2f0f9d6a10
     InvestigationUnprocessable:
       description: '`validation_failed` — the body is malformed, with one entry per field; or `investigation_playbook_unsupported`
         — the playbook names a synthesis template, or a deliverable, this build cannot produce. Refused before
@@ -2425,6 +2595,84 @@ components:
             Small and shrinking across calls means something is restarting the container.
           examples: [1234.567]
 
+    TaskSubmitRequest:
+      type: object
+      title: TaskSubmitRequest
+      description: The body of a `POST /v0/tasks` request. Closed.
+      additionalProperties: false
+      required: [task_kind]
+      properties:
+        task_kind:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+          description: Which registered handler runs the task — `sleep` or `echo` today.
+          examples: [sleep]
+        payload:
+          type: object
+          description: |-
+            The task's arguments, validated against the kind's own payload model before
+            anything is queued. Omitted, it is `{}`.
+          examples: [{ seconds: 0.5 }]
+
+    TaskError:
+      type: object
+      title: TaskError
+      description: |-
+        Why a task ended `failed`, or `cancelled` by a shutdown: the handler's own code
+        and message, `task_crashed` for an unexpected handler error, or `engine_shutdown`.
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          examples: [task_crashed]
+        message:
+          type: string
+          examples: ["The task's handler failed unexpectedly."]
+
+    TaskRecord:
+      type: object
+      title: TaskRecord
+      description: One task as this engine process knows it. Held in memory only.
+      additionalProperties: false
+      required:
+        [task_id, task_kind, status, payload, result, error, created_at, started_at, finished_at]
+      properties:
+        task_id:
+          type: string
+          examples: [5f0c6a52-6a1c-4e3b-9a55-1c2f0f9d6a10]
+        task_kind:
+          type: string
+          examples: [sleep]
+        status:
+          type: string
+          enum: [queued, running, done, failed, cancelled]
+          description: "`done`, `failed` and `cancelled` are final."
+        payload:
+          type: object
+          description: The payload as validated.
+        result:
+          type: [object, "null"]
+          description: The handler's answer once `done`; `null` otherwise.
+        error:
+          oneOf:
+            - $ref: "#/components/schemas/TaskError"
+            - type: "null"
+          description: Why it ended `failed` (or was stopped at shutdown); `null` otherwise.
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: [string, "null"]
+          format: date-time
+          description: When a worker picked it up; `null` while queued or if cancelled first.
+        finished_at:
+          type: [string, "null"]
+          format: date-time
+          description: When it reached a final status.
+
     EchoRequest:
       type: object
       title: EchoRequest
@@ -2467,8 +2715,7 @@ components:
             Always `true`. This route has exactly one success: a request that validates is
             accepted, and one that does not is a `422` rather than a `200` carrying
             `false`. A task that can be refused while being well-formed is
-            [#54](https://github.com/NobuData/ouroboros/issues/54)'s, and will say so on a
-            different route.
+            `POST /v0/tasks`'s concern, answered there as `task_kind_unknown`.
           examples: [true]
         echo:
           $ref: "#/components/schemas/EchoRequest"

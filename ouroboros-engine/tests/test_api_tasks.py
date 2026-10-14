@@ -7,6 +7,8 @@ takes a body — a `401` for an unauthenticated caller, before anything reads th
 all.
 """
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -14,6 +16,11 @@ from ouroboros_engine import __version__
 from ouroboros_engine.api.tasks import MAX_TASK_KIND_LENGTH
 from ouroboros_engine.api.v0 import V0_PREFIX
 from ouroboros_engine.core.errors import VALIDATION_FAILED, VALIDATION_MESSAGE
+from ouroboros_engine.tasks.contract import (
+    TASK_KIND_UNKNOWN,
+    TASK_NOT_FOUND,
+    TASK_QUEUE_FULL,
+)
 
 ECHO_PATH = f"{V0_PREFIX}/tasks/echo"
 
@@ -238,3 +245,120 @@ def test_the_route_documents_the_refusal_it_can_answer_with(client: TestClient) 
         "an operation that validates a body can refuse one, and a caller reading the "
         "document has to know what that looks like"
     )
+
+
+# ---------------------------------------------------------------------------
+# The queue: POST /v0/tasks, GET /v0/tasks/{task_id}, POST /v0/tasks/{task_id}/cancel
+# ---------------------------------------------------------------------------
+
+TASKS_PATH = f"{V0_PREFIX}/tasks"
+
+
+def _poll_until_final(client: TestClient, task_id: str) -> dict:
+    """Poll a task the way a caller would, until it is final.
+
+    Args:
+        client: The authenticated client.
+        task_id: The task.
+
+    Returns:
+        The final record.
+    """
+    for _ in range(500):
+        record = client.get(f"{TASKS_PATH}/{task_id}").json()
+        if record["status"] in ("done", "failed", "cancelled"):
+            return record
+        time.sleep(0.01)
+    raise AssertionError(f"task {task_id} never finished")
+
+
+def test_a_sleep_task_is_submitted_polled_and_completed(client: TestClient) -> None:
+    submitted = client.post(
+        TASKS_PATH, json={"task_kind": "sleep", "payload": {"seconds": 0.05}}
+    )
+
+    assert submitted.status_code == 202
+    assert submitted.json()["status"] == "queued"
+
+    record = _poll_until_final(client, submitted.json()["task_id"])
+
+    assert record["status"] == "done"
+    assert record["result"] == {"slept_seconds": 0.05}
+    assert record["error"] is None
+    assert record["finished_at"] is not None
+
+
+def test_a_running_task_is_cancelled_through_the_route(client: TestClient) -> None:
+    task_id = client.post(
+        TASKS_PATH, json={"task_kind": "sleep", "payload": {"seconds": 300}}
+    ).json()["task_id"]
+
+    cancelled = client.post(f"{TASKS_PATH}/{task_id}/cancel")
+
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    assert client.get(f"{TASKS_PATH}/{task_id}").json()["status"] == "cancelled"
+
+
+def test_an_unknown_kind_is_refused_naming_what_is_registered(
+    client: TestClient,
+) -> None:
+    response = client.post(TASKS_PATH, json={"task_kind": "build", "payload": {}})
+
+    assert response.status_code == 422
+    assert response.json()["code"] == TASK_KIND_UNKNOWN
+    assert response.json()["details"] == {
+        "task_kind": "build",
+        "registered": ["echo", "sleep"],
+    }
+
+
+def test_a_payload_the_kind_cannot_run_is_refused_by_field(client: TestClient) -> None:
+    response = client.post(
+        TASKS_PATH, json={"task_kind": "sleep", "payload": {"seconds": -1}}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == VALIDATION_FAILED
+    assert list(response.json()["details"]) == ["payload.seconds"]
+
+
+def test_a_malformed_submission_is_refused_before_the_queue(client: TestClient) -> None:
+    response = client.post(TASKS_PATH, json={"task_kind": "Sleep", "extra": 1})
+
+    assert response.status_code == 422
+    assert set(response.json()["details"]) == {"task_kind", "extra"}
+
+
+@pytest.mark.parametrize("suffix", ["", "/cancel"])
+def test_an_unknown_id_is_not_found(client: TestClient, suffix: str) -> None:
+    method = client.post if suffix else client.get
+
+    response = method(f"{TASKS_PATH}/no-such-task{suffix}")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == TASK_NOT_FOUND
+    assert response.json()["details"] == {"task_id": "no-such-task"}
+
+
+def test_a_queue_that_is_not_running_refuses_with_503(client: TestClient) -> None:
+    client.portal.call(client.app.state.tasks.stop)  # type: ignore[attr-defined]
+
+    response = client.post(TASKS_PATH, json={"task_kind": "echo", "payload": {}})
+
+    assert response.status_code == 503
+    assert response.json()["code"] == TASK_QUEUE_FULL
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("POST", TASKS_PATH),
+        ("GET", f"{TASKS_PATH}/any"),
+        ("POST", f"{TASKS_PATH}/any/cancel"),
+    ],
+)
+def test_the_queue_routes_need_the_internal_key(
+    anonymous_client: TestClient, method: str, path: str
+) -> None:
+    assert anonymous_client.request(method, path, json={}).status_code == 401

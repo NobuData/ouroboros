@@ -2121,7 +2121,7 @@ nav item ─▶ /insights ─▶ [shell]│ComingSoon: thumbnail + "Merge rate, 
 | 6.2 | #51 | 🟢 Done | ouroboros-engine: [6.2] Health, version & internal auth | `/healthz`, `/v0/status`, shared-secret middleware | mvp, engine | N (after 6.1) | Y | S | ouroboros-engine |
 | 6.3 | #52 | 🟢 Done | ouroboros-engine: [6.3] Internal API contract v0 | Versioned contract + task echo stub consumed by 4.9 | mvp, engine, rest | N (after 6.2) | Y | M | ouroboros-engine, ouroboros-rest |
 | 6.4 | #53 | 🟢 Done | ouroboros-engine: [6.4] Dockerfile & container build | Slim production image | mvp, engine, infra | N (after 6.2) | Y | S | ouroboros-engine |
-| 6.5 | #54 | 🟡 Open | ouroboros-engine: [6.5] Task execution skeleton (queue & worker model) | In-process task registry/queue shape for future loop work | mvp, live-loop, engine | Y (after 6.3) | N | L | ouroboros-engine |
+| 6.5 | ✅ #54 | 🟢 Done | ouroboros-engine: [6.5] Task execution skeleton (queue & worker model) | In-process task registry/queue shape for future loop work | mvp, live-loop, engine | Y (after 6.3) | N | L | ouroboros-engine |
 
 ### Issue 6.1 — ouroboros-engine: [6.1] FastAPI service scaffold
 
