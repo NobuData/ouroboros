@@ -347,6 +347,7 @@ service never starts half-configured.
 | `OURO_MANAGED_KEY_POOL` | Whether this deployment declares a managed key pool — selects the [Smart Defaults](#the-first-run-launcher-and-smart-defaults) models row ([#388](https://github.com/NobuData/ouroboros/issues/388)) |     no — false     | `true` or `false` |
 | `OURO_MANAGED_KEY_TRIAL_CENTS` | The trial credit the managed key pool gives a new workspace, printed on the managed row; unset, the row names no figure |     no — unset     | whole cents, 1–1000000; refused unless `OURO_MANAGED_KEY_POOL` is `true` |
 | `OURO_HOSTED_RUNNER_POOL` | Whether this deployment declares a hosted runner pool — selects the Smart Defaults build row ([#388](https://github.com/NobuData/ouroboros/issues/388)) |     no — false     | `true` or `false` |
+| `OURO_LIVE_EXECUTION_ENABLED` | Whether this deployment may execute loops for real; off, the [loop capability report](#the-loop-capability-report) says `execution` is unavailable ([#1300](https://github.com/NobuData/ouroboros/issues/1300)) |     no — false     | `true` or `false` |
 | `OURO_DATA_REGION` | Where this deployment keeps its data, shown read-only on [the workspace card](#the-workspace-card) ([#483](https://github.com/NobuData/ouroboros/issues/483)); a label that moves nothing |     no — unset     | up to 64 of letters, digits, `. _ : / ( ) -`; no spaces; unset reads `self-hosted` |
 
 Every one of them is documented with a development default in the repo-root
@@ -4250,6 +4251,48 @@ A save writes the domain first (one transaction), then the name, so `409 domain_
 `422 validation_failed` keyed by field. A save that changes nothing writes and audits nothing.
 The plan-locked and changeable training variants are in the schema for BT.4 (#500) and are never
 produced here.
+
+## The loop capability report
+
+`GET /api/v1/loop/capabilities` (DG.2, [#1300](https://github.com/NobuData/ouroboros/issues/1300),
+decision **L10**) answers *"is the loop real here?"* in one place the product can read, so the
+UI's copy and the onboarding wizard stop deciding it for themselves. Any member may read it; the
+workspace is the session's.
+
+```
+{ deploymentEnabled: false,
+  stages: {
+    invocation:           {available: false, reason: "not_implemented",       sinceVersion: null},
+    execution:            {available: false, reason: "deployment_disabled",   sinceVersion: null},
+    guardrailEnforcement: {available: false, reason: "execution_unavailable", sinceVersion: null},
+    buildIntegration:     {available: false, reason: "no_runner",             sinceVersion: null},
+    prPublishing:         {available: false, reason: "execution_unavailable", sinceVersion: null} },
+  executors: [] }
+```
+
+**Availability is computed on every read, never configured** (`loop/loop.capabilities.ts`), and
+each stage that is not live carries the first reason that holds:
+
+| Stage | Live when | Reasons, in order |
+|---|---|---|
+| `invocation` | the invoke route is built (`INVOCATION_GATEWAY_AVAILABLE`) and the workspace has an enabled, unpaused connection whose adapter is cleared for invocation (`invocation.terms.ts`) | `not_implemented` → `no_invocable_connection` |
+| `execution` | `OURO_LIVE_EXECUTION_ENABLED` is on and the engine's `GET /v0/status` reports `task_queue: true` and at least one `executors` kind | `deployment_disabled` → `engine_unavailable` → `no_task_queue` → `no_executor` |
+| `guardrailEnforcement` | execution is — the tool policy runs inside every executor | `execution_unavailable` |
+| `buildIntegration` | one of the workspace's runners is active, online and reports `git: true` (#991) | `no_runner` → `no_source_checkout` |
+| `prPublishing` | execution is, DI.2/DI.3 have shipped (`PR_PUBLISHING_IMPLEMENTED`), and the workspace's dry-run policy is on (decision **L7**) | `execution_unavailable` → `not_implemented` → `policy_not_dry_run` |
+
+The switch defaults to off, so a deployment that upgrades never starts executing because a
+release made it possible. An engine that does not answer is the `engine_unavailable` reason, not a
+failure of the route. The engine's `task_queue` and `executors` fields are optional in
+`engine.contract.ts` — today's engine sends neither — and a kind this service does not know is
+dropped rather than failing the status. `sinceVersion` is the release that first shipped a stage
+(`STAGE_SINCE_VERSION`), set by the commit that flips its flag. Both reads of workspace rows
+(`loop.repository.ts`) carry the workspace as a parameter, so no reason reflects another
+workspace's connections or runners.
+
+The report does not admit runs. Live-run admission is DI.4's
+([#1312](https://github.com/NobuData/ouroboros/issues/1312)), evaluated when the engine claims
+work, and it reads the same switch.
 
 ## Members, capabilities & service accounts
 

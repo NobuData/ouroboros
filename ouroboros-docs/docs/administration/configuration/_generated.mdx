@@ -737,6 +737,12 @@ Which pools this deployment runs for its workspaces — what the wizard's Smart 
 
 Described with [`OURO_MANAGED_KEY_POOL`](#ouro_managed_key_pool) above.
 
+### `OURO_LIVE_EXECUTION_ENABLED`
+
+**Development default:** `false`
+
+Whether this deployment may execute loops for real: call models, edit code and open pull requests. Off unless declared, so an upgrade never starts executing on its own. With it off, the loop capability report (GET /api/v1/loop/capabilities) says execution is unavailable whatever else is ready. `true` or `false`.
+
 ### `OURO_MANAGED_KEY_TRIAL_CENTS`
 
 **Development default:** unset. Example: `500`

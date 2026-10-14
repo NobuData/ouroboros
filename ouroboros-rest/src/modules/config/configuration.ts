@@ -1362,6 +1362,14 @@ export interface Configuration {
    */
   readonly managedKeyPool: boolean;
   /**
+   * Whether this deployment allows live loop execution at all (DG.2,
+   * [#1300](https://github.com/NobuData/ouroboros/issues/1300), decision **L10**). From
+   * `OURO_LIVE_EXECUTION_ENABLED`; `false` when unset, so a deployment that upgrades never
+   * starts executing because a release made it possible. With it off, the loop capability
+   * report says `execution` is unavailable (`deployment_disabled`) whatever else is true.
+   */
+  readonly liveExecutionEnabled: boolean;
+  /**
    * The trial credit the managed key pool gives a new workspace, in cents. From
    * `OURO_MANAGED_KEY_TRIAL_CENTS`; `undefined` when unset, and the managed row then names no
    * figure — the service never invents one. Between 1 and {@link MAX_MANAGED_KEY_TRIAL_CENTS},
@@ -1478,6 +1486,7 @@ export const VARIABLES = {
   localProviderUrls: "OURO_LOCAL_PROVIDER_URLS",
   onboardingUnlockThreshold: "OURO_ONBOARDING_UNLOCK_THRESHOLD",
   managedKeyPool: "OURO_MANAGED_KEY_POOL",
+  liveExecutionEnabled: "OURO_LIVE_EXECUTION_ENABLED",
   managedKeyTrialCents: "OURO_MANAGED_KEY_TRIAL_CENTS",
   hostedRunnerPool: "OURO_HOSTED_RUNNER_POOL",
   dataRegion: "OURO_DATA_REGION",
@@ -2317,6 +2326,8 @@ const environmentShape = z.object({
   // unless declared, so a self-hosted install is never told about infrastructure it lacks. The
   // trial credit is optional even with the pool: undeclared, the wizard prints no figure.
   OURO_MANAGED_KEY_POOL: capabilityFlag(),
+  // The live-execution switch (DG.2, #1300, decision L10): off unless declared.
+  OURO_LIVE_EXECUTION_ENABLED: capabilityFlag(),
   OURO_MANAGED_KEY_TRIAL_CENTS: z
     .string()
     .regex(/^\d+$/, `expected between 1 and ${MAX_MANAGED_KEY_TRIAL_CENTS} cents`)
@@ -2634,6 +2645,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     localProviderUrls: Object.freeze(values.OURO_LOCAL_PROVIDER_URLS),
     onboardingUnlockThreshold: values.OURO_ONBOARDING_UNLOCK_THRESHOLD,
     managedKeyPool: values.OURO_MANAGED_KEY_POOL,
+    liveExecutionEnabled: values.OURO_LIVE_EXECUTION_ENABLED,
     managedKeyTrialCents: values.OURO_MANAGED_KEY_TRIAL_CENTS,
     hostedRunnerPool: values.OURO_HOSTED_RUNNER_POOL,
     dataRegion: values.OURO_DATA_REGION,
