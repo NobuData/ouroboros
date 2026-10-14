@@ -4,7 +4,11 @@
 > ADR*, with its second axis from DH.1
 > ([#1302](https://github.com/NobuData/ouroboros/issues/1302)).
 >
-> **Axis 1, orchestration:** **open**. #155 decides it in this document.
+> **Axis 1, orchestration:** decided 2026-10-14 and **adopted**: **option A, a custom asyncio
+> interpreter** in `ouroboros-engine`, holding no durable state of its own. Every durable fact
+> lives in `ouroboros-rest`, and a supervisor there resubmits a run whose heartbeat stops.
+> Temporal (B) and the Hatchet class (C) are not adopted. The graduation triggers below say
+> when that is reopened.
 >
 > **Axis 2, stage execution:** decided 2026-10-14 and **adopted**. Every model stage runs
 > through the `StageExecutor` SPI. In the MVP, single-shot stages are `native` and the
@@ -19,36 +23,187 @@ axes, decided separately, in this one document:
 
 | Axis | Question | Decided by | Status |
 |---|---|---|---|
-| 1 — Orchestration | How a workflow's stages are sequenced, persisted and resumed after a restart | #155 | Open |
+| 1 — Orchestration | How a workflow's stages are sequenced, persisted and resumed after a restart | #155 | **Adopted** |
 | 2 — Stage execution | What runs the agent loop inside one stage, and where the tool boundary sits | DH.1 | **Adopted** |
 
 The two axes are independent with one exception: a harness keeps its own session state, so
-axis 1's restart-resume prototype must include a harness stage (see § *Axis 1*).
+axis 1's restart-resume prototype includes a harness stage (§ *Axis 1*, scenarios `k2`–`k6`).
 
 ---
 
 ## Axis 1 — orchestration
 
-**Open. #155 records its decision here.** The candidates, as #155 files them:
+**Inputs:**
 
-- **A**, a custom asyncio interpreter over the #54 task skeleton (recommended);
-- **B**, Temporal;
-- **C**, the Hatchet / Inngest / Restate class.
+- #155 as filed. The decision is evaluated against our real constraints:
+  - a Python engine;
+  - Postgres-only infrastructure;
+  - long-running LLM stages;
+  - crash recovery;
+  - human-gate pauses that may last days.
+- The DG.1 amendment: the restart-resume prototype must include a stage that is a harness
+  session.
+- [`ROADMAP_MOCKUP_04_WORKFLOW_BUILDER.md`](ROADMAP_MOCKUP_04_WORKFLOW_BUILDER.md),
+  infrastructure option 3.
+- [`ARCHITECTURE.md` § 2](ARCHITECTURE.md): **the engine never talks to the database.**
+- The precedent already in production: research investigations. `ouroboros-rest` holds the
+  lifecycle row and the checkpoint. A dead engine's investigation is submitted again, and the
+  next engine resumes it from the checkpoint (`investigation/runner.py`).
 
-#155 prototypes resume after an engine restart mid-stage, then decides, and states its
-graduation triggers as numbers.
+### The candidates
 
-Axis 2 adds one input to that prototype, and it is now measured, not assumed. **A harness's
-session lives on the local disk of the process that ran it.** The SDK resumes a session by id
-from its `CLAUDE_CONFIG_DIR`. A resume from an empty config directory fails with *"No
-conversation found with session ID …"* (scenario `resume-elsewhere`, below). Whatever axis 1
-chooses, a paused or interrupted harness stage can be continued only in one of two ways:
+| | What it is | Where durable state lives |
+|---|---|---|
+| **A — Custom asyncio interpreter** | The engine interprets the pinned workflow document over #54's task skeleton. Every transition, event and checkpoint is written to `ouroboros-rest`. `ouroboros-rest` resubmits a run whose heartbeat stops | `ouroboros-rest`'s Postgres, the database every other row lives in |
+| **B — Temporal** | Durable execution with deterministic replay. Workflow code runs in the Python SDK's sandbox, and stages are activities | A Temporal Server cluster with its own persistence and visibility stores |
+| **C — The Hatchet / Inngest / Restate class** | Lighter durable-execution and queueing platforms, each with its own server | Hatchet: Postgres. Inngest: SQLite by default, Postgres optional. Restate: its own replicated log and RocksDB |
 
-1. the run's config directory survives the restart (a per-run directory on a volume the
-   restarted engine mounts); or
-2. the checkpoint carries the session transcript and writes it back before resuming.
+### Every constraint, against all three
 
-The restart-resume prototype must exercise one of the two.
+| Constraint | A — custom interpreter | B — Temporal | C — Hatchet class |
+|---|---|---|---|
+| **Python engine** | Native | The Python SDK runs workflow code in a sandbox. Code must avoid what it restricts, and a non-deterministic call fails the worker task until the code is fixed `[verified]`. Every interpreter step would be held to replay determinism | Hatchet has a Python SDK `[search-level]`. Inngest's self-hosting page shows Node.js and Go examples only `[verified]`, so its Python SDK is `[unverified]`. Restate's Python SDK is `[unverified]` |
+| **Postgres-only infrastructure** | No new store. **Measured:** the prototype's journal is everything A needs (§ *What was measured*) | A Temporal Server (two Go binaries: the server and the UI `[verified]`). PostgreSQL 12+ is supported for visibility `[verified]`, but Elasticsearch or OpenSearch is "recommended for any setup that spawns more than a few Workflow Executions" `[verified]` | Hatchet: PostgreSQL for state, RabbitMQ optional, and a single-image *Lite* for "low-throughput production" `[verified]`. Inngest: a single binary, with SQLite that "does not support scaling beyond a single node" and Postgres optional `[verified]`. Restate: an embedded replicated log, not Postgres `[search-level]` |
+| **The module contract** (§ 2) | Unchanged. The engine talks to `ouroboros-rest` only | A new service the engine must reach, holding a second copy of run state beside AP.1's read-model. Two sources of truth for *where is this run* | Same as B |
+| **Long-running LLM stages** | One worker task per stage, with a heartbeat. **Measured:** model calls held for 3 s each, killed mid-call, recovered | Activities with heartbeats, built for this | Built for this |
+| **Crash recovery** | Ours to build. **Measured** below, failure modes included | Durable and replayed. Replay does not cover a harness's own session: a harness stage is one activity, and its session state is the activity's problem, exactly as under A | As B, in each platform's model |
+| **Human gates that last days** | The run parks as a row and the engine holds nothing. **Measured:** a kill during the wait cost nothing | Signals and durable timers. A parked workflow costs history, not a thread | Durable waits or events |
+| **Operational footprint** | None new | A cluster to run, upgrade and back up, with a database and preferably a search store | One server and its store, smaller than B |
+
+### What was measured
+
+The prototype is [`prototypes/execution-engine/`](prototypes/execution-engine/README.md). It
+ran on 2026-10-14. It builds option A with three parts:
+
+- **The interpreter** (`engine.py`) runs the slice's four nodes:
+  1. `plan`: native single-shot;
+  2. `implement`: a real Claude Agent SDK session, against DH.1's stub facade;
+  3. `review`: a human gate;
+  4. `done`.
+
+  Both executors go through the `StageExecutor` SPI.
+- **A journal** (`journal.py`) stands in for `ouroboros-rest`. It provides claim-with-epoch,
+  heartbeat, checkpoint, position and AP.1-ordered events, plus a supervisor that resubmits a
+  stale run. The heartbeat is 0.5 s and the stale threshold 2 s.
+- **A driver** (`driver.py`) `SIGKILL`s the engine's whole process group at each point below,
+  harness CLI included, and starts a new engine.
+
+| Scenario | Kill point | Completed | Recovery: kill → resubmitted / first new event | Repeated work | Raw result |
+|---|---|:-:|---:|---|---|
+| `baseline` | — | ✅ | — | — (1 plan call, 4 implement calls, 3 tools) | 570 ms end to end |
+| `k1-plan-call` | During the native stage's model call | ✅ | 2.20 s / 2.23 s | **1 model call** (the plan is re-run) | Nothing journaled by the dead engine. The new one wrote all 17 events |
+| `k2-between-tools` | In the harness session, as the second model call starts | ✅ | 1.86 s / 2.11 s | 1 model call | Resumed by session id. The transcript continued at the next hint |
+| `k2-between-tools@50` / `@250` | As k2, 50 / 250 ms later | ✅ | 1.83 / 2.13 s → 2.09 / 2.44 s | 1 model call | Resumed |
+| `k3-after-tool` | After a `Write` ran, before its result reached the journal | ✅ | 1.85–1.87 s / 2.11–2.32 s | **7 of 8 runs:** none. **1 of 8:** a fresh attempt that ran the `Write` **again** | See *What did not work* |
+| `k4-gate-wait` | While the run waits on the human gate | ✅ | — | None. The engine held nothing to lose | Approved after the restart; 539 ms from approval to resubmission |
+| `k5-lost-session` | As k2, with the run's `CLAUDE_CONFIG_DIR` deleted | ✅ | 1.84 s / 2.31 s | The whole stage: attempt 2, with Read re-run and 2 model calls repeated | The resume failed, and the interpreter fell back to a new attempt |
+| `k6-zombie` | The engine frozen (`SIGSTOP`) past the threshold, a second engine takes over, then the first is thawed | ✅ | 1.89 s / 2.33 s | As k5 (the session was not yet persisted) | The thawed engine's 3 writes were refused `fenced`. It ran **no** tool after it woke |
+
+**Recovery is the stale threshold plus about 0.3 s.** It took 1.8–2.2 s against a 2 s
+threshold with a 0.5 s heartbeat. Engine start-up is about 0.5 s and overlaps the wait. With a
+production threshold the bound moves with it (see *The decision*).
+
+#### What did not work
+
+1. **The harness persists its session lazily.** `k2` killed as the next model call started
+   resumed in only **2 of 5 runs**. The other 3 found no session on disk (*"No conversation
+   found"*) and fell back to a fresh attempt. Killed 50 ms or more later, it resumed in **16 of
+   16 runs**, at delays of 50, 100, 150, 250, 500, 1 000, 2 000 and 2 800 ms. `k6` froze the
+   engine at the same moment and fell back both times it ran. So there is a window of tens of
+   milliseconds after a step in which a crash loses the whole session.
+2. **A fresh attempt repeats side effects.** In 1 of 8 `k3` runs the fallback ran the
+   `Write` a second time. Under L5 that is harmless, because every file tool overwrites to the
+   same content (or an `Edit` finds nothing to replace). A tool with an outside effect would
+   not be harmless. It must be idempotency-keyed at the control plane before it may join a
+   stage's allow-list. `push_fixup` is the first such tool.
+3. **The transcript can lose a result the working tree kept.** In the 7 `k3` runs that resumed,
+   the `Write` was not re-run, which is correct. But its `tool_result` and `file_change` died
+   with the engine, so the journal holds a request that was never answered and a change-set
+   one file short. **The change-set must come from the working tree's diff at stage end**, not
+   from events.
+4. **Fencing protected the journal, and only the journal.** In `k6` the zombie's writes were
+   refused, and its next tool call was refused at the hook because the refused heartbeat made
+   it abort. That ordering held in both runs, but it is a race between the heartbeat and the
+   harness's next tool call, not a guarantee. A thawed harness can still touch the working
+   tree until its hook refuses. The guarantee needs the working tree itself fenced (DI.1: one
+   tree per run *attempt*, or a lock file the hook checks).
+5. **A native single-shot stage is not resumable.** `k1` paid for the plan call twice. That is
+   the design (`resume: false`), and it is cheap for one call.
+6. Prototype defects that were found and fixed: a non-reentrant journal lock deadlocked the
+   driver. The DH.1 stub needed a configurable delay so a kill could land inside a model call.
+
+None of these argues for B or C. Items 1 to 4 are about the harness's own session and the
+working tree, and Temporal would inherit them: a harness stage would be one activity whose
+session is just as local and just as lazily written.
+
+### The decision
+
+**A.** The engine interprets the workflow itself and keeps nothing it cannot lose:
+
+1. **Durable state lives in `ouroboros-rest`**, alongside AP.1's run plane. That covers the
+   run's position and status, each stage's attempt and checkpoint, the transcript and the
+   gate decisions. The engine still never talks to the database.
+2. **Claim with an epoch and fence every write.** A claim increments the run's epoch, and
+   every engine write carries it. A stale epoch is refused `409 fenced`, and the engine
+   aborts its executor when its heartbeat is refused.
+3. **`ouroboros-rest` supervises.** A run that is `queued`, or `running` with a heartbeat older
+   than the stale threshold, is submitted to the engine again. The defaults are a **5 s
+   heartbeat and a 30 s stale threshold**, so recovery is about 30 s: long against the
+   measured 0.3 s of overhead, and short against any model call.
+4. **Gates park.** A run waiting on a person is a row. The engine holds no task, thread or
+   connection for it, and resumes when the decision resubmits the run.
+5. **Recovery per executor kind:**
+   - A native single-shot stage is re-run.
+   - A harness stage is resumed from its checkpoint, which is the session id, saved as soon as
+     the session reports it and after every tool result. Its `CLAUDE_CONFIG_DIR` is per run
+     and on a volume the restarted engine mounts.
+   - A resume that fails starts a fresh attempt, once.
+6. **The change-set is the working tree's diff**, reported at stage end.
+7. **Only overwrite-idempotent tools until there is a control-plane idempotency key.** Any
+   tool with an outside effect waits for one.
+
+Three reasons, in order of weight:
+
+1. **The measurement.** Every scenario completed. The failure modes found are the harness's
+   and the working tree's, which no orchestrator removes.
+2. **The constraints.** A adds no store, no service and no second copy of run state. B adds a
+   cluster and, past a few executions, a search store. C adds a server. Under B or C, AP.1's
+   read-model and the orchestrator's history would both claim to know where a run is.
+3. **The precedent.** Research investigations already run this way in production. The
+   interpreter is the same pattern with more nodes.
+
+What A gives up, stated plainly:
+
+- deterministic replay;
+- durable timers;
+- an orchestrator's history UI;
+- years of hardening.
+
+Recovery, fencing and supervision are ours to get right and keep right. The graduation
+triggers below watch that cost.
+
+### Graduation triggers
+
+The conditions that reopen axis 1. Each is a count somebody can take:
+
+1. **Recovery incidents.** **3 or more in a calendar quarter** in which an engine restart lost
+   or duplicated something a person saw:
+   - a duplicated commit, push or comment;
+   - a stage restarted after more than 10 minutes of model work;
+   - a run that stalled until a person intervened.
+2. **Resume fallbacks.** More than **5 %** of interrupted harness stages in a month fall back
+   to a fresh attempt, counted over at least 40 interruptions. The prototype's window says
+   this should be rare. If it is not, the session store needs more than a volume.
+3. **Volume.** More than **50 concurrently active runs per engine replica**, or supervisor
+   resubmission later than **2× the stale threshold at p95**. Either means work distribution
+   across replicas has to be built, and that is what a durable-execution platform sells.
+4. **Workflow features.** The workflow DSL gains a node that waits on **time** (a schedule, a
+   timeout longer than a stage, a backoff across days) or on a **child workflow**. Durable
+   timers and sub-workflows are where hand-built interpreters grow slowly into Temporal.
+
+A reopening compares A with **C first** (Hatchet, whose state lives in Postgres), then B. The
+SPI (axis 2) is unchanged by either: a stage stays one `StageExecutor` call, whichever
+orchestrator calls it.
 
 ---
 
@@ -109,7 +264,7 @@ re-test.
 | **Provider neutrality** | Any provider #235 routes to | Any provider whose format has native tool use | **Claude models only**: Anthropic "doesn't support routing Claude Code to non-Claude models through any gateway" `[verified]` | One vendor per CLI. Several vendors means several adapters |
 | **Key custody** (§ 4) | The key stays in `ouroboros-rest` (P3, #234) | Same | Through the DH.2 facade with a run-scoped credential. **Measured:** the harness sent every request to `ANTHROPIC_BASE_URL`, presented the credential it was given, and made no other request with non-essential traffic disabled | Each CLI reads its own key variable (`CODEX_API_KEY`, `CURSOR_API_KEY`) `[search-level]`. Whether each accepts a base-URL override is `[unverified]`. Without one, the key sits in the worker and § 4 breaks |
 | **Enforcement seat** | None needed: no tools | The engine's own loop, between tool calls. The seat is ours by construction | The `PreToolUse` hook. **Measured:** a denied write did not land, and a timed-out hook did not run its tool. A hook that **raised** let the tool run under the default permission mode, and **did not** under `dontAsk` | No common deny hook. Every CLI has its own permission model, and no seat is demonstrated |
-| **Resume** | Nothing to resume: re-run the call | Engine-owned message history in the checkpoint, stored wherever axis 1 stores state | **Measured:** works by session id against the same config directory, and fails against an empty one. Session state is local disk (§ *Axis 1*) | Per CLI, `[unverified]` |
+| **Resume** | Nothing to resume: re-run the call | Engine-owned message history in the checkpoint, stored wherever axis 1 stores state | **Measured:** works by session id against the same config directory, and fails against an empty one. Session state is local disk (§ *Axis 1*, `k5-lost-session`) | Per CLI, `[unverified]` |
 | **Operational footprint** | None new | None new: Python only | **Measured:** the wheel bundles a 255 MB CLI binary (2.1.300) and needs Python ≥ 3.10 (the engine runs 3.12). Each attempt is a subprocess, with about 0.25 s of start-up per session | One binary and runtime per vendor |
 | **Terms** | DH.4's per-adapter record | Same | Commercial Terms. API-key or cloud credentials only. Two open questions for Anthropic (decision **L4**). "Claude Code" may not be a product name `[verified]` | A primary-source terms record per vendor before invocation (DH.4's rule). Kiro is excluded outright `[verified]` |
 
@@ -180,8 +335,8 @@ process start-up.
    the policy forbids. `permission_mode="dontAsk"` closes it, as measured. DH.3 must use
    `dontAsk` **and** catch every exception inside the hook, answering `deny` with
    `continue: false`.
-2. **Resume across machines.** It failed as described in § *Axis 1*. It is not a defect of the
-   harness, but it is a constraint the roadmap had not stated.
+2. **Resume across machines.** It failed here, and again in axis 1's `k5-lost-session`. It
+   is not a defect of the harness, but it is a constraint the roadmap had not stated.
 3. **A deny alone does not halt.** The harness tells the model "denied", and the scripted
    model went on to try other paths. Halting is the executor's job (`continue: false`). The
    conformance kit is what catches an adapter that forgets.
@@ -225,7 +380,7 @@ What the harness gives up, stated plainly:
 - **Provider neutrality for `implement`.** Until DH.5 exists, `implement` is Claude-only
   (L3's validation point), and an executor with `provider_neutral: false` says so.
 - **About 255 MB of image.**
-- **A session store on local disk**, which axis 1 has to plan for.
+- **A session store on local disk**, which axis 1 plans for (its decision 5: a per-run volume).
 
 ### Triggers that reopen this axis
 
@@ -242,9 +397,33 @@ What the harness gives up, stated plainly:
 4. **Footprint.** The engine image grows by more than **400 MB** under DH.3, or harness
    start-up exceeds **2 s at p95** per attempt on production hardware.
 
-### What #160 builds against the SPI
+### What #160 builds
 
-This scopes [#160](https://github.com/NobuData/ouroboros/issues/160) before it starts:
+This scopes [#160](https://github.com/NobuData/ouroboros/issues/160) (T.6) against both axes
+before it starts.
+
+**Orchestration (axis 1):**
+
+- **The interpreter** runs in `ouroboros-engine` on #54's worker pool. It walks the pinned
+  document from the position `ouroboros-rest` reports and holds nothing durable. The
+  prototype's `engine.py` `interpret()` is the shape.
+- **`ouroboros-rest` gains what the prototype's journal added to AP.1:**
+  - claim-or-resume with an **epoch**, refusing a live holder `already_running`;
+  - a **heartbeat**;
+  - a **stage checkpoint** store;
+  - the run's **position**;
+  - **`409 fenced`** on any engine write carrying a stale epoch.
+
+  The research investigation routes are the precedent for the claim and the checkpoint.
+- **The supervisor lives in `ouroboros-rest`.** It resubmits `queued` runs and `running`
+  runs whose heartbeat is older than the stale threshold. The defaults are a 5 s heartbeat
+  and a 30 s threshold.
+- **Recovery:** native stages re-run; harness stages resume from the checkpointed session
+  id and fall back to one fresh attempt. The run's `CLAUDE_CONFIG_DIR` sits on a volume the
+  engine container mounts.
+- **Gates park as rows.** A decision resubmits the run.
+
+**Stage execution (axis 2):**
 
 - **Dispatch.** For each model node of the pinned document, #160 builds a `StageContext`:
   - the prompt template, rendered;
@@ -259,7 +438,9 @@ This scopes [#160](https://github.com/NobuData/ouroboros/issues/160) before it s
   is the one place a research tool is registered. Nothing else imports an adapter.
 - **Events.** #160 sends events through `execution.ingest` into AP.1:
   - `model_turn`, `tool_request` and `tool_result` as transcript batches;
-  - `file_change` folded into `PUT /files` (which triggers AP.3);
+  - the change-set for `PUT /files` (which triggers AP.3) computed from the working tree's
+    diff at stage end. `file_change` events are the transcript's, not the change-set's
+    source, because a crash can lose one (axis 1, `k3`);
   - `usage` as `POST /resources`.
 
   #160 posts nothing the executor did not emit.
@@ -299,6 +480,17 @@ This scopes [#160](https://github.com/NobuData/ouroboros/issues/160) before it s
 - The prototype and its raw results:
   [`prototypes/stage-executor/`](prototypes/stage-executor/README.md). Run 2026-10-14 with
   `claude-agent-sdk` 0.2.167 from PyPI and bundled CLI 2.1.300.
+- Axis 1's prototype and its raw results:
+  [`prototypes/execution-engine/`](prototypes/execution-engine/README.md), run 2026-10-14 on
+  the same SDK, CLI and stub facade.
+- Orchestrator facts, read 2026-10-14:
+  - Temporal: [self-hosted deployment](https://docs.temporal.io/self-hosted-guide/deployment),
+    [visibility stores](https://docs.temporal.io/self-hosted-guide/visibility) and the
+    [Python SDK sandbox](https://docs.temporal.io/develop/python/python-sdk-sandbox);
+  - Hatchet: [self-hosting](https://docs.hatchet.run/self-hosting);
+  - Inngest: [self-hosting](https://www.inngest.com/docs/self-hosting);
+  - Restate: [the anatomy of a durable execution stack](https://restate.dev/blog/the-anatomy-of-a-durable-execution-stack-from-first-principles/),
+    a vendor blog post, hence `[search-level]`.
 - [Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview) and
   [hooks](https://code.claude.com/docs/en/agent-sdk/hooks), as quoted and marked in the
   roadmap's *Infrastructure Options*, read 2026-10-10. The SDK's own option documentation

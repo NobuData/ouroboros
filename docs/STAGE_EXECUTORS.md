@@ -201,7 +201,12 @@ policy, events for another stage, and a missing outcome.
   limited to the file tools, and an isolated `CLAUDE_CONFIG_DIR`, so the engine's own login
   is never read.
 - Treat the session as local state. Resume reads the session from `CLAUDE_CONFIG_DIR`. A
-  resume on a container without that directory fails with *"No conversation found"*.
+  resume on a container without that directory fails with *"No conversation found"*. Keep
+  the directory per run, on a volume the restarted engine mounts.
+- Checkpoint the session id as soon as the session reports it, and again after every tool
+  result. The harness writes its session lazily: a crash within tens of milliseconds of a
+  step can find no session at all. When `resume()` fails, the interpreter starts one fresh
+  attempt ([`DECISION_EXECUTION_ENGINE.md`](DECISION_EXECUTION_ENGINE.md) § *Axis 1*).
 
 ## Registered executors
 

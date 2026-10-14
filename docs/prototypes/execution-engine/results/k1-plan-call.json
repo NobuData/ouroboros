@@ -1,0 +1,65 @@
+{
+  "scenario": "k1-plan-call",
+  "kill_delay_ms": 0,
+  "completed": true,
+  "final_status": "completed",
+  "stages": {
+    "implement": {
+      "attempt": 1,
+      "status": "succeeded"
+    },
+    "plan": {
+      "attempt": 1,
+      "status": "succeeded"
+    }
+  },
+  "epoch": 3,
+  "elapsed_ms": 3333,
+  "engine_ready_ms": [
+    503,
+    495
+  ],
+  "stale_threshold_ms": 2000,
+  "kill_to_resubmit_ms": 2196,
+  "kill_to_first_event_ms": 2225,
+  "model_calls": {
+    "plan": 2,
+    "implement": 4
+  },
+  "implement_request_message_counts": [
+    2,
+    5,
+    8,
+    11
+  ],
+  "tool_requests_journaled": {
+    "read_file README.md": 1,
+    "write_file greet.py": 1,
+    "write_file test_greet.py": 1
+  },
+  "tools_actually_run": {
+    "Read README.md": 1,
+    "Write greet.py": 1,
+    "Write test_greet.py": 1
+  },
+  "tools_run_by": {
+    "engine-2": 3
+  },
+  "events": {
+    "model_turn": 3,
+    "usage": 6,
+    "tool_request": 3,
+    "tool_result": 3,
+    "file_change": 2
+  },
+  "event_epochs": {
+    "2": 17
+  },
+  "refusals": {},
+  "files": {
+    "README.md": "# sandbox\n\nAdd greet() to src/greet.py.\n",
+    "src/greet.py": "def greet():\n    return 'hi'\n",
+    "src/test_greet.py": "from greet import greet\n"
+  },
+  "note": ""
+}

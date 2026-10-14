@@ -18,7 +18,7 @@ and gets a one-word answer; every request, side or main, is logged for the ADR.
 import json
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -42,6 +42,9 @@ class Facade:
     script: list[Turn]
     requests: list[dict[str, Any]] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
+    #: How long to hold a request before answering, given ``(main, turn)`` — so a test can
+    #: land a crash *during* a model call. ``None`` answers at once.
+    delay: Callable[[bool, int], float] | None = None
 
     def answer(
         self, body: dict[str, Any], headers: dict[str, str]
@@ -73,6 +76,8 @@ class Facade:
                     ),
                 }
             )
+        if self.delay is not None:
+            time.sleep(self.delay(main, assistant_turns))
         if not main:
             return [{"type": "text", "text": "ok"}]
         if assistant_turns >= len(self.script):

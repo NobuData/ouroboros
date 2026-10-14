@@ -1813,7 +1813,7 @@ e2e: parity ✓ · edit→apply ✓ · publish gate ✓ · dry-run path ✓ · r
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| T.1 | #155 | 🟡 Open | ouroboros-engine: [T.1] Execution engine ADR (custom vs Temporal vs Hatchet) | Decide the durable-execution strategy with explicit graduation triggers | mvp, live-loop, workflow, engine | Y | N | M | docs, ouroboros-engine |
+| T.1 | ✅ #155 | 🟢 Done | ouroboros-engine: [T.1] Execution engine ADR (custom vs Temporal vs Hatchet) | Decide the durable-execution strategy with explicit graduation triggers | mvp, live-loop, workflow, engine | Y | N | M | docs, ouroboros-engine |
 | T.2 | #156 | 🟡 Open | ouroboros-rest: [T.2] Jira ticket-source provider | REST v3/JQL sync + webhooks behind the Q.2 SPI | v2, sources, rest | N (after Q.5) | N | L | ouroboros-rest |
 | T.3 | #157 | 🟡 Open | ouroboros-rest: [T.3] Linear ticket-source provider | GraphQL sync + webhooks behind the Q.2 SPI | v2, sources, rest | N (after Q.5) | N | M | ouroboros-rest |
 | T.4 | #158 | 🟡 Open | ouroboros-rest: [T.4] GitLab ticket-source provider | REST v4 sync + webhooks behind the Q.2 SPI | v2, sources, rest | N (after Q.5) | N | M | ouroboros-rest |
@@ -1822,7 +1822,7 @@ e2e: parity ✓ · edit→apply ✓ · publish gate ✓ · dry-run path ✓ · r
 
 ### Issue T.1 — ouroboros-engine: [T.1] Execution engine ADR
 
-> **GitHub issue:** #155 · **Status:** 🟡 Open · **Parent epic:** #131
+> **GitHub issue:** #155 · **Status:** 🟢 Done · **Parent epic:** #131
 
 - **Problem Statement:** Infrastructure option 3 must become a decision with
   teeth before T.6 builds on it — custom asyncio interpreter vs Temporal vs
