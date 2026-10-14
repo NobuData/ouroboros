@@ -40,6 +40,14 @@ Your deployment serves the script at `/install.sh`. It fills in its own address 
 `?version=` picks the release, and the script it serves installs exactly that release. Without
 `?version=` you get the newest stable release the deployment holds.
 
+On the hosted Ouroboros, the script is served at
+[`https://get.ouroboros.build`](https://get.ouroboros.build):
+
+```bash
+curl -fsSL 'https://get.ouroboros.build' | sh -s -- \
+  --tenant <workspace> --pool <pool> --token orb_enroll_…
+```
+
 Run it as yourself. It works out what to install without special rights. It uses `sudo` only for
 the steps that write to the machine, so expect a password prompt.
 

@@ -557,7 +557,7 @@ export default function Home() {
             <ul>
               <li><a href="#enterprise">Enterprise</a></li>
               <li><a href="#cta">Pricing</a></li>
-              <li><a href="#top">Docs</a></li>
+              <li><a href="https://docs.ouroboros.build" target="_blank" rel="noopener">Docs</a></li>
               <li><a href="#top">Security</a></li>
             </ul>
           </div>
