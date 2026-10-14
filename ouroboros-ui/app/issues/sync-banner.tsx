@@ -1,13 +1,18 @@
 "use client";
 
+import Link from "next/link";
+
 import { useSecondsNow } from "@/app/shell/clock";
 import { RetryBanner } from "@/app/ui";
 
 import {
   CHECKING_LABEL,
   CHECK_AGAIN_LABEL,
+  OPEN_SETTINGS_HREF,
+  SET_TOKEN_LABEL,
   SYNC_UNREAD_HEADLINE,
   type SyncBannerState,
+  endedByToken,
   resumesIn,
 } from "./states";
 
@@ -45,6 +50,8 @@ import {
  *   down from.
  * @param props.checking Whether an ask is in flight — the control's label reports it.
  * @param props.onCheck What **Check again** does.
+ * @param props.mayAdminister Whether the reader may set the backlog token — only they are
+ *   offered the way to its card under a pause a new token ends.
  * @returns The banner, or nothing.
  */
 export function SyncBanner({
@@ -52,11 +59,13 @@ export function SyncBanner({
   readAtSeconds,
   checking,
   onCheck,
+  mayAdminister = false,
 }: Readonly<{
   state: SyncBannerState;
   readAtSeconds: number;
   checking: boolean;
   onCheck: () => void;
+  mayAdminister?: boolean;
 }>) {
   const now = useSecondsNow(readAtSeconds);
 
@@ -76,14 +85,22 @@ export function SyncBanner({
       : state.reason;
 
   return (
-    <RetryBanner
-      className="issues-sync"
-      headline={state.kind === "paused" ? state.headline : SYNC_UNREAD_HEADLINE}
-      onRetry={onCheck}
-      reason={reason}
-      retryLabel={CHECK_AGAIN_LABEL}
-      retrying={checking}
-      retryingLabel={CHECKING_LABEL}
-    />
+    <>
+      <RetryBanner
+        className="issues-sync"
+        headline={state.kind === "paused" ? state.headline : SYNC_UNREAD_HEADLINE}
+        onRetry={onCheck}
+        reason={reason}
+        retryLabel={CHECK_AGAIN_LABEL}
+        retrying={checking}
+        retryingLabel={CHECKING_LABEL}
+      />
+      {/* A pause a new token ends, for a reader who may set one: the way to the card (#1250). */}
+      {mayAdminister && endedByToken(state) && (
+        <p className="issues-sync__fix">
+          <Link href={OPEN_SETTINGS_HREF}>{SET_TOKEN_LABEL}</Link>
+        </p>
+      )}
+    </>
   );
 }

@@ -1,4 +1,5 @@
 import type { Reading } from "@/app/api/reading";
+import type { GithubToken } from "@/app/api/github-token";
 import type {
   TicketSource,
   TicketSourceCatalog,
@@ -446,7 +447,36 @@ export function readings(over: Partial<SourcesReadings> = {}): SourcesReadings {
     sources: { ok: true, value: seededSources() },
     catalog: { ok: true, value: seededCatalog() },
     statuses: seededStatuses(),
+    backlogToken: { ok: true, value: backlogToken() },
     now: READ_AT,
     ...over,
   };
 }
+
+/** The mask of the seeded workspace's backlog token. */
+export const SEEDED_TOKEN_MASK = "ghp_••••3456";
+
+/**
+ * What the service says about the workspace's backlog token
+ * ([#1250](https://github.com/NobuData/ouroboros/issues/1250)).
+ *
+ * @param over What differs.
+ * @returns A stored token, set once and never replaced.
+ */
+export function backlogToken(over: Partial<GithubToken> = {}): GithubToken {
+  return {
+    configured: true,
+    masked: SEEDED_TOKEN_MASK,
+    createdAt: "2026-09-01T09:00:00.000Z",
+    updatedAt: "2026-09-01T09:00:00.000Z",
+    ...over,
+  };
+}
+
+/** The same resource for a workspace with nothing stored. */
+export const NO_BACKLOG_TOKEN: GithubToken = {
+  configured: false,
+  masked: null,
+  createdAt: null,
+  updatedAt: null,
+};

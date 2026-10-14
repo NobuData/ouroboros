@@ -36,6 +36,9 @@ const api = vi.hoisted(() => ({
   status: vi.fn(),
 }));
 
+// The backlog token's module sits on the server-side client; its two actions have a suite of
+// their own (`backlog-token-actions.test.ts`).
+vi.mock("@/app/api/github-token", () => ({ githubToken: {} }));
 vi.mock("@/app/api/sources", () => ({
   sources: {
     catalog: () => api.catalog(),

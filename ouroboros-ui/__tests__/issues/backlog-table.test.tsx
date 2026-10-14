@@ -721,7 +721,8 @@ describe("the guidance states (#120)", () => {
     const control = screen.getByRole("link", { name: OPEN_SETTINGS_LABEL });
 
     expect(control).toHaveAttribute("href", OPEN_SETTINGS_HREF);
-    expect(control).toHaveAttribute("href", SOURCES_PATH);
+    // On that page, the Backlog token card (#1250): what ends this state.
+    expect(control).toHaveAttribute("href", `${SOURCES_PATH}#backlog-token`);
     expect(screen.queryByRole("button", { name: OPEN_SETTINGS_LABEL })).toBeNull();
     // Said once: the empty state is the explanation, so no banner repeats it.
     expect(screen.queryByText(PAUSE_HEADLINE.not_configured)).toBeNull();

@@ -53,12 +53,12 @@ in RC1; they are candidates for the release candidates after it. The Studio moun
 
 ## Progress
 
-**0 of 44 ordered issues are closed.** Every issue number in this document links to its
+**1 of 44 ordered issues is closed.** Every issue number in this document links to its
 GitHub issue, and a **✅** in front of one means that issue is **closed**.
 
 | Status | Phases | Issues |
 |--------|--------|-------:|
-| ✅ **Complete** | — | **0** |
+| ✅ **Complete** | — | **1** |
 | ⬜ **Not started** | R0, R1, R2, R3, R4, R5, R6, R7 | **0** of 44 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -390,7 +390,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 35 | **DK.1** | [#1318](https://github.com/NobuData/ouroboros/issues/1318) | Live-loop readiness preflight | ouroboros-rest, ouroboros-docs | M | DG.2, DH.4, DI.4, AG.7 |
-| 36 | *bug* | [#1250](https://github.com/NobuData/ouroboros/issues/1250) | No screen sets the workspace backlog GitHub token (PUT /settings/github-token) | ouroboros-ui | — | — |
+| 36 | *bug* | ✅ [#1250](https://github.com/NobuData/ouroboros/issues/1250) | No screen sets the workspace backlog GitHub token (PUT /settings/github-token) | ouroboros-ui | — | — |
 | 37 | **DK.2** | [#1319](https://github.com/NobuData/ouroboros/issues/1319) | Wizard readiness states — no simulated first loop | ouroboros-ui, ouroboros-docs | M | DK.1 |
 | 38 | **BD.1** | [#396](https://github.com/NobuData/ouroboros/issues/396) | Live first-loop experience | ouroboros-ui, ouroboros-rest | M | DK.1, DK.2, DI.6 |
 | 39 | **DK.3** | [#1325](https://github.com/NobuData/ouroboros/issues/1325) | Administration — enabling live execution | ouroboros-docs, HOSTING.md | S | DI.6 |

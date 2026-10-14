@@ -889,6 +889,11 @@
 }
 
 /* The first sync's progress over rows already mirrored: a status line, not a warning. */
+.issues-sync__fix {
+  margin: 0 0 var(--sp-6);
+  font-size: var(--t-sm);
+}
+
 .issues-sync__progress {
   margin: 0 0 var(--sp-6);
   color: var(--ink-mut);

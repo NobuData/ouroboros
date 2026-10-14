@@ -349,3 +349,122 @@ export function testNote(result: TicketSourceTest): TestNote {
     text: result.detail.length === 0 ? reason : `${reason} — ${result.detail}`,
   };
 }
+
+/* --------------------------------------------------------------------- the backlog token */
+
+/**
+ * The card's anchor on the page — where the Issues page's *Open settings* control lands
+ * ([#1250](https://github.com/NobuData/ouroboros/issues/1250)).
+ */
+export const BACKLOG_TOKEN_ANCHOR = "backlog-token";
+
+/** The card's title. */
+export const BACKLOG_TOKEN_TITLE = "Backlog token";
+
+/** What the token is for, and the mistake the card exists to prevent. */
+export const BACKLOG_TOKEN_NOTE =
+  "The Issues backlog reads GitHub with this token. It is separate from a source's " +
+  "credential: a token stored on a source above does not start the backlog.";
+
+/** The state line when nothing is stored. */
+export const BACKLOG_TOKEN_NONE = "No token is stored, so the Issues backlog is paused.";
+
+/** The state line when the service could not say. */
+export const BACKLOG_TOKEN_UNREAD =
+  "The token's state could not be read just now. Saving a token still works.";
+
+/** What a reader who may not set it is told instead of the form. */
+export const BACKLOG_TOKEN_READ_ONLY =
+  "The backlog token is set, replaced and removed by a workspace owner or admin.";
+
+/** The input's label. */
+export const BACKLOG_TOKEN_FIELD_LABEL = "GitHub token";
+
+/** The input's hint: the shape the service takes, and what the token must be able to do. */
+export const BACKLOG_TOKEN_FIELD_HINT =
+  "Starts with github_pat_, ghp_, gho_, ghu_, ghs_ or ghr_. It needs read access to issues " +
+  "on every repository enabled for this workspace.";
+
+/**
+ * The shape the service accepts, as the input's `pattern` — `github.token.ts`'s rule in
+ * `ouroboros-rest`: a known prefix, or a forty-character hexadecimal classic token, and no
+ * whitespace. The service checks again; this only saves a round trip on a paste error.
+ */
+export const BACKLOG_TOKEN_PATTERN =
+  "(github_pat_|ghp_|gho_|ghu_|ghs_|ghr_)\\S+|[0-9a-f]{40}";
+
+/** The shortest and longest token the service takes. */
+export const BACKLOG_TOKEN_MIN_LENGTH = 20;
+export const BACKLOG_TOKEN_MAX_LENGTH = 255;
+
+/** The submit control, with nothing stored and with something to replace. */
+export const BACKLOG_TOKEN_SAVE = "Save token";
+export const BACKLOG_TOKEN_REPLACE = "Replace token";
+
+/** Why the submit control is inert while a write is in flight. */
+export const BACKLOG_TOKEN_SAVING = "Saving…";
+
+/** The control that starts a removal, and the two that settle it. */
+export const BACKLOG_TOKEN_REMOVE = "Remove token";
+export const BACKLOG_TOKEN_REMOVE_CONFIRM = "Remove it";
+export const BACKLOG_TOKEN_REMOVE_CANCEL = "Keep it";
+
+/** What is asked before a removal. */
+export const BACKLOG_TOKEN_REMOVE_QUESTION =
+  "Remove the token? The Issues backlog pauses until another is saved.";
+
+/** Why the removal controls are inert while one is in flight. */
+export const BACKLOG_TOKEN_REMOVING = "Removing…";
+
+/** What the card says once a token is stored. */
+export const BACKLOG_TOKEN_SAVED = "Saved. The backlog picks it up on its next sync.";
+
+/** What the card says once the token is removed. */
+export const BACKLOG_TOKEN_REMOVED = "Removed. The Issues backlog is paused.";
+
+/** What the card says when the service refused the value's shape. */
+export const BACKLOG_TOKEN_SHAPE =
+  "That does not look like a GitHub token. Paste the whole token, with no spaces.";
+
+/** What the card says to somebody whose role changed while the page was open. */
+export const BACKLOG_TOKEN_FORBIDDEN =
+  "Only a workspace owner or admin may change the backlog token.";
+
+/** What the card says when a write failed for any other reason. */
+export const BACKLOG_TOKEN_FAILED =
+  "The token could not be changed just now. Nothing was stored — try again in a moment.";
+
+/**
+ * The state line for a stored token: its mask and when it was set, and when it was last
+ * replaced if it has been.
+ *
+ * @param token What the service says about it — `configured` is true.
+ * @returns `ghp_••••3456 · set 2026-09-12`, with ` · replaced 2026-10-01` after a rotation.
+ */
+export function backlogTokenState(token: {
+  readonly masked: string | null;
+  readonly createdAt: string | null;
+  readonly updatedAt: string | null;
+}): string {
+  const parts = [token.masked ?? ""];
+
+  if (token.createdAt !== null) parts.push(`set ${dayOf(token.createdAt)}`);
+  if (token.createdAt !== null && token.updatedAt !== null && token.updatedAt > token.createdAt) {
+    parts.push(`replaced ${dayOf(token.updatedAt)}`);
+  }
+
+  return parts.filter((part) => part.length > 0).join(" · ");
+}
+
+/**
+ * The calendar day of an instant, in UTC — a fixed form, so the line reads the same on the
+ * server and in every reader's browser.
+ *
+ * @param instant An ISO 8601 instant.
+ * @returns `YYYY-MM-DD`, or the text itself when it is not an instant.
+ */
+function dayOf(instant: string): string {
+  const at = new Date(instant);
+
+  return Number.isNaN(at.getTime()) ? instant : at.toISOString().slice(0, 10);
+}

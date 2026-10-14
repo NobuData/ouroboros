@@ -285,6 +285,7 @@ export function BacklogTable({
       {banner !== null && (
         <SyncBanner
           checking={checking}
+          mayAdminister={mayAdminister}
           onCheck={check}
           readAtSeconds={Math.floor(statusReadAt / 1000)}
           state={banner}

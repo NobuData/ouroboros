@@ -205,8 +205,10 @@ describe("the copy", () => {
   });
 
   it("sends the settings control to the ticket-source surface #141 built, through app/paths", () => {
-    expect(OPEN_SETTINGS_HREF).toBe(SOURCES_PATH);
-    expect(OPEN_SETTINGS_HREF).toBe("/settings/sources");
+    // The Backlog token card (#1250), not the page's top: a source's credential does not
+    // end this state, and that card is what does.
+    expect(OPEN_SETTINGS_HREF).toBe(`${SOURCES_PATH}#backlog-token`);
+    expect(OPEN_SETTINGS_HREF).toBe("/settings/sources#backlog-token");
   });
 
   it("sends Choose repos to sign-in's step 2, opened on the workspace", () => {

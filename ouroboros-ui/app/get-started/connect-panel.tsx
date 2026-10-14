@@ -8,6 +8,7 @@ import { SOURCES_PATH } from "@/app/paths";
 import { AddSourceButton, AddSourceFlow } from "@/app/sources/add-source";
 import type { SourcesReadings } from "@/app/sources/data";
 import { SourceRow } from "@/app/sources/source-row";
+import { BACKLOG_TOKEN_ANCHOR } from "@/app/sources/view";
 import { Card, CardHead, Chip } from "@/app/ui";
 import { cx } from "@/app/ui/class-names";
 
@@ -22,6 +23,8 @@ import {
   CONNECT_PILL_DONE,
   CONNECT_SETTINGS_LABEL,
   CONNECT_TITLE,
+  CONNECT_TOKEN_LABEL,
+  CONNECT_TOKEN_NOTE,
   githubSources,
 } from "./view";
 
@@ -119,6 +122,18 @@ export function ConnectPanel({ sources, stepDone, abilities }: ConnectPanelProps
           </ul>
         )}
 
+        {abilities.administer && needsBacklogToken(sources) && (
+          <p className="wizard-connect__state" role="note">
+            {CONNECT_TOKEN_NOTE}{" "}
+            <Link
+              className="wizard-connect__settings"
+              href={`${SOURCES_PATH}#${BACKLOG_TOKEN_ANCHOR}`}
+            >
+              {CONNECT_TOKEN_LABEL}
+            </Link>
+          </p>
+        )}
+
         <div className="wizard-connect__actions">
           <AddSourceButton />
           <p className="wizard-connect__next">{CONNECT_NEXT}</p>
@@ -126,4 +141,23 @@ export function ConnectPanel({ sources, stepDone, abilities }: ConnectPanelProps
       </Card>
     </AddSourceFlow>
   );
+}
+
+/**
+ * Whether the workspace is known to have no backlog token
+ * ([#1250](https://github.com/NobuData/ouroboros/issues/1250)).
+ *
+ * Only a read that answered *not configured* counts: while the sources are loading, when the
+ * token's state could not be read, and for a reader the service does not tell, nothing is
+ * claimed.
+ *
+ * @param sources The panel's reading of the ticket sources.
+ * @returns Whether to say the backlog has no token.
+ */
+function needsBacklogToken(sources: Reading<SourcesReadings> | null): boolean {
+  if (sources?.ok !== true) return false;
+
+  const token = sources.value.backlogToken;
+
+  return token?.ok === true && !token.value.configured;
 }

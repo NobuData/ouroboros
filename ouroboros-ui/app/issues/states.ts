@@ -163,6 +163,26 @@ export const PAUSE_HEADLINE: Record<SyncPause, string> = {
   no_repositories: "Sync paused — no repository is enabled.",
 };
 
+/** The pauses a new backlog token ends: none is stored, or GitHub rejected the one that is. */
+const TOKEN_PAUSES: ReadonlySet<SyncPause> = new Set<SyncPause>(["not_configured", "unauthorized"]);
+
+/**
+ * The link under a banner whose pause a new token ends
+ * ([#1250](https://github.com/NobuData/ouroboros/issues/1250)). It goes where
+ * {@link OPEN_SETTINGS_HREF} does: the **Backlog token** card.
+ */
+export const SET_TOKEN_LABEL = "Set the backlog token →";
+
+/**
+ * Whether the banner's pause is one the **Backlog token** card ends.
+ *
+ * @param state What the banner draws.
+ * @returns Whether to offer the way to that card.
+ */
+export function endedByToken(state: SyncBannerState): boolean {
+  return state.kind === "paused" && TOKEN_PAUSES.has(state.pause);
+}
+
 /**
  * What the banner says under a pause the service gave no sentence for. The contract carries a
  * message beside every pause, so this is the guard rather than the expected case — the
@@ -238,8 +258,13 @@ export const OPEN_SETTINGS_LABEL = "Open settings";
  * existed — #49's *no dead nav links*, applied to a button. Now it is a link, and the
  * destination is `app/paths.ts`'s so the sidebar's Settings entry, the settings tab set and
  * this control cannot come to disagree about where the sources live.
+ *
+ * It lands on that page's **Backlog token** card
+ * ([#1250](https://github.com/NobuData/ouroboros/issues/1250)) — `app/sources/view.ts`'s
+ * `BACKLOG_TOKEN_ANCHOR` — because that card, and not a source's credential, is what ends
+ * this state.
  */
-export const OPEN_SETTINGS_HREF = SOURCES_PATH;
+export const OPEN_SETTINGS_HREF = `${SOURCES_PATH}#backlog-token`;
 
 /**
  * What a reader who may not connect one is told instead of the control.

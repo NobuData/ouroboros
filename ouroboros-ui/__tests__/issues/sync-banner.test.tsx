@@ -160,3 +160,51 @@ describe("both palettes", () => {
     expect(maskIds(light!)).toBe(maskIds(dark!));
   });
 });
+
+describe("the way to the backlog token (#1250)", () => {
+  /** The banner as an owner or an admin reads it. */
+  function forAdmin(state: SyncBannerState) {
+    return (
+      <SyncBanner
+        checking={false}
+        mayAdminister
+        onCheck={() => {}}
+        readAtSeconds={Math.floor(READ_AT / 1000)}
+        state={state}
+      />
+    );
+  }
+
+  it.each(["not_configured", "unauthorized"] as const)(
+    "is offered under a %s pause, to the card that ends it",
+    (pause) => {
+      render(forAdmin(pausedState(pause)));
+
+      expect(screen.getByRole("link", { name: "Set the backlog token →" })).toHaveAttribute(
+        "href",
+        "/settings/sources#backlog-token",
+      );
+    },
+  );
+
+  it.each(["not_found", "rate_limited", "upstream_error", "no_repositories"] as const)(
+    "is not offered under a %s pause, which a token does not end",
+    (pause) => {
+      render(forAdmin(pausedState(pause)));
+
+      expect(screen.queryByRole("link")).toBeNull();
+    },
+  );
+
+  it("is not offered to a reader who may not set the token", () => {
+    render(banner(pausedState("not_configured")));
+
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("is not offered when the status could not be read", () => {
+    render(forAdmin({ kind: "unread", reason: UNSYNCED_REASON }));
+
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+});

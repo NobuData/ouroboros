@@ -6,6 +6,7 @@ import {
   READ_AT,
   SEEDED_GITHUB_ID,
   SEEDED_JIRA_ID,
+  backlogToken,
   catalogPayload,
   sourcePage,
   statusReport,
@@ -14,6 +15,7 @@ import {
 const list = vi.fn();
 const catalog = vi.fn();
 const status = vi.fn();
+const readToken = vi.fn();
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/app/api/sources", () => ({
@@ -24,6 +26,8 @@ vi.mock("@/app/api/sources", () => ({
   },
 }));
 
+vi.mock("@/app/api/github-token", () => ({ githubToken: { read: () => readToken() } }));
+
 const { readSources } = await import("@/app/sources/data");
 
 /**
@@ -31,13 +35,18 @@ const { readSources } = await import("@/app/sources/data");
  * once, then one per source, and one failed read is one degraded region.
  */
 
-const ACCESS = {} as Parameters<typeof readSources>[0];
+type Access = Parameters<typeof readSources>[0];
+
+/** A reader the service tells about the backlog token, and one it does not. */
+const ACCESS = { membership: { roles: ["owner"] } } as unknown as Access;
+const VIEWER_ACCESS = { membership: { roles: ["viewer"] } } as unknown as Access;
 
 const NOW = new Date(READ_AT);
 
 beforeEach(() => {
   list.mockReset().mockResolvedValue(sourcePage());
   catalog.mockReset().mockResolvedValue(catalogPayload());
+  readToken.mockReset().mockResolvedValue(backlogToken());
   status.mockReset().mockImplementation((id: string) => Promise.resolve(statusReport({ sourceId: id })));
 });
 
@@ -92,5 +101,27 @@ describe("readSources", () => {
     list.mockRejectedValue(new Error("NEXT_REDIRECT"));
 
     await expect(readSources(ACCESS, NOW)).rejects.toThrow("NEXT_REDIRECT");
+  });
+
+  it("reads the backlog token's state for an owner or an admin", async () => {
+    const readings = await readSources(ACCESS, NOW);
+
+    expect(readings.backlogToken).toEqual({ ok: true, value: backlogToken() });
+  });
+
+  it("does not ask for it on behalf of a reader the service would refuse", async () => {
+    const readings = await readSources(VIEWER_ACCESS, NOW);
+
+    expect(readings.backlogToken).toBeNull();
+    expect(readToken).not.toHaveBeenCalled();
+  });
+
+  it("degrades the token's state alone when its read failed", async () => {
+    readToken.mockRejectedValue(new ApiError(503, "unavailable", "Try again shortly."));
+
+    const readings = await readSources(ACCESS, NOW);
+
+    expect(readings.backlogToken).toEqual({ ok: false, reason: "Try again shortly." });
+    expect(readings.sources.ok).toBe(true);
   });
 });

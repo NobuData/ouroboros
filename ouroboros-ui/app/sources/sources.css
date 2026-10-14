@@ -338,6 +338,46 @@
   line-height: var(--lh-body);
 }
 
+/* ---------- the backlog token card ---------- */
+
+.sources-token {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  margin-top: var(--sp-8);
+}
+
+.sources-token__heading {
+  margin: 0;
+  font-family: var(--f-disp);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.sources-token__state {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.sources-token__state--none {
+  color: var(--ink-mut);
+  font-family: inherit;
+}
+
+.sources-token__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.sources-token__question {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
 /* ---------- the skeleton ---------- */
 
 .sources-skeleton__action {

@@ -22,7 +22,7 @@ import type { DryRunPolicy } from "@/app/api/policies";
 import type { SourcesReadings } from "@/app/sources/data";
 
 import { enablement, org, repo } from "./login";
-import { githubEntry, source, statusReport } from "./sources";
+import { backlogToken, githubEntry, source, statusReport } from "./sources";
 
 /**
  * The Get Started wizard as BB.2 (#385) serves it — the onboarding seed's `acme-robotics/helios-firmware`,
@@ -963,6 +963,7 @@ export function sourcesReadings(overrides: Partial<SourcesReadings> = {}): Sourc
     sources: { ok: true, value: [github] },
     catalog: { ok: true, value: [githubEntry()] },
     statuses: new Map([[github.id, { ok: true, value: statusReport() }]]),
+    backlogToken: { ok: true, value: backlogToken() },
     now: "2026-10-05T12:00:00.000Z",
     ...overrides,
   };

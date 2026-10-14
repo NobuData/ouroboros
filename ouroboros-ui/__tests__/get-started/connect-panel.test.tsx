@@ -1,9 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { CONNECT_TOKEN_LABEL, CONNECT_TOKEN_NOTE } from "@/app/get-started/view";
+
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 import { sourcesReadings } from "../helpers/onboarding";
-import { SEEDED_GITHUB_ID, githubEntry, jiraSource, source } from "../helpers/sources";
+import { NO_BACKLOG_TOKEN, SEEDED_GITHUB_ID, githubEntry, jiraSource, source } from "../helpers/sources";
 
 /**
  * Step 1's embedded flow (BC.6, #395): `app/sources`' own add-source dialog and rows inside the
@@ -137,6 +139,47 @@ describe("states", () => {
     );
 
     expect(within(panel()).getByRole("alert")).toHaveTextContent("The listing timed out.");
+  });
+
+  it("points an owner at the backlog token while the workspace has none", () => {
+    render(
+      <ConnectPanel
+        abilities={OWNER}
+        sources={{ ok: true, value: sourcesReadings({ backlogToken: { ok: true, value: NO_BACKLOG_TOKEN } }) }}
+        stepDone={false}
+      />,
+    );
+
+    expect(screen.getByRole("note")).toHaveTextContent(CONNECT_TOKEN_NOTE);
+    expect(screen.getByRole("link", { name: CONNECT_TOKEN_LABEL })).toHaveAttribute(
+      "href",
+      "/settings/sources#backlog-token",
+    );
+  });
+
+  it("says nothing about the token once one is stored, when its state is unknown, or to a viewer", () => {
+    const { rerender } = render(
+      <ConnectPanel abilities={OWNER} sources={{ ok: true, value: sourcesReadings() }} stepDone={false} />,
+    );
+    expect(screen.queryByRole("link", { name: CONNECT_TOKEN_LABEL })).toBeNull();
+
+    rerender(
+      <ConnectPanel
+        abilities={OWNER}
+        sources={{ ok: true, value: sourcesReadings({ backlogToken: { ok: false, reason: "Down." } }) }}
+        stepDone={false}
+      />,
+    );
+    expect(screen.queryByRole("link", { name: CONNECT_TOKEN_LABEL })).toBeNull();
+
+    rerender(
+      <ConnectPanel
+        abilities={VIEWER}
+        sources={{ ok: true, value: sourcesReadings({ backlogToken: null }) }}
+        stepDone={false}
+      />,
+    );
+    expect(screen.queryByRole("link", { name: CONNECT_TOKEN_LABEL })).toBeNull();
   });
 
   it("renders the same markup in both palettes", () => {
