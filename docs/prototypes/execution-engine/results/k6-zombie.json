@@ -1,0 +1,71 @@
+{
+  "scenario": "k6-zombie",
+  "kill_delay_ms": 0,
+  "completed": true,
+  "final_status": "completed",
+  "stages": {
+    "implement": {
+      "attempt": 2,
+      "status": "succeeded"
+    },
+    "plan": {
+      "attempt": 1,
+      "status": "succeeded"
+    }
+  },
+  "epoch": 3,
+  "elapsed_ms": 3786,
+  "engine_ready_ms": [
+    514,
+    506
+  ],
+  "stale_threshold_ms": 2000,
+  "kill_to_resubmit_ms": 1890,
+  "kill_to_first_event_ms": 2327,
+  "model_calls": {
+    "plan": 1,
+    "implement": 6
+  },
+  "implement_request_message_counts": [
+    2,
+    5,
+    2,
+    5,
+    8,
+    11
+  ],
+  "tool_requests_journaled": {
+    "read_file README.md": 2,
+    "write_file greet.py": 1,
+    "write_file test_greet.py": 1
+  },
+  "tools_actually_run": {
+    "Read README.md": 2,
+    "Write greet.py": 1,
+    "Write test_greet.py": 1
+  },
+  "tools_run_by": {
+    "engine-1": 1,
+    "engine-2": 3
+  },
+  "events": {
+    "model_turn": 4,
+    "usage": 8,
+    "tool_request": 4,
+    "tool_result": 4,
+    "file_change": 2
+  },
+  "event_epochs": {
+    "1": 7,
+    "2": 15
+  },
+  "refusals": {
+    "fenced": 3
+  },
+  "files": {
+    "README.md": "# sandbox\n\nAdd greet() to src/greet.py.\n",
+    "src/greet.py": "def greet():\n    return 'hi'\n",
+    "src/test_greet.py": "from greet import greet\n"
+  },
+  "note": "engine-1 thawed after engine-2 took the run"
+}

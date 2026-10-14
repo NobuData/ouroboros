@@ -1,0 +1,65 @@
+{
+  "scenario": "k4-gate-wait",
+  "kill_delay_ms": 0,
+  "completed": true,
+  "final_status": "completed",
+  "stages": {
+    "implement": {
+      "attempt": 1,
+      "status": "succeeded"
+    },
+    "plan": {
+      "attempt": 1,
+      "status": "succeeded"
+    }
+  },
+  "epoch": 2,
+  "elapsed_ms": 1328,
+  "engine_ready_ms": [
+    508,
+    505
+  ],
+  "stale_threshold_ms": 2000,
+  "kill_to_resubmit_ms": 539,
+  "kill_to_first_event_ms": null,
+  "model_calls": {
+    "plan": 1,
+    "implement": 4
+  },
+  "implement_request_message_counts": [
+    2,
+    5,
+    8,
+    11
+  ],
+  "tool_requests_journaled": {
+    "read_file README.md": 1,
+    "write_file greet.py": 1,
+    "write_file test_greet.py": 1
+  },
+  "tools_actually_run": {
+    "Read README.md": 1,
+    "Write greet.py": 1,
+    "Write test_greet.py": 1
+  },
+  "tools_run_by": {
+    "engine-1": 3
+  },
+  "events": {
+    "model_turn": 3,
+    "usage": 6,
+    "tool_request": 3,
+    "tool_result": 3,
+    "file_change": 2
+  },
+  "event_epochs": {
+    "1": 17
+  },
+  "refusals": {},
+  "files": {
+    "README.md": "# sandbox\n\nAdd greet() to src/greet.py.\n",
+    "src/greet.py": "def greet():\n    return 'hi'\n",
+    "src/test_greet.py": "from greet import greet\n"
+  },
+  "note": ""
+}
