@@ -38,7 +38,7 @@ import { META_SEPARATOR } from "../provider-health/resources";
 /**
  * What a hop's decision can be, as codes.
  *
- * Seven of the nine remove a hop. The two that keep one are still codes rather than a bare
+ * Eight of the ten remove a hop. The two that keep one are still codes rather than a bare
  * `kept`, because *usable* and *nothing has checked it* are different claims and decision
  * **M8** insists the second is never rendered as the first.
  */
@@ -55,6 +55,11 @@ export const HOP_CODES = {
   unbound: "alias_unbound",
   /** Dropped — an operator switched the alias off (V019's `enabled`, CH.6 #589). */
   disabled: "alias_disabled",
+  /**
+   * Dropped — the provider-terms record does not clear this connection's kind to serve model
+   * invocation (DH.4, #1304). The mechanism AF.4 (#237) reuses for caps: dropped, with a reason.
+   */
+  notInvocable: "provider_not_invocable",
   /** Dropped — the hop sits deeper than this route's floor. */
   belowFloor: "below_floor",
   /** Dropped — a `route_local` rule fired and this hop is not on a local provider. */
@@ -311,6 +316,11 @@ export function droppedHopExplanation(
       return (
         `${role} dropped — this route may not degrade below hop ` +
         `${(floorHopIndex ?? 0).toString()}.`
+      );
+    case HOP_CODES.notInvocable:
+      return (
+        `${role} dropped — ${name} is not cleared to serve model calls under its provider's ` +
+        "terms; the Providers page says why."
       );
     case HOP_CODES.notLocal:
       return (

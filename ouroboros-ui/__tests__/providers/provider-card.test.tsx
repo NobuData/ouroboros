@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { CAP_READ_ONLY, CAP_WARNING_ONLY, NO_CAP } from "@/app/providers/caps";
 import {
+  CAN_RUN_LOOP,
+  CANNOT_RUN_LOOP,
   CAP_LABEL,
   DETECTED_LABEL,
   MODELS_LABEL,
@@ -22,6 +24,8 @@ import { provider, seededProviders } from "../helpers/models";
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
 import {
   ADDER,
+  COPILOT_NOT_INVOCABLE,
+  CURSOR_NOT_INVOCABLE,
   READ_AT,
   SEEDED_ANTHROPIC_ID,
   anthropicEntry,
@@ -269,6 +273,46 @@ describe("the other four seeded cards", () => {
     expect(card.querySelectorAll(".ou-chip--model")).toHaveLength(0);
     expect(meterReads(card)).toBe("no metered spend 2.1M tokens on-box");
     expect(card.querySelector(".providers-card__meta")).toHaveTextContent("last used 41s ago");
+  });
+});
+
+describe("the invocation line (DH.4, #1304)", () => {
+  it("says the Anthropic card can run a loop, in ok ink and with no reason", () => {
+    const card = seeded("anthropic");
+    const line = card.querySelector(".providers-card__invocation")!;
+
+    expect(line).toHaveTextContent(CAN_RUN_LOOP);
+    expect(line).not.toHaveClass("providers-card__invocation--no");
+    expect(line.querySelector(".providers-card__invocation-reason")).toBeNull();
+  });
+
+  it.each([
+    ["copilot", COPILOT_NOT_INVOCABLE],
+    ["cursor", CURSOR_NOT_INVOCABLE],
+  ])("says the %s card cannot, and why", (kind, reason) => {
+    const card = seeded(kind);
+    const line = card.querySelector(".providers-card__invocation")!;
+
+    expect(line).toHaveClass("providers-card__invocation--no");
+    expect(line).toHaveTextContent(`${CANNOT_RUN_LOOP} — ${reason}`);
+  });
+
+  it("states eligibility in both palettes", () => {
+    const card = seededCards().find((one) => one.kind === "copilot")!;
+    const model = cardModel({
+      connection: card,
+      entry: copilotEntry(),
+      health: null,
+      spend: null,
+      models: null,
+      aliases: { ok: true, value: [] },
+      now: NOW,
+    });
+
+    for (const html of renderInBothPalettes(<ProviderCard mayAdminister model={model} />)) {
+      expect(html).toContain("providers-card__invocation providers-card__invocation--no");
+      expect(html).toContain(CANNOT_RUN_LOOP);
+    }
   });
 });
 

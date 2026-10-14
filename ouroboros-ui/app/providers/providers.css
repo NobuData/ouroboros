@@ -525,6 +525,27 @@
   line-height: var(--lh-body);
 }
 
+/*
+ * Whether the connection may serve model invocation (DH.4, #1304). The label carries the
+ * answer in words, so the tone is never the only signal (§ 3.4): `ok` ink when the
+ * provider-terms record clears it, `warn` when it does not, with the service's reason beside.
+ */
+.providers-card__invocation {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.providers-card__invocation-label {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.providers-card__invocation--no .providers-card__invocation-label {
+  color: var(--warn);
+}
+
 /* ---------- the models region ---------- */
 
 .providers-card__models {

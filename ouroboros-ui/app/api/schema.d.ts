@@ -22525,7 +22525,7 @@ export interface components {
              */
             decision: "kept" | "dropped";
             /**
-             * @description Why — **stable**, and what a client branches on. Two of the nine keep a hop:
+             * @description Why — **stable**, and what a client branches on. Two of the ten keep a hop:
              *     `provider_healthy` and `provider_unknown`. They are separate codes because *usable*
              *     and *nothing has checked it* are different claims, and the second must never be
              *     rendered as the first. A code this list does not carry still arrives with a sentence
@@ -22539,7 +22539,7 @@ export interface components {
              * @example provider_healthy
              * @enum {string}
              */
-            code: "provider_healthy" | "provider_unknown" | "provider_paused" | "provider_error" | "alias_unbound" | "alias_disabled" | "below_floor" | "rule_route_local" | "local_not_allowed";
+            code: "provider_healthy" | "provider_unknown" | "provider_paused" | "provider_error" | "alias_unbound" | "alias_disabled" | "provider_not_invocable" | "below_floor" | "rule_route_local" | "local_not_allowed";
             /**
              * @description Why, as a sentence — **rendered verbatim**. A kept hop reads as the inspector's
              *     hop-meta line (`Primary · healthy · 42ms`); anything that removed a hop reads as a
@@ -24677,6 +24677,27 @@ export interface components {
          */
         ProviderConnectionStatus: "active" | "paused" | "error" | "unknown";
         /**
+         * InvocationEligibility
+         * @description Whether a connection may serve model invocation, and why not when it may not
+         *     ([#1304](https://github.com/NobuData/ouroboros/issues/1304)). The answer is the
+         *     provider-terms record's for the connection's kind — `docs/MODEL_PROVIDERS.md` §
+         *     *Provider terms*: a kind is eligible only where a primary source clears the credential
+         *     it holds. Eligibility is **permission**, not capability: whether invocation is
+         *     implemented is `ProviderCapabilities.invocation`.
+         */
+        InvocationEligibility: {
+            /**
+             * @description Whether this connection may serve model invocation.
+             * @example false
+             */
+            eligible: boolean;
+            /**
+             * @description Why it may not, as a sentence, or `null` when it may. Display copy, not a code.
+             * @example GitHub's terms for serving model calls to a third-party orchestrator from a Copilot seat are unverified — no primary source has been recorded.
+             */
+            reason: string | null;
+        };
+        /**
          * ProviderConnection
          * @description One provider connection — the card mockup 07 draws, minus the two things another
          *     surface owns: the health detail is `GET /api/v1/routing/providers` and the model chips
@@ -24754,6 +24775,7 @@ export interface components {
              * @example Ken Suenobu
              */
             addedByName: string | null;
+            invocation: components["schemas"]["InvocationEligibility"];
             /**
              * Format: date-time
              * @description When the last health check finished, or `null` until one has.
@@ -58750,6 +58772,10 @@ export interface operations {
                      *           "mask": "••••Xq4A",
                      *           "addedBy": "5eed0003-0000-4000-8000-000000000001",
                      *           "addedByName": "Ken Suenobu",
+                     *           "invocation": {
+                     *             "eligible": true,
+                     *             "reason": null
+                     *           },
                      *           "lastCheckedAt": "2026-08-23T09:59:41.882Z",
                      *           "lastUsedAt": "2026-08-23T09:57:12.004Z",
                      *           "createdAt": "2026-06-12T16:20:00.000Z",
@@ -58767,6 +58793,10 @@ export interface operations {
                      *           "mask": null,
                      *           "addedBy": "5eed0003-0000-4000-8000-000000000001",
                      *           "addedByName": "Ken Suenobu",
+                     *           "invocation": {
+                     *             "eligible": true,
+                     *             "reason": null
+                     *           },
                      *           "lastCheckedAt": "2026-08-23T09:59:40.101Z",
                      *           "lastUsedAt": null,
                      *           "createdAt": "2026-05-14T08:55:00.000Z",
@@ -58922,6 +58952,10 @@ export interface operations {
                      *       "mask": "••••Xq4A",
                      *       "addedBy": "5eed0003-0000-4000-8000-000000000001",
                      *       "addedByName": "Ken Suenobu",
+                     *       "invocation": {
+                     *         "eligible": true,
+                     *         "reason": null
+                     *       },
                      *       "lastCheckedAt": "2026-08-23T09:59:41.882Z",
                      *       "lastUsedAt": null,
                      *       "createdAt": "2026-08-23T09:59:41.882Z",
@@ -58991,6 +59025,10 @@ export interface operations {
              *       credential. `details.errorClass` is one of `auth`, `network`, `rate_limit`,
              *       `server`, `config`, and `details.detail` is the note mockup 07's card foot would
              *       draw — `key rejected (401)`. Nothing was stored.
+             *     * `provider_credential_refused` — the credential is a claude.ai subscription or
+             *       session token, which Anthropic's terms forbid a third-party product to store or
+             *       use. It is refused before the provider is asked and is never stored or logged;
+             *       use a Console API key instead. `details` is empty.
              */
             422: {
                 headers: {
@@ -59610,6 +59648,10 @@ export interface operations {
                      *       "mask": null,
                      *       "addedBy": "5eed0003-0000-4000-8000-000000000001",
                      *       "addedByName": "Ken Suenobu",
+                     *       "invocation": {
+                     *         "eligible": true,
+                     *         "reason": null
+                     *       },
                      *       "lastCheckedAt": "2026-08-23T09:59:38.221Z",
                      *       "lastUsedAt": "2026-08-23T09:50:12.000Z",
                      *       "createdAt": "2026-05-30T14:12:00.000Z",
@@ -59897,6 +59939,10 @@ export interface operations {
                      *       "mask": "••••Xq4A",
                      *       "addedBy": "5eed0003-0000-4000-8000-000000000001",
                      *       "addedByName": "Ken Suenobu",
+                     *       "invocation": {
+                     *         "eligible": true,
+                     *         "reason": null
+                     *       },
                      *       "lastCheckedAt": "2026-08-23T09:59:41.882Z",
                      *       "lastUsedAt": "2026-08-23T09:57:12.004Z",
                      *       "createdAt": "2026-06-12T16:20:00.000Z",
@@ -60243,6 +60289,10 @@ export interface operations {
                      *       "mask": "••••7Kd2",
                      *       "addedBy": "5eed0003-0000-4000-8000-000000000001",
                      *       "addedByName": "Ken Suenobu",
+                     *       "invocation": {
+                     *         "eligible": true,
+                     *         "reason": null
+                     *       },
                      *       "lastCheckedAt": "2026-08-23T10:04:02.510Z",
                      *       "lastUsedAt": "2026-08-23T09:57:12.004Z",
                      *       "createdAt": "2026-06-12T16:20:00.000Z",
@@ -60315,6 +60365,8 @@ export interface operations {
              *     characters. Or `provider_validation_failed` — the provider refused the new
              *     credential, and **the old one is still live**. `details.errorClass` and
              *     `details.detail` say what the provider said.
+             *     Or `provider_credential_refused` — the new credential is a claude.ai subscription
+             *     or session token; it was not stored, and the old one is still live.
              */
             422: {
                 headers: {

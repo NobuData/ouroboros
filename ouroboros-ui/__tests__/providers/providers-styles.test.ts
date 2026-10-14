@@ -198,6 +198,11 @@ describe("the provider cards", () => {
     expect(rule("\\.providers-card__test-note")).toContain("color: var(--ok)");
     expect(rule("\\.providers-card__meta")).toContain("font-family: var(--f-mono)");
     expect(rule("\\.providers-card__meta")).toContain("color: var(--ink-faint)");
+    // DH.4 (#1304): the invocation line's tone is a token in both palettes, never a literal.
+    expect(rule("\\.providers-card__invocation-label")).toContain("color: var(--ok)");
+    expect(rule("\\.providers-card__invocation--no \\.providers-card__invocation-label")).toContain(
+      "color: var(--warn)",
+    );
   });
 });
 

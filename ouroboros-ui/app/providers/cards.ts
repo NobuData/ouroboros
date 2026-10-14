@@ -371,6 +371,40 @@ export function metaRow(connection: ProviderConnection, now: Date): MetaRow {
   };
 }
 
+/* ------------------------------------------------------------- the invocation line */
+
+/** What the line says for a connection the provider-terms record clears. */
+export const CAN_RUN_LOOP = "Can run a loop";
+
+/** …and for one it does not. */
+export const CANNOT_RUN_LOOP = "Cannot run a loop";
+
+/** Whether a connection may serve model invocation, as the card draws it (DH.4, #1304). */
+export interface InvocationLine {
+  /** Whether the connection may serve invocation — the tone the line is drawn in. */
+  readonly eligible: boolean;
+  /** {@link CAN_RUN_LOOP} or {@link CANNOT_RUN_LOOP}. */
+  readonly label: string;
+  /** The service's sentence on why not, or null when it may. Never composed here. */
+  readonly reason: string | null;
+}
+
+/**
+ * The invocation line for a connection.
+ *
+ * The answer and its reason are the service's — `connection.invocation`, read from the
+ * provider-terms record in `docs/MODEL_PROVIDERS.md` — so the card and a dropped route hop
+ * cannot disagree about one connection.
+ *
+ * @param connection The connection.
+ * @returns The line.
+ */
+export function invocationLine(connection: ProviderConnection): InvocationLine {
+  const { eligible, reason } = connection.invocation;
+
+  return { eligible, label: eligible ? CAN_RUN_LOOP : CANNOT_RUN_LOOP, reason };
+}
+
 /* --------------------------------------------------------------------- the models region */
 
 /** The region's label over the chips. */
@@ -688,6 +722,8 @@ export interface CardModel {
   readonly address: AddressRow | null;
   readonly secret: SecretRow | null;
   readonly meta: MetaRow;
+  /** Whether it may serve model invocation, and why not — see {@link invocationLine}. */
+  readonly invocation: InvocationLine;
   readonly models: ModelsRegion;
   /** What the meter and the cap field are drawn from — see {@link SpendInputs}. */
   readonly spend: SpendInputs;
@@ -764,6 +800,7 @@ export function cardModel({
     address: addressRow(entry, connection),
     secret: secretRow(entry, connection),
     meta: metaRow(connection, now),
+    invocation: invocationLine(connection),
     models: modelsRegion(entry, models, pulls),
     spend: { capCents: connection.monthlyCapCents, row: spend, seats: seatsIn(pillDetail(health)) },
     dependents: dependentsOf(aliases, connection.id),

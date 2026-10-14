@@ -11,6 +11,7 @@ import {
   CONNECTIONS,
   DOCS_HOPS,
   DOCS_ROUTE,
+  HEALTH,
   IMPLEMENT_HOPS,
   resolutionInput,
   REVIEW_HOPS,
@@ -56,12 +57,14 @@ function dropped(resolution: Resolution): readonly [string, string][] {
 }
 
 describe("resolving the mockup's own route", () => {
-  it("returns the inspector's three hops, in order, all kept", () => {
+  it("returns the inspector's three hops, in order, with Copilot dropped by the terms record", () => {
+    // DH.4 (#1304): the seed's Copilot fallback is bound to a kind the provider-terms record
+    // does not clear, so it stays in the chain — dropped, and explained — rather than vanishing.
     const resolution = resolve(resolutionInput());
 
     expect(resolution.outcome).toBe("resolved");
-    expect(kept(resolution)).toEqual(["coder-max", "coder-fallback", "local-docs"]);
-    expect(dropped(resolution)).toEqual([]);
+    expect(kept(resolution)).toEqual(["coder-max", "local-docs"]);
+    expect(dropped(resolution)).toEqual([["coder-fallback", HOP_CODES.notInvocable]]);
   });
 
   it("resolves each hop to the model and provider the inspector prints", () => {
@@ -86,12 +89,13 @@ describe("resolving the mockup's own route", () => {
     expect(local.note).toBe("Offline mode — keeps the loop turning without a network");
   });
 
-  it("explains every kept hop as the inspector's meta line", () => {
+  it("explains every kept hop as the inspector's meta line, and the dropped one as a sentence", () => {
     const resolution = resolve(resolutionInput());
 
     expect(resolution.chain.map((hop) => hop.explanation)).toEqual([
       "Primary · healthy · 42ms",
-      "Fallback 1 · healthy · elevated latency",
+      "Fallback 1 dropped — GitHub Copilot is not cleared to serve model calls under its " +
+        "provider's terms; the Providers page says why.",
       "Fallback 2 · healthy",
     ]);
   });
@@ -207,7 +211,7 @@ describe("the three seeded escalation rules", () => {
     expect(kept(resolution)).toEqual(["local-docs"]);
     expect(dropped(resolution)).toEqual([
       ["coder-max", HOP_CODES.notLocal],
-      ["coder-fallback", HOP_CODES.notLocal],
+      ["coder-fallback", HOP_CODES.notInvocable],
     ]);
     expect(resolution.chain[0].explanation).toBe(
       "Primary dropped — an escalation rule routes this run to local providers, " +
@@ -257,7 +261,7 @@ describe("a use_alias rule whose alias is not the primary", () => {
     );
 
     expect(resolution.rules[0].code).toBe(RULE_CODES.swapped);
-    expect(kept(resolution)).toEqual(["local-docs", "coder-max", "coder-fallback"]);
+    expect(kept(resolution)).toEqual(["local-docs", "coder-max"]);
   });
 
   it("prepends an alias the chain does not contain, and keeps every hop below it", () => {
@@ -266,7 +270,7 @@ describe("a use_alias rule whose alias is not the primary", () => {
     );
 
     expect(resolution.rules[0].code).toBe(RULE_CODES.prepended);
-    expect(kept(resolution)).toEqual(["coder-std", "coder-max", "coder-fallback", "local-docs"]);
+    expect(kept(resolution)).toEqual(["coder-std", "coder-max", "local-docs"]);
   });
 
   it("gives a prepended hop no stored position, so it can never be below a floor", () => {
@@ -295,7 +299,7 @@ describe("a use_alias rule whose alias is not the primary", () => {
     expect(resolution.rules[0].explanation).toBe(
       "Not applied — coder-std: alias disabled by Ken Suenobu 2026-08-01.",
     );
-    expect(kept(resolution)).toEqual(["coder-max", "coder-fallback", "local-docs"]);
+    expect(kept(resolution)).toEqual(["coder-max", "local-docs"]);
   });
 
   it("does not apply a rule naming an alias this workspace has not bound", () => {
@@ -319,7 +323,7 @@ describe("a use_alias rule whose alias is not the primary", () => {
       "Not applied — this workspace has no alias named gpt5-experiments " +
         "bound to a provider connection.",
     );
-    expect(kept(resolution)).toEqual(["coder-max", "coder-fallback", "local-docs"]);
+    expect(kept(resolution)).toEqual(["coder-max", "local-docs"]);
   });
 });
 
@@ -327,19 +331,42 @@ describe("health", () => {
   it("drops a hop whose provider an operator paused, and says who paused what", () => {
     const resolution = resolve(withHealth({ anthropic: "paused" }));
 
-    expect(kept(resolution)).toEqual(["coder-fallback", "local-docs"]);
+    expect(kept(resolution)).toEqual(["local-docs"]);
     expect(resolution.chain[0].explanation).toBe(
       "Primary dropped — Anthropic Claude is paused by an operator.",
     );
   });
 
   it("drops a hop whose provider a check found unusable, and quotes the detail", () => {
-    const resolution = resolve(withHealth({ copilot: "error" }));
-
-    expect(kept(resolution)).toEqual(["coder-max", "local-docs"]);
-    expect(resolution.chain[1].explanation).toBe(
-      "Fallback 1 dropped — GitHub Copilot is unreachable (elevated latency).",
+    const resolution = resolve(
+      resolutionInput({
+        health: HEALTH.map((snapshot) =>
+          snapshot.connectionId === CONNECTIONS.anthropic
+            ? {
+                ...snapshot,
+                status: "error" as const,
+                measured: { ...snapshot.measured, detail: "503 upstream" },
+              }
+            : snapshot,
+        ),
+      }),
     );
+
+    expect(kept(resolution)).toEqual(["local-docs"]);
+    expect(resolution.chain[0].explanation).toBe(
+      "Primary dropped — Anthropic Claude is unreachable (503 upstream).",
+    );
+  });
+
+  it("tests the terms record before health, so a Copilot hop is never kept however it is doing", () => {
+    // DH.4 (#1304): a connection the record does not clear cannot run at all — its health is
+    // not the reason an operator needs to hear.
+    for (const status of ["active", "unknown", "error"] as const) {
+      const resolution = resolve(withHealth({ copilot: status }));
+
+      expect(resolution.chain[1].code).toBe(HOP_CODES.notInvocable);
+      expect(resolution.chain[1].decision).toBe("dropped");
+    }
   });
 
   it("keeps a hop nothing has checked, and says so rather than calling it healthy", () => {
@@ -364,7 +391,7 @@ describe("health", () => {
     expect(resolution.chain).toHaveLength(3);
     expect(dropped(resolution)).toEqual([
       ["coder-max", HOP_CODES.unreachable],
-      ["coder-fallback", HOP_CODES.unreachable],
+      ["coder-fallback", HOP_CODES.notInvocable],
     ]);
   });
 
@@ -388,7 +415,7 @@ describe("the floor", () => {
     const resolution = resolve(routedWith({ floorHopIndex: 2 }));
 
     expect(resolution.outcome).toBe("resolved");
-    expect(kept(resolution)).toEqual(["coder-max", "coder-fallback"]);
+    expect(kept(resolution)).toEqual(["coder-max"]);
     expect(resolution.chain[2].code).toBe(HOP_CODES.belowFloor);
     expect(resolution.chain[2].explanation).toBe(
       "Fallback 2 dropped — this route may not degrade below hop 2.",
@@ -464,7 +491,7 @@ describe("allow_local_fallback", () => {
     const resolution = resolve(routedWith({ allowLocalFallback: false }));
 
     expect(resolution.outcome).toBe("resolved");
-    expect(kept(resolution)).toEqual(["coder-max", "coder-fallback"]);
+    expect(kept(resolution)).toEqual(["coder-max"]);
     expect(resolution.chain[2].code).toBe(HOP_CODES.localNotAllowed);
     expect(resolution.chain[2].explanation).toBe(
       "Fallback 2 dropped — this route does not allow local models, " +
@@ -498,7 +525,7 @@ describe("allow_local_fallback", () => {
     expect(resolution.failure?.code).toBe(RESOLUTION_FAILURE_CODES.noEligibleHop);
     expect(dropped(resolution)).toEqual([
       ["coder-max", HOP_CODES.notLocal],
-      ["coder-fallback", HOP_CODES.notLocal],
+      ["coder-fallback", HOP_CODES.notInvocable],
       ["local-docs", HOP_CODES.localNotAllowed],
     ]);
   });
@@ -525,7 +552,7 @@ describe("an unbound alias in a chain", () => {
     expect(resolution.chain[0].explanation).toBe(
       "Primary dropped — coder-max: alias unbound — no provider.",
     );
-    expect(kept(resolution)).toEqual(["coder-fallback", "local-docs"]);
+    expect(kept(resolution)).toEqual(["local-docs"]);
   });
 
   it("is reported as unbound, not as switched off, though V019 holds it off too", () => {

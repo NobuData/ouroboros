@@ -58,6 +58,8 @@ export const PROVIDER_CONNECTION_ERRORS = {
   configNotStorable: "provider_config_not_storable",
   /** `422` — the provider itself refused the configuration or the credential. */
   validationFailed: "provider_validation_failed",
+  /** `422` — the credential is a claude.ai subscription or session token (DH.4, #1304). */
+  credentialRefused: "provider_credential_refused",
   /** `409` — there is no credential on this connection to reveal or rotate. */
   credentialAbsent: "provider_credential_absent",
   /** `409` — something rewrote the connection between the validation and the swap. */
@@ -189,6 +191,26 @@ export function providerValidationFailed(failure: ProviderValidationFailure): In
     PROVIDER_CONNECTION_ERRORS.validationFailed,
     "The provider refused this configuration, so nothing was saved.",
     { errorClass: failure.errorClass, detail: failure.detail },
+  );
+}
+
+/**
+ * `422` — the credential is a claude.ai subscription or session token.
+ *
+ * DH.4 ([#1304](https://github.com/NobuData/ouroboros/issues/1304)). Anthropic's terms forbid
+ * a third-party product to collect, store or intermediate claude.ai credentials, so one is
+ * refused before the provider is asked, and before the vault sees it. `details` is empty on
+ * purpose: nothing about the credential — not even its prefix — goes back, into the audit
+ * trail, or into a log.
+ *
+ * @returns The error to throw.
+ */
+export function providerCredentialRefused(): InvalidRequestError {
+  return new InvalidRequestError(
+    PROVIDER_CONNECTION_ERRORS.credentialRefused,
+    "This looks like a claude.ai subscription or session token, which cannot be used here. " +
+      "Use an API key from the Anthropic Console instead. Nothing was saved.",
+    {},
   );
 }
 

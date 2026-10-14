@@ -75,6 +75,7 @@ import {
   PROVIDER_ERROR_PILLS,
   type ProviderErrorClass,
 } from "./provider.errors";
+import { invocationCleared } from "./invocation.terms";
 import { toParamFields } from "./param.forms";
 import { secretFieldName, storedConfigSchema, toFormFields } from "./provider.forms";
 
@@ -148,6 +149,48 @@ export interface AdapterConformance {
 }
 
 /**
+ * Everything wrong with an adapter's invocation against the provider-terms record (DH.4, #1304).
+ *
+ * `invoke()` exists exactly where `invocation.terms.ts` says it may: an adapter whose kind the
+ * record does not clear must neither declare `capabilities().invocation` nor carry an `invoke`
+ * member, and a declared flag must have the member behind it. A cleared kind without `invoke`
+ * is not a violation — clearance is permission, and AF.2 (#235) is what implements it.
+ *
+ * @param adapter - The adapter.
+ * @returns The violations.
+ */
+export function invocationViolations(adapter: ModelProviderAdapter): string[] {
+  const violations: string[] = [];
+  const declared = adapter.capabilities().invocation;
+  const present = typeof (adapter as { invoke?: unknown }).invoke === "function";
+
+  if (!invocationCleared(adapter.kind)) {
+    if (declared) {
+      violations.push(
+        `capabilities().invocation is true but the provider-terms record does not clear ` +
+          `${adapter.kind} — see docs/MODEL_PROVIDERS.md`,
+      );
+    }
+
+    if (present) {
+      violations.push(
+        `invoke is present but the provider-terms record does not clear ${adapter.kind} — ` +
+          "see docs/MODEL_PROVIDERS.md",
+      );
+    }
+  }
+
+  if (declared !== present) {
+    violations.push(
+      `capabilities().invocation is ${declared.toString()} but invoke is ` +
+        `${present ? "present" : "absent"} — the flag and the member must agree`,
+    );
+  }
+
+  return violations;
+}
+
+/**
  * Everything wrong with an adapter's capability declaration.
  *
  * @param adapter - The adapter.
@@ -184,12 +227,7 @@ export function capabilityViolations(adapter: ModelProviderAdapter): string[] {
     violations.push("supportsPull disagrees with capabilities().pull");
   }
 
-  // AF.2 (#235) is what implements invocation. An adapter claiming it today would be claiming a
-  // member that does not exist on any interface yet, which is the reservation being spent
-  // rather than kept.
-  if (capabilities.invocation) {
-    violations.push("capabilities().invocation is reserved for AF.2 (#235) and must be false");
-  }
+  violations.push(...invocationViolations(adapter));
 
   return violations;
 }
