@@ -107,6 +107,36 @@ nginx's `$ssl_client_escaped_cert` writes it.
 If your build machines sit on a known network, restrict `farm.example.com` to it with a
 firewall rule as well.
 
+## Keeping the runner releases current
+
+The REST service serves the installer and the agent from the directory
+<EnvVar name="OURO_FARM_RELEASES_DIR" /> names: one subdirectory per version. A new release
+reaches your build machines only once it is in that directory.
+
+`ouroboros-runner/refresh-releases.sh`, in the repository, does that on the deployment's host. It
+finds the newest stable runner release on GitHub, downloads it, checks every file against the
+release's `SHA256SUMS`, and puts it in place in one step. The REST service serves the new version
+at once, without a restart. A release that does not verify is removed and nothing changes.
+
+```bash
+refresh-releases.sh --dir /srv/ouroboros/runner-releases
+```
+
+| Option | What it does |
+| --- | --- |
+| `--dir DIR` | The releases directory on the host — the one mounted into the REST service. Defaults to <EnvVar name="OURO_FARM_RELEASES_DIR" />, else `/srv/ouroboros/runner-releases`. |
+| `--version X.Y.Z` | Fetches that release instead of the newest. |
+| `--keep N` | Afterwards, removes all but the newest `N` versions. Without it every version is kept. |
+| `--repo OWNER/NAME` | The GitHub repository the releases are in. |
+
+It needs the GitHub CLI, `gh`, signed in to an account that can read the repository: run
+`gh auth login` once, or set `GH_TOKEN`. It does nothing when the directory already holds the
+newest release, so it is safe to run on a schedule — for example every hour from cron:
+
+```bash
+0 * * * * GH_TOKEN=<token> /usr/local/bin/refresh-releases.sh --dir /srv/ouroboros/runner-releases --keep 3
+```
+
 ## Checking it
 
 With the gateway up and <EnvVar name="OURO_FARM_PUBLIC_URL" /> set to its address:

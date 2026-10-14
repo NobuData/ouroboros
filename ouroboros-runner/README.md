@@ -194,6 +194,14 @@ as that source. With `--download-url` pointing at a mirror, it is the mirror you
 ([`tests/install.test.sh`](tests/install.test.sh)) runs it end to end under `sh`, `dash`, `bash`
 and busybox, against a fixture release, a staged root and stubbed service managers.
 
+### Keeping a deployment's releases current
+
+`refresh-releases.sh` runs on a deployment's host. It downloads the newest stable
+`ouroboros-runner-v<version>` release into the directory ouroboros-rest serves releases from
+(`OURO_FARM_RELEASES_DIR`), verifies it against its `SHA256SUMS`, and renames it into place — or
+does nothing when it is already there, so it can run from cron. `--keep N` prunes older versions.
+It needs `gh`, signed in or with `GH_TOKEN`. Its suite is `tests/refresh-releases.test.sh`.
+
 ### Enrol, then run
 
 Two commands do the work, and neither listens on anything:
