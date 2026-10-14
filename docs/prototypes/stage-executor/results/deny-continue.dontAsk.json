@@ -1,0 +1,341 @@
+{
+  "scenario": "deny-continue",
+  "sessions": [
+    {
+      "wall_clock_ms": 384,
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "num_turns": 5,
+        "duration_ms": 125,
+        "duration_api_ms": 45,
+        "session_id": "6e2670a1-0c2b-4ce7-9ab2-7b9faa7f37e6",
+        "stop_reason": "end_turn",
+        "terminal_reason": "completed",
+        "usage": {
+          "input_tokens": 12709,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 153,
+          "output_tokens_details": {
+            "thinking_tokens": 0
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "",
+          "iterations": [],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "total_cost_usd": 0.026947999999999996,
+        "permission_denials": 2
+      }
+    }
+  ],
+  "hook_calls": [
+    {
+      "tool": "Write",
+      "decision": "deny",
+      "rule": "working_tree"
+    },
+    {
+      "tool": "Write",
+      "decision": "deny",
+      "rule": "working_tree"
+    },
+    {
+      "tool": "Write",
+      "decision": "allow",
+      "rule": null
+    }
+  ],
+  "facade_requests": [
+    {
+      "main": true,
+      "turn": 0,
+      "messages": 2,
+      "tools": [
+        "Edit",
+        "Glob",
+        "Grep",
+        "Read",
+        "Write"
+      ],
+      "stream": true,
+      "model": "claude-sonnet-5-5",
+      "anthropic_version": "2023-06-01",
+      "anthropic_beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24,thinking-display-updates-2026-08-18",
+      "credential_presented": true
+    },
+    {
+      "main": true,
+      "turn": 1,
+      "messages": 5,
+      "tools": [
+        "Edit",
+        "Glob",
+        "Grep",
+        "Read",
+        "Write"
+      ],
+      "stream": true,
+      "model": "claude-sonnet-5-5",
+      "anthropic_version": "2023-06-01",
+      "anthropic_beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24,thinking-display-updates-2026-08-18",
+      "credential_presented": true
+    },
+    {
+      "main": true,
+      "turn": 2,
+      "messages": 8,
+      "tools": [
+        "Edit",
+        "Glob",
+        "Grep",
+        "Read",
+        "Write"
+      ],
+      "stream": true,
+      "model": "claude-sonnet-5-5",
+      "anthropic_version": "2023-06-01",
+      "anthropic_beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24,thinking-display-updates-2026-08-18",
+      "credential_presented": true
+    },
+    {
+      "main": true,
+      "turn": 3,
+      "messages": 11,
+      "tools": [
+        "Edit",
+        "Glob",
+        "Grep",
+        "Read",
+        "Write"
+      ],
+      "stream": true,
+      "model": "claude-sonnet-5-5",
+      "anthropic_version": "2023-06-01",
+      "anthropic_beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24,thinking-display-updates-2026-08-18",
+      "credential_presented": true
+    },
+    {
+      "main": true,
+      "turn": 4,
+      "messages": 14,
+      "tools": [
+        "Edit",
+        "Glob",
+        "Grep",
+        "Read",
+        "Write"
+      ],
+      "stream": true,
+      "model": "claude-sonnet-5-5",
+      "anthropic_version": "2023-06-01",
+      "anthropic_beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24,thinking-display-updates-2026-08-18",
+      "credential_presented": true
+    }
+  ],
+  "files_on_disk": [
+    "sandbox/README.md",
+    "sandbox/src/ok.py"
+  ],
+  "events": [
+    {
+      "seq": 1,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:30:06Z",
+      "kind": "usage",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "tokens_in": 2322,
+      "tokens_out": 1,
+      "latency_ms": null
+    },
+    {
+      "seq": 2,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:30:06Z",
+      "kind": "tool_request",
+      "request": {
+        "call_id": "toolu_00_0",
+        "tool": "write_file",
+        "paths": [
+          "/tmp/ouro-dh1-nskbv33u/escape.txt"
+        ]
+      }
+    },
+    {
+      "seq": 3,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:30:06Z",
+      "kind": "tool_result",
+      "call_id": "toolu_00_0",
+      "tool": "write_file",
+      "verdict": {
+        "decision": "deny",
+        "rule": "working_tree",
+        "reason": "The path is outside the run's working tree.",
+        "path": "/tmp/ouro-dh1-nskbv33u/escape.txt",
+        "glob": null
+      },
+      "ok": false,
+      "output": null
+    },
+    {
+      "seq": 4,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:30:06Z",
+      "kind": "usage",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "tokens_in": 2423,
+      "tokens_out": 1,
+      "latency_ms": null
+    },
+    {
+      "seq": 5,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:30:06Z",
+      "kind": "usage",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "tokens_in": 2540,
+      "tokens_out": 1,
+      "latency_ms": null
+    },
+    {
+      "seq": 6,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:30:06Z",
+      "kind": "tool_request",
+      "request": {
+        "call_id": "toolu_02_0",
+        "tool": "write_file",
+        "paths": [
+          "/tmp/ouro-dh1-nskbv33u/sandbox/.git/hooks/pre-commit"
+        ]
+      }
+    },
+    {
+      "seq": 7,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:30:06Z",
+      "kind": "tool_result",
+      "call_id": "toolu_02_0",
+      "tool": "write_file",
+      "verdict": {
+        "decision": "deny",
+        "rule": "working_tree",
+        "reason": "The path is outside the run's working tree.",
+        "path": "/tmp/ouro-dh1-nskbv33u/sandbox/.git/hooks/pre-commit",
+        "glob": null
+      },
+      "ok": false,
+      "output": null
+    },
+    {
+      "seq": 8,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:30:06Z",
+      "kind": "usage",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "tokens_in": 2652,
+      "tokens_out": 1,
+      "latency_ms": null
+    },
+    {
+      "seq": 9,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:30:06Z",
+      "kind": "tool_request",
+      "request": {
+        "call_id": "toolu_03_0",
+        "tool": "write_file",
+        "paths": [
+          "/tmp/ouro-dh1-nskbv33u/sandbox/src/ok.py"
+        ]
+      }
+    },
+    {
+      "seq": 10,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:30:06Z",
+      "kind": "tool_result",
+      "call_id": "toolu_03_0",
+      "tool": "write_file",
+      "verdict": {
+        "decision": "allow",
+        "rule": null,
+        "reason": "write_file is allowed.",
+        "path": null,
+        "glob": null
+      },
+      "ok": true,
+      "output": null
+    },
+    {
+      "seq": 11,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:30:06Z",
+      "kind": "file_change",
+      "path": "src/ok.py",
+      "status": "added",
+      "additions": null,
+      "deletions": null
+    },
+    {
+      "seq": 12,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:30:06Z",
+      "kind": "model_turn",
+      "model_id": "claude-sonnet-5-5",
+      "text": "Done."
+    },
+    {
+      "seq": 13,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:30:06Z",
+      "kind": "usage",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "tokens_in": 2772,
+      "tokens_out": 1,
+      "latency_ms": null
+    }
+  ],
+  "conformance": [
+    "usage seq 4 after a deny halted the stage",
+    "usage seq 5 after a deny halted the stage",
+    "tool_request seq 6 after a deny halted the stage",
+    "tool_result seq 7 after a deny halted the stage",
+    "usage seq 8 after a deny halted the stage",
+    "tool_request seq 9 after a deny halted the stage",
+    "tool_result seq 10 after a deny halted the stage",
+    "file_change seq 11 after a deny halted the stage",
+    "model_turn seq 12 after a deny halted the stage",
+    "usage seq 13 after a deny halted the stage"
+  ],
+  "permission_mode": "dontAsk"
+}

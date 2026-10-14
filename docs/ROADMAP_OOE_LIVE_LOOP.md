@@ -646,7 +646,7 @@ GET /api/v1/loop/capabilities
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| DH.1 | #1302 | 🟡 Open | ouroboros-engine: [DH.1] `StageExecutor` SPI & the harness option for the execution ADR | The second axis of #155: an interface for running a stage, a tool policy, and a measured native-versus-harness evaluation | mvp, live-loop, engine, workflow, documentation | Y | Y | M | ouroboros-engine, docs |
+| DH.1 | ✅ #1302 | 🟢 Done | ouroboros-engine: [DH.1] `StageExecutor` SPI & the harness option for the execution ADR | The second axis of #155: an interface for running a stage, a tool policy, and a measured native-versus-harness evaluation | mvp, live-loop, engine, workflow, documentation | Y | Y | M | ouroboros-engine, docs |
 | DH.2 | #1303 | 🟡 Open | ouroboros-rest: [DH.2] Anthropic Messages-format facade over the chain executor | `/v1/messages` on the internal network with a run-scoped credential, per-call usage and the cost cap | mvp, live-loop, rest, providers, routing | N (after #235) | Y | L | ouroboros-rest |
 | DH.3 | #1308 | 🟡 Open | ouroboros-engine: [DH.3] Claude Agent SDK stage executor | The harness adapter: file tools only, deny-by-hook, events into the run transcript | mvp, live-loop, engine, workflow, runs | N (after DH.1, DH.2, DI.1) | Y | L | ouroboros-engine, ouroboros-docs |
 | DH.4 | ✅ #1304 | 🟢 Done | ouroboros-rest: [DH.4] Provider-terms guard — invocation eligibility per adapter & credential kind | Which connections may serve invocation, recorded with sources; subscription credentials refused | mvp, live-loop, rest, providers, documentation | Y | Y | S | ouroboros-rest, ouroboros-ui, ouroboros-docs, docs |
@@ -656,7 +656,7 @@ GET /api/v1/loop/capabilities
 
 ### Issue DH.1 — ouroboros-engine: [DH.1] `StageExecutor` SPI & the harness option for the execution ADR
 
-> **GitHub issue:** #1302 · **Status:** 🟡 Open · **Parent epic:** #1294
+> **GitHub issue:** #1302 · **Status:** 🟢 Done · **Parent epic:** #1294
 
 - **Problem Statement:** #155 chooses between a custom interpreter, Temporal
   and Hatchet-class platforms. All three answer "how does a workflow survive a

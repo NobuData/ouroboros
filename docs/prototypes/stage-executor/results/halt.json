@@ -1,0 +1,304 @@
+{
+  "scenario": "halt",
+  "sessions": [
+    {
+      "wall_clock_ms": 429,
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "num_turns": 4,
+        "duration_ms": 155,
+        "duration_api_ms": 50,
+        "session_id": "95400078-6774-4da2-a435-2c25c6d8dc35",
+        "stop_reason": "tool_use",
+        "terminal_reason": "hook_stopped",
+        "usage": {
+          "input_tokens": 8577,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 141,
+          "output_tokens_details": {
+            "thinking_tokens": 0
+          },
+          "server_tool_use": {
+            "web_search_requests": 0,
+            "web_fetch_requests": 0
+          },
+          "service_tier": "standard",
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "inference_geo": "",
+          "iterations": [],
+          "speed": "standard",
+          "fallback_credit": null
+        },
+        "total_cost_usd": 0.018564,
+        "permission_denials": 1
+      }
+    }
+  ],
+  "hook_calls": [
+    {
+      "tool": "Read",
+      "decision": "allow",
+      "rule": null
+    },
+    {
+      "tool": "Write",
+      "decision": "allow",
+      "rule": null
+    },
+    {
+      "tool": "Write",
+      "decision": "deny",
+      "rule": "stage_permission"
+    }
+  ],
+  "facade_requests": [
+    {
+      "main": true,
+      "turn": 0,
+      "messages": 2,
+      "tools": [
+        "Edit",
+        "Glob",
+        "Grep",
+        "Read",
+        "Write"
+      ],
+      "stream": true,
+      "model": "claude-sonnet-5-5",
+      "anthropic_version": "2023-06-01",
+      "anthropic_beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24,dangerous-tool-use-2026-09-03,thinking-display-updates-2026-08-18,afk-mode-2026-01-31",
+      "credential_presented": true
+    },
+    {
+      "main": true,
+      "turn": 1,
+      "messages": 5,
+      "tools": [
+        "Edit",
+        "Glob",
+        "Grep",
+        "Read",
+        "Write"
+      ],
+      "stream": true,
+      "model": "claude-sonnet-5-5",
+      "anthropic_version": "2023-06-01",
+      "anthropic_beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24,dangerous-tool-use-2026-09-03,thinking-display-updates-2026-08-18,afk-mode-2026-01-31",
+      "credential_presented": true
+    },
+    {
+      "main": true,
+      "turn": 2,
+      "messages": 8,
+      "tools": [
+        "Edit",
+        "Glob",
+        "Grep",
+        "Read",
+        "Write"
+      ],
+      "stream": true,
+      "model": "claude-sonnet-5-5",
+      "anthropic_version": "2023-06-01",
+      "anthropic_beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24,dangerous-tool-use-2026-09-03,thinking-display-updates-2026-08-18,afk-mode-2026-01-31",
+      "credential_presented": true
+    }
+  ],
+  "files_on_disk": [
+    "sandbox/README.md",
+    "sandbox/src/greet.py"
+  ],
+  "events": [
+    {
+      "seq": 1,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:28:51Z",
+      "kind": "model_turn",
+      "model_id": "claude-sonnet-5-5",
+      "text": "I'll read the README first."
+    },
+    {
+      "seq": 2,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:28:51Z",
+      "kind": "usage",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "tokens_in": 3591,
+      "tokens_out": 1,
+      "latency_ms": null
+    },
+    {
+      "seq": 3,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:28:51Z",
+      "kind": "usage",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "tokens_in": 3591,
+      "tokens_out": 1,
+      "latency_ms": null
+    },
+    {
+      "seq": 4,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:28:51Z",
+      "kind": "tool_request",
+      "request": {
+        "call_id": "toolu_00_0",
+        "tool": "read_file",
+        "paths": [
+          "/tmp/ouro-dh1-7zamal8l/sandbox/README.md"
+        ]
+      }
+    },
+    {
+      "seq": 5,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:28:51Z",
+      "kind": "tool_result",
+      "call_id": "toolu_00_0",
+      "tool": "read_file",
+      "verdict": {
+        "decision": "allow",
+        "rule": null,
+        "reason": "read_file is allowed.",
+        "path": null,
+        "glob": null
+      },
+      "ok": true,
+      "output": null
+    },
+    {
+      "seq": 6,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:28:51Z",
+      "kind": "usage",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "tokens_in": 2429,
+      "tokens_out": 1,
+      "latency_ms": null
+    },
+    {
+      "seq": 7,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:28:51Z",
+      "kind": "tool_request",
+      "request": {
+        "call_id": "toolu_01_0",
+        "tool": "write_file",
+        "paths": [
+          "/tmp/ouro-dh1-7zamal8l/sandbox/src/greet.py"
+        ]
+      }
+    },
+    {
+      "seq": 8,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:28:51Z",
+      "kind": "tool_result",
+      "call_id": "toolu_01_0",
+      "tool": "write_file",
+      "verdict": {
+        "decision": "allow",
+        "rule": null,
+        "reason": "write_file is allowed.",
+        "path": null,
+        "glob": null
+      },
+      "ok": true,
+      "output": null
+    },
+    {
+      "seq": 9,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:28:51Z",
+      "kind": "file_change",
+      "path": "src/greet.py",
+      "status": "added",
+      "additions": null,
+      "deletions": null
+    },
+    {
+      "seq": 10,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:28:51Z",
+      "kind": "model_turn",
+      "model_id": "claude-sonnet-5-5",
+      "text": "CI should run the new test."
+    },
+    {
+      "seq": 11,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:28:51Z",
+      "kind": "usage",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "tokens_in": 2557,
+      "tokens_out": 1,
+      "latency_ms": null
+    },
+    {
+      "seq": 12,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:28:51Z",
+      "kind": "usage",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5-5",
+      "tokens_in": 2557,
+      "tokens_out": 1,
+      "latency_ms": null
+    },
+    {
+      "seq": 13,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:28:51Z",
+      "kind": "tool_request",
+      "request": {
+        "call_id": "toolu_02_0",
+        "tool": "write_file",
+        "paths": [
+          "/tmp/ouro-dh1-7zamal8l/sandbox/.github/workflows/ci.yml"
+        ]
+      }
+    },
+    {
+      "seq": 14,
+      "stage_key": "implement",
+      "attempt": 1,
+      "ts": "2026-10-14T20:28:51Z",
+      "kind": "tool_result",
+      "call_id": "toolu_02_0",
+      "tool": "write_file",
+      "verdict": {
+        "decision": "deny",
+        "rule": "stage_permission",
+        "reason": "The path is CI configuration and this stage declares touch_ci: false.",
+        "path": ".github/workflows/ci.yml",
+        "glob": ".github/workflows/**"
+      },
+      "ok": false,
+      "output": null
+    }
+  ],
+  "conformance": []
+}
