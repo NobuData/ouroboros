@@ -388,6 +388,16 @@ export const CONNECT_LINE =
   "Ouroboros reads a repository through a GitHub ticket source — the same connection Settings → Sources manages. Add one here, or manage the ones you have.";
 export const CONNECT_NEXT = "Next: switch on the repository, and detection scans it.";
 export const CONNECT_NONE = "No GitHub source is connected yet.";
+/**
+ * What the panel says while the workspace has no backlog token
+ * ([#1250](https://github.com/NobuData/ouroboros/issues/1250)): a source's own credential
+ * does not mirror issues, and a reader who has just connected one would otherwise wait for
+ * a backlog that never arrives.
+ */
+export const CONNECT_TOKEN_NOTE =
+  "Issues are not mirrored yet: the Issues backlog reads GitHub with its own token, which is not set.";
+/** The link beside it, to the card that sets the token. */
+export const CONNECT_TOKEN_LABEL = "Set the backlog token →";
 export const CONNECT_SETTINGS_LABEL = "Manage in Settings → Sources ↗";
 export const CONNECT_LOADING = "Reading the ticket sources…";
 /** The accessible name of the list of connected GitHub sources. */

@@ -33,7 +33,7 @@ Ouroboros keeps two GitHub credentials, and they do different jobs:
 | Credential | Set where | Used for |
 | --- | --- | --- |
 | **The source's token** | The **Personal access token** field when you add or configure a source | Syncing that source's tickets, testing it, pushing tickets from Planning, and opening, syncing, reviewing and merging pull requests in its repositories |
-| **The workspace's backlog token** | The REST API only — see [Setting the backlog token](#setting-the-backlog-token) | The **Issues** backlog: mirroring open issues from the repositories enabled for the workspace, so they can be sized and queued |
+| **The workspace's backlog token** | The **Backlog token** card on the same page — see [Setting the backlog token](#setting-the-backlog-token) | The **Issues** backlog: mirroring open issues from the repositories enabled for the workspace, so they can be sized and queued |
 
 Storing a token on a source does not give the backlog a token. If the **Issues** page says
 **Sync paused — no GitHub token is connected.**, set the backlog token as described below. Both
@@ -87,36 +87,39 @@ Owner or Maintainer turns a GitHub organization's repositories on or off in step
 [sign-in](../user-guide/getting-started/sign-in.mdx). The backlog needs a token that can read
 issues on those repositories.
 
-There is no screen for this token yet. An Owner or Maintainer sets it through the REST API,
-signed in as themselves:
+An Owner or Maintainer sets it on the **Backlog token** card, under the sources on
+<UiPath path="Settings > Sources" />:
 
-1. Sign in to Ouroboros in your browser and open the browser's developer tools. Copy the value of
-   the session cookie: `__Secure-better-auth.session_token` on an `https://` deployment, or
-   `better-auth.session_token` on a local one.
-2. From a machine that can reach the REST service, send the token:
+1. Open <UiPath path="Settings > Sources" /> and find the **Backlog token** card. The **Set the
+   backlog token →** link under the Issues page's banner, and **Open settings** on an empty
+   Issues page, both land on it.
+2. Paste the token into **GitHub token**. What you type is hidden.
+3. Choose **Save token**. The card answers *Saved. The backlog picks it up on its next sync.* and
+   shows the token masked, such as `ghp_••••3456 · set 2026-10-14`.
 
-   ```bash
-   curl -X PUT "$OURO_REST_URL/api/v1/settings/github-token" \
-     -H "content-type: application/json" \
-     -H "Origin: https://app.example.com" \
-     -H "Cookie: __Secure-better-auth.session_token=<the cookie value>" \
-     -d '{"token": "<the GitHub token>"}'
-   ```
+<Screenshot id="administration.sources.backlog-token" />
 
-   `Origin` is the UI's public address. The answer shows the token masked, such as
-   `"configured": true, "masked": "ghp_••••3456"`.
+A token must start with `github_pat_`, `ghp_`, `gho_`, `ghu_`, `ghs_` or `ghr_`, or be a
+40-character hexadecimal classic token. Anything else is refused with *That does not look like a
+GitHub token. Paste the whole token, with no spaces.* The token needs read access to issues on
+every enabled repository: **Issues: Read** on a fine-grained token, or the `repo` scope on a
+classic one for private repositories.
 
-The token is set for the workspace your session is in. A token must start with `github_pat_`,
-`ghp_`, `gho_`, `ghu_`, `ghs_` or `ghr_`, or be a 40-character hexadecimal classic token. Sending
-a new one replaces the old one; `curl -X DELETE` on the same address removes it, which pauses
-the backlog.
+The token is set for the workspace you are in, and nobody can read it back: the card shows only
+the mask, the day it was set and, once it has been changed, the day it was last replaced.
 
-:::caution[Keep the cookie and the token out of your shell history]
+- **To replace it**, paste a new token and choose **Replace token**. The new one takes over at
+  the next sync.
+- **To remove it**, choose **Remove token**, then **Remove it**. The card answers *Removed. The
+  Issues backlog is paused.*, and the Issues page says **Sync paused — no GitHub token is
+  connected.** until another is saved. **Keep it** leaves the token where it is.
 
-The session cookie signs you in as you, and the token reaches your repositories. Paste them from
-the clipboard, don't store them in scripts, and clear your shell history afterwards.
+Other roles see the card without the form: *The backlog token is set, replaced and removed by a
+workspace owner or admin.*
 
-:::
+The same three operations are on the REST API, at `/api/v1/settings/github-token`, for
+automation: `GET` reads the masked state, `PUT` with `{"token": "…"}` stores one, and `DELETE`
+removes it.
 
 ## How sources sync
 

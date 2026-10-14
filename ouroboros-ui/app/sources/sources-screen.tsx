@@ -3,6 +3,7 @@ import { SettingsFrame } from "@/app/settings/settings-frame";
 import { Card, EmptyState } from "@/app/ui";
 
 import { AddSourceButton, AddSourceFlow } from "./add-source";
+import { BacklogTokenCard } from "./backlog-token-card";
 import type { SourcesReadings } from "./data";
 import { SourceRow } from "./source-row";
 import { SourcesBanner } from "./sources-banner";
@@ -99,6 +100,7 @@ export function SourcesScreen({
         )}
 
         <SourceList mayAdminister={mayAdminister} readings={readings} state={state} />
+        <BacklogTokenCard mayAdminister={mayAdminister} reading={readings.backlogToken} />
       </SettingsFrame>
     </AddSourceFlow>
   );

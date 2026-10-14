@@ -16,6 +16,9 @@ import {
 } from "@/app/sources/states";
 import {
   ADD_SOURCE_LABEL,
+  BACKLOG_TOKEN_FIELD_LABEL,
+  BACKLOG_TOKEN_READ_ONLY,
+  BACKLOG_TOKEN_TITLE,
   CONFIGURE_LABEL,
   CONFIGURE_READ_ONLY,
   LIST_LABEL,
@@ -31,7 +34,7 @@ import { RETRY_LABEL } from "@/app/ui";
 
 import { membership } from "../helpers/login";
 import { PALETTES, maskIds, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
-import { failedSource, readings, seededSources } from "../helpers/sources";
+import { SEEDED_TOKEN_MASK, failedSource, readings, seededSources } from "../helpers/sources";
 
 const refresh = vi.fn();
 
@@ -239,5 +242,31 @@ describe("both palettes", () => {
     );
 
     expect(within(list()).getAllByRole("listitem")).toHaveLength(seededSources().length);
+  });
+});
+
+describe("the backlog token card (#1250)", () => {
+  it("sits under the sources, for an owner or an admin with the form", () => {
+    render(<SourcesScreen mayAdminister readings={readings()} workspaceName="Acme Robotics" />);
+
+    const card = screen.getByRole("heading", { name: BACKLOG_TOKEN_TITLE }).closest("#backlog-token");
+
+    expect(card).not.toBeNull();
+    expect(screen.getByLabelText(BACKLOG_TOKEN_FIELD_LABEL)).toBeInTheDocument();
+    expect(screen.getByTestId("backlog-token-state")).toHaveTextContent(SEEDED_TOKEN_MASK);
+  });
+
+  it("is drawn for a member too, without the form", () => {
+    render(
+      <SourcesScreen
+        mayAdminister={false}
+        readings={readings({ backlogToken: null })}
+        role="member"
+        workspaceName="Acme Robotics"
+      />,
+    );
+
+    expect(screen.getByTestId("backlog-token-read-only")).toHaveTextContent(BACKLOG_TOKEN_READ_ONLY);
+    expect(screen.queryByLabelText(BACKLOG_TOKEN_FIELD_LABEL)).toBeNull();
   });
 });

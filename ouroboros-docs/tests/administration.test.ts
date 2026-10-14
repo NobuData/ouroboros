@@ -654,7 +654,7 @@ describe("the ticket sources & repositories page (#1194)", () => {
     expect(SOURCES).toContain("A source cannot be removed from this page.");
   });
 
-  it("documents the backlog token, which has an API but no screen", () => {
+  it("documents the backlog token's card as built (#1250)", () => {
     const controller = source("ouroboros-rest", "src", "modules", "github", "github.controller.ts");
     expect(controller).toContain('@Controller("settings/github-token")');
     expect(controller).toContain("@Roles(...ADMINISTRATORS)");
@@ -665,19 +665,43 @@ describe("the ticket sources & repositories page (#1194)", () => {
     expect(SOURCES).toContain(
       "`github_pat_`,\n`ghp_`, `gho_`, `ghu_`, `ghs_` or `ghr_`".replace("\n", " "),
     );
-    expect(SOURCES).toContain('curl -X PUT "$OURO_REST_URL/api/v1/settings/github-token"');
-    // The day a screen sets it, this section must change.
-    const ui = (dir: string): string[] =>
-      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-        const path = join(dir, entry.name);
-        if (entry.isDirectory()) return entry.name === "__tests__" ? [] : ui(path);
-        return /\.tsx?$/.test(entry.name) && !entry.name.endsWith(".d.ts") ? [path] : [];
-      });
-    const setting = ui(join(REPO_ROOT, "ouroboros-ui", "app")).filter((file) =>
-      readFileSync(file, "utf8").includes("settings/github-token"),
+
+    // Every label and sentence the page quotes is the card's own.
+    const view = source("ouroboros-ui", "app", "sources", "view.ts");
+    const said = (constant: string): string => {
+      const match = new RegExp(`export const ${constant} =\\s*((?:"[^"]*"\\s*\\+?\\s*)+);`).exec(view);
+      if (match === null) throw new Error(`view.ts has no ${constant}`);
+      return [...match[1]!.matchAll(/"([^"]*)"/g)].map((part) => part[1]).join("");
+    };
+    const prose = SOURCES.replace(/\s+/g, " ");
+    for (const constant of [
+      "BACKLOG_TOKEN_TITLE",
+      "BACKLOG_TOKEN_FIELD_LABEL",
+      "BACKLOG_TOKEN_SAVE",
+      "BACKLOG_TOKEN_REPLACE",
+      "BACKLOG_TOKEN_REMOVE",
+      "BACKLOG_TOKEN_REMOVE_CONFIRM",
+      "BACKLOG_TOKEN_REMOVE_CANCEL",
+      "BACKLOG_TOKEN_SAVED",
+      "BACKLOG_TOKEN_REMOVED",
+      "BACKLOG_TOKEN_SHAPE",
+      "BACKLOG_TOKEN_READ_ONLY",
+    ]) {
+      expect(prose, constant).toContain(said(constant));
+    }
+    expect(prose).toContain(
+      /export const SET_TOKEN_LABEL = "([^"]*)";/.exec(
+        source("ouroboros-ui", "app", "issues", "states.ts"),
+      )![1],
     );
-    expect(setting).toEqual([]);
-    expect(SOURCES).toContain("There is no screen for this token yet.");
+
+    // The cookie-and-curl procedure is gone, and the screen is shown.
+    expect(SOURCES).not.toContain("There is no screen for this token yet.");
+    expect(SOURCES).not.toContain("curl -X PUT");
+    expect(SOURCES).toContain('<Screenshot id="administration.sources.backlog-token" />');
+    expect(source("ouroboros-ui", "app", "api", "github-token.ts")).toContain(
+      '"/api/v1/settings/github-token"',
+    );
   });
 
   it("names the one interval both syncs share", () => {

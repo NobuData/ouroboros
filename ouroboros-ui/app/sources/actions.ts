@@ -36,6 +36,7 @@
  */
 
 import { type ApiError, isApiError } from "@/app/api/errors";
+import { type GithubToken, githubToken } from "@/app/api/github-token";
 import {
   type TicketSource,
   type TicketSourceCatalogEntry,
@@ -55,6 +56,9 @@ import {
   NOT_FOUND_CODE,
 } from "./refusals";
 import {
+  BACKLOG_TOKEN_FAILED,
+  BACKLOG_TOKEN_FORBIDDEN,
+  BACKLOG_TOKEN_SHAPE,
   CONFIGURE_READ_ONLY,
   PAUSE_FAILED,
   PAUSE_READ_ONLY,
@@ -294,4 +298,60 @@ function refusalSentence(error: ApiError, readOnly: string, failed: string): str
   if (error.code === NOT_FOUND_CODE) return SOURCE_GONE;
 
   return failed;
+}
+
+/* --------------------------------------------------------------------- the backlog token */
+
+/** What a write to the backlog token came to: the masked state, or the sentence to draw. */
+export type BacklogTokenOutcome =
+  | { readonly ok: true; readonly token: GithubToken }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Store the workspace's backlog token, or replace the one that is there
+ * ([#1250](https://github.com/NobuData/ouroboros/issues/1250)).
+ *
+ * The value goes to the service and nowhere else: it is not logged, not echoed in the
+ * refusal, and not in what this answers — which is the mask.
+ *
+ * @param token What was typed.
+ * @returns The token's masked state, or why nothing was stored.
+ */
+export async function setBacklogToken(token: string): Promise<BacklogTokenOutcome> {
+  try {
+    return { ok: true, token: await githubToken.set(token.trim()) };
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+    return { ok: false, reason: backlogTokenRefusal(error) };
+  }
+}
+
+/**
+ * Remove the workspace's backlog token, which pauses the Issues backlog.
+ *
+ * @returns The not-configured state, or why nothing changed.
+ */
+export async function clearBacklogToken(): Promise<BacklogTokenOutcome> {
+  try {
+    return { ok: true, token: await githubToken.clear() };
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+    return { ok: false, reason: backlogTokenRefusal(error) };
+  }
+}
+
+/**
+ * The sentence for a refused write to the backlog token.
+ *
+ * Written here rather than taken from the service, so that nothing the service says about
+ * a rejected value — which is a secret — can reach the page.
+ *
+ * @param error What the service answered.
+ * @returns The sentence.
+ */
+function backlogTokenRefusal(error: ApiError): string {
+  if (error.status === 422) return BACKLOG_TOKEN_SHAPE;
+  if (error.status === 403) return BACKLOG_TOKEN_FORBIDDEN;
+
+  return BACKLOG_TOKEN_FAILED;
 }

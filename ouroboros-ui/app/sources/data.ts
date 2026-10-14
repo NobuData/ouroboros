@@ -30,6 +30,8 @@ import "server-only";
  */
 
 import type { Workspace } from "@/app/api/access";
+import { type GithubToken, githubToken } from "@/app/api/github-token";
+import { mayAdminister } from "@/app/api/membership";
 import { type Reading, attempt } from "@/app/api/reading";
 import {
   type TicketSource,
@@ -49,6 +51,11 @@ export interface SourcesReadings {
    * itself could not be read, because there was nothing to ask for.
    */
   readonly statuses: ReadonlyMap<string, Reading<TicketSourceStatusReport>>;
+  /**
+   * The workspace's backlog token, as the service describes it — or `null` for a reader who is
+   * neither an owner nor an admin, whom the service does not tell.
+   */
+  readonly backlogToken: Reading<GithubToken> | null;
   /** The instant the page was read, ISO 8601 — what every relative time is measured from. */
   readonly now: string;
 }
@@ -65,11 +72,12 @@ export interface SourcesReadings {
  * @throws Whatever is not an `ApiError` — Next.js's redirect signal above all.
  */
 export async function readSources(access: Workspace, now: Date = new Date()): Promise<SourcesReadings> {
-  void access;
 
-  const [listing, catalog] = await Promise.all([
+  const [listing, catalog, backlogToken] = await Promise.all([
     attempt(async () => (await sources.list()).items),
     attempt(async () => (await sources.catalog()).kinds),
+    // Asked only for whoever the service answers: the read is an owner's and an admin's.
+    mayAdminister(access.membership.roles) ? attempt(() => githubToken.read()) : null,
   ]);
 
   const statuses = new Map<string, Reading<TicketSourceStatusReport>>();
@@ -84,5 +92,5 @@ export async function readSources(access: Workspace, now: Date = new Date()): Pr
     for (const [id, status] of read) statuses.set(id, status);
   }
 
-  return { sources: listing, catalog, statuses, now: now.toISOString() };
+  return { sources: listing, catalog, statuses, backlogToken, now: now.toISOString() };
 }
