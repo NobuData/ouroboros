@@ -34,6 +34,7 @@ import {
   FARM_TOKENS_PATH,
   KNOWLEDGE_ENV_PATH,
   PROVIDERS_PATH,
+  REPOSITORIES_PATH,
   SOURCES_PATH,
 } from "@/app/paths";
 
@@ -275,7 +276,7 @@ export function unsavedMark(count: number): string {
  * The mounted surfaces drawn inside this section's frame — the pages that carry the tab row,
  * and so the only tabs that can be `aria-current="page"`.
  */
-export type SettingsSurface = "sources" | "farm-tokens";
+export type SettingsSurface = "sources" | "repositories" | "farm-tokens";
 
 /** Which page of the section is drawing the frame: the hub, or one of the mounted surfaces. */
 export type SettingsPage = "hub" | SettingsSurface;
@@ -291,7 +292,8 @@ export interface MountedTab {
 
 /**
  * The mounted tabs (decision S2), in the issue's order: Sources · Providers · Farm tokens ·
- * Knowledge / env.
+ * Knowledge / env — with Repositories beside Sources, because a GitHub source names the
+ * repositories that tab switches on.
  *
  * Each keeps its implementation and its address. **Providers** is the Models section's page
  * and stays in that section's tab set as well — mockups 06, 07 and 21 draw it there — so this
@@ -301,6 +303,7 @@ export interface MountedTab {
  */
 export const MOUNTED_TABS: readonly MountedTab[] = [
   { id: "sources", label: "Sources", href: SOURCES_PATH },
+  { id: "repositories", label: "Repositories", href: REPOSITORIES_PATH },
   { id: "providers", label: "Providers", href: PROVIDERS_PATH },
   { id: "farm-tokens", label: "Farm tokens", href: FARM_TOKENS_PATH },
   { id: "knowledge-env", label: "Knowledge / env", href: KNOWLEDGE_ENV_PATH },

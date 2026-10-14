@@ -1,0 +1,150 @@
+/*
+ * Settings → Repositories. Its own prefix, `repos-`, per the stylesheet rule: `ou-` classes
+ * live in app/ui/ui.css only.
+ */
+
+.repos-scanning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-6) var(--sp-7);
+  margin: 0 0 var(--sp-8);
+}
+
+.repos-scanning__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  max-width: 72ch;
+}
+
+.repos-scanning__title,
+.repos-group__login {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.repos-scanning__line,
+.repos-scanning__note,
+.repos-scanning__warn {
+  margin: 0;
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.repos-scanning__line {
+  color: var(--ink-dim);
+}
+
+.repos-scanning__note {
+  color: var(--ink-mut);
+}
+
+.repos-scanning__warn {
+  color: var(--warn);
+}
+
+.repos-scan {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-3);
+}
+
+.repos-seat {
+  min-height: 14rem;
+}
+
+.repos-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-7);
+}
+
+.repos-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.repos-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.repos-row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) minmax(10rem, 1.2fr) minmax(10rem, 1.2fr) auto;
+  align-items: center;
+  gap: var(--sp-4) var(--sp-6);
+  padding: var(--sp-4) 0;
+  border-top: 1px solid var(--line);
+}
+
+.repos-row:first-child {
+  border-top: 0;
+}
+
+.repos-row__name {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.repos-row__source,
+.repos-row__none,
+.repos-row__scan {
+  font-size: var(--t-xs);
+}
+
+.repos-row__source {
+  color: var(--ink-dim);
+}
+
+.repos-row__none {
+  color: var(--ink-mut);
+  font-style: italic;
+}
+
+.repos-row__scan {
+  color: var(--ink-mut);
+}
+
+.repos-switch {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-2);
+}
+
+.repos-switch__failure {
+  margin: 0;
+  max-width: 32ch;
+  color: var(--err);
+  font-size: var(--t-xs);
+  text-align: right;
+}
+
+@media (width <= 640px) {
+  .repos-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .repos-row__source,
+  .repos-row__none {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .repos-row__scan {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+}

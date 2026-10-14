@@ -22,8 +22,8 @@ import {
   onboarding,
 } from "@/app/api/onboarding";
 import { orgPolicy } from "@/app/api/org-policy";
-import { orgs } from "@/app/api/orgs";
 import { attempt } from "@/app/api/reading";
+import { ensureRepositoryEnabled } from "@/app/api/repo-enablement";
 import { repos } from "@/app/api/repos";
 import { sources } from "@/app/api/sources";
 import { GLOBS_MAX, type GlobPreview } from "@/app/globs/glob";
@@ -190,21 +190,11 @@ export async function dismissWizard(repo: string): Promise<WizardWrite<boolean>>
  * @throws {ApiError} A write the service refused — `403` below admin, above all.
  */
 async function turnOnRepository(tenantId: string, valid: string): Promise<void> {
-  const [login, name] = valid.split("/") as [string, string];
   const [listed, listing] = await Promise.all([readEnablement(tenantId), sources.list()]);
 
   if (!coveredBy(listing.items, valid)) throw new NotCovered(notCoveredReason(valid));
 
-  const account = listed.orgs.find(({ org }) => org.login.toLowerCase() === login.toLowerCase());
-  const found = account?.repos.find((one) => one.name.toLowerCase() === name.toLowerCase());
-  const owner = account?.org.login ?? login.toLowerCase();
-
-  if (account === undefined) await orgs.record(tenantId, owner, true);
-  else if (!account.org.enabled) await orgs.setEnabled(tenantId, owner, true);
-
-  if (found === undefined || !found.enabled) {
-    await repos.setEnabled(tenantId, owner, found?.name ?? name.toLowerCase(), true);
-  }
+  await ensureRepositoryEnabled(tenantId, listed, valid);
 
   await attempt(() => detection.scan(valid));
 }

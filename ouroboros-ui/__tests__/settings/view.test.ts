@@ -5,6 +5,7 @@ import {
   KNOWLEDGE_ENV_PATH,
   PROVIDERS_PATH,
   SETTINGS_PATH,
+  REPOSITORIES_PATH,
   SOURCES_PATH,
 } from "@/app/paths";
 import {
@@ -137,9 +138,10 @@ describe("the section tabs", () => {
 });
 
 describe("the mounted tabs (decision S2)", () => {
-  it("are Sources, Providers, Farm tokens and Knowledge / env, in the issue's order", () => {
+  it("are Sources, Repositories, Providers, Farm tokens and Knowledge / env, in that order", () => {
     expect(MOUNTED_TABS.map((tab) => tab.label)).toEqual([
       "Sources",
+      "Repositories",
       "Providers",
       "Farm tokens",
       "Knowledge / env",
@@ -149,6 +151,7 @@ describe("the mounted tabs (decision S2)", () => {
   it("each lead to the surface's own address — nothing is a second copy", () => {
     expect(Object.fromEntries(MOUNTED_TABS.map((tab) => [tab.id, tab.href]))).toEqual({
       sources: SOURCES_PATH,
+      repositories: REPOSITORIES_PATH,
       providers: PROVIDERS_PATH,
       "farm-tokens": FARM_TOKENS_PATH,
       "knowledge-env": KNOWLEDGE_ENV_PATH,
@@ -157,6 +160,7 @@ describe("the mounted tabs (decision S2)", () => {
 
   it("keep Sources and Farm tokens under /settings, so the Settings entry stays lit there", () => {
     expect(SOURCES_PATH.startsWith(`${SETTINGS_PATH}/`)).toBe(true);
+    expect(REPOSITORIES_PATH.startsWith(`${SETTINGS_PATH}/`)).toBe(true);
     expect(FARM_TOKENS_PATH.startsWith(`${SETTINGS_PATH}/`)).toBe(true);
   });
 

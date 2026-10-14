@@ -35,8 +35,10 @@
  * in `app/sources/catalog.ts` and `app/sources/view.ts`.
  */
 
+import { requireWorkspace } from "@/app/api/access";
 import { type ApiError, isApiError } from "@/app/api/errors";
 import { type GithubToken, githubToken } from "@/app/api/github-token";
+import { enableSourceRepositories } from "@/app/api/repo-enablement";
 import {
   type TicketSource,
   type TicketSourceCatalogEntry,
@@ -139,8 +141,11 @@ export async function readSourceCatalog(): Promise<CatalogReading> {
  * @throws Whatever is not an `ApiError`.
  */
 export async function addSource(body: TicketSourceCreate): Promise<AddOutcome> {
+  const { membership } = await requireWorkspace();
+
   try {
     const source = await sources.add(body);
+    await turnOnRepositories(membership.id, source);
 
     return { ok: true, source: { id: source.id, displayName: source.displayName } };
   } catch (error) {
@@ -162,12 +167,37 @@ export async function updateSourceConfig(
   id: string,
   config: TicketSourceConfigSubmission,
 ): Promise<ConfigureOutcome> {
+  const { membership } = await requireWorkspace();
+
   try {
-    return { ok: true, source: await sources.update(id, { config }) };
+    const source = await sources.update(id, { config });
+    await turnOnRepositories(membership.id, source);
+
+    return { ok: true, source };
   } catch (error) {
     if (!isApiError(error)) throw error;
 
     return { ok: false, refusal: refusalOf(error) };
+  }
+}
+
+/**
+ * Turn on the repositories a GitHub source names, so the repository picker, the Issues backlog
+ * and detection see them without a trip to Get started (`app/api/repo-enablement.ts`).
+ *
+ * After the source is stored and never instead of it: a refusal here — the service allows
+ * enablement to fewer roles than it allows sources — leaves the source in place, and the
+ * repositories can still be switched on under Settings → Repositories.
+ *
+ * @param tenantId The workspace.
+ * @param source The source as stored.
+ * @returns Once the writes have settled.
+ */
+async function turnOnRepositories(tenantId: string, source: TicketSource): Promise<void> {
+  try {
+    await enableSourceRepositories(tenantId, source);
+  } catch (error) {
+    if (!isApiError(error)) throw error;
   }
 }
 

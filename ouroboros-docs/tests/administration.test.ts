@@ -104,7 +104,7 @@ describe("the administration overview (#1189)", () => {
 
   it("lists every tab of the settings tab row, in its order", () => {
     const view = source("ouroboros-ui", "app", "settings", "view.ts");
-    // The six section tabs, in TAB_ORDER, then the four mounted tabs.
+    // The six section tabs, in TAB_ORDER, then the five mounted tabs.
     const order = /const TAB_ORDER[^=]*=\s*\[([^\]]+)\]/.exec(view)?.[1] ?? "";
     const ids = [...order.matchAll(/"([a-z-]+)"/g)].map((match) => match[1]);
     const tabs = ids.map((id) => {
@@ -114,7 +114,7 @@ describe("the administration overview (#1189)", () => {
     });
     const mounted = /export const MOUNTED_TABS[\s\S]*?\];/.exec(view)?.[0] ?? "";
     tabs.push(...[...mounted.matchAll(/label: "([^"]+)"/g)].map((match) => match[1]));
-    expect(tabs).toHaveLength(10);
+    expect(tabs).toHaveLength(11);
 
     const rows = [...OVERVIEW.matchAll(/\| \*\*([^*]+)\*\* \| [^|]+ \| \[/g)]
       .map((match) => match[1])

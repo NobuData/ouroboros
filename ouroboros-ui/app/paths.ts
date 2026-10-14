@@ -135,6 +135,13 @@ export function settingsSectionPath(section: string): string {
 export const SOURCES_PATH = `${SETTINGS_PATH}/sources`;
 
 /**
+ * Repositories — the repositories Ouroboros works in, the ticket source that names each one,
+ * and whether their issues are being scanned. Mounted beside {@link SOURCES_PATH} for its
+ * reason: an admin surface under `/settings`, so the **Settings** entry stays lit.
+ */
+export const REPOSITORIES_PATH = `${SETTINGS_PATH}/repositories`;
+
+/**
  * Farm tokens (AI.3, [#258](https://github.com/NobuData/ouroboros/issues/258)) — the build farm's
  * enrollment tokens, as the settings section's second mounted tab.
  *

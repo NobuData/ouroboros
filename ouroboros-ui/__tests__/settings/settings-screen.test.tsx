@@ -193,7 +193,7 @@ describe("the page head", () => {
 });
 
 describe("the section nav", () => {
-  it("draws the six anchors and the four mounted tabs", () => {
+  it("draws the six anchors and the five mounted tabs", () => {
     hub();
 
     const tabs = screen.getByRole("navigation", { name: "Settings" });
@@ -206,6 +206,7 @@ describe("the section nav", () => {
       "Audit",
       "Danger zone",
       "Sources",
+      "Repositories",
       "Providers",
       "Farm tokens",
       "Knowledge / env",
@@ -714,7 +715,7 @@ describe("the loading state (#496)", () => {
 
     expect(main).toHaveAttribute("aria-busy", "true");
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(SETTINGS_TITLE);
-    expect(screen.getByRole("navigation", { name: "Settings" }).querySelectorAll("a")).toHaveLength(10);
+    expect(screen.getByRole("navigation", { name: "Settings" }).querySelectorAll("a")).toHaveLength(11);
   });
 
   it("fills the eight seats at the page's spans, so nothing jumps when the cards arrive", async () => {
@@ -764,7 +765,7 @@ describe("a viewer", () => {
     expect(note).toHaveTextContent(`Viewing workspace settings as a ${role}. ${READ_ONLY_BODY}`);
     // Every section is still there to be read.
     expect(document.querySelectorAll(".settings__seat")).toHaveLength(8);
-    expect(screen.getByRole("navigation", { name: "Settings" }).querySelectorAll("a")).toHaveLength(10);
+    expect(screen.getByRole("navigation", { name: "Settings" }).querySelectorAll("a")).toHaveLength(11);
   });
 
   it("is offered no Save changes — and still the audit shortcut, which only navigates", () => {

@@ -23,6 +23,7 @@ const editProtectedPaths = vi.fn();
 const pathPreview = vi.fn();
 const selectTemplateCall = vi.fn();
 
+vi.mock("server-only", () => ({}));
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => Promise.resolve({ membership: membership() }) }));
 vi.mock("@/app/api/onboarding", () => ({
   onboarding: {

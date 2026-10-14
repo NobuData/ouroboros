@@ -26,6 +26,7 @@
     "/settings": "administration/index",
     "/settings/farm-tokens": "administration/build-farm",
     "/settings/policies": "administration/policies",
+    "/settings/repositories": "administration/sources",
     "/settings/sources": "administration/sources",
     "/workflows": "user-guide/workflows/studio",
     "/workflows/[slug]": "user-guide/workflows/studio",

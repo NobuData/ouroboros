@@ -5,6 +5,7 @@ import {
   FARM_TOKENS_PATH,
   KNOWLEDGE_ENV_PATH,
   PROVIDERS_PATH,
+  REPOSITORIES_PATH,
   SOURCES_PATH,
   settingsSectionPath,
 } from "@/app/paths";
@@ -101,6 +102,7 @@ describe("the tab row on a mounted page", () => {
       "Audit",
       "Danger zone",
       "Sources",
+      "Repositories",
       "Providers",
       "Farm tokens",
       "Knowledge / env",
@@ -141,6 +143,7 @@ describe("the tab row on a mounted page", () => {
 
     expect(hrefs).toEqual({
       Sources: SOURCES_PATH,
+      Repositories: REPOSITORIES_PATH,
       Providers: PROVIDERS_PATH,
       "Farm tokens": FARM_TOKENS_PATH,
       "Knowledge / env": KNOWLEDGE_ENV_PATH,

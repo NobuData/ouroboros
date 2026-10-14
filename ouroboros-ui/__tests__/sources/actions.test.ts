@@ -34,6 +34,15 @@ const api = vi.hoisted(() => ({
   test: vi.fn(),
   sync: vi.fn(),
   status: vi.fn(),
+  enableRepos: vi.fn(),
+}));
+
+vi.mock("server-only", () => ({}));
+vi.mock("@/app/api/access", () => ({
+  requireWorkspace: () => Promise.resolve({ membership: { id: "tenant-acme" } }),
+}));
+vi.mock("@/app/api/repo-enablement", () => ({
+  enableSourceRepositories: (tenantId: string, stored: unknown) => api.enableRepos(tenantId, stored),
 }));
 
 // The backlog token's module sits on the server-side client; its two actions have a suite of
@@ -69,6 +78,7 @@ beforeEach(() => {
   for (const fn of Object.values(api)) fn.mockReset();
   api.catalog.mockResolvedValue(catalogPayload());
   api.add.mockResolvedValue(source());
+  api.enableRepos.mockResolvedValue([]);
   api.update.mockResolvedValue(source({ status: "paused" }));
   api.setCredentials.mockResolvedValue(source({ credentialMask: "••••3210" }));
   api.test.mockResolvedValue(testResult());
@@ -99,6 +109,33 @@ describe("addSource", () => {
     expect(api.add).toHaveBeenCalledWith(body);
   });
 
+  it("turns on the repositories the stored source names", async () => {
+    // Adding a GitHub source used to record only the source, so its repositories stayed off
+    // for the picker, the Issues backlog and detection until somebody found Get started.
+    const stored = source();
+    api.add.mockResolvedValue(stored);
+
+    await actions.addSource({ kind: "github", displayName: "x", config: { login: "a", repos: ["b"] } });
+
+    expect(api.enableRepos).toHaveBeenCalledExactlyOnceWith("tenant-acme", stored);
+  });
+
+  it("keeps the stored source when turning its repositories on is refused", async () => {
+    api.enableRepos.mockRejectedValue(refusal(403, "forbidden"));
+
+    expect(await actions.addSource({ kind: "github", displayName: "x", config: {} })).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it("turns nothing on when the source was refused", async () => {
+    api.add.mockRejectedValue(refusal(422, "ticket_source_config_invalid"));
+
+    await actions.addSource({ kind: "github", displayName: "x", config: {} });
+
+    expect(api.enableRepos).not.toHaveBeenCalled();
+  });
+
   it("hands back the envelope on a refusal", async () => {
     api.add.mockRejectedValue(refusal(422, "ticket_source_config_invalid", { fields: { repos: ["x"] } }));
 
@@ -126,6 +163,15 @@ describe("updateSourceConfig and setSourceCredentials", () => {
     await actions.updateSourceConfig(ID, { login: "a", repos: ["b"] });
 
     expect(api.update).toHaveBeenCalledWith(ID, { config: { login: "a", repos: ["b"] } });
+  });
+
+  it("turn on the repositories the edited source names", async () => {
+    const stored = source({ status: "paused" });
+    api.update.mockResolvedValue(stored);
+
+    await actions.updateSourceConfig(ID, { login: "a", repos: ["b", "c"] });
+
+    expect(api.enableRepos).toHaveBeenCalledExactlyOnceWith("tenant-acme", stored);
   });
 
   it("send the secret exactly as typed and hand back the masked echo", async () => {

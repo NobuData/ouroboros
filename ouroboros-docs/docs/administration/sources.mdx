@@ -57,6 +57,10 @@ tokens can be the same GitHub token, if it has the permissions both jobs need.
 <Screenshot id="administration.sources.connect" />
 
 The dialog confirms **Source added** and the new row appears, **active** and **never synced**.
+Adding the source also switches its repositories on: they appear under
+<UiPath path="Settings > Repositories" /> and in the workspace chip's **Focus repository** list
+straight away, and the **Issues** backlog starts scanning them once the backlog token is set —
+see [Repositories](#repositories).
 Choose **Test connection** on the row to check that GitHub accepts the token. Then choose
 **Sync now** to fetch its tickets, or wait for the next scheduled sync.
 
@@ -142,12 +146,34 @@ import finishes in several quick passes.
 Choose **Configure** on a row. The **Configure source** dialog has two parts:
 
 - **Settings** — the account and repositories. **Save settings** replaces them all; the stored
-  token is unchanged.
+  token is unchanged. A repository you add here is switched on, as when the source was added; one
+  you take out stays as it was until you switch it off under **Repositories**.
 - **Credential** — **Store credential** replaces the token. The old token is never shown, and
   the row's mask changes to the new one's.
 
 The push from Planning writes to the **first** repository in the list, so put the repository
 you want new tickets in at the top.
+
+## Repositories
+
+<UiPath path="Settings > Repositories" /> (`/settings/repositories`) lists every repository the
+workspace works in, by GitHub account, in one place:
+
+- **The source that names it** — or **No source**. Ouroboros only turns on a repository that a
+  GitHub source names, so a repository with no source can be switched off but not back on until
+  you add it to a source.
+- **Whether its issues are being scanned** — **Issues read 4m ago**, **Waiting for its first
+  scan**, **Not scanned while off**, or why scanning has stopped, such as **Not scanned — no
+  backlog token**.
+- **Its switch.** An **Owner** or a **Maintainer** turns a repository on or off. A repository that is
+  off is left out of the **Issues** backlog, repository detection and the **Focus repository**
+  list. Turning one on also starts repository detection for it.
+
+The **Issue scanning** card at the top says whether the backlog is being scanned for the whole
+workspace, and warns when no backlog token is set. **Scan issues now** starts a pass over every
+repository that is on; anyone but a **Viewer** can use it.
+
+Get started's repository switch and this page change the same setting.
 
 ## Pausing a source
 
