@@ -138,6 +138,8 @@ when, against the compose stack:
 provider-priced token accounting, audit events for settings changes, and the
 full-content command palette.
 
+*Update 2026-10-14:* J.3 (#91) is promoted to `mvp`, retained and narrowed by [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (DG.1); the remainder of this paragraph stands.
+
 ## Epics
 
 Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
@@ -2180,7 +2182,7 @@ e2e: seeded org ─▶ stats ✓ tables ✓ pulse ✓ toggle ✓ · switch org �
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | J.1 | #89 | 🟡 Open | ouroboros-rest: [J.1] SSE live-update channel | `@Sse()` stream replacing polling when loops are truly live | v2, dashboard, rest, ui | N (after G.6, I.8) | N | M | ouroboros-rest, ouroboros-ui |
 | J.2 | #90 | 🟡 Open | ouroboros-rest: [J.2] Settings audit & needs-you routing | Audit events for setting changes; needs-you pill → real inbox feed | v2, dashboard, rest | N (after G.5, #26) | N | S | ouroboros-rest |
-| J.3 | #91 | 🟡 Open | ouroboros-engine: [J.3] Engine→read-model ingestion bridge | Internal API for the engine to create/advance runs & usage events | v2, dashboard, engine, rest | N (after #54, G.2) | N | L | ouroboros-engine, ouroboros-rest |
+| J.3 | #91 | 🟡 Open | ouroboros-engine: [J.3] Engine→read-model ingestion bridge | Internal API for the engine to create/advance runs & usage events | mvp, live-loop, dashboard, engine, rest | Y (after #54, G.2) | N | L | ouroboros-engine, ouroboros-rest |
 | J.4 | #92 | 🟡 Open | ouroboros-rest: [J.4] Priced token accounting | Provider price tables → real `cost_cents`; currency/rounding rules | v2, dashboard, rest, db | N (after F.3, J.3) | N | M | ouroboros-rest, ouroboros-db |
 | J.5 | #93 | 🟡 Open | ouroboros-ui: [J.5] Command palette content search | ⌘K searches issues, runs, queue via G.2/G.4 | v2, dashboard, ui | N (after H.3, G.2) | N | M | ouroboros-ui |
 

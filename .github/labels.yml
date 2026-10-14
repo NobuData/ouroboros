@@ -181,3 +181,7 @@
 - name: "sources"
   color: "006b75"
   description: "Pluggable ticket sources — provider SPI, GitHub/Jira/Linear/GitLab"
+
+- name: "live-loop"
+  color: "3c8f7a"
+  description: "Live Loop — first real issue-to-merge run"

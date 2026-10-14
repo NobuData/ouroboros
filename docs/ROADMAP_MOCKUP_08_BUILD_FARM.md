@@ -215,6 +215,8 @@ remote shared cache (AJ.2), workflow build-stage integration (AJ.3), health
 history + Build Analyzer telemetry foundation (AJ.4), pool image registry &
 microVM isolation evaluation (AJ.5).
 
+*Update 2026-10-14:* AJ.3 (#265) is promoted to `mvp` by [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (DG.1); the remainder of this paragraph stands.
+
 ## Epics, Labels & Milestones
 
 Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
@@ -1755,7 +1757,7 @@ e2e: enroll ✓ · presence ✓ · drain ✓ · revoke ✓ · read-only ✓ · t
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AJ.1 | #263 | 🟡 Open | ouroboros-rest: [AJ.1] Cloud auto-scale runners | Activate B9: ephemeral cloud runners when queue exceeds threshold | v2, build-farm, rest, infra | N (after AH.4) | N | L | ouroboros-rest, ouroboros-runner |
 | AJ.2 | #264 | 🟡 Open | ouroboros-runner: [AJ.2] Remote shared build cache | sccache/ccache remote storage — make `shared per pool` true | v2, build-farm | N (after AG.5) | N | M | ouroboros-runner, ouroboros-rest |
-| AJ.3 | #265 | 🟡 Open | ouroboros-rest: [AJ.3] Workflow build-stage integration | WF `build({farm})` dispatches farm jobs; run linkage + gates | v2, build-farm, workflow, rest, engine | N (after WF-T.6, AH.4) | N | M | ouroboros-rest, ouroboros-engine |
+| AJ.3 | #265 | 🟡 Open | ouroboros-rest: [AJ.3] Workflow build-stage integration | WF `build({farm})` dispatches farm jobs; run linkage + gates | mvp, live-loop, build-farm, workflow, rest, engine | Y (after WF-T.6, AH.4) | N | M | ouroboros-rest, ouroboros-engine |
 | AJ.4 | #266 | 🟡 Open | ouroboros-rest: [AJ.4] Health history & analyzer telemetry foundation | Telemetry retention + history API (mockup 18 / `Health history →`) | v2, build-farm, rest | N (after AH.3) | N | M | ouroboros-rest, ouroboros-db |
 | AJ.5 | #267 | 🟡 Open | ouroboros-runner: [AJ.5] Pool image registry & isolation evaluation | Managed pool images; microVM/untrusted-code ADR | v2, build-farm, infra | N (after AG.4) | N | M | ouroboros-runner, docs |
 

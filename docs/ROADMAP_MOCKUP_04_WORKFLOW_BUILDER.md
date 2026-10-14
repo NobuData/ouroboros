@@ -198,6 +198,8 @@ sources**. It is done when, against the compose stack:
 engine-choice ADR T.1), Jira/Linear/GitLab providers (T.2–T.4), template library
 (T.5), code view (mockup 05 roadmap), copilot (mockup 20 roadmap).
 
+*Update 2026-10-14:* T.1 (#155) and T.6 (#160) are promoted to `mvp` by [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (DG.1); the remainder of this paragraph stands.
+
 ## Epics, Labels & Milestones
 
 Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
@@ -1811,12 +1813,12 @@ e2e: parity ✓ · edit→apply ✓ · publish gate ✓ · dry-run path ✓ · r
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| T.1 | #155 | 🟡 Open | ouroboros-engine: [T.1] Execution engine ADR (custom vs Temporal vs Hatchet) | Decide the durable-execution strategy with explicit graduation triggers | v2, workflow, engine | Y | N | M | docs, ouroboros-engine |
+| T.1 | #155 | 🟡 Open | ouroboros-engine: [T.1] Execution engine ADR (custom vs Temporal vs Hatchet) | Decide the durable-execution strategy with explicit graduation triggers | mvp, live-loop, workflow, engine | Y | N | M | docs, ouroboros-engine |
 | T.2 | #156 | 🟡 Open | ouroboros-rest: [T.2] Jira ticket-source provider | REST v3/JQL sync + webhooks behind the Q.2 SPI | v2, sources, rest | N (after Q.5) | N | L | ouroboros-rest |
 | T.3 | #157 | 🟡 Open | ouroboros-rest: [T.3] Linear ticket-source provider | GraphQL sync + webhooks behind the Q.2 SPI | v2, sources, rest | N (after Q.5) | N | M | ouroboros-rest |
 | T.4 | #158 | 🟡 Open | ouroboros-rest: [T.4] GitLab ticket-source provider | REST v4 sync + webhooks behind the Q.2 SPI | v2, sources, rest | N (after Q.5) | N | M | ouroboros-rest |
 | T.5 | #159 | 🟡 Open | ouroboros-ui: [T.5] Workflow template library | Curated starter workflows; "Browse templates" made real | v2, workflow, ui | N (after P.3) | N | M | ouroboros-ui, ouroboros-rest |
-| T.6 | #160 | 🟡 Open | ouroboros-engine: [T.6] Workflow execution bridge | Interpret published definitions over #54; runs feed DASH-J.3 | v2, workflow, engine, rest | N (after T.1, #54, DASH-J.3) | N | L | ouroboros-engine, ouroboros-rest |
+| T.6 | #160 | 🟡 Open | ouroboros-engine: [T.6] Workflow execution bridge | Interpret published definitions over #54; runs feed DASH-J.3 | mvp, live-loop, workflow, engine, rest | Y (after T.1, #54, DASH-J.3) | N | L | ouroboros-engine, ouroboros-rest |
 
 ### Issue T.1 — ouroboros-engine: [T.1] Execution engine ADR
 

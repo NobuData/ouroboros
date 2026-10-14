@@ -177,6 +177,8 @@ handoff (AB.1), traffic-derived health + latency (AB.2), learned/cost-optimized
 routing suggestions (AB.3), full spend report surface (AB.4), per-repo route
 overrides (AB.5).
 
+*Update 2026-10-14:* AB.1 (#207) is promoted to `mvp` by [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (DG.1); the remainder of this paragraph stands.
+
 ## Epics, Labels & Milestones
 
 Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
@@ -2057,7 +2059,7 @@ e2e: parity ✓ · reorder→save ✓ · rule→simulate ✓ · floor fail ✓ �
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AB.1 | #207 | 🟡 Open | ouroboros-rest: [AB.1] Invocation-gateway requirements handoff | Requirements doc for the 07 roadmap's ADR (LiteLLM-under-custom vs pure custom) | v2, routing, rest, engine | Y | N | S | docs |
+| AB.1 | #207 | 🟡 Open | ouroboros-rest: [AB.1] Invocation-gateway requirements handoff | Requirements doc for the 07 roadmap's ADR (LiteLLM-under-custom vs pure custom) | mvp, live-loop, routing, rest, engine | Y | N | S | docs |
 | AB.2 | #208 | 🟡 Open | ouroboros-rest: [AB.2] Traffic-derived health & latency | Degraded/latency states from real invocation telemetry | v2, routing, rest | N (after 07-roadmap invocation) | N | M | ouroboros-rest |
 | AB.3 | #209 | 🟡 Open | ouroboros-rest: [AB.3] Learned routing suggestions | Cost/quality-informed route suggestions from run outcomes | v2, routing, rest, engine | N (after AB.2) | N | L | ouroboros-rest, ouroboros-engine |
 | AB.4 | #210 | 🟡 Open | ouroboros-ui: [AB.4] Full spend report surface | The subnav's Spend tab: drill-down by provider/model/task/repo | v2, routing, ui | N (after Z.5, DASH-J.4) | N | M | ouroboros-ui, ouroboros-rest |
