@@ -520,7 +520,7 @@ describe("focusing a repository", () => {
     await listed();
 
     await waitFor(() =>
-      expect(submenu).toHaveAccessibleDescription(/No repositories are enabled/),
+      expect(submenu).toHaveAccessibleDescription(/No enabled repository in this workspace has a ticket source/),
     );
   });
 

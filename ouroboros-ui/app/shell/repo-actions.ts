@@ -34,11 +34,19 @@
  * somebody opens the menu rather than on every page load: the header draws its focus
  * repository from the stored name, and needs the listing only when a choice is about to be
  * made from it.
+ *
+ * ### Narrowed to the repositories a ticket source covers
+ *
+ * Beside the enablement it reads the workspace's ticket sources, one more request, and offers
+ * only the enabled repositories a GitHub source still names (`coveredRepos`). Removing a
+ * source under **Settings → Sources** therefore takes its repositories out of the chooser at
+ * the next opening, without touching enablement.
  */
 
 import { requireWorkspace } from "@/app/api/access";
-import { type EnabledRepo, enabledRepos, readEnablement } from "@/app/api/enablement";
+import { type EnabledRepo, coveredRepos, enabledRepos, readEnablement } from "@/app/api/enablement";
 import { isApiError } from "@/app/api/errors";
+import { sources } from "@/app/api/sources";
 
 /** What the chip's repository submenu draws. */
 export type FocusRepoReading =
@@ -47,14 +55,17 @@ export type FocusRepoReading =
       readonly ok: true;
       /** The workspace this answer is about — BetterAuth's organization id. */
       readonly organizationId: string;
-      /** Every repository Ouroboros may work in there. Empty is a state, not a failure. */
+      /**
+       * Every repository Ouroboros may work in there that a ticket source covers. Empty is a
+       * state, not a failure.
+       */
       readonly repos: readonly EnabledRepo[];
     }
   /** It could not be read, with the message the service gave for refusing. */
   | { readonly ok: false; readonly reason: string };
 
 /**
- * The repositories the caller's active workspace has enabled.
+ * The repositories the caller's active workspace has enabled and a ticket source covers.
  *
  * The failure is kept as a value rather than thrown, which is `app/dashboard/data.ts`'s
  * `Reading<T>` and the argument behind it: the menu is chrome, and a workspace whose
@@ -72,10 +83,15 @@ export async function readFocusRepos(): Promise<FocusRepoReading> {
   const { membership } = await requireWorkspace();
 
   try {
+    const [enablement, page] = await Promise.all([
+      readEnablement(membership.id),
+      sources.list(),
+    ]);
+
     return {
       ok: true,
       organizationId: membership.id,
-      repos: enabledRepos(await readEnablement(membership.id)),
+      repos: coveredRepos(enabledRepos(enablement), page.items),
     };
   } catch (error) {
     // An `ApiError` and nothing else: the redirect signal above travels as a throw too, and a

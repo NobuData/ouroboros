@@ -28,6 +28,7 @@ import type { ApiClient } from "@/app/api/client";
 import { type Org, orgs } from "@/app/api/orgs";
 import { type Repo, repos } from "@/app/api/repos";
 import { api } from "@/app/api/server";
+import type { TicketSource } from "@/app/api/sources";
 
 /**
  * How many rows either listing asks for.
@@ -103,6 +104,56 @@ export function enabledRepos(list: Enablement): EnabledRepo[] {
         .filter((one) => one.enabled)
         .map((one) => ({ id: one.id, name: one.name, login: org.login })),
     );
+}
+
+/** The ticket-source kind whose config names GitHub repositories. */
+const GITHUB_SOURCE_KIND = "github";
+
+/**
+ * The enabled repositories that a ticket source still covers.
+ *
+ * Enablement and ticket sources are two lists: the first says where the loop may work, the
+ * second where its tickets come from. The focus-repo chooser offers the first narrowed by the
+ * second, so a repository whose GitHub source was removed under **Settings → Sources** leaves
+ * the menu, and adding the source back returns it. A source counts whatever its status — a
+ * paused or failing source is still configured for those repositories.
+ *
+ * A GitHub source's config names its account (`login`) and its repositories (`repos`), both
+ * compared case-insensitively, because GitHub treats them that way.
+ *
+ * @param enabled What {@link enabledRepos} answered.
+ * @param sources The workspace's ticket sources.
+ * @returns The covered repositories, in the order of `enabled`.
+ */
+export function coveredRepos(
+  enabled: readonly EnabledRepo[],
+  sources: readonly TicketSource[],
+): EnabledRepo[] {
+  const covered = new Set<string>();
+
+  for (const source of sources) {
+    if (source.kind !== GITHUB_SOURCE_KIND) continue;
+
+    const { login, repos: names } = source.config;
+    if (typeof login !== "string" || !Array.isArray(names)) continue;
+
+    for (const name of names) {
+      if (typeof name === "string") covered.add(coverageKey(login, name));
+    }
+  }
+
+  return enabled.filter((one) => covered.has(coverageKey(one.login, one.name)));
+}
+
+/**
+ * One repository's key for {@link coveredRepos}.
+ *
+ * @param login The GitHub account.
+ * @param name The repository's name within it.
+ * @returns `login/name`, lower-cased.
+ */
+function coverageKey(login: string, name: string): string {
+  return `${login}/${name}`.toLowerCase();
 }
 
 /**

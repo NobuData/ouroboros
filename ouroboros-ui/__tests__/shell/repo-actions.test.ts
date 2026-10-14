@@ -52,6 +52,22 @@ vi.mock("@/app/api/enablement", async () => {
   return { ...actual, readEnablement: () => readEnablement() };
 });
 
+/** What the ticket-source listing answers, per case. */
+const listSources = vi.fn();
+
+vi.mock("@/app/api/sources", () => ({ sources: { list: () => listSources() } }));
+
+/**
+ * A GitHub ticket source covering repositories of one account.
+ *
+ * @param login The account.
+ * @param repos The repository names it covers.
+ * @returns The source, in the shape the listing carries it.
+ */
+function githubSource(login: string, repos: string[]) {
+  return { id: `source-${login}`, kind: "github", config: { login, repos } };
+}
+
 // The enablement module is `server-only` and sits on the server-side client, whose own
 // imports are the three every server-side suite answers.
 vi.mock("server-only", () => ({}));
@@ -97,6 +113,11 @@ beforeEach(() => {
       },
     ],
   });
+  listSources.mockReset();
+  listSources.mockResolvedValue({
+    items: [githubSource("acme-robotics", ["helios-firmware", "atlas-scheduler"])],
+    total: 1,
+  });
 });
 
 describe("reading the focus-repo choices", () => {
@@ -135,6 +156,25 @@ describe("reading the focus-repo choices", () => {
     readEnablement.mockResolvedValue({ orgTotal: 0, orgs: [] });
 
     expect(await readFocusRepos()).toEqual({ ok: true, organizationId: TENANT_ID, repos: [] });
+  });
+
+  it("leaves out an enabled repository no ticket source covers", async () => {
+    // Removing a GitHub source under Settings → Sources takes its repositories out of the
+    // chooser; enablement itself is untouched.
+    listSources.mockResolvedValue({ items: [], total: 0 });
+
+    expect(await readFocusRepos()).toEqual({ ok: true, organizationId: TENANT_ID, repos: [] });
+  });
+
+  it("keeps a refusal of the source listing as a value too", async () => {
+    listSources.mockRejectedValue(
+      new ApiError(503, "service_unavailable", "The service is not answering.", {}, "/sources"),
+    );
+
+    expect(await readFocusRepos()).toEqual({
+      ok: false,
+      reason: "The service is not answering.",
+    });
   });
 
   it("keeps a refusal as a value the menu can draw", async () => {

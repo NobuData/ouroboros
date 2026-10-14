@@ -73,12 +73,13 @@ import { switchWorkspace } from "./switch-workspace";
  *
  * ### The repository listing is read when the menu opens
  *
- * Behind `readFocusRepos()` is `1 + n` requests (`app/shell/repo-actions.ts`), so it is asked
+ * Behind `readFocusRepos()` is `2 + n` requests (`app/shell/repo-actions.ts`), so it is asked
  * for when somebody opens the menu rather than on every page load — the chip paints its
  * focus repository from the *stored name*, and needs the listing only when a choice is about
  * to be made from it. The answer is also what corrects a stored choice that has stopped being
- * true: a repository somebody has since disabled would otherwise narrow every listing to
- * nothing, which is a filter silently returning an empty product.
+ * true: a repository somebody has since disabled, or whose ticket source was removed, would
+ * otherwise narrow every listing to nothing, which is a filter silently returning an empty
+ * product.
  */
 
 /** Which submenu is open, if either. */
@@ -613,7 +614,7 @@ function reposIn(
  * @param listing What the action last answered, or `null` before it has.
  * @param organizationId The workspace the chip is drawing.
  * @returns The sentence, or `null` when the list speaks for itself. Three states have one:
- *   the read is still out, it failed, and the workspace has enabled nothing — the third
+ *   the read is still out, it failed, and no enabled repository has a ticket source — the third
  *   being the difference between "there is nothing to choose" and "the menu is broken".
  */
 function note(listing: FocusRepoReading | null, organizationId: string | null): string | null {
@@ -621,7 +622,10 @@ function note(listing: FocusRepoReading | null, organizationId: string | null): 
   if (!listing.ok) return listing.reason;
   if (listing.organizationId !== organizationId) return "Reading this workspace's repositories…";
   if (listing.repos.length === 0) {
-    return "No repositories are enabled in this workspace yet — every one of them is in scope.";
+    return (
+      "No enabled repository in this workspace has a ticket source yet — every one of them " +
+      "is in scope."
+    );
   }
 
   return null;

@@ -12,7 +12,7 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("next/navigation", () => ({ redirect: () => {} }));
 
-const { ENABLEMENT_LIMIT, enabledRepos, readEnablement } = await import(
+const { ENABLEMENT_LIMIT, coveredRepos, enabledRepos, readEnablement } = await import(
   "@/app/api/enablement"
 );
 
@@ -257,5 +257,71 @@ describe("enabledRepos", () => {
 
   it("answers nothing for a workspace with nothing recorded", () => {
     expect(enabledRepos(list([]))).toEqual([]);
+  });
+});
+
+/**
+ * The chooser's second rule: an enabled repository is offered only while a ticket source still
+ * covers it, so removing a source under Settings → Sources takes its repositories out.
+ */
+describe("coveredRepos", () => {
+  const firmware = { id: "repo-helios-firmware", name: "helios-firmware", login: "acme-robotics" };
+  const dotfiles = { id: "repo-dotfiles", name: "dotfiles", login: "kensuenobu" };
+
+  /**
+   * A ticket source as the listing carries it.
+   *
+   * @param kind Its kind.
+   * @param config Its provider settings.
+   * @returns The source.
+   */
+  function source(kind: string, config: Record<string, unknown>) {
+    return { id: `source-${kind}`, kind, config } as unknown as Parameters<
+      typeof coveredRepos
+    >[1][number];
+  }
+
+  it("keeps the enabled repositories a GitHub source names", () => {
+    const found = coveredRepos(
+      [firmware, dotfiles],
+      [source("github", { login: "acme-robotics", repos: ["helios-firmware"] })],
+    );
+
+    expect(found).toEqual([firmware]);
+  });
+
+  it("answers nothing when no source is left", () => {
+    expect(coveredRepos([firmware, dotfiles], [])).toEqual([]);
+  });
+
+  it("matches the account and the repository regardless of case", () => {
+    const found = coveredRepos(
+      [firmware],
+      [source("github", { login: "Acme-Robotics", repos: ["Helios-Firmware"] })],
+    );
+
+    expect(found).toEqual([firmware]);
+  });
+
+  it("does not let a repository of the same name under another account count", () => {
+    const found = coveredRepos(
+      [firmware],
+      [source("github", { login: "kensuenobu", repos: ["helios-firmware"] })],
+    );
+
+    expect(found).toEqual([]);
+  });
+
+  it("ignores sources that are not GitHub, and configs it cannot read", () => {
+    const found = coveredRepos(
+      [firmware],
+      [
+        source("jira", { login: "acme-robotics", repos: ["helios-firmware"] }),
+        source("github", { login: "acme-robotics" }),
+        source("github", { repos: ["helios-firmware"] }),
+      ],
+    );
+
+    expect(found).toEqual([]);
   });
 });
