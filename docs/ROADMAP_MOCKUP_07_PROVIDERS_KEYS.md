@@ -1956,6 +1956,7 @@ e2e: parity ✓ · add ✓ · test truth ✓ · reveal/rotate ✓ · pull ✓ ·
   streaming, local parity, usage capture) + P3 proxying + throughput
   measurements; prototype the riskiest path (streaming pass-through under
   load); decision with graduation triggers.
+- **Inputs:** AB.1's requirements are [`INVOCATION_GATEWAY_REQUIREMENTS.md`](INVOCATION_GATEWAY_REQUIREMENTS.md) (R1–R10, the non-goals, the `resolution_version` verdict and gaps G1–G8).
 - **Acceptance Criteria:** ADR merged referencing AB.1 + AD.3; prototype
   results recorded; AF.2 scoped to the decision.
 - **Parallelism/Dependencies:** Independent (AB.1, AD.3 as inputs). Blocks
