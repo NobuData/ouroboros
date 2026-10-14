@@ -11,7 +11,9 @@ including its Live Loop amendment.
 ([`ROADMAP_MOCKUP_06_MODEL_ROUTING.md`](ROADMAP_MOCKUP_06_MODEL_ROUTING.md)) leaves the choice
 between a custom executor over the adapter SPI (option 4-A) and a self-hosted LiteLLM under
 our resolution (option 4-B) to the ADR. This document says what either one has to do, what it
-must not own, and what each candidate looks like against that. The ADR picks.
+must not own, and what each candidate looks like against that. The ADR picks — and has:
+[`DECISION_INVOCATION_GATEWAY.md`](DECISION_INVOCATION_GATEWAY.md) adopts 4-A and closes G3,
+G6 and G8.
 
 **Read with:**
 
@@ -320,12 +322,12 @@ for #235.
 |---|---|---|---|
 | G1 | `RunContext.resolutionVersion` is documented as detecting a rebind, but `RESOLUTION_VERSION` is the constant `"r1"`. A call needs the `resolution_snapshots` id to be recognisable against a particular resolution | `invoke.contract.ts`, `resolution.ts`, V024 | #235 |
 | G2 | `token_usage` has `run_id`, `provider`, `model`, tokens, `cost_cents`, `task_kind` and `latency_ms`, but no hop, connection, stage, attempt or vote marker, and no cache-token counts. R4, R5 and R9 attribute to all of these | V010 and later migrations | #235 with #91 |
-| G3 | `provider_auth_failed` says *no retry* but not whether the chain advances to the next hop or aborts | `invoke.contract.ts` | #234 |
+| G3 | `provider_auth_failed` says *no retry* but not whether the chain advances to the next hop or aborts | `invoke.contract.ts` | #234 — **advances** ([decision](DECISION_INVOCATION_GATEWAY.md#the-three-gaps-this-adr-closes)) |
 | G4 | `RunContext.floorHopIndex` is called a *hop index*, but the floor is measured against stored `position`, not chain `index`. The name invites the wrong comparison | `invoke.contract.ts` vs `resolution.ts` | #235 |
 | G5 | There is no error code for *vote execution unavailable* (R5's refusal while votes are deferred) | `INVOKE_ERROR_CODES` | #235 |
-| G6 | A cap cannot be checked against unpriced spend (`costCents: null`). Whether unpriced usage counts against a cap, is refused under one, or passes, is not stated | `invoke.contract.ts`, #586 | #234 |
+| G6 | A cap cannot be checked against unpriced spend (`costCents: null`). Whether unpriced usage counts against a cap, is refused under one, or passes, is not stated | `invoke.contract.ts`, #586 | #234 — **passes, not counted** ([decision](DECISION_INVOCATION_GATEWAY.md#the-three-gaps-this-adr-closes)) |
 | G7 | `InvokeHopEvent` has no `alias` and no timestamp; AB.2 needs both (R8) | `invoke.contract.ts` | #235 |
-| G8 | Some refusals in the `config` class are model-specific (context window exceeded, model not found), so a later hop might succeed. R2 aborts on all of them today | `MODEL_PROVIDERS.md`, `invoke.contract.ts` | #234 |
+| G8 | Some refusals in the `config` class are model-specific (context window exceeded, model not found), so a later hop might succeed. R2 aborts on all of them today | `MODEL_PROVIDERS.md`, `invoke.contract.ts` | #234 — **these two advance** ([decision](DECISION_INVOCATION_GATEWAY.md#the-three-gaps-this-adr-closes)) |
 
 ## Acceptance — how to tell an executor meets this
 

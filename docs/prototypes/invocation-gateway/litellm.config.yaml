@@ -1,0 +1,32 @@
+# LiteLLM proxy for the 4-B leg of the AF.1 (#234) benchmark.
+#
+# Configured the way INVOCATION_GATEWAY_REQUIREMENTS.md says 4-B would have to be: one
+# concrete model per call, LiteLLM's own routing switched off. No fallbacks, no retries,
+# no cooldowns, no budgets, no database, no outbound price-map fetch
+# (LITELLM_LOCAL_MODEL_COST_MAP=True is set in run.sh).
+#
+# `bench` points at upstream.mjs — the same fake provider the direct and 4-A legs stream from.
+
+model_list:
+  - model_name: bench
+    litellm_params:
+      model: openai/bench
+      api_base: http://127.0.0.1:9100/v1
+      api_key: sk-simulated
+
+router_settings:
+  num_retries: 0
+  disable_cooldowns: true
+  routing_strategy: simple-shuffle
+
+litellm_settings:
+  num_retries: 0
+  request_timeout: 120
+  drop_params: true
+  always_include_stream_usage: true
+  set_verbose: false
+  json_logs: false
+
+general_settings:
+  disable_spend_logs: true
+  disable_error_logs: true
