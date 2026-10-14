@@ -1997,7 +1997,7 @@ an operator has to do first.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| DL.1 | #1320 | 🟡 Open | ouroboros: [DL.1] Public sample repository & issue set | A small real project with a build, tests and ten well-formed issues, owned and licensed for demonstration | mvp, live-loop, infra, documentation | Y | Y | M | new repository, docs |
+| DL.1 | ✅ #1320 | 🟢 Done | ouroboros: [DL.1] Public sample repository & issue set | A small real project with a build, tests and ten well-formed issues, owned and licensed for demonstration | mvp, live-loop, infra, documentation | Y | Y | M | new repository, docs |
 | DL.2 | #1326 | 🟡 Open | ouroboros: [DL.2] Reproducible reference run — script & demonstration document | One command from a clean checkout to a draft pull request on the sample repository, with pinned versions | mvp, live-loop, infra, documentation | N (after DI.6, DL.1) | Y | M | scripts, docs |
 | DL.3 | #1327 | 🟡 Open | ouroboros: [DL.3] Recorded reference run & evidence bundle | A recording, the exported transcript, the pull request and the cost — published with what they do not show | mvp, live-loop, documentation | N (after DL.2) | Y | S | docs, ouroboros-docs |
 | DL.4 | #1328 | 🟡 Open | ouroboros-web: [DL.4] Replace the fictional hero statistics with the reference run's facts | The marketing page states what one run measured, linked to its evidence, and no rate | mvp, live-loop, design | N (after DL.3) | Y | S | ouroboros-web |
@@ -2005,7 +2005,26 @@ an operator has to do first.
 
 ### Issue DL.1 — ouroboros: [DL.1] Public sample repository & issue set
 
-> **GitHub issue:** #1320 · **Status:** 🟡 Open · **Parent epic:** #1298
+> **GitHub issue:** #1320 · **Status:** 🟢 Done · **Parent epic:** #1298
+>
+> **Delivered (#1320):** [`NobuData/ouroboros-sample`](https://github.com/NobuData/ouroboros-sample)
+> — public, MIT, a template repository. **Stack recorded: Python** (standard library only, pytest
+> through `make check`, which creates its own `.venv`; a supported language of the engine's
+> dependency-graph tool); a clean checkout builds and tests in about 4 s, and its GitHub Actions
+> check is green. Ten issues (#1–#10) filed from `docs/issues/` by `scripts/file-issues.sh`;
+> every body was run through REST's `planCriteria` (3/3/5/4/5/5/4/4/2/1 claims, none too long)
+> and engine `heuristic-v0` (every issue sized: M, M, L, M, L, L, L, L, S, L — the estimator
+> takes the strongest signal, so `enhancement` reads as L; the README records the intended
+> XS–M sizes beside it). #5 (round halves up, not Python's half-to-even) and #6 (rounding that
+> carries) are the correction-round issues; #10 is the one to decline. `.ouroboros/live-slice.loop.ts`
+> is **provisional** until DI.5 (#1314) publishes the real workflow: it parses, validates and
+> prints back unchanged with REST's code parser, validator and printer, but implement is an `llm`
+> stage and `openPr` arms auto-merge where DI.5 specifies a harness stage and a draft — both
+> noted in `.ouroboros/README.md`. `scripts/reset.sh` (close `ouro/run-*` PRs, delete those
+> branches, reopen the issues, `--restore-main` to tag `demo-start`) was proven on a temporary
+> private copy with a simulated run, then that copy was deleted. Not done here: a build on an
+> **enrolled Ouroboros runner** (no farm is reachable from this machine; the same `make check`
+> ran locally and in CI) and the **second-person** walk-through of the README.
 
 - **Problem Statement:** Every "sandbox repository" in the filed issues is a
   private test fixture. The demonstration data on the site and in the seeds is
