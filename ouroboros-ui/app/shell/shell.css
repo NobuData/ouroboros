@@ -881,7 +881,15 @@
 
 /* The number itself, in the mono face every identifier in this product is set in. */
 .shell-menu__build {
+  color: inherit;
   font-family: var(--f-mono);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.shell-menu__build:hover,
+.shell-menu__build:focus-visible {
+  color: var(--accent);
 }
 
 .shell-menu__failure {
@@ -1244,6 +1252,15 @@ a.shell-nav__item--active:hover {
 
   .shell-search {
     min-width: 0;
+  }
+
+  /*
+   * Help leaves the header at this width and stays in the account menu. One more control
+   * here squeezes the workspace chip to nothing at 390px and pushes the cluster past the
+   * edge at 360px, and the chip is the only way to set a focus repository.
+   */
+  .shell-header__help {
+    display: none;
   }
 
   .shell-search__label,

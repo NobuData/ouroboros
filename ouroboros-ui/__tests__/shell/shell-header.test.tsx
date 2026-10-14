@@ -110,8 +110,24 @@ describe("the shell header", () => {
     renderThemed(<ShellHeader />);
 
     expect(screen.queryByRole("navigation")).toBeNull();
-    // The brand is the only link in the bar.
-    expect(screen.getAllByRole("link")).toHaveLength(1);
+    // The brand goes to the dashboard and Help leaves the application: neither is a way
+    // between the product's screens.
+    expect(screen.getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual([
+      DASHBOARD_PATH,
+      "https://docs.ouroboros.build/",
+    ]);
+  });
+
+  it("offers Help: the documentation, in a new tab", () => {
+    renderThemed(<ShellHeader />);
+
+    const help = screen.getByRole("link", { name: /^Help/ });
+
+    expect(help).toHaveAttribute("href", "https://docs.ouroboros.build/");
+    expect(help).toHaveAttribute("target", "_blank");
+    expect(help).toHaveAttribute("rel", "noopener noreferrer");
+    expect(help).toHaveAccessibleName("Help — opens the documentation in a new tab");
+    expect(help).toHaveClass("shell-icon-button");
   });
 
   it("offers the pills' live region, and no count until one has been read", () => {
@@ -160,7 +176,7 @@ describe("the shell header", () => {
   });
 
   it("puts the cluster in the order the specification lists it", () => {
-    // § 1.1: search pill, the loop pills, notifications, then the profile menu. The two
+    // § 1.1: search pill, the loop pills, Help, notifications, then the profile menu. The two
     // controls that used to sit between them — the theme toggle and the settings gear — were
     // folded into the profile menu by CP.3 (#645).
     const { container } = renderThemed(<ShellHeader />);
@@ -171,6 +187,7 @@ describe("the shell header", () => {
     const order = [
       screen.getByRole("button", { name: /Search/ }),
       pills as Element,
+      screen.getByRole("link", { name: /^Help/ }),
       screen.getByRole("button", { name: /^Notifications/ }),
       screen.getByRole("button", { name: /^Account menu/ }),
     ];
