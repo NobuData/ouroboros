@@ -48,6 +48,11 @@ curl -fsSL 'https://get.ouroboros.build' | sh -s -- \
   --tenant <workspace> --pool <pool> --token orb_enroll_…
 ```
 
+At a terminal, a first install asks for whichever of `--tenant`, `--pool` and `--token` you left
+out, and for `--server` and `--version` when the copy you run has neither filled in. The token is
+not shown as you type it. With no terminal to ask on — a provisioning tool, a script — nothing is
+asked, and the install stops and names the option that is missing.
+
 Run it as yourself. It works out what to install without special rights. It uses `sudo` only for
 the steps that write to the machine, so expect a password prompt.
 
@@ -64,7 +69,7 @@ Each option that takes a value accepts both `--option value` and `--option=value
 | `--pool NAME` | The pool the runner joins. The token must belong to that pool. Needed for a first install. |
 | `--token TOKEN` | The enrollment token, `orb_enroll_…`. Needed for a first install, not for an upgrade. Instead of the flag you can export <EnvVar name="OURO_RUNNER_TOKEN" />, which keeps the token out of the process list. |
 | `--name NAME` | The runner's name in the Build Farm table. Defaults to the machine's hostname, as a slug. |
-| `--server-ca FILE` | A PEM file of CA certificates, for a deployment whose certificate this machine does not already trust. The downloads use it. It is installed as `/etc/ouroboros-runner/server-ca.pem` for the agent, and later runs keep using it. |
+| `--server-ca FILE` | A PEM file of CA certificates, for a deployment whose certificate this machine does not already trust. The downloads use it. It is installed as `/etc/ouroboros-runner/server-ca.pem` for the agent, and later runs keep using it. Without it, see [A certificate the machine does not trust](#a-certificate-the-machine-does-not-trust). |
 | `--bearer-fallback` | Enrolls and runs in the weaker bearer-token mode instead of a client certificate. Use it only when the gateway cannot pass client certificates through — see [The bearer-token fallback](../administration/build-farm.mdx#the-bearer-token-fallback). |
 | `--no-shell` | The agent runs no job directly on this machine, only jobs in containers. |
 | `--user NAME` | The account the service runs as. Defaults to whoever ran the script, which is `SUDO_USER` under `sudo`. The account must exist. |
@@ -75,6 +80,30 @@ Each option that takes a value accepts both `--option value` and `--option=value
 
 The script reads one setting from the environment: <EnvVar name="OURO_RUNNER_TOKEN" />. Every
 other option is a flag.
+
+## A certificate the machine does not trust
+
+Most deployments have a publicly issued certificate, and nothing here applies to them. A
+deployment with a private CA or a self-signed certificate needs a CA file. You can pass one with
+`--server-ca`. If you do not, the script makes one for you:
+
+1. It fetches the certificates the deployment presents.
+2. It shows whose certificate it is, when it expires and its SHA-256 fingerprint.
+3. It asks **Trust this certificate for `<deployment>`? [y/N]**.
+
+Say yes only after comparing the fingerprint with the one your deployment administrator gives
+you. They can print it from the certificate file:
+
+```bash
+openssl x509 -noout -fingerprint -sha256 -in <certificate.pem>
+```
+
+On a yes, the certificates are saved as `/etc/ouroboros-runner/server-ca.pem` and used for the
+downloads and by the agent, exactly as a file passed with `--server-ca` is. On anything else,
+nothing is installed.
+
+The script never trusts a certificate without asking. With no terminal it stops and tells you to
+pass `--server-ca`. It needs `openssl` on the machine to fetch the certificates.
 
 ## What an install does
 
@@ -198,7 +227,14 @@ it, remove the runner on the Build Farm page — see
 - **`no --token given, and /var/lib/ouroboros-runner holds no runner yet`** — this is a first
   install. Copy a fresh command from the **Enroll a runner** card.
 - **`no --tenant given` or `no --pool given`** — the same: a first install needs the whole
-  command from the card.
+  command from the card. You see these only when there was no terminal to ask you on, or you
+  left the answer blank.
+- **`the certificate of … was not trusted, so nothing was installed`** — you answered no, or
+  there was no terminal to ask on. Run it at a terminal and confirm the fingerprint, or pass
+  `--server-ca`.
+- **`this machine's curl does not accept the certificates … presented as a CA file`** — the
+  deployment did not present its root certificate, and this machine's `curl` needs it. Ask your
+  deployment administrator for the CA's PEM file and pass it with `--server-ca`.
 - **`checksum mismatch for …`** — the download was altered or corrupted on the
   way. Nothing was installed or stopped. Try again. If it keeps happening, check for a proxy that
   rewrites downloads.
@@ -206,7 +242,8 @@ it, remove the runner on the Build Farm page — see
   deployment administrator to check the runner releases in
   <EnvVar name="OURO_FARM_RELEASES_DIR" />.
 - **`could not download …`** — the machine cannot reach the deployment over `https`. If the
-  deployment's certificate comes from a private CA, pass `--server-ca`.
+  deployment's certificate comes from a private CA and you were not asked about it, pass
+  `--server-ca`.
 - **`this machine is … and ouroboros-runner is released for linux/x86_64, linux/arm64 and darwin/arm64 only`**
   — the agent has no build for this machine.
 - **`installing needs root, and this is not root and has no sudo`** — run it as root, or install

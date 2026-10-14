@@ -142,12 +142,12 @@ What it does, in order — and **nothing it downloaded runs before step 3**:
 
 | Option | |
 |---|---|
-| `--tenant`, `--pool`, `--name` | Passed to `enroll` |
+| `--tenant`, `--pool`, `--name` | Passed to `enroll`. At a terminal, a first install asks for a missing `--tenant`, `--pool` or `--token` (the token unechoed); with no terminal it stops and names it |
 | `--token` | The enrollment token. `OURO_RUNNER_TOKEN` instead keeps it off even the installer's own process list. Not needed on an enrolled machine |
 | `--server URL` | The deployment. Written into the script by the deployment that served it; needed only with a copy from elsewhere |
 | `--version X.Y.Z` | The release. Written in by the release the script came from |
 | `--download-url URL` | Where the release's files are, when not `<server>/runner/<version>` — a mirror, say. `https` only |
-| `--server-ca FILE` | PEM roots for a deployment whose certificate the system does not trust: used for the downloads, installed as `/etc/ouroboros-runner/server-ca.pem`, and passed to `enroll` and `run` |
+| `--server-ca FILE` | PEM roots for a deployment whose certificate the system does not trust: used for the downloads, installed as `/etc/ouroboros-runner/server-ca.pem`, and passed to `enroll` and `run`. Without it, a certificate the machine does not trust is fetched with `openssl`, shown with its SHA-256 fingerprint, and used only on a yes at the terminal — never unasked |
 | `--bearer-fallback`, `--no-shell` | Passed to `enroll` and `run`, as [Configuration](#configuration) describes |
 | `--user NAME` | The account the service runs as — the one whose Docker socket, `PATH` and devices jobs use |
 | `--state-dir DIR` | Where the identity lives; `/var/lib/ouroboros-runner` |

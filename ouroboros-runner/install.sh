@@ -37,7 +37,7 @@
 #
 # Two variables exist for the test suite (ouroboros-runner/tests/install.test.sh) and
 # nothing else: DESTDIR prefixes every path this script writes, and INSTALL_TTY names the
-# terminal a confirmation is read from. A real install sets neither.
+# terminal questions are read from. A real install sets neither.
 #
 # POSIX sh, and checked by shellcheck in `make lint`: it runs on whatever /bin/sh a build
 # machine has, which is dash, bash or zsh depending on who installed the machine.
@@ -110,12 +110,59 @@ die() {
   exit 1
 }
 
+# ---------------------------------------------------------------------------
+# Asking
+# ---------------------------------------------------------------------------
+
+# Whether the terminal has been opened as descriptor 3.
+terminal_open=false
+
+# open_terminal — open the terminal questions are read from, once, as descriptor 3. Under
+# `curl … | sh` standard input is the script itself, so answers are read from the terminal
+# directly. Fails when there is none — a provisioning tool, a pipe in a script — and then
+# nothing is asked.
+open_terminal() {
+  [ "$terminal_open" = false ] || return 0
+  # In a subshell: a failed redirection on a special builtin such as `:` or `exec` ends a
+  # non-interactive dash, and with it the run, rather than failing the test.
+  (: <"$INSTALL_TTY") 2>/dev/null || return 1
+  exec 3<"$INSTALL_TTY"
+  terminal_open=true
+}
+
+# ask QUESTION — print QUESTION on the terminal and read one line into $answer. Fails, with
+# $answer empty, when there is no terminal to ask on.
+ask() {
+  answer=''
+  open_terminal || return 1
+  printf '%s: ' "$1" >&2
+  read -r answer <&3 || true
+}
+
+# ask_secret QUESTION — ask, without showing what is typed. For the enrollment token, which
+# is a secret and should not be left on the screen.
+ask_secret() {
+  answer=''
+  open_terminal || return 1
+  printf '%s: ' "$1" >&2
+  # Put the echo back if the question is abandoned, so the terminal is not left silent.
+  trap 'stty echo <&3 2>/dev/null; exit 1' HUP INT TERM
+  stty -echo <&3 2>/dev/null || true
+  read -r answer <&3 || true
+  stty echo <&3 2>/dev/null || true
+  trap - HUP INT TERM
+  printf '\n' >&2
+}
+
 usage() {
   cat <<'USAGE'
 Install ouroboros-runner, enrol it into a build farm pool, and run it as a service.
 
   curl -fsSL 'https://<deployment>/install.sh?version=<v>' | sh -s -- \
     --tenant <workspace> --pool <pool> --token orb_enroll_…
+
+At a terminal, a first install asks for whichever of --tenant, --pool and --token (and
+--server, --version) it was not given. With no terminal it stops and names the one missing.
 
 Options:
   --server URL        the deployment, https:// only (filled in when the deployment
@@ -129,6 +176,8 @@ Options:
   --name NAME         this runner's name; default the hostname
   --server-ca FILE    PEM roots for a deployment whose certificate the system does not
                       trust — used for the downloads, and installed for the agent
+                      Without it, a certificate this machine does not trust is
+                      fetched and shown, and used only if you confirm it
   --bearer-fallback   enrol and run in the degraded bearer mode (decision B3)
   --no-shell          run no job directly on this machine; container jobs only
   --user NAME         the account the service runs as; default whoever ran this
@@ -208,6 +257,10 @@ PLAIN='[^[:space:]"'\''<>&\\$`;]+'
 validate_install() {
   [ -n "$server" ] || server=$DEFAULT_SERVER
   [ -n "$version" ] || version=$DEFAULT_VERSION
+
+  # Whatever is still missing is asked for, when there is somebody to ask.
+  if [ -z "$server" ] && ask 'Deployment address (--server, https://…)'; then server=$answer; fi
+  if [ -z "$version" ] && ask 'Release to install (--version, e.g. 0.5.0)'; then version=$answer; fi
 
   [ -n "$server" ] || die "no --server given: name the deployment to install from and enrol into"
   # Trailing slashes are dropped, so <server>/runner/… has exactly one.
@@ -289,6 +342,83 @@ as_root() {
   else
     die "installing needs root, and this is not root and has no sudo — re-run as root"
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Trusting the deployment
+# ---------------------------------------------------------------------------
+
+# server_endpoint — print $server as host:port, the form `openssl s_client` connects to.
+server_endpoint() {
+  endpoint=${server#https://}
+  endpoint=${endpoint%%/*}
+  case $endpoint in
+    \[*\]) endpoint="$endpoint:443" ;; # an IPv6 literal with no port
+    *:*) ;;
+    *) endpoint="$endpoint:443" ;;
+  esac
+  printf '%s\n' "$endpoint"
+}
+
+# trust_server — make a CA file when none was given and one is needed.
+#
+# Nothing happens for a deployment this machine already trusts, which is every deployment
+# with a publicly issued certificate. For one it does not — a private CA, a self-signed
+# certificate — the certificates the deployment presents are fetched, shown with their
+# SHA-256 fingerprint, and used as --server-ca only if the person at the terminal says so.
+#
+# It is never accepted unasked: whoever answers the first connection would then be trusted
+# for every one after it. With no terminal the install stops and names --server-ca.
+trust_server() {
+  [ -z "$server_ca" ] || return 0
+
+  probe=0
+  curl --silent --output /dev/null --proto '=https' "$server/" 2>/dev/null || probe=$?
+  # 60 is curl's "the certificate could not be verified". Anything else — no answer at all
+  # included — is not a question of trust, and is left for the download to report.
+  [ "$probe" -eq 60 ] || return 0
+
+  command -v openssl >/dev/null 2>&1 ||
+    die "this machine does not trust the certificate of $server, and has no openssl to fetch it with — pass --server-ca FILE"
+
+  endpoint=$(server_endpoint)
+  host=${endpoint%:*}
+  fetched="$work/fetched-ca.pem"
+  # SNI names a host, never an address, so it is left out for an IPv6 literal.
+  case $host in
+    \[*) openssl s_client -connect "$endpoint" -showcerts </dev/null 2>/dev/null ;;
+    *) openssl s_client -connect "$endpoint" -servername "$host" -showcerts </dev/null 2>/dev/null ;;
+  esac |
+    awk '/-----BEGIN CERTIFICATE-----/ { keep = 1 } keep { print } /-----END CERTIFICATE-----/ { keep = 0 }' \
+      >"$fetched" || true
+  [ -s "$fetched" ] ||
+    die "this machine does not trust the certificate of $server, and it could not be fetched — pass --server-ca FILE"
+
+  # `openssl x509` reads the first certificate in the file: the deployment's own.
+  fingerprint=$(openssl x509 -noout -fingerprint -sha256 -in "$fetched" 2>/dev/null) || fingerprint=''
+  fingerprint=${fingerprint#*=}
+  [ -n "$fingerprint" ] ||
+    die "the certificate $server presented could not be read — pass --server-ca FILE"
+
+  say "This machine does not already trust the certificate of $server."
+  say "  $(openssl x509 -noout -subject -in "$fetched" 2>/dev/null || true)"
+  say "  $(openssl x509 -noout -issuer -in "$fetched" 2>/dev/null || true)"
+  say "  $(openssl x509 -noout -enddate -in "$fetched" 2>/dev/null || true)"
+  say "  SHA-256 fingerprint: $fingerprint"
+  say "Compare the fingerprint with the one your administrator gives you before saying yes."
+
+  confirm "Trust this certificate for $server?" ||
+    die "the certificate of $server was not trusted, so nothing was installed — confirm it at a terminal, or pass --server-ca FILE"
+
+  # Some TLS libraries take only a root as a CA file, and what a server presents may stop
+  # short of one. Found out now, with the reason, rather than as a failed download.
+  probe=0
+  curl --silent --output /dev/null --proto '=https' --cacert "$fetched" "$server/" 2>/dev/null || probe=$?
+  [ "$probe" -ne 60 ] ||
+    die "this machine's curl does not accept the certificates $server presented as a CA file — ask your administrator for the CA's PEM file and pass --server-ca FILE"
+
+  server_ca=$fetched
+  say "trusting  the certificate $server presented, saved as $CONFIG_DIR/server-ca.pem"
 }
 
 # ---------------------------------------------------------------------------
@@ -585,6 +715,12 @@ install_runner() {
   # Asked before anything is downloaded, so a forgotten flag costs nothing. What enroll
   # itself insists on is asked here too, rather than discovered after the binary is in.
   if ! already_enrolled; then
+    # At a terminal a missing answer is asked for; with nobody to ask it is refused below.
+    if [ -z "$tenant" ] && ask 'Workspace this runner joins (--tenant)'; then tenant=$answer; fi
+    if [ -z "$pool" ] && ask 'Pool this runner joins (--pool)'; then pool=$answer; fi
+    if [ -z "$token" ] && ask_secret 'Enrollment token (--token, orb_enroll_…; not shown as you type)'; then
+      token=$answer
+    fi
     [ -n "$token" ] ||
       die "no --token given, and $state_dir holds no runner yet: mint an enrollment token on the Build Farm page"
     [ -n "$tenant" ] || die "no --tenant given: name the workspace this runner joins, as the enroll command shows it"
@@ -601,6 +737,8 @@ install_runner() {
     server_ca="$DESTDIR$CONFIG_DIR/server-ca.pem"
     say "trusting  the server CA an earlier install left in $CONFIG_DIR"
   fi
+
+  trust_server
 
   # Read now, as whoever ran this, and used from the private copy from here on — so the file
   # may be anywhere this user can read, including the copy an earlier run installed, which
@@ -656,12 +794,7 @@ install_runner() {
 # a pipe from curl in a script, a provisioning tool — there is nobody to ask, and the
 # answer is no.
 confirm() {
-  # In a subshell: a failed redirection on a special builtin such as `:` ends a
-  # non-interactive dash, and with it the uninstall, rather than failing the test.
-  (: <"$INSTALL_TTY") 2>/dev/null || return 1
-  printf '%s [y/N] ' "$1" >&2
-  answer=''
-  read -r answer <"$INSTALL_TTY" || true
+  ask "$1 [y/N]" || return 1
   case $answer in
     y | Y | yes | YES | Yes) return 0 ;;
     *) return 1 ;;

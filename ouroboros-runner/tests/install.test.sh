@@ -83,10 +83,40 @@ while [ $# -gt 0 ]; do
   esac
 done
 printf "curl %s%s\n" "$url" "${cacert:+ cacert=$cacert}" >>"$STUB_LOG"
+# $STUB_UNTRUSTED: the certificate is one this machine does not trust — exit 60,
+# as curl does, unless a CA file is passed; `always` refuses the CA file too.
+case ${STUB_UNTRUSTED:-} in
+  always) exit 60 ;;
+  ?*) [ -n "$cacert" ] || exit 60 ;;
+esac
 path=${url#https://}
 path=${path%%\?*}
 [ -f "$WEB_ROOT/$path" ] || { echo "curl: (22) The requested URL returned error: 404" >&2; exit 22; }
 cp "$WEB_ROOT/$path" "$output"'
+
+# openssl: what an untrusted deployment presents. `s_client` prints a certificate chain as
+# the real one does, between its own chatter; `x509` describes it. Anything else — the
+# checksum fallback — is the real openssl.
+REAL_OPENSSL=$(command -v openssl || true)
+export REAL_OPENSSL
+stub openssl '
+printf "openssl %s\n" "$*" >>"$STUB_LOG"
+case $1 in
+  s_client)
+    [ -z "${STUB_NO_CHAIN:-}" ] || exit 1
+    printf "CONNECTED(00000003)\n-----BEGIN CERTIFICATE-----\nTEFBRg==\n-----END CERTIFICATE-----\n"
+    printf " 1 s:CN = Acme Farm CA\n-----BEGIN CERTIFICATE-----\nQ0E=\n-----END CERTIFICATE-----\nVerify return code: 19\n"
+    ;;
+  x509)
+    case "$*" in
+      *-fingerprint*) echo "sha256 Fingerprint=AB:CD:EF:01" ;;
+      *-subject*) echo "subject=CN = farm.test" ;;
+      *-issuer*) echo "issuer=CN = Acme Farm CA" ;;
+      *-enddate*) echo "notAfter=Jan  1 00:00:00 2030 GMT" ;;
+    esac
+    ;;
+  *) exec "$REAL_OPENSSL" "$@" ;;
+esac'
 
 # uname: the machine the script is told it is on.
 stub uname '
@@ -660,5 +690,125 @@ reset
 run_install --uninstall
 check_equals 0 "$status" "--uninstall on a clean machine succeeds (output: $out)"
 check_not_matches "$log" '^systemctl ' 'and touches no service'
+
+# ---------------------------------------------------------------------------
+# Asking for what was not given
+# ---------------------------------------------------------------------------
+
+printf '\nA first install at a terminal, given no tenant, pool or token\n'
+reset
+printf 'acme-robotics\npool-a\n%s\n' "$TOKEN" >"$work/tty-answers"
+TTY_FILE="$work/tty-answers" run_install --server "$SERVER" --version "$VERSION"
+check_equals 0 "$status" "the install succeeds (output: $out)"
+check_matches "$out" 'Workspace this runner joins \(--tenant\): ' 'it asks for the workspace'
+check_matches "$out" 'Pool this runner joins \(--pool\): ' 'and the pool'
+check_matches "$out" 'Enrollment token' 'and the token'
+check_matches "$log" 'ouroboros-runner enroll .*--tenant acme-robotics .*--pool pool-a' 'the answers reach the agent'
+check_equals "$TOKEN" "$(cat "$TOKEN_SEEN")" 'the typed token reaches the agent'
+check_not_matches "$out$log" "$TOKEN" 'and is neither echoed nor put on a command line'
+
+printf '\nA copy of the script with no server or version filled in\n'
+reset
+printf '%s\n%s\nacme-robotics\npool-a\n%s\n' "$SERVER" "$VERSION" "$TOKEN" >"$work/tty-answers"
+TTY_FILE="$work/tty-answers" run_install
+check_equals 0 "$status" "the install succeeds (output: $out)"
+check_matches "$out" 'Deployment address \(--server' 'it asks for the deployment'
+check_matches "$out" 'Release to install \(--version' 'and the release'
+check_matches "$log" "^curl $SERVER/runner/$VERSION/SHA256SUMS\$" 'and downloads from what was typed'
+
+printf '\nAn answer left blank\n'
+reset
+printf '\n\n\n' >"$work/tty-answers"
+TTY_FILE="$work/tty-answers" run_install --server "$SERVER" --version "$VERSION"
+check_equals 1 "$status" 'a blank answer is still a missing option'
+check_matches "$out" 'no --token given' 'and the refusal names it'
+nothing_installed 'a blank answer'
+
+printf '\nGiven everything, at a terminal\n'
+reset
+: >"$work/tty-answers"
+# shellcheck disable=SC2086
+TTY_FILE="$work/tty-answers" run_install $ENROLL_FLAGS
+check_equals 0 "$status" "the install succeeds (output: $out)"
+check_not_matches "$out" '\(--tenant\): |\(--pool\): |Enrollment token' 'nothing is asked'
+
+# ---------------------------------------------------------------------------
+# A deployment this machine does not trust
+# ---------------------------------------------------------------------------
+
+# run_untrusted MODE TTY [ARG...] — run_install against a deployment whose certificate the
+# machine does not trust, answering from the file TTY.
+run_untrusted() {
+  untrusted_mode=$1 untrusted_tty=$2
+  shift 2
+  : >"$STUB_LOG"
+  out=$(DESTDIR="$root" INSTALL_TTY="$untrusted_tty" PATH="$work/bin:$PATH" \
+    STUB_KERNEL=Linux STUB_MACHINE=x86_64 STUB_UNTRUSTED="$untrusted_mode" \
+    STUB_NO_CHAIN="${STUB_NO_CHAIN:-}" sh "$SCRIPT" "$@" </dev/null 2>&1)
+  status=$?
+  log=$(cat "$STUB_LOG")
+}
+
+printf '\nAn untrusted certificate, confirmed\n'
+reset
+printf 'y\n' >"$work/tty-yes"
+# shellcheck disable=SC2086
+run_untrusted yes "$work/tty-yes" $ENROLL_FLAGS
+check_equals 0 "$status" "the install succeeds (output: $out)"
+check_matches "$out" 'does not already trust the certificate of https://farm.test' 'it says why it is asking'
+check_matches "$out" 'SHA-256 fingerprint: AB:CD:EF:01' 'shows the fingerprint'
+check_matches "$out" 'subject=CN = farm.test' 'and whose certificate it is'
+check_matches "$out" 'Trust this certificate for https://farm.test\? \[y/N\]' 'and asks'
+check_matches "$log" '^openssl s_client -connect farm.test:443 -servername farm.test -showcerts$' \
+  'the chain is fetched from the deployment, by name'
+check_exists "$root/etc/ouroboros-runner/server-ca.pem" 'the CA file is installed'
+check_equals 2 "$(grep -c 'BEGIN CERTIFICATE' "$root/etc/ouroboros-runner/server-ca.pem")" \
+  'holding every certificate presented'
+check_not_matches "$(cat "$root/etc/ouroboros-runner/server-ca.pem")" 'CONNECTED|Verify return|s:CN' \
+  'and none of the chatter around them'
+check_matches "$log" "^curl $SERVER/runner/$VERSION/SHA256SUMS cacert=" 'the downloads use it'
+check_matches "$(cat "$UNIT")" '--server-ca /etc/ouroboros-runner/server-ca.pem' 'and so does the service'
+
+printf '\nAn untrusted certificate, declined\n'
+reset
+printf 'n\n' >"$work/tty-no"
+# shellcheck disable=SC2086
+run_untrusted yes "$work/tty-no" $ENROLL_FLAGS
+check_equals 1 "$status" 'a no stops the install'
+check_matches "$out" 'was not trusted, so nothing was installed' 'and says so'
+nothing_installed 'a declined certificate'
+
+printf '\nAn untrusted certificate, with nobody to ask\n'
+reset
+# shellcheck disable=SC2086
+run_untrusted yes "$work/no-tty" $ENROLL_FLAGS
+check_equals 1 "$status" 'it is never trusted unasked'
+check_matches "$out" 'pass --server-ca FILE' 'and the refusal names the option'
+nothing_installed 'an unconfirmed certificate'
+
+printf '\nAn untrusted certificate that cannot be fetched\n'
+reset
+# shellcheck disable=SC2086
+STUB_NO_CHAIN=1 run_untrusted yes "$work/tty-yes" $ENROLL_FLAGS
+check_equals 1 "$status" 'the install stops'
+check_matches "$out" 'could not be fetched' 'and says the certificate could not be fetched'
+check_not_matches "$out" 'Trust this certificate' 'without asking about nothing'
+
+printf '\nA fetched chain this curl will not take as a CA file\n'
+reset
+# shellcheck disable=SC2086
+run_untrusted always "$work/tty-yes" $ENROLL_FLAGS
+check_equals 1 "$status" 'the install stops'
+check_matches "$out" "ask your administrator for the CA's PEM file" 'and says what to get instead'
+nothing_installed 'an unusable chain'
+
+printf '\nAn untrusted certificate, with --server-ca given\n'
+reset
+printf 'ROOT\n' >"$work/given-ca.pem"
+# shellcheck disable=SC2086
+run_untrusted yes "$work/no-tty" $ENROLL_FLAGS --server-ca "$work/given-ca.pem"
+check_equals 0 "$status" "the install succeeds (output: $out)"
+check_not_matches "$log" '^openssl s_client' 'nothing is fetched: the file given is the answer'
+check_equals ROOT "$(cat "$root/etc/ouroboros-runner/server-ca.pem")" 'and it is what is installed'
 
 check_summary
