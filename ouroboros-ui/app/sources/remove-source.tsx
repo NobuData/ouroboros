@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import type { TicketSource, TicketSourceRemoval } from "@/app/api/sources";
 import { ShellOverlay } from "@/app/shell/overlay";
+import { reconcileFocusRepo } from "@/app/shell/stale-focus";
 import { Button } from "@/app/ui";
 
 import { readSourceRemoval, removeSource } from "./actions";
@@ -80,7 +81,10 @@ export function RemoveSource({ source, mayAdminister }: RemoveSourceProps) {
     );
   }
 
-  /** Remove the source; on success the row is gone, so the page reads again. */
+  /**
+   * Remove the source; on success the row is gone, so the page reads again, and a focus on one
+   * of its repositories is cleared.
+   */
   async function remove(): Promise<void> {
     if (removing) return;
 
@@ -97,6 +101,9 @@ export function RemoveSource({ source, mayAdminister }: RemoveSourceProps) {
     }
 
     setOpen(false);
+    // The source's repositories leave the chip's Focus repository list, so a focus on one of
+    // them is cleared now rather than the next time somebody opens the chip.
+    await reconcileFocusRepo();
     router.refresh();
   }
 

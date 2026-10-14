@@ -15,6 +15,8 @@ import { REPO, mirrored, sourcesReadings, wizard } from "../helpers/onboarding";
 const requireWorkspace = vi.fn();
 const readGetStarted = vi.fn();
 
+// The Remove dialog clears a stale focus repository through a Server Action after a removal.
+vi.mock("@/app/shell/stale-focus", () => ({ reconcileFocusRepo: () => Promise.resolve() }));
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/get-started/data", () => ({
   readGetStarted: (access: unknown, repo: unknown) => readGetStarted(access, repo),

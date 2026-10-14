@@ -18,6 +18,8 @@ const addSource = vi.fn();
 const setSourceStatus = vi.fn();
 const refresh = vi.fn();
 
+// The Remove dialog clears a stale focus repository through a Server Action after a removal.
+vi.mock("@/app/shell/stale-focus", () => ({ reconcileFocusRepo: () => Promise.resolve() }));
 vi.mock("@/app/sources/actions", () => ({
   readSourceCatalog: () => readSourceCatalog(),
   addSource: (body: unknown) => addSource(body),

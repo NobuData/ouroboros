@@ -38,6 +38,8 @@ import { SEEDED_TOKEN_MASK, failedSource, readings, seededSources } from "../hel
 
 const refresh = vi.fn();
 
+// The Remove dialog clears a stale focus repository through a Server Action after a removal.
+vi.mock("@/app/shell/stale-focus", () => ({ reconcileFocusRepo: () => Promise.resolve() }));
 vi.mock("@/app/sources/actions", () => ({
   readSourceCatalog: vi.fn(),
   addSource: vi.fn(),

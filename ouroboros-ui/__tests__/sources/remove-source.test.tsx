@@ -25,6 +25,7 @@ const state = vi.hoisted(() => ({
   refresh: vi.fn(),
   read: vi.fn<(id: string) => Promise<RemovalOutcome>>(),
   remove: vi.fn<(id: string) => Promise<RemovalOutcome>>(),
+  reconcile: vi.fn<() => Promise<void>>(),
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: state.refresh }) }));
@@ -32,6 +33,8 @@ vi.mock("@/app/sources/actions", () => ({
   readSourceRemoval: (id: string) => state.read(id),
   removeSource: (id: string) => state.remove(id),
 }));
+
+vi.mock("@/app/shell/stale-focus", () => ({ reconcileFocusRepo: () => state.reconcile() }));
 
 const { RemoveSource } = await import("@/app/sources/remove-source");
 
@@ -63,6 +66,7 @@ async function opened(): Promise<HTMLElement> {
 
 beforeEach(() => {
   state.refresh.mockReset();
+  state.reconcile.mockReset().mockResolvedValue(undefined);
   state.read.mockReset().mockResolvedValue({ ok: true, removal: removal() });
   state.remove.mockReset().mockResolvedValue({ ok: true, removal: removal() });
 });
@@ -112,6 +116,21 @@ describe("RemoveSource", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("clears a focus on the removed source's repositories before the page reads again", async () => {
+    // The chip names its focus without reading anything, so a focused repository whose
+    // source is gone would stay in the header until somebody opened the chip's menu.
+    render(<RemoveSource mayAdminister source={source()} />);
+
+    const dialog = await opened();
+    fireEvent.click(await within(dialog).findByRole("button", { name: REMOVE_CONFIRM }));
+
+    await waitFor(() => expect(state.refresh).toHaveBeenCalledOnce());
+    expect(state.reconcile).toHaveBeenCalledOnce();
+    expect(state.reconcile.mock.invocationCallOrder[0]).toBeLessThan(
+      state.refresh.mock.invocationCallOrder[0],
+    );
+  });
+
   it("removes nothing on a no", async () => {
     render(<RemoveSource mayAdminister source={source()} />);
 
@@ -158,6 +177,7 @@ describe("RemoveSource", () => {
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(REMOVE_FAILED);
     expect(state.refresh).not.toHaveBeenCalled();
+    expect(state.reconcile).not.toHaveBeenCalled();
     expect(within(dialog).getByRole("button", { name: REMOVE_CONFIRM })).toBeInTheDocument();
   });
 

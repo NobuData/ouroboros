@@ -9,16 +9,11 @@ import type { EnabledRepo } from "@/app/api/enablement";
 import { SETTINGS_PATH } from "@/app/paths";
 
 import { type MenuWorkspace, accountView, tenantChipLabel, tenantChipTitle } from "./account";
-import {
-  ALL_REPOS_LABEL,
-  focusRepoIn,
-  focusRepoState,
-  setFocusRepo,
-  useFocusRepo,
-} from "./focus-repo";
+import { ALL_REPOS_LABEL, setFocusRepo, useFocusRepo } from "./focus-repo";
 import { requestLeave } from "./leave-guard";
 import { menuConsumesKey, menuFocusTarget, menuItems, menuKeyAction } from "./menu";
 import { type FocusRepoReading, readFocusRepos } from "./repo-actions";
+import { dropStaleFocus } from "./stale-focus";
 import { switchWorkspace } from "./switch-workspace";
 
 /**
@@ -206,14 +201,9 @@ export function TenantChip() {
         if (cancelled) return;
         setListing(answer);
 
-        // A stored choice the workspace no longer enables is a filter that narrows every
-        // listing to nothing, so it goes back to all repositories. Read from the store rather
-        // than from this effect's closure: somebody may have chosen while the call was out.
-        if (!answer.ok || answer.organizationId !== activeId) return;
-        const held = focusRepoIn(focusRepoState(), activeId);
-        if (held !== null && !answer.repos.some((one) => one.id === held.id)) {
-          setFocusRepo(activeId, null);
-        }
+        // A stored choice the workspace no longer offers is a filter that narrows every
+        // listing to nothing, so it goes back to all repositories.
+        if (answer.ok && answer.organizationId === activeId) dropStaleFocus(answer);
       })
       .catch(() => {
         // Nothing honest to say beyond what the submenu already says while it waits: the
