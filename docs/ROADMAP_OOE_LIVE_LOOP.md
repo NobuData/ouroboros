@@ -649,7 +649,7 @@ GET /api/v1/loop/capabilities
 | DH.1 | #1302 | 🟡 Open | ouroboros-engine: [DH.1] `StageExecutor` SPI & the harness option for the execution ADR | The second axis of #155: an interface for running a stage, a tool policy, and a measured native-versus-harness evaluation | mvp, live-loop, engine, workflow, documentation | Y | Y | M | ouroboros-engine, docs |
 | DH.2 | #1303 | 🟡 Open | ouroboros-rest: [DH.2] Anthropic Messages-format facade over the chain executor | `/v1/messages` on the internal network with a run-scoped credential, per-call usage and the cost cap | mvp, live-loop, rest, providers, routing | N (after #235) | Y | L | ouroboros-rest |
 | DH.3 | #1308 | 🟡 Open | ouroboros-engine: [DH.3] Claude Agent SDK stage executor | The harness adapter: file tools only, deny-by-hook, events into the run transcript | mvp, live-loop, engine, workflow, runs | N (after DH.1, DH.2, DI.1) | Y | L | ouroboros-engine, ouroboros-docs |
-| DH.4 | #1304 | 🟡 Open | ouroboros-rest: [DH.4] Provider-terms guard — invocation eligibility per adapter & credential kind | Which connections may serve invocation, recorded with sources; subscription credentials refused | mvp, live-loop, rest, providers, documentation | Y | Y | S | ouroboros-rest, ouroboros-ui, ouroboros-docs, docs |
+| DH.4 | ✅ #1304 | 🟢 Done | ouroboros-rest: [DH.4] Provider-terms guard — invocation eligibility per adapter & credential kind | Which connections may serve invocation, recorded with sources; subscription credentials refused | mvp, live-loop, rest, providers, documentation | Y | Y | S | ouroboros-rest, ouroboros-ui, ouroboros-docs, docs |
 | DH.5 | #1309 | 🟡 Open | ouroboros-engine: [DH.5] Native tool-loop stage executor (provider-neutral) | #560's tool boundary on a real working tree, any provider, native tool use | v2, live-loop, engine, workflow, routing | Y | N | L | ouroboros-engine, ouroboros-rest |
 | DH.6 | #1306 | 🟡 Open | ouroboros-engine: [DH.6] CLI harness adapter kind | A subprocess adapter for vendor command-line agents, each behind its own terms record | v2, live-loop, engine, providers | Y | N | M | ouroboros-engine, ouroboros-rest, ouroboros-docs |
 | DH.7 | #1305 | 🟡 Open | ouroboros-runner: [DH.7] Agent stages on the runner | A shell-enabled stage as a farm job on the customer's machine | v2, live-loop, build-farm, engine, infra | N (after P0-2) | N | L | ouroboros-runner, ouroboros-rest, ouroboros-engine, ouroboros-docs |
@@ -884,7 +884,7 @@ sequenceDiagram
 
 ### Issue DH.4 — ouroboros-rest: [DH.4] Provider-terms guard — invocation eligibility per adapter & credential kind
 
-> **GitHub issue:** #1304 · **Status:** 🟡 Open · **Parent epic:** #1294
+> **GitHub issue:** #1304 · **Status:** 🟢 Done · **Parent epic:** #1294
 
 - **Problem Statement:** Five adapters ship for validation and discovery;
   #235 as filed asks all five to implement `invoke()`. Two of them (GitHub

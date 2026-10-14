@@ -18,6 +18,9 @@ import {
   meterLine,
   meterTone,
   metaRow,
+  invocationLine,
+  CAN_RUN_LOOP,
+  CANNOT_RUN_LOOP,
   modelsRegion,
   monogramFor,
   pillDetail,
@@ -35,6 +38,8 @@ import { NOBODY } from "@/app/providers/view";
 import { provider, seededProviders } from "../helpers/models";
 import {
   ADDER,
+  COPILOT_NOT_INVOCABLE,
+  CURSOR_NOT_INVOCABLE,
   READ_AT,
   anthropicEntry,
   anthropicModels,
@@ -171,6 +176,42 @@ describe("the key row, by auth mode", () => {
       placeholder: null,
     });
     expect(secretRow(null, connection({ mask: null }))).toBeNull();
+  });
+});
+
+describe("the invocation line (DH.4, #1304)", () => {
+  it("says a cleared connection can run a loop, with no reason", () => {
+    expect(invocationLine(connection())).toEqual({
+      eligible: true,
+      label: CAN_RUN_LOOP,
+      reason: null,
+    });
+  });
+
+  it("says a Copilot connection cannot, with the service's own sentence", () => {
+    expect(invocationLine(connection({ kind: "copilot" }))).toEqual({
+      eligible: false,
+      label: CANNOT_RUN_LOOP,
+      reason: COPILOT_NOT_INVOCABLE,
+    });
+  });
+
+  it("puts the line on every card model", () => {
+    const model = cardModel({
+      connection: connection({ kind: "cursor" }),
+      entry: null,
+      health: null,
+      spend: null,
+      models: null,
+      aliases: { ok: true, value: [] },
+      now: NOW,
+    });
+
+    expect(model.invocation).toEqual({
+      eligible: false,
+      label: CANNOT_RUN_LOOP,
+      reason: CURSOR_NOT_INVOCABLE,
+    });
   });
 });
 
@@ -486,6 +527,7 @@ describe("the whole card", () => {
       address: null,
       secret: { label: "API key", mask: "••••Xq4A", placeholder: "sk-ant-api03-…" },
       meta: { addedBy: ADDER, addedOn: "2026-06-12", lastUsed: "3m ago" },
+      invocation: { eligible: true, label: CAN_RUN_LOOP, reason: null },
       models: {
         kind: "chips",
         models: anthropicModels(),

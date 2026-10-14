@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.33"
+  version: "0.41.34"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -19057,6 +19057,7 @@ paths:
                     mask: ••••Xq4A
                     addedBy: 5eed0003-0000-4000-8000-000000000001
                     addedByName: Ken Suenobu
+                    invocation: { eligible: true, reason: null }
                     lastCheckedAt: "2026-08-23T09:59:41.882Z"
                     lastUsedAt: "2026-08-23T09:57:12.004Z"
                     createdAt: "2026-06-12T16:20:00.000Z"
@@ -19072,6 +19073,7 @@ paths:
                     mask: null
                     addedBy: 5eed0003-0000-4000-8000-000000000001
                     addedByName: Ken Suenobu
+                    invocation: { eligible: true, reason: null }
                     lastCheckedAt: "2026-08-23T09:59:40.101Z"
                     lastUsedAt: null
                     createdAt: "2026-05-14T08:55:00.000Z"
@@ -19189,6 +19191,7 @@ paths:
                 mask: ••••Xq4A
                 addedBy: 5eed0003-0000-4000-8000-000000000001
                 addedByName: Ken Suenobu
+                invocation: { eligible: true, reason: null }
                 lastCheckedAt: "2026-08-23T09:59:41.882Z"
                 lastUsedAt: null
                 createdAt: "2026-08-23T09:59:41.882Z"
@@ -19238,6 +19241,10 @@ paths:
               credential. `details.errorClass` is one of `auth`, `network`, `rate_limit`,
               `server`, `config`, and `details.detail` is the note mockup 07's card foot would
               draw — `key rejected (401)`. Nothing was stored.
+            * `provider_credential_refused` — the credential is a claude.ai subscription or
+              session token, which Anthropic's terms forbid a third-party product to store or
+              use. It is refused before the provider is asked and is never stored or logged;
+              use a Console API key instead. `details` is empty.
           content:
             application/json:
               schema:
@@ -19742,6 +19749,7 @@ paths:
                 mask: null
                 addedBy: 5eed0003-0000-4000-8000-000000000001
                 addedByName: Ken Suenobu
+                invocation: { eligible: true, reason: null }
                 lastCheckedAt: "2026-08-23T09:59:38.221Z"
                 lastUsedAt: "2026-08-23T09:50:12.000Z"
                 createdAt: "2026-05-30T14:12:00.000Z"
@@ -19853,6 +19861,7 @@ paths:
                 mask: ••••Xq4A
                 addedBy: 5eed0003-0000-4000-8000-000000000001
                 addedByName: Ken Suenobu
+                invocation: { eligible: true, reason: null }
                 lastCheckedAt: "2026-08-23T09:59:41.882Z"
                 lastUsedAt: "2026-08-23T09:57:12.004Z"
                 createdAt: "2026-06-12T16:20:00.000Z"
@@ -20190,6 +20199,7 @@ paths:
                 mask: ••••7Kd2
                 addedBy: 5eed0003-0000-4000-8000-000000000001
                 addedByName: Ken Suenobu
+                invocation: { eligible: true, reason: null }
                 lastCheckedAt: "2026-08-23T10:04:02.510Z"
                 lastUsedAt: "2026-08-23T09:57:12.004Z"
                 createdAt: "2026-06-12T16:20:00.000Z"
@@ -20240,6 +20250,8 @@ paths:
             characters. Or `provider_validation_failed` — the provider refused the new
             credential, and **the old one is still live**. `details.errorClass` and
             `details.detail` say what the provider said.
+            Or `provider_credential_refused` — the new credential is a claude.ai subscription
+            or session token; it was not stored, and the old one is still live.
           content:
             application/json:
               schema:
@@ -57319,12 +57331,13 @@ components:
               provider_error,
               alias_unbound,
               alias_disabled,
+              provider_not_invocable,
               below_floor,
               rule_route_local,
               local_not_allowed,
             ]
           description: |-
-            Why — **stable**, and what a client branches on. Two of the nine keep a hop:
+            Why — **stable**, and what a client branches on. Two of the ten keep a hop:
             `provider_healthy` and `provider_unknown`. They are separate codes because *usable*
             and *nothing has checked it* are different claims, and the second must never be
             rendered as the first. A code this list does not carry still arrives with a sentence
@@ -60293,6 +60306,32 @@ components:
         `unknown` is a state and must never be rendered as healthy.
       examples: [active]
 
+    InvocationEligibility:
+      type: object
+      title: InvocationEligibility
+      description: |-
+        Whether a connection may serve model invocation, and why not when it may not
+        ([#1304](https://github.com/NobuData/ouroboros/issues/1304)). The answer is the
+        provider-terms record's for the connection's kind — `docs/MODEL_PROVIDERS.md` §
+        *Provider terms*: a kind is eligible only where a primary source clears the credential
+        it holds. Eligibility is **permission**, not capability: whether invocation is
+        implemented is `ProviderCapabilities.invocation`.
+      additionalProperties: false
+      required: [eligible, reason]
+      properties:
+        eligible:
+          type: boolean
+          description: Whether this connection may serve model invocation.
+          examples: [false]
+        reason:
+          type: [string, "null"]
+          description: |-
+            Why it may not, as a sentence, or `null` when it may. Display copy, not a code.
+          examples:
+            - >-
+              GitHub's terms for serving model calls to a third-party orchestrator from a Copilot
+              seat are unverified — no primary source has been recorded.
+
     ProviderConnection:
       type: object
       title: ProviderConnection
@@ -60318,6 +60357,7 @@ components:
           mask,
           addedBy,
           addedByName,
+          invocation,
           lastCheckedAt,
           lastUsedAt,
           createdAt,
@@ -60396,6 +60436,8 @@ components:
             time from `"user"`, so a person who renames themselves is named correctly on every
             card; a client draws an em-dash for null and never the id.
           examples: [Ken Suenobu]
+        invocation:
+          $ref: "#/components/schemas/InvocationEligibility"
         lastCheckedAt:
           type: [string, "null"]
           format: date-time

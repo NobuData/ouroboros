@@ -25,7 +25,9 @@
  * being used* should be told about the floor they set rather than about a latency that would
  * not have mattered. Within policy, the order is unbound → floor → switched off → `route_local`
  * → local fallback, which runs from *this hop cannot resolve at all* outwards to *this route will
- * not use it today*.
+ * not use it today*. A connection the provider-terms record does not clear (DH.4,
+ * [#1304](https://github.com/NobuData/ouroboros/issues/1304)) is tested straight after the
+ * switch: like an unbound alias, it cannot run at all, whatever the route allows.
  *
  * **A switched-off alias is tested after the floor, and that placement is CH.6's promise that
  * floor semantics are unchanged** ([#589](https://github.com/NobuData/ouroboros/issues/589)). A
@@ -64,6 +66,7 @@ import {
   type HopCode,
 } from "./explanations";
 import type { AliasBinding, PlannedHop, ResolutionInput } from "./inputs";
+import { invocationEligibility } from "../providers/invocation.terms";
 import { isLocalProvider } from "./locality";
 import {
   RESOLUTION_VERSION,
@@ -150,6 +153,10 @@ function hopCode(
 
   if (!enabled) {
     return HOP_CODES.disabled;
+  }
+
+  if (!invocationEligibility(provider.kind).eligible) {
+    return HOP_CODES.notInvocable;
   }
 
   const local = isLocalProvider(provider.kind);

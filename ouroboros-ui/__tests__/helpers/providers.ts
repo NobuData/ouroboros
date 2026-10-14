@@ -245,6 +245,35 @@ export const ADDER = "Ken Suenobu";
 /** The instant every card suite reads the page at — the seed's *last used 3m ago* is from here. */
 export const READ_AT = "2026-08-23T10:00:12.004Z";
 
+/** What the service says of a Copilot connection's invocation — the provider-terms record's reason. */
+export const COPILOT_NOT_INVOCABLE =
+  "GitHub's terms for serving model calls to a third-party orchestrator from a Copilot " +
+  "seat are unverified — no primary source has been recorded.";
+
+/** …and of a Cursor connection's. */
+export const CURSOR_NOT_INVOCABLE =
+  "Cursor's terms for serving model calls to a third-party orchestrator are unverified — " +
+  "only a forum reply has been found, which is not a primary source.";
+
+/**
+ * What the service answers for a kind's `invocation`, as DH.4's record states it.
+ *
+ * @param kind The connection's kind.
+ * @returns The eligibility the service would serve.
+ */
+export function invocationFor(kind: ProviderConnection["kind"]): ProviderConnection["invocation"] {
+  switch (kind) {
+    case "copilot":
+      return { eligible: false, reason: COPILOT_NOT_INVOCABLE };
+    case "cursor":
+      return { eligible: false, reason: CURSOR_NOT_INVOCABLE };
+    case "custom":
+      return { eligible: false, reason: "No provider-terms record exists for a custom connection." };
+    default:
+      return { eligible: true, reason: null };
+  }
+}
+
 /**
  * One connection, defaulting to the seed's Anthropic one.
  *
@@ -252,7 +281,10 @@ export const READ_AT = "2026-08-23T10:00:12.004Z";
  * @returns The connection as the contract serves it.
  */
 export function connection(over: Partial<ProviderConnection> = {}): ProviderConnection {
+  const kind = over.kind ?? "anthropic";
+
   return {
+    invocation: invocationFor(kind),
     id: "5eed000c-0000-4000-8000-000000000001",
     kind: "anthropic",
     displayName: "Anthropic Claude",

@@ -1,3 +1,5 @@
+import { Logger } from "@nestjs/common";
+
 import type { AuditRecord } from "../audit/audit.events";
 import { recordingAudit } from "../audit/audit.fixture";
 import { COOKIE } from "../auth/http";
@@ -201,6 +203,36 @@ describe("adding a provider", () => {
     await expect(add()).rejects.toMatchObject({ response: { code: "provider_validation_failed" } });
     expect(subject.connections.insert).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["an OAuth access token", "sk-ant-oat01-subscription-token-9xQ2"],
+    ["a refresh token", "sk-ant-ort01-subscription-refresh-4hT1"],
+    ["a session key", "sk-ant-sid01-browser-session-key-2mP8"],
+  ])(
+    "refuses %s from a claude.ai subscription before the provider, vault or audit sees it",
+    async (_name, token) => {
+      // DH.4 (#1304): Anthropic's terms forbid storing a claude.ai credential, so it is refused
+      // on save — never validated, sealed, written, or repeated in the trail or a log.
+      const encrypt = jest.spyOn(subject.vault, "encryptText");
+      const logged = [
+        jest.spyOn(Logger.prototype, "log"),
+        jest.spyOn(Logger.prototype, "warn"),
+        jest.spyOn(Logger.prototype, "error"),
+      ];
+
+      await expect(add({ ...CONFIG, apiKey: token })).rejects.toMatchObject({
+        response: { code: "provider_credential_refused", details: {} },
+      });
+      expect(subject.adapter.calls.validate).toBe(0);
+      expect(encrypt).not.toHaveBeenCalled();
+      expect(subject.connections.insert).not.toHaveBeenCalled();
+      expect(JSON.stringify(subject.audited)).not.toContain(token);
+
+      for (const spy of logged) {
+        expect(JSON.stringify(spy.mock.calls)).not.toContain(token);
+      }
+    },
+  );
 
   it("stores nothing when the submission does not satisfy the adapter's schema", async () => {
     await expect(add({ apiKey: FIXTURE_SECRET })).rejects.toMatchObject({
@@ -722,6 +754,19 @@ describe("rotating a credential", () => {
       response: { code: "provider_validation_failed", details: { detail: "key rejected (401)" } },
     });
     expect(subject.connections.swapCredential).not.toHaveBeenCalled();
+  });
+
+  it("refuses a claude.ai subscription token and leaves the old credential live", async () => {
+    const token = "sk-ant-oat01-subscription-token-9xQ2";
+    const encrypt = jest.spyOn(subject.vault, "encryptText");
+
+    await expect(rotate(token)).rejects.toMatchObject({
+      response: { code: "provider_credential_refused" },
+    });
+    expect(subject.adapter.calls.validate).toBe(0);
+    expect(encrypt).not.toHaveBeenCalled();
+    expect(subject.connections.swapCredential).not.toHaveBeenCalled();
+    expect(JSON.stringify(subject.audited)).not.toContain(token);
   });
 
   it("swaps conditionally on the credential it validated against", async () => {

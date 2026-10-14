@@ -1289,6 +1289,7 @@ simulate panel render those sentences verbatim — there is no story assembly in
 | the alias is bound to no provider  | `alias_unbound`       |
 | it sits deeper than the route floor| `below_floor`         |
 | an operator switched the alias off | `alias_disabled`      |
+| the provider's terms do not clear it to serve model calls (DH.4) | `provider_not_invocable` |
 | a `route_local` rule fired         | `rule_route_local`    |
 | the route allows no local models   | `local_not_allowed`   |
 | an operator paused the provider    | `provider_paused`     |

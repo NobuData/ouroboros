@@ -43,6 +43,7 @@ const CONNECTION: ProviderConnectionResource = {
   mask: FIXTURE_MASK,
   addedBy: FIXTURE_USER.id,
   addedByName: FIXTURE_USER.name,
+  invocation: { eligible: true, reason: null },
   lastCheckedAt: "2026-08-23T09:59:41.882Z",
   lastUsedAt: null,
   createdAt: "2026-06-12T16:20:00.000Z",

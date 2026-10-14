@@ -8,7 +8,7 @@
  *   kind · configSchema() · capabilities() · paramSchema(modelId)
  *   validate(config, secret) → {status, latencyMs, detail}
  *   discoverModels(connection) → NormalizedModel[]
- *   pullModel?() — gated by capabilities().pull   ·   invoke?() — reserved for AF.2
+ *   pullModel?() — gated by capabilities().pull   ·   invoke?() — AF.2, cleared kinds only
  *
  * core ──imports──▶ SPI only        adapters/{anthropic,openai_compat,ollama,copilot,cursor,fake}
  * ```
@@ -90,6 +90,12 @@
  * `internal/invoke.contract.ts` (AD.3). Nothing in this file has to move for that to happen,
  * which is the whole point of reserving the flag now: AF.2 *extends* the interface rather than
  * reshaping it, and every adapter that already ships keeps compiling.
+ *
+ * **Only where the provider-terms record clears it.** DH.4
+ * ([#1304](https://github.com/NobuData/ouroboros/issues/1304)) records, per kind and credential,
+ * whether the provider's terms let a connection serve invocation — `invocation.terms.ts`, and the
+ * table in `docs/MODEL_PROVIDERS.md`. AF.2 implements `invoke` on cleared kinds only, and the
+ * conformance kit fails an uncleared kind that declares the flag or carries the member.
  */
 
 import type { ProviderConnectionKind } from "../db/schema";
@@ -150,7 +156,9 @@ export interface ProviderCapabilities {
    *
    * `false` on every adapter that ships under AC.1–AC.5, and the flag exists now so that the
    * interface AF.2 needs is an extension rather than a reshape. See this file's header for the
-   * recipe, which is the one {@link PullCapableAdapter} already demonstrates.
+   * recipe, which is the one {@link PullCapableAdapter} already demonstrates. It may become
+   * `true` only on a kind the provider-terms record (`invocation.terms.ts`, DH.4) clears —
+   * *may* is that record's answer, *does* is this flag's.
    */
   readonly invocation: boolean;
 }

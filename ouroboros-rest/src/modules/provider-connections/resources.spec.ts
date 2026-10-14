@@ -26,6 +26,7 @@ describe("one connection as a client sees it", () => {
       mask: "••••Xq4A",
       addedBy: "5eed0003-0000-4000-8000-000000000001",
       addedByName: ADDER,
+      invocation: { eligible: true, reason: null },
       lastCheckedAt: "2026-08-23T09:59:41.882Z",
       lastUsedAt: "2026-08-23T09:57:12.004Z",
       createdAt: "2026-06-12T16:20:00.000Z",
@@ -83,8 +84,30 @@ describe("one connection as a client sees it", () => {
     });
   });
 
+  describe("invocation eligibility (DH.4, #1304)", () => {
+    it.each(["anthropic", "openai_compatible", "ollama"] as const)(
+      "states a %s connection may serve invocation",
+      (kind) => {
+        expect(connectionResource(connectionRow({ kind }), null, ADDER).invocation).toEqual({
+          eligible: true,
+          reason: null,
+        });
+      },
+    );
+
+    it.each(["copilot", "cursor", "custom"] as const)(
+      "states a %s connection may not, and says why",
+      (kind) => {
+        const { invocation } = connectionResource(connectionRow({ kind }), null, ADDER);
+
+        expect(invocation.eligible).toBe(false);
+        expect(invocation.reason).toEqual(expect.any(String));
+      },
+    );
+  });
+
   describe("what the shape cannot carry", () => {
-    it("has exactly fifteen fields, and none of them is a credential", () => {
+    it("has exactly sixteen fields, and none of them is a credential", () => {
       // The structural half of *the full value is not in the payload*: the builder takes no
       // envelope and no plaintext, so there is no path by which one reaches a list.
       const resource = connectionResource(connectionRow(), FIXTURE_MASK, ADDER);
@@ -98,6 +121,7 @@ describe("one connection as a client sees it", () => {
         "displayName",
         "enabled",
         "id",
+        "invocation",
         "kind",
         "lastCheckedAt",
         "lastUsedAt",

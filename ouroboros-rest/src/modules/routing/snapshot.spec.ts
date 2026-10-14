@@ -69,8 +69,10 @@ describe("the stored document", () => {
       index: 2,
       alias: "coder-fallback",
       decision: "dropped",
-      code: "provider_error",
-      explanation: "Fallback 1 dropped — GitHub Copilot is unreachable (elevated latency).",
+      code: "provider_not_invocable",
+      explanation:
+        "Fallback 1 dropped — GitHub Copilot is not cleared to serve model calls under its " +
+        "provider's terms; the Providers page says why.",
       duration_ms: null,
       note: "Fallback on 5xx / timeouts",
     });

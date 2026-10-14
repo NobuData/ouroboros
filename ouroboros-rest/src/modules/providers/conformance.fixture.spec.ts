@@ -8,6 +8,7 @@ import {
 } from "./adapters/fake.adapter.fixture";
 import {
   capabilityViolations,
+  invocationViolations,
   conformanceContext,
   normalizedModelViolations,
   paramViolations,
@@ -100,15 +101,56 @@ describe("capabilityViolations", () => {
     );
   });
 
-  it("catches an adapter spending AF.2's reservation", () => {
-    // Claiming `invocation` today is claiming a member no interface declares yet.
+  it("catches invocation declared on a kind the provider-terms record does not clear", () => {
+    // The fake registers as `custom`, which the record never clears (DH.4, #1304).
     const adapter = brokenAdapter({
+      capabilities: () => ({ discovery: true, pull: false, entitlements: false, invocation: true }),
+      invoke: () => undefined,
+    });
+
+    expect(capabilityViolations(adapter)).toEqual([
+      "capabilities().invocation is true but the provider-terms record does not clear custom — " +
+        "see docs/MODEL_PROVIDERS.md",
+      "invoke is present but the provider-terms record does not clear custom — " +
+        "see docs/MODEL_PROVIDERS.md",
+    ]);
+  });
+});
+
+describe("invocationViolations", () => {
+  it("passes a cleared kind that has not implemented invoke yet", () => {
+    expect(invocationViolations(new FakeModelProviderAdapter({ kind: "anthropic" }))).toEqual([]);
+  });
+
+  it("passes a cleared kind whose flag and member agree", () => {
+    const adapter = Object.assign(new FakeModelProviderAdapter({ kind: "ollama" }), {
+      capabilities: () => ({ discovery: true, pull: false, entitlements: false, invocation: true }),
+      invoke: () => undefined,
+    });
+
+    expect(invocationViolations(adapter)).toEqual([]);
+  });
+
+  it("catches an invoke member on an uncleared kind even without the flag", () => {
+    const adapter = Object.assign(new FakeModelProviderAdapter({ kind: "copilot" }), {
+      invoke: () => undefined,
+    });
+
+    expect(invocationViolations(adapter)).toEqual([
+      "invoke is present but the provider-terms record does not clear copilot — " +
+        "see docs/MODEL_PROVIDERS.md",
+      "capabilities().invocation is false but invoke is present — the flag and the member must agree",
+    ]);
+  });
+
+  it("catches a cleared kind declaring invocation with no invoke behind it", () => {
+    const adapter = Object.assign(new FakeModelProviderAdapter({ kind: "anthropic" }), {
       capabilities: () => ({ discovery: true, pull: false, entitlements: false, invocation: true }),
     });
 
-    expect(capabilityViolations(adapter)).toContain(
-      "capabilities().invocation is reserved for AF.2 (#235) and must be false",
-    );
+    expect(invocationViolations(adapter)).toEqual([
+      "capabilities().invocation is true but invoke is absent — the flag and the member must agree",
+    ]);
   });
 });
 

@@ -123,6 +123,18 @@ export function ProviderCard({ model, mayAdminister }: ProviderCardProps) {
         Added by {model.meta.addedBy} · {model.meta.addedOn} · last used {model.meta.lastUsed}
       </p>
 
+      <p
+        className={cx(
+          "providers-card__invocation",
+          !model.invocation.eligible && "providers-card__invocation--no",
+        )}
+      >
+        <span className="providers-card__invocation-label">{model.invocation.label}</span>
+        {model.invocation.reason !== null && (
+          <span className="providers-card__invocation-reason"> — {model.invocation.reason}</span>
+        )}
+      </p>
+
       <ModelsRegionView id={model.id} mayAdminister={mayAdminister} region={model.models} />
 
       {/*

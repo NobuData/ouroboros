@@ -24,6 +24,8 @@ Each card shows:
 - a switch for routing through it;
 - its key, masked, or its **Host** or **Base URL**;
 - who added it and when it was last used;
+- whether it can run a loop — **Can run a loop**, or **Cannot run a loop** and why (see
+  [Which connections can run a loop](#which-connections-can-run-a-loop));
 - the models it serves;
 - this month's spend against its **Monthly cap**;
 - a **Test connection** button.
@@ -50,6 +52,42 @@ resolves to them. Calling a model through a connection is not available yet.
 Every form also takes a **Name**, and all but Anthropic take an optional **Capability note**: a
 line under the name, such as *zero-cost lane — used for docs & commit messages*. **OpenAI**,
 **Google** and **Bedrock** are not available yet.
+
+## Which connections can run a loop
+
+Each provider's own terms decide whether Ouroboros may call models through a connection on
+your behalf. Running a loop through a credential its provider forbids puts **your** account at
+risk of being restricted, so Ouroboros keeps a record of those terms and follows it:
+
+| Kind | Credential | Can run a loop |
+| --- | --- | --- |
+| **Anthropic** | An API key from the Anthropic Console | Yes |
+| **Anthropic** | A claude.ai subscription or session token | No — refused when you connect |
+| **OpenAI-compatible** endpoint | The endpoint's key, or none | Yes — you operate the endpoint |
+| **Ollama** host | None | Yes — it runs on your own hardware |
+| **GitHub Copilot** | A Copilot seat | No — GitHub's terms are unverified |
+| **Cursor** | An API key | No — Cursor's terms are unverified |
+
+Each card states the answer under its added-by line. **Cannot run a loop** is followed by the
+reason, for example *Cannot run a loop — GitHub's terms for serving model calls to a
+third-party orchestrator from a Copilot seat are unverified — no primary source has been
+recorded.* You can still connect, test and discover through such a connection.
+
+**Routing skips a connection that cannot run a loop.** A route whose chain includes one keeps
+the hop in the chain but drops it, and [Simulate routing](../user-guide/models.mdx#simulating-routing)
+says why — for example *Fallback 1 dropped — GitHub Copilot is not cleared to serve model calls
+under its provider's terms; the Providers page says why.*
+
+**Why subscription credentials are refused.** Anthropic's terms say a third-party product may
+not collect, store or use claude.ai credentials or session tokens; it must use an API key from
+the Anthropic Console or a supported cloud provider. A key that looks like a claude.ai token —
+starting `sk-ant-oat`, `sk-ant-ort` or `sk-ant-sid` — is refused when you connect or rotate.
+It is never stored and never written to a log or the audit log.
+
+**Where the record lives.** The terms record, with each row's primary source and the date it
+was read, is the *Provider terms* table in `docs/MODEL_PROVIDERS.md` in the Ouroboros
+repository. A row without a primary source counts as **No**. Copilot and Cursor change to
+**Yes** only when someone records their provider's own terms there.
 
 ## Connecting a provider
 
@@ -191,6 +229,9 @@ keys that do not exist.
 
 - **Connecting is refused with *The provider refused it — key rejected (401)*.** The key is
   wrong, revoked, or for another account. Nothing was stored; paste the right key.
+- **Connecting or rotating is refused with *This looks like a claude.ai subscription or session
+  token, which cannot be used here.*** The key is a claude.ai sign-in token, not an API key.
+  Nothing was saved. Create an API key in the Anthropic Console and paste that instead.
 - **An Ollama or OpenAI-compatible connection is refused as unreachable.** The REST service
   cannot reach the address. Check it from the machine REST runs on, for example with
   `curl http://ken-station.local:11434/api/tags`.

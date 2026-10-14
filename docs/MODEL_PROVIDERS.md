@@ -360,7 +360,7 @@ interface ProviderCapabilities {
   discovery: boolean;      // does discoverModels() ask the provider, or answer a fixed catalog?
   pull: boolean;           // does this adapter implement PullCapableAdapter?
   entitlements: boolean;   // does validate()'s detail carry seat/entitlement information?
-  invocation: boolean;     // reserved for AF.2 (#235) — false on everything today
+  invocation: boolean;     // AF.2 (#235); true only where the provider-terms record clears the kind
 }
 ```
 
@@ -400,6 +400,66 @@ extending the SPI, narrowing `capabilities()`, declaring `invoke`, with a
 written, in `internal/invoke.contract.ts`. Nothing in the SPI has to move for that to
 happen, which is the point of reserving the flag now: AF.2 *extends* the interface rather
 than reshaping it, and every adapter that already ships keeps compiling.
+
+`invocation` may become `true` **only on a kind the provider-terms record clears** — see the
+next section. The conformance kit fails an uncleared kind that declares the flag *or* carries
+an `invoke` member, and fails any adapter whose flag and member disagree.
+
+## Provider terms — which connections may serve invocation
+
+DH.4 ([#1304](https://github.com/NobuData/ouroboros/issues/1304)). An orchestrator that routes
+a customer's loop through a credential its provider forbids exposes the **customer** to having
+the account restricted. So before any adapter implements `invoke()`, this record says which
+adapter-and-credential pairs may serve it, and on whose word.
+
+The rules:
+
+- A row is `cleared` only when a **primary source** — the vendor's own terms, or the customer
+  operating the endpoint themselves — was read and dated.
+- A row without a primary source is `unverified`, and `unverified` means **no invocation**,
+  exactly as `refused` does.
+- A credential the record refuses is refused **when the connection is saved**, never stored,
+  and never logged.
+
+| Adapter (`kind`) | Credential kind | Invocation | Primary source | Read |
+|---|---|---|---|---|
+| `anthropic` | API key (Console) | ✓ cleared | [Anthropic, Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance) | 2026-10-10 |
+| `anthropic` | claude.ai subscription or session token | ✗ refused | [Anthropic, Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance) | 2026-10-10 |
+| `openai_compatible` | Endpoint key, or none | ✓ cleared | Customer-operated endpoint | 2026-10-10 |
+| `ollama` | None (base URL) | ✓ cleared | Local, customer-operated | 2026-10-10 |
+| `copilot` | Seat entitlement | ✗ unverified | — none found | — |
+| `cursor` | API key | ✗ unverified | — none found (a forum reply only) | — |
+| `custom` | Any | ✗ unverified | — none found | — |
+
+What the sources say:
+
+- **Anthropic.** Developers "should use API key authentication through Claude Console or a
+  supported cloud provider … developers may not collect, store, or intermediate Claude.ai
+  credentials or session tokens"; the same page "does not restrict how customers provision and
+  manage their own API keys … provided the resulting usage is billed to the key owner". The
+  [Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview) adds: "Unless
+  previously approved, Anthropic does not allow third party developers to offer claude.ai login
+  or rate limits for their products". Bedrock, Agent Platform and Foundry credentials join the
+  cleared rows when AF.3 ([#236](https://github.com/NobuData/ouroboros/issues/236)) ships those
+  adapters.
+- **GitHub Copilot.** No primary terms text was found on whether a Copilot seat may serve
+  programmatic model calls from a third-party orchestrator.
+- **Cursor.** A Cursor forum reply calls backend use of the Cursor SDK "supported and
+  intended"; a forum reply is not the terms of use, which were not read.
+
+**Where it lives in code.** `ouroboros-rest/src/modules/providers/invocation.terms.ts` holds
+the same record as `INVOCATION_TERMS`, and `invocation.terms.spec.ts` fails when the two
+disagree. It drives three things:
+
+| Where | What happens |
+|---|---|
+| `POST /api/v1/providers`, `…/{id}/rotate` | A credential shaped like a claude.ai OAuth token (`sk-ant-oat…`), refresh token (`sk-ant-ort…`) or session key (`sk-ant-sid…`) is refused with `422 provider_credential_refused`, before the live check and before the vault. The refusal carries nothing of the credential. |
+| `ProviderConnection.invocation` | `{ eligible, reason }` on every connection — the Providers card states it, and DG.2 ([#1300](https://github.com/NobuData/ouroboros/issues/1300)) reads it. |
+| Route resolution | A hop on an ineligible connection is `dropped` with code `provider_not_invocable` and a sentence, tested straight after the alias switch and before health — the same drop-with-reason mechanism AF.4 ([#237](https://github.com/NobuData/ouroboros/issues/237)) uses for caps. |
+
+**To clear a row,** read the provider's own terms, quote them above with the date, change the
+row's `standing` in `invocation.terms.ts` to `cleared` with its `source`, `sourceUrl` and
+`read`, and update this table — the spec holds them together.
 
 ## Reporting an entitlement
 
@@ -854,7 +914,7 @@ the class and your `detail` — which is the second reason the detail must never
 | | |
 |---|---|
 | Credential add / reveal / rotate | AD.2 ([#223](https://github.com/NobuData/ouroboros/issues/223)) |
-| Invocation through an adapter | AF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)), AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) |
+| Invocation through an adapter — on the kinds the [provider-terms record](#provider-terms--which-connections-may-serve-invocation) clears | AF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)), AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) |
 | Cloud adapters — OpenAI, Google, Bedrock | AF.3 ([#236](https://github.com/NobuData/ouroboros/issues/236)) |
 
 The add-form and catalog landed with AE.5 ([#231](https://github.com/NobuData/ouroboros/issues/231)):

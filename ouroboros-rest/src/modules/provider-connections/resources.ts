@@ -35,6 +35,7 @@
  */
 
 import type { ProviderConnectionKind, ProviderConnectionStatus } from "../db/schema";
+import { invocationEligibility, type InvocationEligibility } from "../providers/invocation.terms";
 import type { ConnectionRow } from "./provider-connections.repository";
 
 /**
@@ -85,6 +86,13 @@ export interface ProviderConnectionResource {
   readonly addedByName: string | null;
   /** When the last health check finished, ISO 8601, or null until one has. */
   readonly lastCheckedAt: string | null;
+  /**
+   * Whether this connection may serve model invocation, and why not when it may not — the
+   * provider-terms record's answer for its kind (DH.4,
+   * [#1304](https://github.com/NobuData/ouroboros/issues/1304)). The Providers card states it,
+   * and DG.2 ([#1300](https://github.com/NobuData/ouroboros/issues/1300)) reads the same field.
+   */
+  readonly invocation: InvocationEligibility;
   /** When something last invoked through it, ISO 8601, or null for *never used*. */
   readonly lastUsedAt: string | null;
   /** When the connection was created, ISO 8601. */
@@ -151,6 +159,7 @@ export function connectionResource(
     mask,
     addedBy: row.added_by,
     addedByName,
+    invocation: invocationEligibility(row.kind),
     lastCheckedAt: row.last_checked_at?.toISOString() ?? null,
     lastUsedAt: row.last_used_at?.toISOString() ?? null,
     createdAt: row.created_at.toISOString(),

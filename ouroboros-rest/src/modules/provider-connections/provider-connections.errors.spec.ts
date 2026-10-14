@@ -12,6 +12,7 @@ import {
   connectionChanged,
   connectionNotFound,
   credentialAbsent,
+  providerCredentialRefused,
   providerValidationFailed,
   revealRateLimited,
   stepUpRequired,
@@ -32,13 +33,14 @@ const specification = (): string =>
   readFileSync(join(__dirname, "..", "..", "..", "openapi.yaml"), "utf8");
 
 describe("the codes", () => {
-  it("are the nine this module can answer with", () => {
+  it("are the ten this module can answer with", () => {
     expect(Object.values(PROVIDER_CONNECTION_ERRORS).sort()).toEqual([
       "provider_config_invalid",
       "provider_config_not_storable",
       "provider_connection_changed",
       "provider_connection_not_found",
       "provider_credential_absent",
+      "provider_credential_refused",
       "provider_discovery_failed",
       "provider_reveal_rate_limited",
       "provider_validation_failed",
@@ -127,6 +129,15 @@ describe("what each refusal is", () => {
       message: "The provider refused this configuration, so nothing was saved.",
       details: { errorClass: "auth", detail: "key rejected (401)" },
     });
+  });
+
+  it("answers 422 naming API keys for a subscription credential, and carries nothing of it", () => {
+    const error = providerCredentialRefused();
+
+    expect(error.getStatus()).toBe(HttpStatus.UNPROCESSABLE_ENTITY);
+    expect(error.envelope().code).toBe("provider_credential_refused");
+    expect(error.envelope().message).toContain("API key");
+    expect(error.envelope().details).toEqual({});
   });
 
   it("answers 409 for a connection with no credential to open", () => {

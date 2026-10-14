@@ -54,6 +54,7 @@ import { PROVIDER_UPDATED_EVENT, type AuditAction } from "../audit/audit.events"
 import type { ProviderConnectionKind } from "../db/schema";
 import { describeForLog } from "../errors/failure";
 import { ProviderHealthService } from "../provider-health/provider-health.service";
+import { isSubscriptionCredential } from "../providers/invocation.terms";
 import { ModelProviderRegistry } from "../providers/provider.registry";
 import type {
   ModelProviderAdapter,
@@ -103,6 +104,7 @@ import {
   connectionChanged,
   connectionNotFound,
   credentialAbsent,
+  providerCredentialRefused,
   providerDiscoveryFailed,
   providerValidationFailed,
   revealRateLimited,
@@ -347,6 +349,9 @@ export class ProviderConnectionsService {
       this.refuseBadConfig(schema, body.kind, body.config);
 
       const submission = partitionSubmission(schema, body.config);
+
+      refuseSubscriptionCredential(submission.secret);
+
       const validation = await this.checked(adapter, submission.config, submission.secret);
 
       // The id is minted here rather than by the column's default, because the vault binds a
@@ -563,6 +568,8 @@ export class ProviderConnectionsService {
     if (previous === undefined) {
       throw connectionNotFound(connectionId);
     }
+
+    refuseSubscriptionCredential(body.secret);
 
     const config = Object.freeze(submissionOf(storedConfigSchema(schema), row));
     const validation = await this.checked(adapter, config, body.secret);
@@ -1485,4 +1492,20 @@ function contextFor(
   at: Date,
 ): ProviderAuditContext {
   return { organizationId, connectionId: row.id, kind: row.kind, actorId, at };
+}
+
+/**
+ * Refuse a claude.ai subscription or session token before anything else sees it.
+ *
+ * DH.4 ([#1304](https://github.com/NobuData/ouroboros/issues/1304)): called before the live
+ * check, so the token is never sent to the provider, sealed into the vault or written to a
+ * row — and the refusal carries nothing of it, so the audit trail and the logs do not either.
+ *
+ * @param secret - The submitted credential, or null when the provider takes none.
+ * @throws {InvalidRequestError} `422 provider_credential_refused`.
+ */
+function refuseSubscriptionCredential(secret: string | null): void {
+  if (secret !== null && isSubscriptionCredential(secret)) {
+    throw providerCredentialRefused();
+  }
 }

@@ -1502,11 +1502,11 @@
       "workspace": "acme-robotics",
       "ready": "role=button[name='+ Add provider']",
       "clip": "page",
-      "caption": "Providers & keys: one card per connected provider, with its key, health, models, spend and cap.",
-      "alt": "The Providers & keys page for Acme Robotics, headed Credentials live in Acme Robotics's encrypted vault, scoped to this workspace. Keys never leave the control plane — workers never receive them at all., with Audit log and + Add provider, and the tabs Routing, Model registry, Providers & keys and Spend marked soon. Cards follow: Anthropic Claude, connected and switched on, with an empty key field and Save, Models available claude-fable-5, claude-haiku-4-5, claude-opus-5 and claude-sonnet-5 with a priority tier and claude-sonnet-4-6 flagged not listed upstream, This month $412.80 of $600 cap, a Monthly cap of $600 and Test connection; Cursor, connected, $64.10 of a $120 cap; GitHub Copilot in error; and Ollama · workstation, connected, with its Host field http://ken-station.local:11434. The added-by lines are masked.",
-      "capturedAt": "2026-10-09T03:00:17.303Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "1ee435039da79c08e6262beac270c640ae935a99",
+      "caption": "Providers & keys: one card per connected provider, with its key, health, whether it can run a loop, models, spend and cap.",
+      "alt": "The Providers & keys page for Acme Robotics, headed Credentials live in Acme Robotics's encrypted vault, scoped to this workspace. Keys never leave the control plane — workers never receive them at all., with Audit log and + Add provider, and the tabs Routing, Model registry, Providers & keys and Spend marked soon. Cards follow: Anthropic Claude, connected and switched on, with an empty key field and Save, Models available claude-fable-5, claude-haiku-4-5, claude-opus-5 and claude-sonnet-5 with a priority tier and claude-sonnet-4-6 flagged not listed upstream, This month $412.80 of $600 cap, a Monthly cap of $600 and Test connection; Cursor, connected, $64.10 of a $120 cap; GitHub Copilot in error; and Ollama · workstation, in error, with its Host field http://ken-station.local:11434. Under the added-by line each card says whether it can run a loop: Can run a loop on Anthropic Claude, and Cannot run a loop with the reason on Cursor and GitHub Copilot. The added-by lines are masked.",
+      "capturedAt": "2026-10-14T19:08:31.342Z",
+      "uiVersion": "0.167.0",
+      "seedRef": "5a9533879c6ba68e32ea1f189722117bc8d8e929",
       "masks": [
         ".providers-card__meta"
       ]
