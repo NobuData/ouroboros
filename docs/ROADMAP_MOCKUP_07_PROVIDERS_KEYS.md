@@ -198,6 +198,8 @@ execution WF-T.6), OpenAI/Google/Bedrock adapters + KMS/Vault KEK wrappers
 (AF.3), hard cap enforcement + alerts (AF.4), Ollama pull queue/progress
 management (AF.5).
 
+*Update 2026-10-14:* AF.1 (#234) and AF.2 (#235) are promoted to `mvp` by [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (DG.1); the remainder of this paragraph stands.
+
 ## Epics, Labels & Milestones
 
 Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
@@ -1933,8 +1935,8 @@ e2e: parity ✓ · add ✓ · test truth ✓ · reveal/rotate ✓ · pull ✓ ·
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AF.1 | #234 | 🟡 Open | ouroboros-rest: [AF.1] Invocation gateway ADR | Decide custom-executor vs LiteLLM-under-custom (AB.1 input) | v2, providers, routing, rest | Y | N | M | docs |
-| AF.2 | #235 | 🟡 Open | ouroboros-rest: [AF.2] Chain executor implementation | Execute Z.1 resolutions: per-hop errors, streaming, usage, caps | v2, providers, routing, rest, engine | N (after AF.1, AD.3) | N | L | ouroboros-rest, ouroboros-engine |
+| AF.1 | #234 | 🟡 Open | ouroboros-rest: [AF.1] Invocation gateway ADR | Decide custom-executor vs LiteLLM-under-custom (AB.1 input) | mvp, live-loop, providers, routing, rest | Y | N | M | docs |
+| AF.2 | #235 | 🟡 Open | ouroboros-rest: [AF.2] Chain executor implementation | Execute Z.1 resolutions: per-hop errors, streaming, usage, caps | mvp, live-loop, providers, routing, rest, engine | Y (after AF.1, AD.3) | N | L | ouroboros-rest, ouroboros-engine |
 | AF.3 | #236 | 🟡 Open | ouroboros-rest: [AF.3] Cloud adapters & KEK wrappers | OpenAI/Google/Bedrock adapters; KMS + Vault/OpenBao wrappers | v2, providers, rest | N (after AC.1, AD.1) | N | L | ouroboros-rest |
 | AF.4 | #237 | 🟡 Open | ouroboros-rest: [AF.4] Cap enforcement & spend alerts | Hard caps at invocation, threshold alerts, needs-you surfacing | v2, providers, rest, ui | N (after AF.2) | N | M | ouroboros-rest, ouroboros-ui |
 | AF.5 | #238 | 🟡 Open | ouroboros-ui: [AF.5] Ollama pull queue & model management | Pull queue, disk awareness, remove models, schedule refresh | v2, providers, ui | N (after AC.4) | N | M | ouroboros-ui, ouroboros-rest |

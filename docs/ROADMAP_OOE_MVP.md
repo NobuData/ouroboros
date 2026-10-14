@@ -16,6 +16,8 @@ authority on *when* they are built.
 
 ## Scope of the plan
 
+> The execution chain that this plan leaves at `v2` is sequenced separately in [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (decision L14); this document's phase tables are not edited by it.
+
 | | |
 |---|---|
 | Roadmaps walked | **24** (`ROADMAP_*.md` in `docs/`) |
@@ -257,9 +259,9 @@ None of them blocks P0–P12, so the decision can be made during P11.
 |-------------------|:-----:|----------|:-------:|----------------------|
 | `BV.1` [`#510`](https://github.com/NobuData/ouroboros/issues/510) Analyzer corpus | P13 | `AJ.4` [`#266`](https://github.com/NobuData/ouroboros/issues/266) Health history & analyzer telemetry | v2 | **Promote `AJ.4`** — a corpus with no farm telemetry is a hollow analyzer |
 | ✅ `BJ.4` [`#440`](https://github.com/NobuData/ouroboros/issues/440) Email digest generation | P13 | `E.3` Invitation flow with email delivery | v2 | ~~**Narrow `BJ.4`**~~ **Resolved (2026-10-01):** the mailer was built inside `BJ.4` — a `Mailer` interface with an SMTP transport, mailpit in development — so the digest ships in MVP without `E.3`, and `E.3` reuses that mailer when it lands |
-| `CD.1` [`#559`](https://github.com/NobuData/ouroboros/issues/559) · `CD.2` [`#560`](https://github.com/NobuData/ouroboros/issues/560) Copilot dry-run | P16 | `AF.2` [`#235`](https://github.com/NobuData/ouroboros/issues/235) Chain executor implementation | v2 | **Promote `AF.2`** — it is the single prerequisite for all live model invocation |
-| `CM.1` [`#620`](https://github.com/NobuData/ouroboros/issues/620) Investigation engine | P16 | `AF.2` [`#235`](https://github.com/NobuData/ouroboros/issues/235) Chain executor implementation | v2 | as above |
-| `CL.4` [`#617`](https://github.com/NobuData/ouroboros/issues/617) Research tool execution | P16 | `6.5` [`#54`](https://github.com/NobuData/ouroboros/issues/54) Task execution skeleton | v2 | **Promote `6.5`** — the engine needs a queue/worker before any long-running research |
+| `CD.1` [`#559`](https://github.com/NobuData/ouroboros/issues/559) · `CD.2` [`#560`](https://github.com/NobuData/ouroboros/issues/560) Copilot dry-run | P16 | `AF.2` [`#235`](https://github.com/NobuData/ouroboros/issues/235) Chain executor implementation | v2 | ✅ ~~**Promote `AF.2`**~~ **Resolved (2026-10-14):** promoted to `mvp` by [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (DG.1, [`#1299`](https://github.com/NobuData/ouroboros/issues/1299)) |
+| `CM.1` [`#620`](https://github.com/NobuData/ouroboros/issues/620) Investigation engine | P16 | `AF.2` [`#235`](https://github.com/NobuData/ouroboros/issues/235) Chain executor implementation | v2 | ✅ **Resolved (2026-10-14):** as above — `AF.2` is `mvp` ([`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md)) |
+| `CL.4` [`#617`](https://github.com/NobuData/ouroboros/issues/617) Research tool execution | P16 | `6.5` [`#54`](https://github.com/NobuData/ouroboros/issues/54) Task execution skeleton | v2 | ✅ ~~**Promote `6.5`**~~ **Resolved (2026-10-14):** promoted to `mvp` by [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (DG.1, [`#1299`](https://github.com/NobuData/ouroboros/issues/1299)) |
 
 Promoting `AF.2` and `6.5` adds roughly 8–10 complexity points to P5 and P1
 respectively and unblocks four of the six. Deferring P16 entirely resolves five

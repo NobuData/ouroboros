@@ -212,6 +212,8 @@ auto-evidence mapping (AZ.2), GitLab MR support (AZ.3), GitHub-App bot
 identity + deep license/SCA scanning (AZ.4), loop-created PRs end-to-end with
 execution (AZ.5).
 
+*Update 2026-10-14:* AZ.5 (#375) is split, not promoted: its first half (push the branch, `createPR`, link `run_id` as a draft) ships in the MVP via DI.2 and DI.3, and AZ.5 keeps the autonomous publish cycle; AZ.1 (#371) stays `v2` by [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (DG.1); the remainder of this paragraph stands.
+
 ## Epics, Labels & Milestones
 
 Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as

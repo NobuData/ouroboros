@@ -193,6 +193,8 @@ guardrail enforcement (AR.1), IDE take-over protocol (AR.2), SSE live
 transcript (AR.3), Slack-thread steering with mockup 19 (AR.4), verified
 secrets scanning + policy escalation (AR.5).
 
+*Update 2026-10-14:* AR.1 (#315) is promoted to `mvp` by [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (DG.1); the remainder of this paragraph stands.
+
 ## Epics, Labels & Milestones
 
 Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
@@ -1090,7 +1092,7 @@ e2e: parity ✓ · live scenario (stepper·transcript·steer·guardrails) ✓ ·
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AR.1 | #315 | 🟡 Open | ouroboros-engine: [AR.1] Real-execution integration & guardrail enforcement | WF-T.6 reports through AP.1; guardrail fails block; caps enforced | v2, runs, workflow, engine, rest | N (after WF-T.6, AP.1) | N | L | ouroboros-engine, ouroboros-rest |
+| AR.1 | #315 | 🟡 Open | ouroboros-engine: [AR.1] Real-execution integration & guardrail enforcement | WF-T.6 reports through AP.1; guardrail fails block; caps enforced | mvp, live-loop, runs, workflow, engine, rest | Y (after WF-T.6, AP.1) | N | L | ouroboros-engine, ouroboros-rest |
 | AR.2 | #316 | 🟡 Open | ouroboros-ui: [AR.2] IDE take-over protocol | Deep hand-off: editor deep links, context transfer, resume-from-IDE | v2, runs, ui | N (after AQ.2) | N | L | ouroboros-ui, ouroboros-rest |
 | AR.3 | #317 | 🟡 Open | ouroboros-rest: [AR.3] SSE live transcript | Push streaming over DASH-J.1's channel; poll fallback retained | v2, runs, rest, ui | N (after DASH-J.1, AP.2) | N | M | ouroboros-rest, ouroboros-ui |
 | AR.4 | #318 | 🟡 Open | ouroboros-rest: [AR.4] Slack-thread steering | Mockup-19 tie-in: steer/pause from the run's Slack thread | v2, runs, rest | N (after mockup-19 roadmap, AP.4) | N | M | ouroboros-rest |
@@ -1260,7 +1262,7 @@ Amendment comments posted at filing:
 
 | Issue | Amendment |
 |---|---|
-| #91 (DASH-J.3) | Ingestion scope absorbed by **#303** (decision R2); disposition — close as superseded, or retain as the dashboard-side verification ticket |
+| #91 (DASH-J.3) | Ingestion scope absorbed by **#303** (decision R2); disposition settled 2026-10-14: **retained, narrowed** to the engine-side client, queue consumption, `token_usage` attribution and dashboard-side verification ([`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md)) |
 | #64 (DASH-F.1) | Stage reads move to `run_stages` (**#298**); legacy columns retained through the migration, removal deferred — **the schema half is delivered by AO.1 (#298)**: `ouroboros.runs_with_stage` is `runs` with the three stage columns answered from history where a run has any, so the four DASH reads (`dashboard.activeRuns`, `dashboard.recentRuns`, `runs.list`, `runs.find`) move onto it by changing one word, and `tests/seed.sql` asserts the derived meter equals the stored one for all fifty-three seeded runs |
 | #82 (DASH-I.3) | Active-loop rows now target the real console route (**#309**) |
 | #257 (AI.2) | Farm current-job cells link to **#309**; the reservation link is rendered by **#313**, omitted when absent — **the schema half is delivered by AO.3 (#300)**: `runs.reserved_build_job_id` is a nullable composite reference onto `build_jobs (id, organization_id)`, so the *forge-02 reserved* row is a join through the farm's own rows and its absence is an omitted row rather than a placeholder |

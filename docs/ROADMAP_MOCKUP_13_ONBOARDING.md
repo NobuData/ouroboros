@@ -210,6 +210,8 @@ execution (BD.1), managed-keys/hosted-runner SaaS tier (BD.2), config
 import/export (BD.3), devcontainer prebuild snapshots + deep repo scans
 (BD.4), opt-in aggregate telemetry for the social-proof lines (BD.5).
 
+*Update 2026-10-14:* BD.1 (#396) is promoted to `mvp` by [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (DG.1); the remainder of this paragraph stands.
+
 ## Epics, Labels & Milestones
 
 Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
@@ -871,7 +873,7 @@ e2e: connect ✓ · scan ✓ · template→Studio ✓ · pick ✓ · launch→qu
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BD.1 | #396 | 🟡 Open | ouroboros-ui: [BD.1] Live first-loop experience | Timeline flips to real run telemetry; guided first review | v2, onboarding, runs, ui | N (after AR.1, BB.5) | N | M | ouroboros-ui, ouroboros-rest |
+| BD.1 | #396 | 🟡 Open | ouroboros-ui: [BD.1] Live first-loop experience | Timeline flips to real run telemetry; guided first review | mvp, live-loop, onboarding, runs, ui | Y (after AR.1, BB.5) | N | M | ouroboros-ui, ouroboros-rest |
 | BD.2 | #397 | 🟡 Open | ouroboros-rest: [BD.2] Managed keys & hosted runner tier | Deployment pools: trial-credit keys, hosted first-loop runners | v2, onboarding, providers, build-farm | N (after AF.2, AJ.1) | N | L | ouroboros-rest |
 | BD.3 | #398 | 🟡 Open | ouroboros-rest: [BD.3] Config import/export | Org config bundles: sources, workflows, routes, policies | v2, onboarding, rest | N (after BB.2) | N | M | ouroboros-rest, ouroboros-ui |
 | BD.4 | #399 | 🟡 Open | ouroboros-rest: [BD.4] Devcontainer prebuilds & deep scans | Farm-built env snapshots; clone-based detection tier | v2, onboarding, build-farm | N (after AG.4/AJ.5, BB.1) | N | L | ouroboros-rest, ouroboros-runner |
