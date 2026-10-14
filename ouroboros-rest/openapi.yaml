@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.34"
+  version: "0.41.35"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -785,6 +785,13 @@ tags:
       route's) and `dry_run_new_repos` (a repository's first N loops in dry-run; the switch above
       stays the stricter override). A change is a **publish** of `vN+1`, classified per rule —
       a loosening is the owner's alone — and audited as `policy.published`.
+  - name: loop
+    description: |-
+      **The loop capability report** (issue [#1300](https://github.com/NobuData/ouroboros/issues/1300),
+      decision **L10**) — which stages of the loop are live in this deployment and this workspace,
+      and a stable reason code for each that is not. Computed on every read from the deployment
+      switch, the engine's status and the workspace's own connections, runners and dry-run
+      policy; nothing about it is configured.
   - name: insights
     description: |-
       **The Insights metrics domain** (mockup 15, epic
@@ -11934,6 +11941,84 @@ paths:
             `validation_failed` — `globs` is not a list of 1 to 64 distinct strings;
             `policy_path_glob_invalid` — a glob is not one the policy document accepts
             (`details.invalid` names each one and its index). No repository is read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/loop/capabilities:
+    get:
+      tags: [loop]
+      summary: Which loop stages are live here
+      description: |-
+        Which stages of the loop are live in this deployment and this workspace, and why not (DG.2,
+        [#1300](https://github.com/NobuData/ouroboros/issues/1300), decision **L10**). The product's
+        copy and the onboarding wizard read it instead of asserting simulation in fixed text.
+
+        **Computed on every read, never configured.** Each stage that is not available carries the
+        first reason that holds, in this order:
+
+        | Stage | Reasons, in order |
+        |---|---|
+        | `invocation` | `not_implemented` (the invoke route is not built) → `no_invocable_connection` (no enabled connection whose adapter is cleared for invocation) |
+        | `execution` | `deployment_disabled` (`OURO_LIVE_EXECUTION_ENABLED` is off) → `engine_unavailable` → `no_task_queue` → `no_executor` |
+        | `guardrailEnforcement` | `execution_unavailable` — the tool policy runs inside execution |
+        | `buildIntegration` | `no_runner` (none online) → `no_source_checkout` (none can check out source) |
+        | `prPublishing` | `execution_unavailable` → `not_implemented` → `policy_not_dry_run` (the workspace's dry-run policy is off) |
+
+        With the deployment switch off, `execution` is unavailable whatever else is true. An engine
+        that does not answer is a reason, never an error of this route. The codes are stable; a
+        reason never names another workspace's connection or runner. `sinceVersion` is the release
+        that first shipped the stage, `null` while none has. **Any member may read it**, viewers
+        included.
+      operationId: readLoopCapabilities
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoopCapabilities"
+              example:
+                deploymentEnabled: false
+                stages:
+                  invocation: { available: false, reason: not_implemented, sinceVersion: null }
+                  execution: { available: false, reason: deployment_disabled, sinceVersion: null }
+                  guardrailEnforcement:
+                    { available: false, reason: execution_unavailable, sinceVersion: null }
+                  buildIntegration: { available: false, reason: no_runner, sinceVersion: null }
+                  prPublishing: { available: false, reason: execution_unavailable, sinceVersion: null }
+                executors: []
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
           content:
             application/json:
               schema:
@@ -52760,6 +52845,64 @@ components:
           items:
             $ref: "#/components/schemas/OrgPolicyRepositoryPreview"
 
+    LoopCapabilities:
+      type: object
+      description: The loop capability report (DG.2, #1300).
+      additionalProperties: false
+      required: [deploymentEnabled, stages, executors]
+      properties:
+        deploymentEnabled:
+          type: boolean
+          description: "`OURO_LIVE_EXECUTION_ENABLED` — whether this deployment allows live execution at all."
+        stages:
+          type: object
+          additionalProperties: false
+          required: [invocation, execution, guardrailEnforcement, buildIntegration, prPublishing]
+          properties:
+            invocation:
+              $ref: "#/components/schemas/LoopStageCapability"
+            execution:
+              $ref: "#/components/schemas/LoopStageCapability"
+            guardrailEnforcement:
+              $ref: "#/components/schemas/LoopStageCapability"
+            buildIntegration:
+              $ref: "#/components/schemas/LoopStageCapability"
+            prPublishing:
+              $ref: "#/components/schemas/LoopStageCapability"
+        executors:
+          type: array
+          description: The stage-executor kinds the engine has registered; empty when it reports none or did not answer.
+          items:
+            type: string
+            enum: [native, harness]
+    LoopStageCapability:
+      type: object
+      description: One stage of the loop capability report.
+      additionalProperties: false
+      required: [available, reason, sinceVersion]
+      properties:
+        available:
+          type: boolean
+          description: Whether the stage is live for this workspace in this deployment.
+        reason:
+          description: Why not, or `null` when it is. Stable codes — add, never rename.
+          oneOf:
+            - type: string
+              enum:
+                - not_implemented
+                - no_invocable_connection
+                - deployment_disabled
+                - engine_unavailable
+                - no_task_queue
+                - no_executor
+                - execution_unavailable
+                - no_runner
+                - no_source_checkout
+                - policy_not_dry_run
+            - type: "null"
+        sinceVersion:
+          type: [string, "null"]
+          description: The ouroboros-rest release that first shipped the stage, or `null` while none has.
     DryRunPolicy:
       type: object
       title: DryRunPolicy

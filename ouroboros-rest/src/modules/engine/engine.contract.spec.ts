@@ -109,6 +109,36 @@ describe("the status schema", () => {
     expect(parsed).toEqual({ service: "ouroboros-engine", version: "0.3.0", uptimeSeconds: 12.5 });
   });
 
+  it("reads the task queue and executor kinds when the engine reports them (DG.2, #1300)", () => {
+    const parsed = engineStatusSchema.parse({
+      service: "ouroboros-engine",
+      version: "0.8.0",
+      uptime_seconds: 1,
+      task_queue: true,
+      executors: ["native", "harness", "quantum"],
+    });
+
+    // An unknown kind is dropped rather than failing the whole status.
+    expect(parsed).toEqual({
+      service: "ouroboros-engine",
+      version: "0.8.0",
+      uptimeSeconds: 1,
+      taskQueue: true,
+      executors: ["native", "harness"],
+    });
+  });
+
+  it("leaves both out for an engine that reports neither", () => {
+    const parsed = engineStatusSchema.parse({
+      service: "ouroboros-engine",
+      version: "0.3.0",
+      uptime_seconds: 12.5,
+    });
+
+    expect(parsed).not.toHaveProperty("taskQueue");
+    expect(parsed).not.toHaveProperty("executors");
+  });
+
   it("ignores a field the engine added", () => {
     // `/v0`'s compatibility rule allows a response to grow a field. A client that refused
     // one would turn every forward-compatible engine release into an outage here.
@@ -242,6 +272,36 @@ describe("the estimate schema", () => {
     expect(parsed.trace.tokensUsed).toBe(0);
     expect(parsed.confidence).toBe(59);
     expect(parsed.breakdown.files).toEqual([]);
+  });
+
+  it("reads the task queue and executor kinds when the engine reports them (DG.2, #1300)", () => {
+    const parsed = engineStatusSchema.parse({
+      service: "ouroboros-engine",
+      version: "0.8.0",
+      uptime_seconds: 1,
+      task_queue: true,
+      executors: ["native", "harness", "quantum"],
+    });
+
+    // An unknown kind is dropped rather than failing the whole status.
+    expect(parsed).toEqual({
+      service: "ouroboros-engine",
+      version: "0.8.0",
+      uptimeSeconds: 1,
+      taskQueue: true,
+      executors: ["native", "harness"],
+    });
+  });
+
+  it("leaves both out for an engine that reports neither", () => {
+    const parsed = engineStatusSchema.parse({
+      service: "ouroboros-engine",
+      version: "0.3.0",
+      uptime_seconds: 12.5,
+    });
+
+    expect(parsed).not.toHaveProperty("taskQueue");
+    expect(parsed).not.toHaveProperty("executors");
   });
 
   it("ignores a field the engine added", () => {
@@ -411,6 +471,36 @@ describe("the workflow validation schema", () => {
     expect(parsed.findings[0]).toEqual({ code: "graph_cyclic", message: "…" });
   });
 
+  it("reads the task queue and executor kinds when the engine reports them (DG.2, #1300)", () => {
+    const parsed = engineStatusSchema.parse({
+      service: "ouroboros-engine",
+      version: "0.8.0",
+      uptime_seconds: 1,
+      task_queue: true,
+      executors: ["native", "harness", "quantum"],
+    });
+
+    // An unknown kind is dropped rather than failing the whole status.
+    expect(parsed).toEqual({
+      service: "ouroboros-engine",
+      version: "0.8.0",
+      uptimeSeconds: 1,
+      taskQueue: true,
+      executors: ["native", "harness"],
+    });
+  });
+
+  it("leaves both out for an engine that reports neither", () => {
+    const parsed = engineStatusSchema.parse({
+      service: "ouroboros-engine",
+      version: "0.3.0",
+      uptime_seconds: 12.5,
+    });
+
+    expect(parsed).not.toHaveProperty("taskQueue");
+    expect(parsed).not.toHaveProperty("executors");
+  });
+
   it("ignores a field the engine added", () => {
     const parsed = engineWorkflowValidationSchema.parse({
       findings: [{ code: "x", message: "y", severity: "error" }],
@@ -522,6 +612,36 @@ describe("the workflow dry-run schema", () => {
     expect(parsed.findings).toEqual([
       { code: "graph_cyclic", message: "…", node: "plan", path: "/nodes/3" },
     ]);
+  });
+
+  it("reads the task queue and executor kinds when the engine reports them (DG.2, #1300)", () => {
+    const parsed = engineStatusSchema.parse({
+      service: "ouroboros-engine",
+      version: "0.8.0",
+      uptime_seconds: 1,
+      task_queue: true,
+      executors: ["native", "harness", "quantum"],
+    });
+
+    // An unknown kind is dropped rather than failing the whole status.
+    expect(parsed).toEqual({
+      service: "ouroboros-engine",
+      version: "0.8.0",
+      uptimeSeconds: 1,
+      taskQueue: true,
+      executors: ["native", "harness"],
+    });
+  });
+
+  it("leaves both out for an engine that reports neither", () => {
+    const parsed = engineStatusSchema.parse({
+      service: "ouroboros-engine",
+      version: "0.3.0",
+      uptime_seconds: 12.5,
+    });
+
+    expect(parsed).not.toHaveProperty("taskQueue");
+    expect(parsed).not.toHaveProperty("executors");
   });
 
   it("ignores a field the engine added", () => {
@@ -690,6 +810,36 @@ describe("the learn contract (#412)", () => {
     ],
   ])("refuses %s", (_name, body) => {
     expect(learnedSchema.safeParse(body).success).toBe(false);
+  });
+
+  it("reads the task queue and executor kinds when the engine reports them (DG.2, #1300)", () => {
+    const parsed = engineStatusSchema.parse({
+      service: "ouroboros-engine",
+      version: "0.8.0",
+      uptime_seconds: 1,
+      task_queue: true,
+      executors: ["native", "harness", "quantum"],
+    });
+
+    // An unknown kind is dropped rather than failing the whole status.
+    expect(parsed).toEqual({
+      service: "ouroboros-engine",
+      version: "0.8.0",
+      uptimeSeconds: 1,
+      taskQueue: true,
+      executors: ["native", "harness"],
+    });
+  });
+
+  it("leaves both out for an engine that reports neither", () => {
+    const parsed = engineStatusSchema.parse({
+      service: "ouroboros-engine",
+      version: "0.3.0",
+      uptime_seconds: 12.5,
+    });
+
+    expect(parsed).not.toHaveProperty("taskQueue");
+    expect(parsed).not.toHaveProperty("executors");
   });
 
   it("ignores a field the engine added", () => {

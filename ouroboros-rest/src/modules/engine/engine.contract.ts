@@ -65,6 +65,22 @@ export function engineRouteUrl(baseUrl: string, route: string): string {
   return new URL(route, base).toString();
 }
 
+/** The stage-executor kinds the engine's SPI defines (DH.1, `docs/STAGE_EXECUTORS.md`). */
+export const STAGE_EXECUTOR_KINDS = ["native", "harness"] as const;
+
+/** One stage-executor kind. */
+export type StageExecutorKind = (typeof STAGE_EXECUTOR_KINDS)[number];
+
+/**
+ * Whether a string the engine reported is a kind this service knows.
+ *
+ * @param kind - A reported kind.
+ * @returns True for one of {@link STAGE_EXECUTOR_KINDS}.
+ */
+export function isStageExecutorKind(kind: string): kind is StageExecutorKind {
+  return (STAGE_EXECUTOR_KINDS as readonly string[]).includes(kind);
+}
+
 /** What `GET /v0/status` answers, in this service's names. */
 export interface EngineStatus {
   /** The engine's distribution name — constant across deployments. */
@@ -73,6 +89,16 @@ export interface EngineStatus {
   version: string;
   /** Seconds since that process built its application. */
   uptimeSeconds: number;
+  /**
+   * Whether the engine runs a task queue (#54). Absent from an engine that predates it, which
+   * is read as *no queue* — the loop capability report (DG.2, #1300) never assumes one.
+   */
+  taskQueue?: boolean;
+  /**
+   * The stage-executor kinds the engine has registered (DH.1). Absent is read as *none*, for
+   * the same reason.
+   */
+  executors?: readonly StageExecutorKind[];
 }
 
 /** A task for `POST /v0/tasks/echo`, in this service's names. */
@@ -99,11 +125,21 @@ export const engineStatusSchema = z
     service: z.string(),
     version: z.string(),
     uptime_seconds: z.number(),
+    // Optional, so today's engine — which reports neither — still parses. The engine adds
+    // them as #54 and DH.3 land; the names are fixed here so it has a contract to meet.
+    task_queue: z.boolean().optional(),
+    // Strings rather than an enum: a kind this service does not know yet is dropped, not a
+    // reason to refuse the whole status — the same forward-compatibility rule as any field.
+    executors: z.array(z.string()).optional(),
   })
   .transform((body): EngineStatus => ({
     service: body.service,
     version: body.version,
     uptimeSeconds: body.uptime_seconds,
+    ...(body.task_queue === undefined ? {} : { taskQueue: body.task_queue }),
+    ...(body.executors === undefined
+      ? {}
+      : { executors: body.executors.filter(isStageExecutorKind) }),
   }));
 
 /** The task shape, in both directions — it is the request body and the `echo` in the answer. */

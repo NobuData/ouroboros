@@ -79,3 +79,28 @@ export function supportsExecutor(capabilities: unknown, executor: BuildExecutor)
 
   return Array.isArray(executors) && executors.includes(executor);
 }
+
+/**
+ * The `runners.capabilities` key that says a runner can check out a repository's source
+ * itself — what a workflow's build stage needs before it can run on that machine.
+ *
+ * AG.7 ([#991](https://github.com/NobuData/ouroboros/issues/991)) teaches the agent to report
+ * it; until then no runner does, and the loop capability report (DG.2,
+ * [#1300](https://github.com/NobuData/ouroboros/issues/1300)) says `build_integration` is
+ * unavailable for that reason rather than assuming it.
+ */
+export const SOURCE_CHECKOUT_CAPABILITY = "git";
+
+/**
+ * Whether a runner has said it can check out source.
+ *
+ * @param capabilities - `runners.capabilities`, as read from the row — `unknown` for the reason
+ *   {@link supportsExecutor} gives.
+ * @returns True only when the document holds `git: true`; anything else, absence included, is
+ *   a runner that has not said so.
+ */
+export function supportsSourceCheckout(capabilities: unknown): boolean {
+  if (typeof capabilities !== "object" || capabilities === null) return false;
+
+  return (capabilities as Record<string, unknown>)[SOURCE_CHECKOUT_CAPABILITY] === true;
+}

@@ -187,6 +187,8 @@ describe("the development defaults", () => {
       // BB.5's (#388) two capability flags: a deployment that declares nothing has neither pool.
       managedKeyPool: false,
       hostedRunnerPool: false,
+      // DG.2's (#1300) switch: off unless a deployment declares it.
+      liveExecutionEnabled: false,
     });
   });
 });
@@ -1339,6 +1341,29 @@ describe("the mail and digest variables (BJ.4, #440)", () => {
   it.each(["4", "3601", "five"])("rejects a digest tick of %s seconds", (value) => {
     expect(failureFor(testEnvironment({ OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS: value }))).toContain(
       "OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS: expected between 5 and 3600 seconds",
+    );
+  });
+});
+
+describe("the live-execution switch (DG.2, #1300, decision L10)", () => {
+  it("is off when unset", () => {
+    expect(loadConfiguration(testEnvironment()).liveExecutionEnabled).toBe(false);
+  });
+
+  it("reads true and false", () => {
+    expect(
+      loadConfiguration(testEnvironment({ OURO_LIVE_EXECUTION_ENABLED: "true" }))
+        .liveExecutionEnabled,
+    ).toBe(true);
+    expect(
+      loadConfiguration(testEnvironment({ OURO_LIVE_EXECUTION_ENABLED: "false" }))
+        .liveExecutionEnabled,
+    ).toBe(false);
+  });
+
+  it.each(["yes", "1", "TRUE", "on"])("rejects %s rather than reading it as off", (value) => {
+    expect(failureFor(testEnvironment({ OURO_LIVE_EXECUTION_ENABLED: value }))).toContain(
+      "OURO_LIVE_EXECUTION_ENABLED: expected true or false",
     );
   });
 });

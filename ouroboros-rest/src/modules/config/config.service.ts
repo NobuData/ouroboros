@@ -583,6 +583,14 @@ export class AppConfigService {
   }
 
   /**
+   * Whether the deployment allows live loop execution — `OURO_LIVE_EXECUTION_ENABLED`. `false`
+   * when unset (DG.2, #1300, decision L10).
+   */
+  get liveExecutionEnabled(): boolean {
+    return this.config.getOrThrow<boolean>("liveExecutionEnabled");
+  }
+
+  /**
    * The managed key pool's trial credit, in cents — `OURO_MANAGED_KEY_TRIAL_CENTS`. `undefined`
    * when unset: the wizard's managed row then names no figure.
    */
@@ -716,6 +724,7 @@ export class AppConfigService {
       localProviderUrls: this.localProviderUrls,
       onboardingUnlockThreshold: this.onboardingUnlockThreshold,
       managedKeyPool: this.managedKeyPool,
+      liveExecutionEnabled: this.liveExecutionEnabled,
       managedKeyTrialCents: this.managedKeyTrialCents,
       hostedRunnerPool: this.hostedRunnerPool,
       dataRegion: this.dataRegion,
