@@ -30,6 +30,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -38,7 +39,9 @@ import {
   Post,
   Query,
 } from "@nestjs/common";
+import { Session } from "@thallesp/nestjs-better-auth";
 
+import type { Principal } from "../auth/principal";
 import type { Organization } from "../db/schema";
 import { ADMINISTRATORS, Roles } from "../tenancy/roles.guard";
 import { CurrentTenant } from "../tenancy/tenant.decorators";
@@ -52,6 +55,7 @@ import {
 import type {
   TicketSourceCatalogResource,
   TicketSourcePageResource,
+  TicketSourceRemovalResource,
   TicketSourceResource,
   TicketSourceStatusResource,
   TicketSourceTestResource,
@@ -221,5 +225,46 @@ export class SourcesController {
     @Param() params: SourceParams,
   ): Promise<TicketSourceStatusResource> {
     return this.sources.status(tenant.id, params.id);
+  }
+
+  /**
+   * `GET /api/v1/sources/{id}/removal` — what removing this source would take with it.
+   *
+   * What a confirmation shows before anything is removed: how many tickets, pull request
+   * records and draft batches go, and whether the removal would be refused. Administrators
+   * only, like the removal itself.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param params - The source's id.
+   * @returns The counts.
+   */
+  @Roles(...ADMINISTRATORS)
+  @Get(":id/removal")
+  removal(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: SourceParams,
+  ): Promise<TicketSourceRemovalResource> {
+    return this.sources.removal(tenant.id, params.id);
+  }
+
+  /**
+   * `DELETE /api/v1/sources/{id}` — remove a source, with everything mirrored through it.
+   *
+   * `200` with what was removed rather than a bare `204`, so the caller can say what went.
+   * Not idempotent in its answer: a second call finds no source and is a `404`.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param principal - The session, for the audit event.
+   * @param params - The source's id.
+   * @returns What was removed.
+   */
+  @Roles(...ADMINISTRATORS)
+  @Delete(":id")
+  remove(
+    @CurrentTenant() tenant: Organization,
+    @Session() principal: Principal,
+    @Param() params: SourceParams,
+  ): Promise<TicketSourceRemovalResource> {
+    return this.sources.remove(tenant.id, principal.user.id, params.id);
   }
 }

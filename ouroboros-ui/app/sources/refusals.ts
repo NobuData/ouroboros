@@ -26,6 +26,9 @@ export const KIND_UNSUPPORTED_CODE = "ticket_source_kind_unsupported";
 export const NOT_FOUND_CODE = "ticket_source_not_found";
 export const CREDENTIALS_UNSUPPORTED_CODE = "ticket_source_credentials_unsupported";
 
+/** `409` — the Build Analyzer has drafted into a batch that targets the source, so it stays. */
+export const IN_USE_CODE = "ticket_source_in_use";
+
 /** What the add dialog says when the catalog could not be read. */
 export const CATALOG_UNAVAILABLE =
   "The catalog could not be read just now. Nothing was changed — try again in a moment.";

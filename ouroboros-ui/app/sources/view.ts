@@ -350,6 +350,87 @@ export function testNote(result: TicketSourceTest): TestNote {
   };
 }
 
+/* ------------------------------------------------------------------- removing a source */
+
+/** The row's control. */
+export const REMOVE_LABEL = "Remove";
+
+/** Why the control is inert for a reader who may not remove. */
+export const REMOVE_READ_ONLY = "Removing a source is for workspace owners and admins.";
+
+/** The dialog's title; the source's name follows it. */
+export const REMOVE_DIALOG_TITLE = "Remove source";
+
+/** What the dialog says while the counts are being read. */
+export const REMOVE_READING = "Reading what this source has mirrored…";
+
+/** What the dialog says when the counts could not be read. Nothing is removed unseen. */
+export const REMOVE_UNREAD =
+  "What this source has mirrored could not be read just now, so it cannot be removed yet. " +
+  "Close this and try again in a moment.";
+
+/** The sentence over the counts. */
+export const REMOVE_INTRO = "Removing this source also removes what Ouroboros mirrored through it:";
+
+/** What stays, said under the counts. */
+export const REMOVE_KEPT =
+  "Nothing on the tracker is touched: the issues and pull requests themselves stay where they " +
+  "are. Runs that already happened keep their own record.";
+
+/** What cannot be got back. */
+export const REMOVE_IRREVERSIBLE =
+  "This cannot be undone. Adding the source again syncs its open tickets again, but the " +
+  "estimates and pull request records removed here do not come back.";
+
+/** Why a source the Build Analyzer drafted into cannot be removed, and what to do instead. */
+export const REMOVE_BLOCKED =
+  "This source cannot be removed: the Build Analyzer has drafted tickets into a batch that " +
+  "targets it, and that record is kept. Pause the source instead.";
+
+/** The control that removes, and the one that does not. */
+export const REMOVE_CONFIRM = "Remove source";
+export const REMOVE_CANCEL = "Keep it";
+
+/** Why the controls are inert while a removal is in flight. */
+export const REMOVING = "Removing…";
+
+/** What the dialog says when the removal failed for a reason it has no sentence for. */
+export const REMOVE_FAILED =
+  "The source could not be removed just now. Nothing was removed — try again in a moment.";
+
+/**
+ * A count with its noun, singular or plural.
+ *
+ * @param count How many.
+ * @param one The noun for one.
+ * @param many The noun for any other number.
+ * @returns `1 ticket`, `77 tickets`, `0 tickets`.
+ */
+function counted(count: number, one: string, many: string): string {
+  return `${String(count)} ${count === 1 ? one : many}`;
+}
+
+/**
+ * The lines of the removal dialog's list: what goes with the source.
+ *
+ * Every line is drawn, a zero included — *0 pull request records* is an answer, and a line
+ * that vanished would leave a reader wondering whether it was counted.
+ *
+ * @param removal What the service counted.
+ * @returns Three lines: tickets, pull request records, draft batches.
+ */
+export function removalLines(removal: {
+  readonly tickets: number;
+  readonly pullRequests: number;
+  readonly draftBatches: number;
+}): readonly string[] {
+  return [
+    `${counted(removal.tickets, "ticket", "tickets")}, estimates and dependencies included`,
+    `${counted(removal.pullRequests, "pull request record", "pull request records")}, gates, reviews and approvals included`,
+    `${counted(removal.draftBatches, "Planning draft batch", "Planning draft batches")} targeting it`,
+  ];
+}
+
 /* --------------------------------------------------------------------- the backlog token */
 
 /**

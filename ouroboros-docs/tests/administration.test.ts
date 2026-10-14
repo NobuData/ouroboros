@@ -649,9 +649,38 @@ describe("the ticket sources & repositories page (#1194)", () => {
     expect(SOURCES).toContain("**A source in error is not synced again until you act.**");
   });
 
-  it("offers no way to remove a source, and says so", () => {
-    expect(sources("sources.controller.ts")).not.toMatch(/@Delete\(/);
-    expect(SOURCES).toContain("A source cannot be removed from this page.");
+  it("documents removing a source as built", () => {
+    const controller = sources("sources.controller.ts");
+    expect(controller).toMatch(/@Roles\(\.\.\.ADMINISTRATORS\)\s+@Delete\(":id"\)/);
+    expect(controller).toMatch(/@Roles\(\.\.\.ADMINISTRATORS\)\s+@Get\(":id\/removal"\)/);
+    expect(SOURCES).not.toContain("A source cannot be removed from this page.");
+    expect(SOURCES).toContain("## Removing a source");
+    expect(SOURCES).toContain('<Screenshot id="administration.sources.remove" />');
+
+    // Every label and sentence the page quotes is the dialog's own.
+    const view = source("ouroboros-ui", "app", "sources", "view.ts");
+    const said = (constant: string): string => {
+      const match = new RegExp(`export const ${constant} =\\s*((?:"[^"]*"\\s*\\+?\\s*)+);`).exec(view);
+      if (match === null) throw new Error(`view.ts has no ${constant}`);
+      return [...match[1]!.matchAll(/"([^"]*)"/g)].map((part) => part[1]).join("");
+    };
+    const prose = SOURCES.replace(/\s+/g, " ");
+    for (const constant of [
+      "REMOVE_LABEL",
+      "REMOVE_CONFIRM",
+      "REMOVE_CANCEL",
+      "REMOVE_KEPT",
+      "REMOVE_IRREVERSIBLE",
+      "REMOVE_BLOCKED",
+    ]) {
+      expect(prose, constant).toContain(said(constant));
+    }
+
+    // The refusal is the service's own rule, and the audit sentence its own words.
+    expect(sources("sources.errors.ts")).toContain('inUse: "ticket_source_in_use"');
+    expect(
+      source("ouroboros-rest", "src", "modules", "audit-plane", "audit-plane.sentences.ts"),
+    ).toContain("removed the ticket source");
   });
 
   it("documents the backlog token's card as built (#1250)", () => {

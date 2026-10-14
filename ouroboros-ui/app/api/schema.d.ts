@@ -1396,7 +1396,26 @@ export interface paths {
         get: operations["readTicketSource"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Remove a ticket source
+         * @description Removes the source **and everything mirrored through it**: the tickets ingested through
+         *     it (with their estimates, dependencies and dry-run records), its pull request records
+         *     (with their gates, review threads, approvals and merge plans), its planning mirrors, and
+         *     the Planning draft batches that target it. The stored credential goes with the row.
+         *     Nothing on the tracker is touched — the issues and pull requests themselves stay where
+         *     they are — and a run that worked a removed ticket keeps its own record.
+         *
+         *     It cannot be undone. Adding the source again syncs its open tickets again; what
+         *     Ouroboros recorded about them does not come back. `GET /api/v1/sources/{id}/removal`
+         *     answers what would go, without removing anything.
+         *
+         *     Refused with `409 ticket_source_in_use` while the Build Analyzer has drafted tickets
+         *     into a batch that targets this source: that suggestion is a kept record naming its
+         *     batch. Pause the source instead.
+         *
+         *     Writes the audit event `ticket_source.removed`. Owners and admins.
+         */
+        delete: operations["removeTicketSource"];
         options?: never;
         head?: never;
         /**
@@ -1421,6 +1440,28 @@ export interface paths {
          *     `owner` or `admin`.
          */
         patch: operations["updateTicketSource"];
+        trace?: never;
+    };
+    "/api/v1/sources/{id}/removal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What removing this source would take with it
+         * @description What a confirmation shows before `DELETE /api/v1/sources/{id}`: how many tickets, pull
+         *     request records and draft batches would be removed with the source, and whether the
+         *     removal would go through. Reads only. Owners and admins.
+         */
+        get: operations["readTicketSourceRemoval"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/sources/{id}/credentials": {
@@ -25705,6 +25746,31 @@ export interface components {
             reason: string | null;
         };
         /**
+         * TicketSourceRemoval
+         * @description What removing a ticket source takes with it: what `GET /api/v1/sources/{id}/removal`
+         *     answers before, and `DELETE /api/v1/sources/{id}` after. The three counts are rows
+         *     removed with the source; `analyzerDraftBatches` is what refuses the removal.
+         */
+        TicketSourceRemoval: {
+            /** Format: uuid */
+            sourceId: string;
+            /** @description The source's name, so a confirmation can say what is being removed. */
+            displayName: string;
+            /** @description The tickets ingested through it, in any state. */
+            tickets: number;
+            /** @description The pull request records opened through it. */
+            pullRequests: number;
+            /** @description The Planning draft batches that target it. */
+            draftBatches: number;
+            /**
+             * @description Those of the draft batches the Build Analyzer drafted a suggestion into. Any at
+             *     all means the source cannot be removed.
+             */
+            analyzerDraftBatches: number;
+            /** @description Whether a removal would go through now. */
+            removable: boolean;
+        };
+        /**
          * TicketSourceStatusReport
          * @description How one source's sync stands. `status`, `statusReason` and `syncedAt` are the row's
          *     and survive a restart; `running`, `retryAfterSeconds` and `lastSync` are this
@@ -37120,6 +37186,127 @@ export interface operations {
             };
         };
     };
+    removeTicketSource: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A ticket source's id. A source of another workspace answers `404`, never `403`:
+                 *     confirming that an identifier names something real is the whole of what enumerating
+                 *     identifiers is for, and a source row carries a sealed credential.
+                 * @example 5eed001a-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["SourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What was removed — the counts read just before the removal. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketSourceRemoval"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Removing a ticket source is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_not_found` — no source with that id in this workspace, whether or
+             *     not another workspace has one. Or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_in_use` — the Build Analyzer has drafted tickets into a batch that
+             *     targets this source. `details.analyzerDraftBatches` is how many. Nothing was removed.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `id` is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     updateTicketSource: {
         parameters: {
             query?: never;
@@ -37296,6 +37483,115 @@ export interface operations {
              *     kind, and `details.registered` lists the ones it has.
              */
             501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readTicketSourceRemoval: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A ticket source's id. A source of another workspace answers `404`, never `403`:
+                 *     confirming that an identifier names something real is the whole of what enumerating
+                 *     identifiers is for, and a source row carries a sealed credential.
+                 * @example 5eed001a-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["SourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketSourceRemoval"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Removing a ticket source is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `ticket_source_not_found` — no source with that id in this workspace, whether or
+             *     not another workspace has one. Or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `id` is not a uuid. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

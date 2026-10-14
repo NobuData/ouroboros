@@ -1,5 +1,6 @@
 import { ApiHarness, type Person, type Workspace } from "../../testing/harness.fixture";
 import { bodyOf } from "../../testing/integration.fixture";
+import { AuditService } from "../audit/audit.service";
 import { AppConfigService } from "../config/config.service";
 import { SCHEMA_NAME } from "../db/schema";
 import { ConflictError, type ErrorEnvelope } from "../errors/error.envelope";
@@ -166,6 +167,7 @@ describe("the source-management API, against a migrated database", () => {
       registry,
       api.nest.get(VaultService),
       api.nest.get(AppConfigService),
+      api.nest.get(AuditService),
     );
 
     return { service, loop };

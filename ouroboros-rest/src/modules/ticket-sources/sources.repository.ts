@@ -34,6 +34,18 @@ import { DatabaseService } from "../db/db.service";
 import type { TicketSourceKind, TicketSourcePublic, TicketSourceStatus } from "../db/schema";
 import { type Page, type PageWindow, pageOf } from "../tenancy/pagination";
 
+/** What removing a source would delete, and what would refuse it — see `removalCounts`. */
+export interface SourceRemovalCounts {
+  /** The tickets ingested through it, in any state. */
+  readonly tickets: number;
+  /** The pull request records opened through it. */
+  readonly pullRequests: number;
+  /** The Planning draft batches that target it. */
+  readonly draftBatches: number;
+  /** Those of the batches an analyzer suggestion was drafted into — each one refuses removal. */
+  readonly analyzerDraftBatches: number;
+}
+
 /** What an insert carries. `id` is minted by the caller: the vault binds a credential to it. */
 export interface NewSourceRow {
   readonly id: string;
@@ -189,6 +201,76 @@ export class SourcesRepository {
       .execute();
 
     return new Map(rows.map((row) => [row.source_id, Number(row.open_count)]));
+  }
+
+  /**
+   * What removing a source would take with it, and what would stop it (V138).
+   *
+   * Four counts in one statement, each over the column whose foreign key decides the row's
+   * fate: tickets, pull request records and draft batches are deleted with the source by
+   * `on delete cascade`; a draft batch an analyzer suggestion was drafted into cannot be
+   * deleted at all, because the suggestion's own foreign key to it restricts.
+   *
+   * @param organizationId - The workspace.
+   * @param sourceId - The source.
+   * @returns The counts. All zero for a source that has brought nothing in — and for an id
+   *   that names no source of this workspace, which the caller has already ruled out.
+   */
+  async removalCounts(organizationId: string, sourceId: string): Promise<SourceRemovalCounts> {
+    // Raw SQL, as the analyzer's own statements are: `analysis_suggestions` is not among the
+    // tables this module's typed schema describes.
+    const { rows } = await sql<{
+      tickets: string;
+      pull_requests: string;
+      draft_batches: string;
+      analyzer_draft_batches: string;
+    }>`
+      select
+        (select count(*) from ouroboros.tickets t
+          where t.organization_id = ${organizationId} and t.source_id = ${sourceId}) as tickets,
+        (select count(*) from ouroboros.pull_requests p
+          where p.organization_id = ${organizationId} and p.source_id = ${sourceId}) as pull_requests,
+        (select count(*) from ouroboros.draft_batches b
+          where b.organization_id = ${organizationId}
+            and b.target_source_id = ${sourceId}) as draft_batches,
+        (select count(*) from ouroboros.draft_batches b
+          where b.organization_id = ${organizationId}
+            and b.target_source_id = ${sourceId}
+            and exists (select 1 from ouroboros.analysis_suggestions s
+                         where s.draft_batch_id = b.id)) as analyzer_draft_batches
+    `.execute(this.database.db);
+    const row = rows[0];
+
+    return {
+      tickets: Number(row?.tickets ?? 0),
+      pullRequests: Number(row?.pull_requests ?? 0),
+      draftBatches: Number(row?.draft_batches ?? 0),
+      analyzerDraftBatches: Number(row?.analyzer_draft_batches ?? 0),
+    };
+  }
+
+  /**
+   * Remove a source, and with it everything the schema cascades from it (V030, V034, V036,
+   * V052; V138 for what made the cascade complete).
+   *
+   * One statement, so it is one transaction: either the source and all of it go, or nothing
+   * does.
+   *
+   * @param organizationId - The workspace.
+   * @param sourceId - The source.
+   * @returns Whether a row was removed. `false` for an id that names no source of this
+   *   workspace — including one somebody else removed a moment ago.
+   * @throws Whatever the driver throws — a foreign-key violation (`23503`) in particular, when
+   *   a row that restricts appeared after the counts were read.
+   */
+  async remove(organizationId: string, sourceId: string): Promise<boolean> {
+    const result = await this.database.db
+      .deleteFrom("ticket_sources")
+      .where("organization_id", "=", organizationId)
+      .where("id", "=", sourceId)
+      .executeTakeFirst();
+
+    return result.numDeletedRows > 0n;
   }
 
   /**

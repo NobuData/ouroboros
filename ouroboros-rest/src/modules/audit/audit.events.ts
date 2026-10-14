@@ -86,7 +86,8 @@ export type AuditSubjectType =
   | "chat_identity_link"
   | "chat_command"
   | "chat_channel"
-  | "on_call_assignment";
+  | "on_call_assignment"
+  | "ticket_source";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -727,6 +728,14 @@ export const CHAT_CHANNEL_UNBOUND_EVENT = "chat.channel_unbound";
 export const CHAT_ON_CALL_CHANGED_EVENT = "chat.on_call_changed";
 
 /**
+ * An owner or admin removed a ticket source, with everything mirrored through it. Subject
+ * `ticket_source`. The detail is flat: `displayName`, `kind`, and how many `tickets`,
+ * `pullRequests` and `draftBatches` went with it. The row is gone by the time this is read, so
+ * the name is in the detail.
+ */
+export const TICKET_SOURCE_REMOVED_EVENT = "ticket_source.removed";
+
+/**
  * An owner or admin queued the Slack connection's dead-lettered messages again (CA.5, #545).
  * Subject `chat_connection`. The detail is flat: `messages`, how many were queued, and `routes`,
  * the kinds of the routes they belong to, comma-joined. Not written when there was nothing to retry.
@@ -842,6 +851,7 @@ export const AUDIT_ACTIONS = [
   CHAT_CHANNEL_UNBOUND_EVENT,
   CHAT_ON_CALL_CHANGED_EVENT,
   CHAT_DELIVERY_RETRIED_EVENT,
+  TICKET_SOURCE_REMOVED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

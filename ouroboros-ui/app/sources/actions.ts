@@ -42,6 +42,7 @@ import {
   type TicketSourceCatalogEntry,
   type TicketSourceConfigSubmission,
   type TicketSourceCreate,
+  type TicketSourceRemoval,
   type TicketSourceStatusReport,
   type TicketSourceTest,
   sources,
@@ -53,6 +54,7 @@ import {
   CREDENTIALS_UNSUPPORTED,
   CREDENTIALS_UNSUPPORTED_CODE,
   FORBIDDEN_CODE,
+  IN_USE_CODE,
   NOT_FOUND_CODE,
 } from "./refusals";
 import {
@@ -62,6 +64,10 @@ import {
   CONFIGURE_READ_ONLY,
   PAUSE_FAILED,
   PAUSE_READ_ONLY,
+  REMOVE_BLOCKED,
+  REMOVE_FAILED,
+  REMOVE_READ_ONLY,
+  REMOVE_UNREAD,
   SOURCE_GONE,
   SYNC_FAILED,
   SYNC_READ_ONLY,
@@ -298,6 +304,58 @@ function refusalSentence(error: ApiError, readOnly: string, failed: string): str
   if (error.code === NOT_FOUND_CODE) return SOURCE_GONE;
 
   return failed;
+}
+
+/* ------------------------------------------------------------------- removing a source */
+
+/** What reading, or carrying out, a removal came to: the counts, or the sentence to draw. */
+export type RemovalOutcome =
+  | { readonly ok: true; readonly removal: TicketSourceRemoval }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Read what removing a source would take with it — what the dialog shows before it asks.
+ *
+ * @param id The source.
+ * @returns The counts, or why they could not be read.
+ */
+export async function readSourceRemoval(id: string): Promise<RemovalOutcome> {
+  try {
+    return { ok: true, removal: await sources.removal(id) };
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+    return { ok: false, reason: removalRefusal(error, REMOVE_UNREAD) };
+  }
+}
+
+/**
+ * Remove a source, with everything mirrored through it.
+ *
+ * @param id The source.
+ * @returns What was removed, or why nothing was.
+ */
+export async function removeSource(id: string): Promise<RemovalOutcome> {
+  try {
+    return { ok: true, removal: await sources.remove(id) };
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+    return { ok: false, reason: removalRefusal(error, REMOVE_FAILED) };
+  }
+}
+
+/**
+ * The sentence for a refused removal, or a refused read of one.
+ *
+ * @param error What the service answered.
+ * @param otherwise The sentence for a failure with no code of its own here.
+ * @returns The sentence.
+ */
+function removalRefusal(error: ApiError, otherwise: string): string {
+  if (error.code === IN_USE_CODE) return REMOVE_BLOCKED;
+  if (error.code === NOT_FOUND_CODE) return SOURCE_GONE;
+  if (error.code === FORBIDDEN_CODE) return REMOVE_READ_ONLY;
+
+  return otherwise;
 }
 
 /* --------------------------------------------------------------------- the backlog token */

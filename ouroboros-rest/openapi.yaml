@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.32"
+  version: "0.41.33"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -4624,6 +4624,148 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+    delete:
+      tags: [sources]
+      summary: Remove a ticket source
+      description: |-
+        Removes the source **and everything mirrored through it**: the tickets ingested through
+        it (with their estimates, dependencies and dry-run records), its pull request records
+        (with their gates, review threads, approvals and merge plans), its planning mirrors, and
+        the Planning draft batches that target it. The stored credential goes with the row.
+        Nothing on the tracker is touched — the issues and pull requests themselves stay where
+        they are — and a run that worked a removed ticket keeps its own record.
+
+        It cannot be undone. Adding the source again syncs its open tickets again; what
+        Ouroboros recorded about them does not come back. `GET /api/v1/sources/{id}/removal`
+        answers what would go, without removing anything.
+
+        Refused with `409 ticket_source_in_use` while the Build Analyzer has drafted tickets
+        into a batch that targets this source: that suggestion is a kept record naming its
+        batch. Pause the source instead.
+
+        Writes the audit event `ticket_source.removed`. Owners and admins.
+      operationId: removeTicketSource
+      parameters:
+        - $ref: "#/components/parameters/SourceId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: What was removed — the counts read just before the removal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketSourceRemoval"
+              examples:
+                seeded:
+                  summary: A source with tickets and pull requests mirrored through it
+                  value:
+                    sourceId: 5eed001a-0000-4000-8000-000000000001
+                    displayName: GitHub · acme-robotics
+                    tickets: 77
+                    pullRequests: 12
+                    draftBatches: 3
+                    analyzerDraftBatches: 0
+                    removable: true
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Removing a ticket source is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `ticket_source_not_found` — no source with that id in this workspace, whether or
+            not another workspace has one. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `ticket_source_in_use` — the Build Analyzer has drafted tickets into a batch that
+            targets this source. `details.analyzerDraftBatches` is how many. Nothing was removed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `id` is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/sources/{id}/removal:
+    get:
+      tags: [sources]
+      summary: What removing this source would take with it
+      description: |-
+        What a confirmation shows before `DELETE /api/v1/sources/{id}`: how many tickets, pull
+        request records and draft batches would be removed with the source, and whether the
+        removal would go through. Reads only. Owners and admins.
+      operationId: readTicketSourceRemoval
+      parameters:
+        - $ref: "#/components/parameters/SourceId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketSourceRemoval"
+              examples:
+                seeded:
+                  summary: A source with tickets and pull requests mirrored through it
+                  value:
+                    sourceId: 5eed001a-0000-4000-8000-000000000001
+                    displayName: GitHub · acme-robotics
+                    tickets: 77
+                    pullRequests: 12
+                    draftBatches: 3
+                    analyzerDraftBatches: 0
+                    removable: true
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Removing a ticket source is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `ticket_source_not_found` — no source with that id in this workspace, whether or
+            not another workspace has one. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `id` is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/sources/{id}/credentials:
     post:
       tags: [sources]
@@ -61523,6 +61665,50 @@ components:
         reason:
           type: [string, "null"]
 
+    TicketSourceRemoval:
+      type: object
+      title: TicketSourceRemoval
+      description: |-
+        What removing a ticket source takes with it: what `GET /api/v1/sources/{id}/removal`
+        answers before, and `DELETE /api/v1/sources/{id}` after. The three counts are rows
+        removed with the source; `analyzerDraftBatches` is what refuses the removal.
+      additionalProperties: false
+      required:
+        - sourceId
+        - displayName
+        - tickets
+        - pullRequests
+        - draftBatches
+        - analyzerDraftBatches
+        - removable
+      properties:
+        sourceId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+          description: The source's name, so a confirmation can say what is being removed.
+        tickets:
+          type: integer
+          minimum: 0
+          description: The tickets ingested through it, in any state.
+        pullRequests:
+          type: integer
+          minimum: 0
+          description: The pull request records opened through it.
+        draftBatches:
+          type: integer
+          minimum: 0
+          description: The Planning draft batches that target it.
+        analyzerDraftBatches:
+          type: integer
+          minimum: 0
+          description: |-
+            Those of the draft batches the Build Analyzer drafted a suggestion into. Any at
+            all means the source cannot be removed.
+        removable:
+          type: boolean
+          description: Whether a removal would go through now.
     TicketSourceStatusReport:
       type: object
       title: TicketSourceStatusReport

@@ -9,10 +9,16 @@ import {
   NotFoundError,
   NotImplementedError,
 } from "../errors/error.envelope";
-import { UNIQUE_VIOLATION } from "../tenancy/constraints";
+import type { AuditService } from "../audit/audit.service";
+import { FOREIGN_KEY_VIOLATION, UNIQUE_VIOLATION } from "../tenancy/constraints";
 import type { VaultService } from "../vault/vault.service";
 import { TICKET_SOURCE_ERRORS } from "./sources.errors";
-import type { NewSourceRow, SourcePatch, SourcesRepository } from "./sources.repository";
+import type {
+  NewSourceRow,
+  SourcePatch,
+  SourceRemovalCounts,
+  SourcesRepository,
+} from "./sources.repository";
 import { maskOf } from "./sources.resources";
 import { DISPLAY_NAME_KEY, SourcesService, syncSourceOf } from "./sources.service";
 import type { SourceSyncOutcome } from "./sync.report";
@@ -79,6 +85,14 @@ function row(overrides: Partial<TicketSourcePublic> = {}): TicketSourcePublic {
   };
 }
 
+/** What a source that has brought nothing in would take with it. */
+const NOTHING_MIRRORED: SourceRemovalCounts = {
+  tickets: 0,
+  pullRequests: 0,
+  draftBatches: 0,
+  analyzerDraftBatches: 0,
+};
+
 interface FakeSources extends SourcesRepository {
   readonly rows: Map<string, TicketSourcePublic>;
   readonly inserts: NewSourceRow[];
@@ -100,6 +114,8 @@ function fakeSources(
     insertFails?: unknown;
     present?: readonly string[];
     openTickets?: Readonly<Record<string, number>>;
+    counts?: SourceRemovalCounts;
+    removeFails?: unknown;
   } = {},
 ): FakeSources {
   const stored = new Map(rows.map((candidate) => [candidate.id, candidate]));
@@ -140,6 +156,17 @@ function fakeSources(
       });
 
       return Promise.resolve(new Map(found));
+    },
+    removalCounts: () => Promise.resolve(options.counts ?? NOTHING_MIRRORED),
+    remove: (organizationId: string, sourceId: string) => {
+      if (options.removeFails !== undefined) {
+        // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+        return Promise.reject(options.removeFails);
+      }
+
+      const found = stored.get(sourceId);
+
+      return Promise.resolve(found?.organization_id === organizationId && stored.delete(sourceId));
     },
     insert: (newRow: NewSourceRow) => {
       if (options.insertFails !== undefined) {
@@ -256,6 +283,8 @@ function build(
     present?: readonly string[];
     openTickets?: Readonly<Record<string, number>>;
     insertFails?: unknown;
+    counts?: SourceRemovalCounts;
+    removeFails?: unknown;
     sealed?: string | null;
     opened?: string | Error;
     provider?: ReturnType<typeof scriptedProvider>;
@@ -265,7 +294,17 @@ function build(
     insertFails: options.insertFails,
     present: options.present,
     openTickets: options.openTickets,
+    counts: options.counts,
+    removeFails: options.removeFails,
   });
+  const audited: Parameters<AuditService["record"]>[0][] = [];
+  const audit = {
+    record: (event: Parameters<AuditService["record"]>[0]) => {
+      audited.push(event);
+
+      return Promise.resolve();
+    },
+  } as unknown as AuditService;
   const loop = fakeLoop();
   const vault = fakeVault(options.opened);
   const provider = options.provider ?? scriptedProvider({ kind: "github" });
@@ -276,9 +315,10 @@ function build(
     new TicketSourceRegistry([provider]),
     vault,
     CONFIG,
+    audit,
   );
 
-  return { service, sources, loop, vault, provider };
+  return { service, sources, loop, vault, provider, audited };
 }
 
 /** Everything written to the logger during `work`, as one string. */
@@ -864,5 +904,116 @@ describe("the status report", () => {
     const { service } = build();
 
     await expect(service.status(WORKSPACE, SOURCE_ID)).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("removing a source", () => {
+  const ACTOR = "5eed0002-0000-4000-8000-000000000001";
+  const MIRRORED: SourceRemovalCounts = {
+    tickets: 77,
+    pullRequests: 12,
+    draftBatches: 3,
+    analyzerDraftBatches: 0,
+  };
+
+  it("says first what would go, and that it would go through", async () => {
+    const { service, sources } = build({ rows: [row()], counts: MIRRORED });
+
+    expect(await service.removal(WORKSPACE, SOURCE_ID)).toEqual({
+      sourceId: SOURCE_ID,
+      displayName: row().display_name,
+      tickets: 77,
+      pullRequests: 12,
+      draftBatches: 3,
+      analyzerDraftBatches: 0,
+      removable: true,
+    });
+    expect(sources.rows.has(SOURCE_ID)).toBe(true);
+  });
+
+  it("says a source the analyzer drafted into is not removable", async () => {
+    const { service } = build({ rows: [row()], counts: { ...MIRRORED, analyzerDraftBatches: 1 } });
+
+    expect((await service.removal(WORKSPACE, SOURCE_ID)).removable).toBe(false);
+  });
+
+  it("removes the row, answers what went, and records who removed it", async () => {
+    const { service, sources, audited } = build({ rows: [row()], counts: MIRRORED });
+
+    const removed = await service.remove(WORKSPACE, ACTOR, SOURCE_ID);
+
+    expect(removed).toMatchObject({ sourceId: SOURCE_ID, tickets: 77, pullRequests: 12 });
+    expect(sources.rows.has(SOURCE_ID)).toBe(false);
+    expect(audited).toHaveLength(1);
+    expect(audited[0]).toMatchObject({
+      organizationId: WORKSPACE,
+      actorId: ACTOR,
+      action: "ticket_source.removed",
+      subjectType: "ticket_source",
+      subjectId: SOURCE_ID,
+      detail: {
+        displayName: row().display_name,
+        kind: row().kind,
+        tickets: 77,
+        pullRequests: 12,
+        draftBatches: 3,
+      },
+    });
+  });
+
+  it("refuses with a 409 while the analyzer has drafted into it, and removes nothing", async () => {
+    const { service, sources, audited } = build({
+      rows: [row()],
+      counts: { ...MIRRORED, analyzerDraftBatches: 2 },
+    });
+
+    expect.assertions(5);
+
+    try {
+      await service.remove(WORKSPACE, ACTOR, SOURCE_ID);
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConflictError);
+      expect((error as ConflictError).code).toBe(TICKET_SOURCE_ERRORS.inUse);
+      expect((error as ConflictError).details).toEqual({
+        sourceId: SOURCE_ID,
+        analyzerDraftBatches: 2,
+      });
+    }
+
+    expect(sources.rows.has(SOURCE_ID)).toBe(true);
+    expect(audited).toEqual([]);
+  });
+
+  it("answers the same 409 when a restricting row appeared after the count", async () => {
+    const { service, audited } = build({
+      rows: [row()],
+      counts: MIRRORED,
+      removeFails: Object.assign(new Error("violates foreign key constraint"), {
+        code: FOREIGN_KEY_VIOLATION,
+        constraint: "analysis_suggestions_draft_batch_id_fkey",
+      }),
+    });
+
+    await expect(service.remove(WORKSPACE, ACTOR, SOURCE_ID)).rejects.toMatchObject({
+      code: TICKET_SOURCE_ERRORS.inUse,
+    });
+    expect(audited).toEqual([]);
+  });
+
+  it("lets any other database failure through", async () => {
+    const { service } = build({ rows: [row()], removeFails: new Error("connection lost") });
+
+    await expect(service.remove(WORKSPACE, ACTOR, SOURCE_ID)).rejects.toThrow("connection lost");
+  });
+
+  it("is a 404 for another workspace's source, which it neither counts nor removes", async () => {
+    const { service, sources, audited } = build({
+      rows: [row({ organization_id: "org-somebody-else" })],
+    });
+
+    await expect(service.removal(WORKSPACE, SOURCE_ID)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(service.remove(WORKSPACE, ACTOR, SOURCE_ID)).rejects.toBeInstanceOf(NotFoundError);
+    expect(sources.rows.has(SOURCE_ID)).toBe(true);
+    expect(audited).toEqual([]);
   });
 });

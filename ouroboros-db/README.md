@@ -2065,6 +2065,21 @@
 >   deleted, the trigger `chat_channels_release_console_commands` sets its console commands'
 >   `channel_id` to null and keeps the rows, so removing a connection still leaves the
 >   console's trail (`V136`); the channel's Slack commands go with it, as before.
+>
+> `V138` makes a ticket source removable. `V030` and the migrations after it already cascade
+> from a source to everything mirrored through it — its tickets, pull request records, planning
+> mirrors and the draft batches that target it — and a roadmap document (`V125`) keeps its row
+> and loses the pointer. Removing a source nevertheless failed on
+> `roadmap_docs_targets_same_workspace`: with the batch already cascaded away, clearing
+> `target_source_id` re-checked a `batch_id` that pointed at nothing.
+>
+> - **A pointer is checked when it changed.** The trigger now tests the source, or the batch,
+>   only when that column — or the workspace it is checked against — is what the statement
+>   changed. What it refuses is the same: neither may name another workspace's row.
+> - **One thing still keeps a source.** A draft batch that an analyzer suggestion was drafted
+>   into cannot be deleted (`analysis_suggestions_draft_batch_id_fkey` restricts, and a drafted
+>   suggestion is frozen), so neither can the source it targets. `ouroboros-rest` counts those
+>   first and answers `409 ticket_source_in_use`.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending

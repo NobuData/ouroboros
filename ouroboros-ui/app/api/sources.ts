@@ -91,6 +91,8 @@ export type TicketSourceStatusReport = components["schemas"]["TicketSourceStatus
 
 /** What one completed sync did. */
 export type TicketSourceSyncResult = components["schemas"]["TicketSourceSyncResult"];
+/** What removing a source takes with it, and whether the removal would go through. */
+export type TicketSourceRemoval = components["schemas"]["TicketSourceRemoval"];
 
 /**
  * How many sources one listing asks for — the service's own ceiling.
@@ -254,5 +256,32 @@ export const sources = {
     return unwrap(
       await client.GET("/api/v1/sources/{id}/status", { params: { path: { id } } }),
     );
+  },
+
+  /**
+   * What removing a source would take with it — read before asking for confirmation.
+   *
+   * @param id The source.
+   * @param client The API client. Defaults to this request's.
+   * @returns The counts, and whether the removal would go through.
+   * @throws {ApiError} `ticket_source_not_found`, or a `403` for a reader who may not remove.
+   */
+  async removal(id: string, client: ApiClient = api()): Promise<TicketSourceRemoval> {
+    return unwrap(
+      await client.GET("/api/v1/sources/{id}/removal", { params: { path: { id } } }),
+    );
+  },
+
+  /**
+   * Remove a source, with everything mirrored through it.
+   *
+   * @param id The source.
+   * @param client The API client. Defaults to this request's.
+   * @returns What was removed.
+   * @throws {ApiError} `ticket_source_in_use` while the Build Analyzer has drafted into a batch
+   *   that targets it; `ticket_source_not_found`.
+   */
+  async remove(id: string, client: ApiClient = api()): Promise<TicketSourceRemoval> {
+    return unwrap(await client.DELETE("/api/v1/sources/{id}", { params: { path: { id } } }));
   },
 };
