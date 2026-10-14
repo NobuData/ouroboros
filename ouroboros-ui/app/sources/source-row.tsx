@@ -5,6 +5,7 @@ import { monogramOf } from "@/app/catalog-tiles";
 import { Chip, Tag, cx } from "@/app/ui";
 
 import { ConfigureSource } from "./configure-source";
+import { RemoveSource } from "./remove-source";
 import { SourceControls } from "./source-controls";
 import { type SyncLine, labelOf, lastSyncLine, statusPill, summaryOf, syncLine } from "./view";
 
@@ -95,6 +96,7 @@ export function SourceRow({ source, status, entry, mayAdminister, now }: SourceR
       <div className="sources-row__actions">
         <SourceControls mayAdminister={mayAdminister} source={source} status={report} />
         <ConfigureSource entry={entry} mayAdminister={mayAdminister} source={source} />
+        <RemoveSource mayAdminister={mayAdminister} source={source} />
       </div>
     </li>
   );

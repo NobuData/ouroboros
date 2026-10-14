@@ -141,6 +141,65 @@ describe("SourcesRepository", () => {
     });
   });
 
+  describe("removing a source (V138)", () => {
+    it("counts what goes with it, and what would refuse it, in one statement", async () => {
+      database.answers({
+        rows: [
+          { tickets: "77", pull_requests: "12", draft_batches: "3", analyzer_draft_batches: "1" },
+        ],
+      });
+
+      expect(await repository.removalCounts(WORKSPACE, SOURCE_ID)).toStrictEqual({
+        tickets: 77,
+        pullRequests: 12,
+        draftBatches: 3,
+        analyzerDraftBatches: 1,
+      });
+      expect(database.statements).toHaveLength(1);
+
+      const sql = database.statements[0]?.sql ?? "";
+
+      // Each count is over the column whose foreign key decides the row's fate.
+      expect(sql).toContain("from ouroboros.tickets");
+      expect(sql).toContain("from ouroboros.pull_requests");
+      expect(sql).toContain("from ouroboros.draft_batches");
+      expect(sql).toContain("b.target_source_id");
+      expect(sql).toContain("from ouroboros.analysis_suggestions");
+      // Every one is held to the workspace as well as the source.
+      expect(
+        database.statements[0]?.parameters.filter((value) => value === WORKSPACE),
+      ).toHaveLength(4);
+      expect(
+        database.statements[0]?.parameters.filter((value) => value === SOURCE_ID),
+      ).toHaveLength(4);
+    });
+
+    it("reads no row as nothing mirrored", async () => {
+      database.answers({ rows: [] });
+
+      expect(await repository.removalCounts(WORKSPACE, SOURCE_ID)).toStrictEqual({
+        tickets: 0,
+        pullRequests: 0,
+        draftBatches: 0,
+        analyzerDraftBatches: 0,
+      });
+    });
+
+    it("deletes the one row, held to its workspace, and says whether there was one", async () => {
+      database.answers({ numAffectedRows: 1n }, { numAffectedRows: 0n });
+
+      expect(await repository.remove(WORKSPACE, SOURCE_ID)).toBe(true);
+      expect(await repository.remove(WORKSPACE, SOURCE_ID)).toBe(false);
+
+      const [statement] = database.statements;
+
+      expect(statement?.sql).toContain('delete from "ouroboros"."ticket_sources"');
+      expect(statement?.sql).toContain('"organization_id" = $1');
+      expect(statement?.sql).toContain('"id" = $2');
+      expect(statement?.parameters).toStrictEqual([WORKSPACE, SOURCE_ID]);
+    });
+  });
+
   describe("the writes", () => {
     it("inserts with the caller's id and the config as JSON", async () => {
       await repository.insert({

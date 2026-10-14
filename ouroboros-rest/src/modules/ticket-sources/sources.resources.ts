@@ -334,3 +334,54 @@ function configOf(config: unknown): Readonly<Record<string, unknown>> {
 function instant(value: Date | null): string | null {
   return value === null ? null : value.toISOString();
 }
+
+/**
+ * What removing a source takes with it — what `GET /sources/{id}/removal` answers before, and
+ * `DELETE /sources/{id}` after.
+ */
+export interface TicketSourceRemovalResource {
+  /** The source. */
+  readonly sourceId: string;
+  /** Its name, so a confirmation can say what is being removed. */
+  readonly displayName: string;
+  /** The tickets ingested through it, in any state — removed with it. */
+  readonly tickets: number;
+  /** The pull request records opened through it — removed with it. */
+  readonly pullRequests: number;
+  /** The Planning draft batches that target it — removed with it. */
+  readonly draftBatches: number;
+  /**
+   * The draft batches the Build Analyzer drafted a suggestion into. Any at all means the
+   * source cannot be removed.
+   */
+  readonly analyzerDraftBatches: number;
+  /** Whether a removal would go through now. */
+  readonly removable: boolean;
+}
+
+/**
+ * The removal resource for a source.
+ *
+ * @param source - The source's id and name.
+ * @param counts - What the repository counted.
+ * @returns The resource.
+ */
+export function removalResource(
+  source: { readonly id: string; readonly display_name: string },
+  counts: {
+    readonly tickets: number;
+    readonly pullRequests: number;
+    readonly draftBatches: number;
+    readonly analyzerDraftBatches: number;
+  },
+): TicketSourceRemovalResource {
+  return {
+    sourceId: source.id,
+    displayName: source.display_name,
+    tickets: counts.tickets,
+    pullRequests: counts.pullRequests,
+    draftBatches: counts.draftBatches,
+    analyzerDraftBatches: counts.analyzerDraftBatches,
+    removable: counts.analyzerDraftBatches === 0,
+  };
+}

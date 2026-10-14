@@ -178,6 +178,17 @@ describe("composing the audit card's lines", () => {
       "retried an undelivered Slack message",
     );
   });
+  it("names the ticket source that was removed, which no longer has a row to look up", () => {
+    expect(
+      eventSentence({
+        action: "ticket_source.removed",
+        detail: { displayName: "GitHub · acme-robotics", kind: "github", tickets: 77 },
+      }),
+    ).toBe("removed the ticket source GitHub · acme-robotics");
+    expect(eventSentence({ action: "ticket_source.removed", detail: {} })).toBe(
+      "removed a ticket source",
+    );
+  });
 });
 
 describe("the actor column", () => {

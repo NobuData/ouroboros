@@ -31,6 +31,8 @@ describe("the sources controller", () => {
       test: jest.fn().mockResolvedValue({ sourceId: SOURCE_ID }),
       syncNow: jest.fn().mockResolvedValue({ sourceId: SOURCE_ID, running: true }),
       status: jest.fn().mockResolvedValue({ sourceId: SOURCE_ID, running: false }),
+      removal: jest.fn().mockResolvedValue({ sourceId: SOURCE_ID, removable: true }),
+      remove: jest.fn().mockResolvedValue({ sourceId: SOURCE_ID, removable: true }),
     } as unknown as jest.Mocked<SourcesService>;
 
     controller = new SourcesController(service);
@@ -68,6 +70,23 @@ describe("the sources controller", () => {
     });
   });
 
+  describe("removing", () => {
+    it("scopes the preview and the removal, and names who removed it from the session", async () => {
+      const principal = { user: { id: "user-1" } } as Parameters<typeof controller.remove>[1];
+
+      await controller.removal(WORKSPACE, { id: SOURCE_ID });
+      await controller.remove(WORKSPACE, principal, { id: SOURCE_ID });
+
+      expect(service.removal).toHaveBeenCalledWith(WORKSPACE.id, SOURCE_ID);
+      expect(service.remove).toHaveBeenCalledWith(WORKSPACE.id, "user-1", SOURCE_ID);
+    });
+
+    it("declares the preview under the source, and the removal on the source itself", () => {
+      expect(Reflect.getMetadata(PATH_METADATA, controller.removal)).toBe(":id/removal");
+      expect(Reflect.getMetadata(PATH_METADATA, controller.remove)).toBe(":id");
+    });
+  });
+
   describe("roles", () => {
     it("asks administrators of every write — test and sync included", () => {
       const reflector = new Reflector();
@@ -78,6 +97,10 @@ describe("the sources controller", () => {
         controller.setCredentials,
         controller.test,
         controller.sync,
+        // Reading what a removal would take is an administrator's too: it is the first half
+        // of an act only they may finish.
+        controller.removal,
+        controller.remove,
       ]) {
         expect(reflector.get<string[]>(REQUIRED_ROLES, handler)).toEqual([...ADMINISTRATORS]);
       }
@@ -115,7 +138,7 @@ describe("the sources controller", () => {
   });
 
   describe("the route table", () => {
-    it("declares the nine operations the issue lists, and no tenth", () => {
+    it("declares the nine operations the issue lists, the two that remove a source, and no twelfth", () => {
       const handlers = Object.getOwnPropertyNames(SourcesController.prototype).filter(
         (name) => name !== "constructor",
       );
@@ -125,6 +148,8 @@ describe("the sources controller", () => {
         "catalog",
         "list",
         "read",
+        "removal",
+        "remove",
         "setCredentials",
         "status",
         "sync",

@@ -173,3 +173,43 @@ describe("sources.status", () => {
     expect(requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/sources/${SEEDED_GITHUB_ID}/status`);
   });
 });
+
+describe("removing a source", () => {
+  const COUNTS = {
+    sourceId: SEEDED_GITHUB_ID,
+    displayName: "GitHub · acme-robotics",
+    tickets: 77,
+    pullRequests: 12,
+    draftBatches: 1,
+    analyzerDraftBatches: 0,
+    removable: true,
+  };
+
+  it("reads what a removal would take, without removing", async () => {
+    const { client, requests } = clientAnswering(COUNTS);
+
+    expect(await sources.removal(SEEDED_GITHUB_ID, client)).toEqual(COUNTS);
+    expect(requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/sources/${SEEDED_GITHUB_ID}/removal`);
+    expect(requests[0]?.method).toBe("GET");
+  });
+
+  it("removes with a DELETE on the source itself", async () => {
+    const { client, requests } = clientAnswering(COUNTS);
+
+    expect(await sources.remove(SEEDED_GITHUB_ID, client)).toEqual(COUNTS);
+    expect(requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/sources/${SEEDED_GITHUB_ID}`);
+    expect(requests[0]?.method).toBe("DELETE");
+  });
+
+  it("surfaces the refusal for a source the analyzer drafted into", async () => {
+    const { client } = clientAnswering(
+      { code: "ticket_source_in_use", message: "Kept.", details: { analyzerDraftBatches: 1 } },
+      409,
+    );
+
+    await expect(sources.remove(SEEDED_GITHUB_ID, client)).rejects.toMatchObject({
+      status: 409,
+      code: "ticket_source_in_use",
+    });
+  });
+});

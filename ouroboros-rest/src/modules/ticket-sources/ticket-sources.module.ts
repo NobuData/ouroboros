@@ -71,6 +71,7 @@
 import { Module } from "@nestjs/common";
 import { ScheduleModule } from "@nestjs/schedule";
 
+import { AuditModule } from "../audit/audit.module";
 import { DbModule } from "../db/db.module";
 import { GithubModule } from "../github/github.module";
 import { VaultModule } from "../vault/vault.module";
@@ -89,7 +90,7 @@ import { TicketSourcesService } from "./ticket-sources.service";
 import { LoggingTicketIntake, TICKET_INTAKE } from "./ticket.intake";
 
 @Module({
-  imports: [DbModule, VaultModule, GithubModule, ScheduleModule.forRoot()],
+  imports: [DbModule, AuditModule, VaultModule, GithubModule, ScheduleModule.forRoot()],
   controllers: [SourcesController],
   providers: [
     TicketSourcesService,

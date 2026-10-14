@@ -224,6 +224,10 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
       ? `retried ${messages} undelivered Slack messages`
       : "retried an undelivered Slack message";
   },
+  "ticket_source.removed": (f) => {
+    const name = text(f, "displayName");
+    return name === undefined ? "removed a ticket source" : `removed the ticket source ${name}`;
+  },
 };
 
 /**

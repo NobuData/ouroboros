@@ -43,9 +43,11 @@ import { randomUUID } from "node:crypto";
 
 import type { TicketSourcePublic } from "../db/schema";
 import { MINIMUM_SYNC_INTERVAL_SECONDS, retryAfterSeconds } from "../backlog/debounce";
+import { TICKET_SOURCE_REMOVED_EVENT } from "../audit/audit.events";
+import { AuditService } from "../audit/audit.service";
 import { describeForLog } from "../errors/failure";
 import { fieldViolations } from "../provider-connections/config.validation";
-import { UNIQUE_VIOLATION, isDatabaseFailure } from "../tenancy/constraints";
+import { FOREIGN_KEY_VIOLATION, UNIQUE_VIOLATION, isDatabaseFailure } from "../tenancy/constraints";
 import { windowOf } from "../tenancy/pagination";
 import { AppConfigService } from "../config/config.service";
 import { VaultService } from "../vault/vault.service";
@@ -59,6 +61,7 @@ import type {
 import {
   sourceConfigInvalid,
   sourceCredentialsUnsupported,
+  sourceInUse,
   sourceNameTaken,
   sourceNotFound,
   sourcePaused,
@@ -68,11 +71,13 @@ import {
 import { SourcesRepository } from "./sources.repository";
 import {
   maskOf,
+  removalResource,
   sourceResource,
   statusResource,
   testResource,
   type TicketSourceCatalogResource,
   type TicketSourcePageResource,
+  type TicketSourceRemovalResource,
   type TicketSourceResource,
   type TicketSourceStatusResource,
   type TicketSourceTestResource,
@@ -105,6 +110,7 @@ export class SourcesService {
    * @param vault - What seals a credential and, for a test, opens one.
    * @param config - The deployment's settings. Only the sync cadence is read here, and only so
    *   the listing can publish it (#285).
+   * @param audit - The audit plane: a removal is recorded there.
    */
   constructor(
     private readonly sources: SourcesRepository,
@@ -113,6 +119,7 @@ export class SourcesService {
     private readonly registry: TicketSourceRegistry,
     private readonly vault: VaultService,
     private readonly config: AppConfigService,
+    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -532,6 +539,86 @@ export class SourcesService {
 
       throw error;
     }
+  }
+
+  /**
+   * What removing a source would take with it, and whether it would go through.
+   *
+   * @param organizationId - The workspace.
+   * @param sourceId - The source.
+   * @returns The counts — what a confirmation shows before anything is removed.
+   * @throws {NotFoundError} `ticket_source_not_found`.
+   */
+  async removal(organizationId: string, sourceId: string): Promise<TicketSourceRemovalResource> {
+    const row = await this.require(organizationId, sourceId);
+
+    return removalResource(row, await this.sources.removalCounts(organizationId, sourceId));
+  }
+
+  /**
+   * Remove a source, with everything mirrored through it.
+   *
+   * The tickets ingested through it, its pull request records and the draft batches that
+   * target it go with it — the schema's cascades (V030, V034, V036, V052). Nothing on the
+   * tracker is touched: the issues and pull requests themselves stay where they are. The
+   * sealed credential is a column of the row, so it goes too.
+   *
+   * It is refused while the Build Analyzer has drafted tickets into a batch that targets the
+   * source: that suggestion is a frozen record naming its batch, and the database keeps both.
+   *
+   * @param organizationId - The workspace.
+   * @param actorId - Who is removing it, for the audit event.
+   * @param sourceId - The source.
+   * @returns What was removed — the counts read just before the delete.
+   * @throws {NotFoundError} `ticket_source_not_found`.
+   * @throws {ConflictError} `ticket_source_in_use`.
+   */
+  async remove(
+    organizationId: string,
+    actorId: string,
+    sourceId: string,
+  ): Promise<TicketSourceRemovalResource> {
+    const row = await this.require(organizationId, sourceId);
+    const counts = await this.sources.removalCounts(organizationId, sourceId);
+
+    if (counts.analyzerDraftBatches > 0) {
+      throw sourceInUse(sourceId, counts.analyzerDraftBatches);
+    }
+
+    let removed: boolean;
+    try {
+      removed = await this.sources.remove(organizationId, sourceId);
+    } catch (error) {
+      // A row that restricts appeared between the count and the delete: the same refusal.
+      if (isDatabaseFailure(error) && error.code === FOREIGN_KEY_VIOLATION) {
+        throw sourceInUse(sourceId, counts.analyzerDraftBatches);
+      }
+
+      throw error;
+    }
+
+    // Somebody else removed it first: for this caller there is no such source.
+    if (!removed) {
+      throw sourceNotFound(sourceId);
+    }
+
+    await this.audit.record({
+      organizationId,
+      actorId,
+      action: TICKET_SOURCE_REMOVED_EVENT,
+      subjectType: "ticket_source",
+      subjectId: sourceId,
+      at: new Date(),
+      detail: {
+        displayName: row.display_name,
+        kind: row.kind,
+        tickets: counts.tickets,
+        pullRequests: counts.pullRequests,
+        draftBatches: counts.draftBatches,
+      },
+    });
+
+    return removalResource(row, counts);
   }
 
   /**

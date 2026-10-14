@@ -279,6 +279,11 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
     // CA.5 (#545): the Slack connection's dead-lettered messages were queued again.
     adds: ["audit.chat.delivery_retried"],
   },
+  {
+    version: 16,
+    // A ticket source was removed, with everything mirrored through it.
+    adds: ["audit.ticket_source.removed"],
+  },
 ];
 
 /** The newest registry version — what a new endpoint subscribes under. */

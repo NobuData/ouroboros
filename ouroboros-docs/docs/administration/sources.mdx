@@ -155,7 +155,37 @@ Choose **Pause** to stop a source syncing. It keeps its tickets and its settings
 reads **paused**. **Sync now** is refused while it is paused. Choose **Resume** to start it
 again.
 
-A source cannot be removed from this page. Pause a source you no longer use.
+Pausing is the way to stop a source you may want again. To take one out of the workspace for
+good, remove it.
+
+## Removing a source
+
+An Owner or Maintainer chooses **Remove** on the source's row. Nothing is removed straight away:
+a dialog first counts what Ouroboros mirrored through the source, because all of it goes too:
+
+- the source's tickets, estimates and dependencies included;
+- its pull request records, gates, reviews and approvals included;
+- the Planning draft batches targeting it.
+
+<Screenshot id="administration.sources.remove" />
+
+Choose **Remove source** to go ahead, or **Keep it** to close the dialog and change nothing.
+
+What stays: *Nothing on the tracker is touched: the issues and pull requests themselves stay
+where they are. Runs that already happened keep their own record.* The source's stored token is
+removed with it.
+
+*This cannot be undone. Adding the source again syncs its open tickets again, but the estimates
+and pull request records removed here do not come back.* If you only want the source to stop
+syncing, pause it.
+
+One thing keeps a source. If the Build Analyzer has drafted tickets into a batch that targets
+it, the dialog says *This source cannot be removed: the Build Analyzer has drafted tickets into
+a batch that targets it, and that record is kept. Pause the source instead.* and offers no
+**Remove source**.
+
+A removal is recorded in the [audit trail](./retention-audit-lifecycle.mdx) as *removed the
+ticket source*, with the source's name and who removed it.
 
 ## When a sync fails
 

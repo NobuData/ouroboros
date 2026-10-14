@@ -44035,6 +44035,62 @@ select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.chat_commands where organization_id = 'org-v137'),
   'and the workspace takes them with it');
 
+-- ===========================================================================
+-- V138 — a ticket source can be removed.
+-- ===========================================================================
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v138', 'Removal Works', 'removal-works-v138', now()),
+  ('org-v138b', 'Elsewhere', 'elsewhere-v138', now());
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a1380000-0000-0000-0000-00000000000a', 'org-v138',  'github', 'GitHub · removal works'),
+  ('a1380000-0000-0000-0000-00000000000c', 'org-v138',  'github', 'GitHub · kept'),
+  ('a1380000-0000-0000-0000-00000000000b', 'org-v138b', 'github', 'GitHub · elsewhere');
+
+insert into ouroboros.draft_batches (id, organization_id, source_prompt, planner, target_source_id) values
+  ('a1380000-0000-0000-0000-000000000011', 'org-v138', 'A roadmap''s drafts', 'create-roadmap-v1',
+   'a1380000-0000-0000-0000-00000000000a'),
+  ('a1380000-0000-0000-0000-000000000012', 'org-v138b', 'Somebody else''s drafts', 'create-roadmap-v1',
+   'a1380000-0000-0000-0000-00000000000b');
+
+-- The document names both the source and the batch that targets it — the shape that refused.
+insert into ouroboros.roadmap_docs (id, organization_id, title, target_source_id, batch_id) values
+  ('a1380000-0000-0000-0000-000000000101', 'org-v138', 'Helios — next quarter',
+   'a1380000-0000-0000-0000-00000000000a', 'a1380000-0000-0000-0000-000000000011');
+
+-- What the trigger refuses is unchanged: neither pointer may leave the workspace.
+select pg_temp.must_reject(
+  $$update ouroboros.roadmap_docs set target_source_id = 'a1380000-0000-0000-0000-00000000000b'
+     where id = 'a1380000-0000-0000-0000-000000000101'$$,
+  'a doc still cannot be pointed at another workspace''s source', 'roadmap_docs_targets_same_workspace');
+select pg_temp.must_reject(
+  $$update ouroboros.roadmap_docs set batch_id = 'a1380000-0000-0000-0000-000000000012'
+     where id = 'a1380000-0000-0000-0000-000000000101'$$,
+  'nor at another workspace''s batch', 'roadmap_docs_targets_same_workspace');
+select pg_temp.must_reject(
+  $$insert into ouroboros.roadmap_docs (organization_id, title, target_source_id)
+    values ('org-v138', 'Pointed elsewhere', 'a1380000-0000-0000-0000-00000000000b')$$,
+  'and a new doc is checked on both', 'roadmap_docs_targets_same_workspace');
+
+-- A pointer that did not change is not re-checked, so the other one can.
+update ouroboros.roadmap_docs set target_source_id = 'a1380000-0000-0000-0000-00000000000c'
+ where id = 'a1380000-0000-0000-0000-000000000101';
+update ouroboros.roadmap_docs set target_source_id = 'a1380000-0000-0000-0000-00000000000a'
+ where id = 'a1380000-0000-0000-0000-000000000101';
+
+-- The removal: the batch cascades away first, and clearing the source no longer trips over it.
+delete from ouroboros.ticket_sources where id = 'a1380000-0000-0000-0000-00000000000a';
+select pg_temp.must_hold(
+  (select target_source_id is null and batch_id is null
+     from ouroboros.roadmap_docs where id = 'a1380000-0000-0000-0000-000000000101'),
+  'removing a source leaves the roadmap doc, with neither pointer');
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.draft_batches where id = 'a1380000-0000-0000-0000-000000000011')
+   and (select count(*) = 1 from ouroboros.ticket_sources where organization_id = 'org-v138'),
+  'its draft batch goes with it, and the workspace''s other source stays');
+
+delete from ouroboros.organization where "id" in ('org-v138', 'org-v138b');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

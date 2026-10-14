@@ -51,6 +51,7 @@ export const TICKET_SOURCE_ERRORS = {
   syncTooSoon: "ticket_source_sync_too_soon",
   /** `409` — this source's provider declares no credential, so there is nothing to store one as. */
   credentialsUnsupported: "ticket_source_credentials_unsupported",
+  inUse: "ticket_source_in_use",
 } as const;
 
 /** One of {@link TICKET_SOURCE_ERRORS}' values. */
@@ -168,5 +169,25 @@ export function sourceCredentialsUnsupported(kind: TicketSourceKind): ConflictEr
     TICKET_SOURCE_ERRORS.credentialsUnsupported,
     "This source's provider takes no credential.",
     { kind },
+  );
+}
+
+/**
+ * The `409` for a source that cannot be removed yet.
+ *
+ * One thing keeps a source: a draft batch that targets it and that the Build Analyzer drafted a
+ * suggestion into. A drafted suggestion is a frozen record that names its batch (V081), so the
+ * batch — and with it the source it would be pushed to — stays while that record does.
+ *
+ * @param sourceId - The source.
+ * @param analyzerDraftBatches - How many such batches there are.
+ * @returns The error. `details.analyzerDraftBatches` is the count.
+ */
+export function sourceInUse(sourceId: string, analyzerDraftBatches: number): ConflictError {
+  return new ConflictError(
+    TICKET_SOURCE_ERRORS.inUse,
+    "This source cannot be removed: the Build Analyzer has drafted tickets into a batch that " +
+      "targets it, and that record is kept. Pause the source instead.",
+    { sourceId, analyzerDraftBatches },
   );
 }
