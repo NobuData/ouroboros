@@ -114,7 +114,9 @@ async function started(): Promise<FakeProgressSource> {
   fireEvent.click(startButton());
   await screen.findByText("RS-128");
 
-  return FakeProgressSource.latest();
+  // The stream is opened by an effect, which React may run a moment after the surface is
+  // drawn — so the surface being on screen does not mean a source exists yet.
+  return waitFor(() => FakeProgressSource.latest());
 }
 
 beforeEach(() => {
