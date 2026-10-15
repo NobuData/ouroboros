@@ -238,11 +238,11 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 1 | **DG.1** | ✅ [#1299](https://github.com/NobuData/ouroboros/issues/1299) | Promote the execution chain — labels, milestones, amendments & roadmap write-back | .github, docs | S | — |
-| 2 | **AB.1** | [#207](https://github.com/NobuData/ouroboros/issues/207) | Invocation-gateway requirements handoff | docs | S | DG.1 |
+| 2 | **AB.1** | ✅ [#207](https://github.com/NobuData/ouroboros/issues/207) | Invocation-gateway requirements handoff | docs | S | DG.1 |
 | 3 | **DH.4** | ✅ [#1304](https://github.com/NobuData/ouroboros/issues/1304) | Provider-terms guard — invocation eligibility per adapter & credential kind | ouroboros-rest, ouroboros-ui, ouroboros-docs, docs | S | — |
-| 4 | **AF.1** | [#234](https://github.com/NobuData/ouroboros/issues/234) | Invocation gateway ADR | docs | M | AB.1, DH.4 |
+| 4 | **AF.1** | ✅ [#234](https://github.com/NobuData/ouroboros/issues/234) | Invocation gateway ADR | docs | M | AB.1, DH.4 |
 | 5 | **DH.1** | ✅ [#1302](https://github.com/NobuData/ouroboros/issues/1302) | `StageExecutor` SPI & the harness option for the execution ADR | ouroboros-engine, docs | M | — |
-| 6 | **T.1** | [#155](https://github.com/NobuData/ouroboros/issues/155) | Execution engine ADR (custom vs Temporal vs Hatchet) | docs, ouroboros-engine | M | DG.1, DH.1 |
+| 6 | **T.1** | ✅ [#155](https://github.com/NobuData/ouroboros/issues/155) | Execution engine ADR (custom vs Temporal vs Hatchet) | docs, ouroboros-engine | M | DG.1, DH.1 |
 | 7 | **DG.2** | ✅ [#1300](https://github.com/NobuData/ouroboros/issues/1300) | Loop capability report | ouroboros-rest, ouroboros-docs | S | — |
 | 8 | **DL.1** | ✅ [#1320](https://github.com/NobuData/ouroboros/issues/1320) | Public sample repository & issue set | new repository, docs | M | — |
 
@@ -262,8 +262,8 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 9 | **6.5** | [#54](https://github.com/NobuData/ouroboros/issues/54) | Task execution skeleton (queue & worker model) | ouroboros-engine | L | DG.1 |
-| 10 | **AF.2** | [#235](https://github.com/NobuData/ouroboros/issues/235) | Chain executor implementation | ouroboros-rest, ouroboros-engine | L | AF.1, DH.4 |
+| 9 | **6.5** | ✅ [#54](https://github.com/NobuData/ouroboros/issues/54) | Task execution skeleton (queue & worker model) | ouroboros-engine | L | DG.1 |
+| 10 | **AF.2** | ✅ [#235](https://github.com/NobuData/ouroboros/issues/235) | Chain executor implementation | ouroboros-rest, ouroboros-engine | L | AF.1, DH.4 |
 | 11 | **DH.2** | ✅ [#1303](https://github.com/NobuData/ouroboros/issues/1303) | Anthropic Messages-format facade over the chain executor | ouroboros-rest | L | AF.1, AF.2 |
 | 12 | **DJ.1** | ✅ [#1313](https://github.com/NobuData/ouroboros/issues/1313) | Data origin on runs and what derives from them | ouroboros-db, ouroboros-rest | M | — |
 | 13 | **DG.3** | ✅ [#1301](https://github.com/NobuData/ouroboros/issues/1301) | Capability-driven loop copy — retire "simulated" in the product | ouroboros-ui, ouroboros-docs | M | DG.2 |
