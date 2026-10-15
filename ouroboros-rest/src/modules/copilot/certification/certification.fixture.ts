@@ -29,7 +29,6 @@ import { SCHEMA_NAME } from "../../db/schema";
 import { PinnedCommitReader, type PinnedCommit } from "../../dry-runs/dry-runs.commit";
 import { applyDevSeeds } from "../../research/certification/certification.fixture";
 import { TENANT_HEADER } from "../../tenancy/tenant.resolver";
-import { COPILOT_TASK_KIND } from "../copilot.service";
 import type { CopilotStreamEvent } from "../copilot.stream";
 import { startScriptedEngine, type ScriptedEngine } from "./scripted-engine.fixture";
 
@@ -213,27 +212,8 @@ async function stageOver(api: ApiHarness, engine: ScriptedEngine): Promise<Copil
   const as: CopilotStage["as"] = (person, method, path) =>
     api.as(person)(method, path).set(TENANT_HEADER, workspace.slug);
 
-  // The seed declares no task kind for the copilot, and the routing API saves onto routes that
-  // exist (#1748) — so the stage does what a migration would: the kind, its route and one hop, in one
-  // statement batch so the deferred "a route has hops" trigger judges them together.
-  await api.sql.query(
-    `begin;
-     insert into ${SCHEMA_NAME}.task_kinds (organization_id, name, description, sort_order)
-     select o."id", '${COPILOT_TASK_KIND}', 'Draft and edit workflows in conversation', 90
-       from ${SCHEMA_NAME}.organization o where o."slug" = '${SEEDED_WORKSPACE_SLUG}';
-     insert into ${SCHEMA_NAME}.routes (organization_id, task_kind_id, tag, allow_local_fallback)
-     select k.organization_id, k.id, 'copilot-primary', false
-       from ${SCHEMA_NAME}.task_kinds k
-       join ${SCHEMA_NAME}.organization o on o."id" = k.organization_id
-      where o."slug" = '${SEEDED_WORKSPACE_SLUG}' and k.name = '${COPILOT_TASK_KIND}';
-     insert into ${SCHEMA_NAME}.route_hops (organization_id, route_id, position, model_alias_id)
-     select r.organization_id, r.id, 1, a.id
-       from ${SCHEMA_NAME}.routes r
-       join ${SCHEMA_NAME}.model_aliases a
-         on a.organization_id = r.organization_id and a.alias = '${COPILOT_ALIAS}'
-      where r.tag = 'copilot-primary';
-     commit;`,
-  );
+  // The copilot's kind is every workspace's (V142) and the seed routes it through
+  // `copilot-primary` → `${COPILOT_ALIAS}` (#1748), so the stage stages nothing for it.
 
   const one: CopilotStage["one"] = async <T>(sql: string, values: unknown[] = []) => {
     const { rows } = await api.sql.query(sql, values);

@@ -3,6 +3,7 @@ import { bodyOf } from "../../testing/integration.fixture";
 import { SCHEMA_NAME, type RouteRevisionDiff } from "../db/schema";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
+import { SAVE_MESSAGES } from "./management.validation";
 import type {
   AliasListResource,
   EscalationRuleResource,
@@ -302,7 +303,12 @@ describe("the routing management endpoints", () => {
         await api.as(viewer)("get", MATRIX).set(TENANT_HEADER, workspace.slug).expect(200),
       );
 
-      expect(matrix.taskKinds.map((row) => row.name)).toEqual(["implement", "review", "docs"]);
+      expect(matrix.taskKinds.map((row) => row.name)).toEqual([
+        "implement",
+        "review",
+        "docs",
+        "copilot-workflow",
+      ]);
     });
 
     it.each([
@@ -431,7 +437,10 @@ describe("the routing management endpoints", () => {
       // The spend card is present and in its zero-state rather than absent: a workspace with no
       // foundations still has a card to draw, and `localTokenShare: null` is what it says —
       // *nothing ran*, not *nothing ran locally*.
-      expect(matrix.taskKinds).toEqual([]);
+      // Bare but for V142's copilot kind, which every workspace has, unrouted (#1748).
+      expect(matrix.taskKinds.map((row) => [row.name, row.route])).toEqual([
+        ["copilot-workflow", null],
+      ]);
       expect(matrix.rules).toEqual([]);
       expect(matrix.spend).toMatchObject({
         providers: [],
@@ -645,9 +654,36 @@ describe("the routing management endpoints", () => {
       expect(await storedChain(workspace.id, "implement")).toHaveLength(3);
     });
 
-    it("refuses a task kind this workspace does not route, naming the kind", async () => {
+    it("creates the route of a task kind this workspace does not route yet (#1748)", async () => {
       const owner = await api.signIn();
       const workspace = await seeded(owner);
+
+      const saved = bodyOf<SaveRoutesResource>(
+        await api
+          .as(owner)("put", `${ROUTES}/review`)
+          .set(TENANT_HEADER, workspace.slug)
+          .send({ ...IMPLEMENT_AS_IS, hops: [{ alias: "coder-max", note: null }] })
+          .expect(200),
+      );
+
+      expect(saved.routes).toEqual([
+        expect.objectContaining({ taskKind: "review", tag: "review-primary" }),
+      ]);
+      expect((await storedChain(workspace.id, "review")).map((hop) => hop.alias)).toEqual([
+        "coder-max",
+      ]);
+      expect((await revisions(workspace.id))[0].diff.routes[0].task_kind).toBe("review");
+    });
+
+    it("refuses to create one whose tag another route already has, naming the kind", async () => {
+      const owner = await api.signIn();
+      const workspace = await seeded(owner);
+
+      await api.sql.query(
+        `update ${SCHEMA_NAME}.routes set tag = 'review-primary'
+          where organization_id = $1 and tag = 'docs-primary'`,
+        [workspace.id],
+      );
 
       const response = await api
         .as(owner)("put", `${ROUTES}/review`)
@@ -656,9 +692,7 @@ describe("the routing management endpoints", () => {
         .expect(422);
 
       expect(bodyOf<ErrorEnvelope>(response).details).toEqual({
-        routes: {
-          review: { taskKind: [expect.stringContaining("no route") as unknown as string] },
-        },
+        routes: { review: { taskKind: [SAVE_MESSAGES.newRouteTagTaken] } },
       });
     });
 
@@ -912,7 +946,8 @@ describe("the routing management endpoints", () => {
         await api.as(owner)("get", MATRIX).set(TENANT_HEADER, mine.slug).expect(200),
       );
 
-      expect(matrix.taskKinds).toHaveLength(3);
+      // Three of its own, and V142's `copilot-workflow`, which every workspace has (#1748).
+      expect(matrix.taskKinds).toHaveLength(4);
       expect(await storedChain(theirs.id, "implement")).toHaveLength(3);
     });
 

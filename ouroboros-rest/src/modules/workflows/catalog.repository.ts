@@ -16,6 +16,7 @@
 import { Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../db/db.service";
+import { COPILOT_TASK_KIND } from "../routing/copilot.task-kind";
 import type { RegistryAlias } from "./alias.suggestion";
 
 @Injectable()
@@ -31,13 +32,16 @@ export class WorkflowCatalogRepository {
    *
    * @param organizationId - The workspace, from the tenant context.
    * @returns The names, `sort_order` ascending. Empty for a workspace whose routing foundations
-   *   have not been seeded — nothing to suggest, not a failure.
+   *   have not been seeded — nothing to suggest, not a failure. The Copilot's own kind
+   *   (`copilot-workflow`, which every workspace has since V142, #1748) is left out: it routes the
+   *   Copilot, not a workflow stage.
    */
   async taskKindNames(organizationId: string): Promise<string[]> {
     const rows = await this.database.db
       .selectFrom("task_kinds")
       .select("name")
       .where("organization_id", "=", organizationId)
+      .where("name", "<>", COPILOT_TASK_KIND)
       .orderBy("sort_order")
       .execute();
 

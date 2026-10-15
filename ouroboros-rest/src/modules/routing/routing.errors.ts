@@ -70,7 +70,7 @@ export const ROUTING_ERRORS = {
    *
    * A `422` and not a `409`: every one of these is something about the *request* that has to
    * change — an empty chain, a floor past the end of the chain it was sent with, an alias
-   * this workspace does not have, a task kind with no route to save onto.
+   * this workspace does not have, a new route whose `<kind>-primary` tag is taken (#1748).
    *
    * **One error for the whole batch, deliberately.** The mockup commits every edit at once,
    * so answering with the first failure would send a client back for the second, and the

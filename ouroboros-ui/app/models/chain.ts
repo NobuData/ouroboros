@@ -186,19 +186,46 @@ export function savedRoute(kind: RoutingTaskKind): SavedRoute | null {
 }
 
 /**
- * Every route the matrix holds, as the editor's baseline.
+ * The tag a kind's first route is created under — `PUT /api/v1/routing/routes` creates it as
+ * `<kind>-primary` (#1748), the seed's own convention. The service's `newRouteTag`, mirrored
+ * so the inspector can say what the save will make.
  *
- * Kinds with no route are left out rather than carried as empty drafts: there is no chain to
- * edit, and `PUT /api/v1/routing/routes` refuses a kind with no route to save onto. The
- * inspector says so for a selected kind instead ({@link NO_ROUTE_NOTE}).
+ * @param kind The task kind.
+ * @returns `copilot-workflow-primary`.
+ */
+export function newRouteTag(kind: string): string {
+  return `${kind.slice(0, 64 - "-primary".length).replace(/-+$/, "")}-primary`;
+}
+
+/**
+ * The baseline of a route that does not exist yet — a kind with an empty matrix cell, such as
+ * the copilot's `copilot-workflow` in a new workspace (#1748). No hops, and the service's
+ * defaults: local fallback on, no floor, no cap. Adding a hop makes it a draft, and **Save
+ * routes** creates the route.
+ *
+ * @param kind The task kind.
+ * @returns The empty baseline.
+ */
+export function newRoute(kind: string): SavedRoute {
+  return {
+    kind,
+    tag: newRouteTag(kind),
+    hops: [],
+    allowLocalFallback: true,
+    floorHopIndex: null,
+    maxCostCentsPerRun: null,
+  };
+}
+
+/**
+ * Every route the matrix holds, as the editor's baseline — and an empty one
+ * ({@link newRoute}) for each kind that has none, which a first save creates (#1748).
  *
  * @param taskKinds The matrix's rows.
  * @returns The routes, in the matrix's order.
  */
 export function savedRoutes(taskKinds: readonly RoutingTaskKind[]): readonly SavedRoute[] {
-  return taskKinds
-    .map(savedRoute)
-    .filter((route): route is SavedRoute => route !== null);
+  return taskKinds.map((kind) => savedRoute(kind) ?? newRoute(kind.name));
 }
 
 /* ------------------------------------------------------------------ the edits */
@@ -729,10 +756,20 @@ export const AT_BOTTOM_REASON = "Already the last hop.";
 /** The drag handle's tooltip — the pointer's path; the buttons are the keyboard's. */
 export const DRAG_HINT = "Drag to reorder";
 
-/** What the inspector says for a selected kind that has no route. */
+/** What the inspector says to a reader who may not edit, for a kind that has no route. */
 export const NO_ROUTE_NOTE =
-  "This task kind has no route, so there is no chain to edit. Creating one is the model " +
-  "registry's business.";
+  "This task kind has no route yet. An owner or an admin creates one by adding a hop here " +
+  "and saving routes.";
+
+/**
+ * What the inspector says to an owner or admin above an empty chain (#1748).
+ *
+ * @param kind The task kind.
+ * @returns The sentence, naming the route the save will create.
+ */
+export function newRouteNote(kind: string): string {
+  return `No route yet. Add a hop and save routes to create ${newRouteTag(kind)}.`;
+}
 
 /** What a swap or add menu says when the registry has nothing in it. */
 export const EMPTY_REGISTRY =

@@ -5,7 +5,14 @@ import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ROUTING_MATRIX_HASH } from "@/app/paths";
 import { Card, CardHead, Chip, EmptyState, Table, Tag, type Column } from "@/app/ui";
 
-import { CHANGED, type EditedRow, NO_ROUTE_NOTE, editChainHint, editedRow } from "./chain";
+import {
+  CHANGED,
+  type EditedRow,
+  NO_ROUTE_NOTE,
+  editChainHint,
+  editedRow,
+  newRouteNote,
+} from "./chain";
 import { ChainEditor } from "./chain-editor";
 import { HEALTH_UNREAD, type HopHealthIndex, SIMULATE_ROUTE } from "./inspector";
 import {
@@ -435,7 +442,7 @@ function RouteInspectorSeat({
       {row === null ? (
         <EmptyState fill note={INSPECTOR_EMPTY_NOTE} title={INSPECTOR_EMPTY_TITLE} />
       ) : row.tag === null ? (
-        <EmptyState fill note={NO_ROUTE_NOTE} title={row.kind} />
+        <NewRouteSeat focusToken={focusToken} health={health} kind={row.kind} />
       ) : (
         <>
           <ChainEditor focusToken={focusToken} health={health} kind={row.kind} />
@@ -446,6 +453,36 @@ function RouteInspectorSeat({
         </>
       )}
     </Card>
+  );
+}
+
+/**
+ * The inspector for a kind with no route (#1748): for an owner or admin, an empty chain to add
+ * a first hop to — **Save routes** then creates the route — and for anyone else, a note that
+ * says who can.
+ *
+ * @param props.kind The selected kind.
+ * @param props.focusToken The matrix's shortcut, passed through to the chain.
+ * @param props.health The strip, indexed, for the health dots.
+ * @returns The seat's body.
+ */
+function NewRouteSeat({
+  kind,
+  focusToken,
+  health,
+}: Readonly<{ kind: string; focusToken: number; health: HopHealthIndex }>) {
+  const editor = useRouteEditor();
+
+  if (!editor.editable) {
+    return <EmptyState fill note={NO_ROUTE_NOTE} title={kind} />;
+  }
+
+  return (
+    <>
+      <p className="models-inspector__new-route">{newRouteNote(kind)}</p>
+      <ChainEditor focusToken={focusToken} health={health} kind={kind} />
+      <RoutePolicy kind={kind} />
+    </>
   );
 }
 

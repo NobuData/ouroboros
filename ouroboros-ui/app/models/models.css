@@ -1293,6 +1293,14 @@
   margin-top: var(--sp-7);
 }
 
+/* A kind with no route yet (#1748): what the first save will create, above the empty chain. */
+.models-inspector__new-route {
+  margin: 0 0 var(--sp-6);
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
 /* ---------- the simulate panel (#203) ---------- */
 
 /*

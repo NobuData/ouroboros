@@ -155,7 +155,8 @@ export const FIX_IN_PROVIDERS = "Fix in Providers →";
  *
  * **The ninth row is #622's, not mockup 21's.** `researcher-long-ctx` is the research route's
  * primary — what mockup 22's composer pill resolves to — and its two research routes move three
- * `Used by` counts: `coder-std`, `local-free` and `sizer` are each referenced once more.
+ * `Used by` counts: `coder-std`, `local-free` and `sizer` are each referenced once more. The
+ * copilot's seeded route (#1748) is one more reference to `coder-std`.
  */
 export const SEEDED_REGISTRY: readonly SeededRegistryRow[] = [
   {
@@ -188,7 +189,7 @@ export const SEEDED_REGISTRY: readonly SeededRegistryRow[] = [
     health: "ok",
     healthDetail: null,
     price: "$2 · $10",
-    usedBy: "5 routes",
+    usedBy: "6 routes",
     enabled: true,
   },
   {

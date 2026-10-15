@@ -826,8 +826,8 @@ expect_red db copilot.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 expect_red engine copilot.spec.ts "reading the dry run's safety strip answered 5[0-9][0-9]" "the safety strip"
 
 # Its parked chain, registered so that it does not ship without a failure mode: every reply and
-# every model stage waits on the invocation gateway (AF.2, #235), the copilot's route on #1748
-# and a publishable blank draft on #1744. The spec's header says what is asserted meanwhile.
+# every model stage waits on the invocation gateway (AF.2, #235) and a publishable blank draft
+# on #1744 (the copilot's route is seeded since #1748). The spec's header says what is asserted meanwhile.
 parked copilot.spec.ts engine "the chain"
 
 printf '\n'

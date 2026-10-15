@@ -65,6 +65,22 @@ them. If the server refuses a route, nothing is saved and the refused row says w
 **Open registry →** in the card opens the [model registry](#the-model-registry), where aliases
 are defined.
 
+### Routing a task kind that has no route
+
+A task kind can be in the matrix with no route yet — its **Primary model** cell is empty. Every
+workspace has one from the start: `copilot-workflow`, the task kind the
+[Workflow Copilot](./workflows/copilot.mdx) replies through. Until it has a route, the Copilot
+cannot reply.
+
+To route it, select the row. Owners and admins see an empty chain with *No route yet. Add a hop
+and save routes to create `<task kind>-primary`.* Choose **+ Add hop**, pick an alias, set the
+policies if you need them, and choose **Save routes**. The route is created as
+`<task kind>-primary` — `copilot-workflow-primary` for the Copilot. Members and viewers see
+*This task kind has no route yet* and who can create it.
+
+Until a provider is connected, the page shows its setup guidance instead of the matrix: there is
+nothing to route a task kind to yet.
+
 ### Escalation rules
 
 <Screenshot id="user-guide.models.routing.escalation" />

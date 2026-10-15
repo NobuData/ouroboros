@@ -54,7 +54,7 @@ export type RoutingState =
    * `connected` is `null`, which is *unknown* rather than *none*.
    */
   | { readonly kind: "no-routes"; readonly connected: number | null }
-  /** At least one task kind: the matrix draws. */
+  /** A route, or task kinds and a provider to route them to: the matrix draws. */
   | { readonly kind: "populated" };
 
 /** The two states the guidance card is drawn for. */
@@ -72,10 +72,16 @@ export type GuidanceState = Extract<RoutingState, { kind: "no-providers" | "no-r
  */
 export function routingState(readings: ModelsReadings): RoutingState {
   if (!readings.matrix.ok) return { kind: "failed", reason: readings.matrix.reason };
-  if (readings.matrix.value.taskKinds.length > 0) return { kind: "populated" };
+
+  const { taskKinds } = readings.matrix.value;
+  if (taskKinds.some((kind) => kind.route !== null)) return { kind: "populated" };
 
   const connected = readings.providers.ok ? readings.providers.value.length : null;
   if (connected === 0) return { kind: "no-providers" };
+
+  // Every workspace has the copilot's kind, routed or not (#1748), so kinds with no route are
+  // still a matrix to draw — the empty cells a first save fills — once a provider exists.
+  if (taskKinds.length > 0) return { kind: "populated" };
 
   return { kind: "no-routes", connected };
 }

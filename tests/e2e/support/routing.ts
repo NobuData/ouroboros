@@ -119,8 +119,8 @@ export interface SeededMatrixRow {
   readonly tag: string;
   /** Hop 1. */
   readonly primary: SeededAliasCell;
-  /** Hop 2 — the one fallback this table has a column for. */
-  readonly fallback: SeededAliasCell;
+  /** Hop 2 — the one fallback this table has a column for — or null for a one-hop chain. */
+  readonly fallback: SeededAliasCell | null;
   /**
    * The escalation cell's sentences — the database's generated `display` for every **enabled**
    * rule naming this kind, in evaluation order. Empty for a row no rule names, which draws
@@ -170,10 +170,11 @@ export const SECURITY_RULE = "security label → review adds second-opinion vote
 export const DOCS_ONLY_RULE = "docs-only diff → everything routes local";
 
 /**
- * The ten rows, in `task_kinds.sort_order` — the loop's own order of operations: read the
+ * The eleven rows, in `task_kinds.sort_order` — the loop's own order of operations: read the
  * issue, size it, plan it, write it, test it, review it, document it, commit it; then #622's
- * research family, plan an investigation and synthesize it. The two research rows have done
- * no work, so their figures are the em-dash — decision M7's *no data*, never a `$0.00`.
+ * research family, plan an investigation and synthesize it; and last the copilot's own kind
+ * (V142, #1748), one hop and no fallback. Those three rows have done no work, so their figures
+ * are the em-dash — decision M7's *no data*, never a `$0.00`.
  *
  * The **escalation column disagrees with mockup 06 on two rows**, and the disagreement is
  * settled in the schema's favour. The artwork draws the first rule's summary on `plan` and the
@@ -280,6 +281,17 @@ export const SEEDED_MATRIX: readonly SeededMatrixRow[] = [
     tag: "research-primary",
     primary: CELL.researcherLongCtx,
     fallback: CELL.coderStd,
+    escalation: [],
+    cost: EM_DASH,
+    latency: EM_DASH,
+  },
+  {
+    // V142's kind, which every workspace has, routed by the seed through one hop (#1748).
+    kind: "copilot-workflow",
+    description: "Draft and edit workflows in conversation",
+    tag: "copilot-primary",
+    primary: CELL.coderStd,
+    fallback: null,
     escalation: [],
     cost: EM_DASH,
     latency: EM_DASH,

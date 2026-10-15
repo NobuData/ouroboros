@@ -50,7 +50,7 @@ describe("routingState", () => {
     ).toEqual({ kind: "failed", reason: "Down." });
   });
 
-  it("is populated the moment there is one task kind, routed or not", () => {
+  it("is populated the moment there is one task kind, routed or not, with a provider to route to", () => {
     expect(routingState(readings())).toEqual({ kind: "populated" });
     // Kinds with no usage are still kinds: the matrix draws them with em-dashes (M7).
     expect(routingState(readings({ matrix: { ok: true, value: unmeasuredMatrix() } }))).toEqual({
@@ -61,6 +61,25 @@ describe("routingState", () => {
     const unrouted = { ...unmeasuredMatrix(), taskKinds: unmeasuredMatrix().taskKinds.map((kind) => ({ ...kind, route: null })) };
 
     expect(routingState(readings({ matrix: { ok: true, value: unrouted } }))).toEqual({
+      kind: "populated",
+    });
+  });
+
+  it("is no-providers while nothing is connected, even with the copilot's unrouted kind (#1748)", () => {
+    // Every workspace has `copilot-workflow` from V142, with no route until someone saves one.
+    // With no provider there is nothing to route it to, so the guidance still comes first.
+    const copilotOnly = {
+      ...emptyMatrix(),
+      taskKinds: [{ ...unmeasuredMatrix().taskKinds[0], name: "copilot-workflow", route: null }],
+    };
+
+    expect(
+      routingState(
+        readings({ providers: { ok: true, value: [] }, matrix: { ok: true, value: copilotOnly } }),
+      ),
+    ).toEqual({ kind: "no-providers" });
+    // …and once a provider is connected, the row is drawn for its route to be made.
+    expect(routingState(readings({ matrix: { ok: true, value: copilotOnly } }))).toEqual({
       kind: "populated",
     });
   });

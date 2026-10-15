@@ -59,14 +59,10 @@ export const SAVE_MESSAGES = {
   /** The kind is not one this workspace has at all. */
   unknownTaskKind: "This workspace has no task kind by that name.",
   /**
-   * The kind exists and nothing routes it.
-   *
-   * A distinct message from the one above, because the two send somebody to different places:
-   * one is a typo, and the other is a matrix row with an empty cell that needs a route created
-   * before it can be saved onto. V016 makes the second possible on purpose —
-   * `routes.task_kind_id` is unique, not mandatory.
+   * The kind has no route, and the tag a first save would give it already names another
+   * route in this workspace (#1748). V016 makes tags unique per workspace.
    */
-  noRouteForTaskKind: "This task kind has no route to save onto.",
+  newRouteTagTaken: "This task kind has no route, and the tag a new one would take is in use.",
   /** The batch names one kind twice. */
   duplicateTaskKind: "This task kind appears more than once in the batch.",
 } as const;
@@ -103,6 +99,17 @@ export function floorTooDeepMessage(floor: number, length: number): string {
   );
 }
 
+/**
+ * The tag a task kind's first route is created under — the seed's own convention,
+ * `implement-primary` (#1748).
+ *
+ * @param taskKind - The kind, already a valid routing name.
+ * @returns `<kind>-primary`, within V016's 64-character tag bound.
+ */
+export function newRouteTag(taskKind: string): string {
+  return `${taskKind.slice(0, 64 - "-primary".length).replace(/-+$/, "")}-primary`;
+}
+
 /** One route's complaints, keyed by the field of the request they are about. */
 export type RouteProblems = Record<string, string[]>;
 
@@ -115,12 +122,15 @@ export type BatchProblems = Record<string, RouteProblems>;
  * @param requests - The routes as the body asks for them, already normalised.
  * @param taskKinds - Every task-kind name the workspace has.
  * @param routedTaskKinds - The subset of those that have a route. A kind in the first set and
- *   not the second is the empty matrix cell — see {@link SAVE_MESSAGES.noRouteForTaskKind}.
+ *   not the second is the empty matrix cell, and saving onto it **creates** its route under
+ *   {@link newRouteTag} (#1748) — refused only when that tag is taken.
  * @param aliases - Every alias name the workspace has, unbound ones included. Unbound is
  *   deliberately *not* a refusal: V019 permits an alias created ahead of its key, mockup 21
  *   draws it as a first-class row, and a chain that names one is a configuration whose third
  *   hop will be dropped with a stated reason when it resolves — which is Z.1's answer to give,
  *   not this one's to pre-empt.
+ * @param routeTags - Every route tag the workspace has, so a route a save would create is
+ *   refused here rather than by `routes_organization_tag_key` as a `500`.
  * @returns One entry per route that cannot be saved. Empty when every route can.
  */
 export function batchProblems(
@@ -128,6 +138,7 @@ export function batchProblems(
   taskKinds: ReadonlySet<string>,
   routedTaskKinds: ReadonlySet<string>,
   aliases: ReadonlySet<string>,
+  routeTags: ReadonlySet<string>,
 ): BatchProblems {
   const problems: BatchProblems = {};
   const duplicated = duplicateTaskKinds(requests);
@@ -139,8 +150,11 @@ export function batchProblems(
       fields[TASK_KIND_FIELD] = [SAVE_MESSAGES.duplicateTaskKind];
     } else if (!taskKinds.has(request.taskKind)) {
       fields[TASK_KIND_FIELD] = [SAVE_MESSAGES.unknownTaskKind];
-    } else if (!routedTaskKinds.has(request.taskKind)) {
-      fields[TASK_KIND_FIELD] = [SAVE_MESSAGES.noRouteForTaskKind];
+    } else if (
+      !routedTaskKinds.has(request.taskKind) &&
+      routeTags.has(newRouteTag(request.taskKind))
+    ) {
+      fields[TASK_KIND_FIELD] = [SAVE_MESSAGES.newRouteTagTaken];
     }
 
     request.hops.forEach((hop, index) => {

@@ -127,7 +127,10 @@ export interface RouteState {
   floorHopIndex: number | null;
   /** The cap in cents, or null. */
   maxCostCentsPerRun: number | null;
-  /** The chain, primary first. Never empty — V016's `route_chain_intact()` forbids it. */
+  /**
+   * The chain, primary first. Never empty for a stored route — V016's `route_chain_intact()`
+   * forbids it; empty only for {@link newRouteState}'s route that does not exist yet.
+   */
   hops: readonly HopState[];
 }
 
@@ -167,6 +170,25 @@ export function toRouteState(route: ManagedRouteRow, hops: readonly ManagedHopRo
     floorHopIndex: route.floor_hop_index,
     maxCostCentsPerRun: route.max_cost_cents_per_run,
     hops: hops.map((hop) => ({ alias: hop.alias, note: hop.note })),
+  };
+}
+
+/**
+ * The "before" of a route a save is about to create (#1748): V016's defaults — local fallback
+ * on, no floor, no cap — and no chain yet, so the revision records every hop as added and any
+ * policy the body sets as a change from the default.
+ *
+ * @param taskKind - The kind the route will answer for.
+ * @returns The state, with an empty `routeId` because the row does not exist yet.
+ */
+export function newRouteState(taskKind: string): RouteState {
+  return {
+    routeId: "",
+    taskKind,
+    allowLocalFallback: true,
+    floorHopIndex: null,
+    maxCostCentsPerRun: null,
+    hops: [],
   };
 }
 

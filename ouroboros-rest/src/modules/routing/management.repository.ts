@@ -345,6 +345,40 @@ export class RoutingManagementRepository {
   }
 
   /**
+   * Create the route a task kind does not have yet — the first **Save routes** onto an empty
+   * matrix cell (#1748). Its policy and chain are written next, by {@link writeRoutePolicy}
+   * and {@link replaceChain}, in the same transaction: V016's `route_chain_intact()` is
+   * deferred to `commit`, so a route is never seen without its hops.
+   *
+   * @param trx - The transaction the whole batch runs in.
+   * @param organizationId - The workspace, from the tenant context.
+   * @param taskKindId - The kind's `task_kinds.id`.
+   * @param tag - The new route's tag — `newRouteTag(kind)`.
+   * @param actorId - Who pressed **Save routes**, from the session.
+   * @returns The new route's id.
+   */
+  async createRoute(
+    trx: Transaction<Database>,
+    organizationId: string,
+    taskKindId: string,
+    tag: string,
+    actorId: string,
+  ): Promise<string> {
+    const created = await trx
+      .insertInto("routes")
+      .values({
+        organization_id: organizationId,
+        task_kind_id: taskKindId,
+        tag,
+        updated_by: actorId,
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+
+    return created.id;
+  }
+
+  /**
    * Replace one route's chain with the one the body sent.
    *
    * Delete every hop, insert the new order — legal inside a transaction because both of

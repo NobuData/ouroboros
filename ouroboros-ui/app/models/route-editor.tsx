@@ -231,7 +231,9 @@ export function RouteEditorProvider({ routes, editable, children }: RouteEditorP
         if (next === current) return previous;
 
         const map = new Map(previous);
-        if (sameChain(next, saved)) {
+        // A chain with no hop is not a route: only a kind's empty baseline has one (#1748),
+        // and nothing about it is saved until a hop is added.
+        if (sameChain(next, saved) || next.hops.length === 0) {
           map.delete(kind);
         } else {
           map.set(kind, next);

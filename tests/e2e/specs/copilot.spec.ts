@@ -36,8 +36,6 @@
  *   answers `501` until the invocation gateway (AF.2,
  *   [#235](https://github.com/NobuData/ouroboros/issues/235)). *Real models* is the claim under
  *   test, so this is the one dependency the chain cannot stub.
- * * **The copilot has no route** on a seeded stack: no `copilot-workflow` task kind exists
- *   ([#1748](https://github.com/NobuData/ouroboros/issues/1748)).
  * * **A draft built on a blank workflow cannot be dry-run or published**
  *   ([#1744](https://github.com/NobuData/ouroboros/issues/1744)).
  *
@@ -494,7 +492,7 @@ test.describe("the conversational chain, end to end against a live gateway", () 
     // against a live stack when un-parking.
     test.fixme(
       true,
-      "a reply and a model stage need the invocation gateway (AF.2, #235), a copilot-workflow route (#1748) and a publishable blank draft (#1744)",
+      "a reply and a model stage need the invocation gateway (AF.2, #235) and a publishable blank draft (#1744)",
     );
     test.slow();
 
