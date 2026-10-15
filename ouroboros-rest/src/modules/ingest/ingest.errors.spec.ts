@@ -9,6 +9,8 @@ import {
   idempotencyKeyReused,
   queueClaimLost,
   queueItemMismatch,
+  noExecutor,
+  concurrencyCeiling,
   repositoryNotFound,
   runNotFound,
   stageNotInPin,
@@ -59,6 +61,8 @@ const REFUSALS = [
   ["workspace_not_found", 404, () => claimWorkspaceNotFound("acme")],
   ["queue_claim_lost", 409, () => queueClaimLost("q")],
   ["queue_item_mismatch", 422, () => queueItemMismatch("q", "issue")],
+  ["no_executor", 409, () => noExecutor()],
+  ["concurrency_ceiling", 409, () => concurrencyCeiling(1, 1)],
 ] as const;
 
 describe("the codes", () => {

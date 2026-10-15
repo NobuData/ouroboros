@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.41.44",
+    "version": "0.41.45",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -1158,7 +1158,9 @@
                       "estMinutes": 45,
                       "enqueuedAt": "2026-08-13T01:37:41.000Z",
                       "playbookId": null,
-                      "claimed": null
+                      "claimed": null,
+                      "confirmedAt": null,
+                      "waiting": null
                     },
                     {
                       "id": "5eed000a-0000-4000-8000-000000000496",
@@ -1172,7 +1174,9 @@
                       "estMinutes": null,
                       "enqueuedAt": "2026-08-13T13:37:41.000Z",
                       "playbookId": null,
-                      "claimed": null
+                      "claimed": null,
+                      "confirmedAt": null,
+                      "waiting": null
                     }
                   ],
                   "activity": {
@@ -2231,7 +2235,7 @@
           "dashboard"
         ],
         "summary": "The workspace's queue, ordered and paged",
-        "description": "The drill-in behind the dashboard's `Manage queue →` link\n([#73](https://github.com/NobuData/ouroboros/issues/73)): the whole ordered queue\nwhose first five rows are the aggregate's `queueHead`, with the summed estimate the\n*Queued issues* stat displays.\n\n**The order is `position` ascending, and it is total.** `1` is next. Positions are\nunique within a workspace, so the order carries no tiebreak and two rows cannot swap\nplaces between polls. It is the *Up next in queue* card's own order extended past its\nfive — the aggregate's `queueHead` is the head of this listing, one shape and one\nordering, not a second opinion about what is next.\n\n**`totalEstMinutes` is the stat row's own number.** It is computed by the same\nsentence over the same rows as `stats.queued.estMinutes` — a sum over the estimates\nthat skips items nobody has sized rather than counting them as zero — so unfiltered,\nthe two are equal for the same workspace and the card and this page cannot disagree.\n`total` may therefore speak for more issues than the sum does; that is the honest\nshape of a queue where something has not been sized yet.\n\n**`total` and `totalEstMinutes` describe the whole match, not the page.** Both\nignore the window, and both respect the `repo` filter when one narrows the listing —\na total summed without the filter would make the page describe rows it will never\nshow.\n\n**`repo` narrows to one repository** — `github_repos.id`, which is what the\nfocus-repo preference ([#77](https://github.com/NobuData/ouroboros/issues/77))\nholds. The id rather than the name, because a name is unique only within its GitHub\norganisation. A repository that is not this workspace's narrows to an empty page\nrather than erroring: under the workspace scope the filter is a predicate, and an\nempty page is the honest answer to \"your queue, in a repository that is not yours\".\n\n**Mutations are deliberately absent.** Reorder, remove and enqueue belong to the\nissues screen's roadmap (mockup 03), where the queue is managed rather than\ndisplayed; this operation reads. The omission is stated here so it reads as a\ndecision rather than an oversight.\n\n**The workspace is the session's**, exactly as the dashboard's: no workspace in this\npath, the session's active organization or `X-Ouro-Tenant` decides, and membership\nis checked before this operation runs.",
+        "description": "The drill-in behind the dashboard's `Manage queue →` link\n([#73](https://github.com/NobuData/ouroboros/issues/73)): the whole ordered queue\nwhose first five rows are the aggregate's `queueHead`, with the summed estimate the\n*Queued issues* stat displays.\n\n**The order is `position` ascending, and it is total.** `1` is next. Positions are\nunique within a workspace, so the order carries no tiebreak and two rows cannot swap\nplaces between polls. It is the *Up next in queue* card's own order extended past its\nfive — the aggregate's `queueHead` is the head of this listing, one shape and one\nordering, not a second opinion about what is next.\n\n**`totalEstMinutes` is the stat row's own number.** It is computed by the same\nsentence over the same rows as `stats.queued.estMinutes` — a sum over the estimates\nthat skips items nobody has sized rather than counting them as zero — so unfiltered,\nthe two are equal for the same workspace and the card and this page cannot disagree.\n`total` may therefore speak for more issues than the sum does; that is the honest\nshape of a queue where something has not been sized yet.\n\n**`total` and `totalEstMinutes` describe the whole match, not the page.** Both\nignore the window, and both respect the `repo` filter when one narrows the listing —\na total summed without the filter would make the page describe rows it will never\nshow.\n\n**`repo` narrows to one repository** — `github_repos.id`, which is what the\nfocus-repo preference ([#77](https://github.com/NobuData/ouroboros/issues/77))\nholds. The id rather than the name, because a name is unique only within its GitHub\norganisation. A repository that is not this workspace's narrows to an empty page\nrather than erroring: under the workspace scope the filter is a predicate, and an\nempty page is the honest answer to \"your queue, in a repository that is not yours\".\n\n**Mutations are deliberately absent.** Reorder, remove and enqueue belong to the\nissues screen's roadmap (mockup 03), where the queue is managed rather than\ndisplayed; this operation reads. The omission is stated here so it reads as a\ndecision rather than an oversight. The one exception is\n`POST /api/v1/queue/{id}/confirm`, which confirms an item for a live run.\n\n**Every item says why it is waiting** ([#1312](https://github.com/NobuData/ouroboros/issues/1312)):\n`waiting` is the live-run admission reason the engine's claim would act on, or `null`\nwhen the item would be taken now.\n\n**The workspace is the session's**, exactly as the dashboard's: no workspace in this\npath, the session's active organization or `X-Ouro-Tenant` decides, and membership\nis checked before this operation runs.",
         "operationId": "listQueue",
         "parameters": [
           {
@@ -2276,7 +2280,9 @@
                       "estMinutes": 45,
                       "enqueuedAt": "2026-08-13T01:37:41.000Z",
                       "playbookId": null,
-                      "claimed": null
+                      "claimed": null,
+                      "confirmedAt": null,
+                      "waiting": null
                     },
                     {
                       "id": "5eed000a-0000-4000-8000-000000000486",
@@ -2290,7 +2296,9 @@
                       "estMinutes": 90,
                       "enqueuedAt": "2026-08-13T02:37:41.000Z",
                       "playbookId": null,
-                      "claimed": null
+                      "claimed": null,
+                      "confirmedAt": null,
+                      "waiting": null
                     }
                   ],
                   "total": 12,
@@ -2343,6 +2351,99 @@
           },
           "500": {
             "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/queue/{id}/confirm": {
+      "post": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Confirm a queued issue for a live run",
+        "description": "**Confirm for live run** (DI.4, [#1312](https://github.com/NobuData/ouroboros/issues/1312);\ndecision L5) — make a queued item claimable by the engine. There is no automatic pickup:\nan item becomes a live run only after a signed-in person holding `can_approve_loops`\nhas said so, here or by queueing it themselves while the deployment runs live loops.\nEvery item queued before that — including items queued months ago to exercise the\nsimulator — waits as `needs_confirmation` until someone confirms it.\n\n**Idempotent.** Confirming an item already confirmed keeps the first confirmation and\nwrites no second audit row. The first writes `queue_item.confirmed`.\n\n**Confirmation is one condition, not the decision.** The answer is the item with its\n`waiting` reason, which may still be a workspace one (`deployment_disabled`,\n`concurrency_ceiling`, …) or the item's own (`policy_not_dry_run`, …).",
+        "operationId": "confirmQueueItem",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The queue item — `QueueItemSummary.id`, or `BacklogIssueDetail.queueItemId`.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The item, confirmed, with whatever else still holds it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueItemSummary"
+                },
+                "example": {
+                  "id": "5eed000a-0000-4000-8000-000000000485",
+                  "issueNumber": 485,
+                  "issueTitle": "Watchdog reset on I²C bus lockup",
+                  "effort": "m",
+                  "workflowTag": "standard-fix",
+                  "workflowVersion": 14,
+                  "workflowPinReason": "predicate",
+                  "position": 1,
+                  "estMinutes": 45,
+                  "enqueuedAt": "2026-08-13T09:00:00.000Z",
+                  "playbookId": null,
+                  "claimed": null,
+                  "confirmedAt": "2026-10-15T09:30:00.000Z",
+                  "waiting": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`capability_required` — the caller lacks `can_approve_loops`, or is a service account\n(a live run is started by a person); `details.capability` names it. `forbidden` — a\n`viewer`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`queue_item_not_found` — the workspace's queue holds no such item; it may already\nhave started. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2469,6 +2570,7 @@
                       "state": "open",
                       "sizingStatus": "sized",
                       "queued": false,
+                      "queueWaiting": null,
                       "githubRepoId": "dfff0000-0000-0000-0000-00000000000a",
                       "repository": "acme-robotics/helios-firmware",
                       "estimate": {
@@ -2490,6 +2592,7 @@
                       "state": "open",
                       "sizingStatus": "estimating",
                       "queued": false,
+                      "queueWaiting": null,
                       "githubRepoId": "dfff0000-0000-0000-0000-00000000000a",
                       "repository": "acme-robotics/helios-firmware",
                       "estimate": null
@@ -2621,6 +2724,8 @@
                     "state": "open",
                     "sizingStatus": "sized",
                     "queued": false,
+                    "queueWaiting": null,
+                    "queueItemId": null,
                     "githubRepoId": "dfff0000-0000-0000-0000-00000000000a",
                     "repository": "acme-robotics/helios-firmware",
                     "body": "Unit 07 in the Fremont pilot rebooted 14 times overnight. Logs show the IMU holding SDA low after a burst read; the bus never recovers and the hardware watchdog fires ~2 s later.",
@@ -2778,7 +2883,9 @@
                       "estMinutes": 45,
                       "enqueuedAt": "2026-09-10T15:41:12.000Z",
                       "playbookId": null,
-                      "claimed": null
+                      "claimed": null,
+                      "confirmedAt": null,
+                      "waiting": null
                     },
                     {
                       "id": "7a1c0b90-0000-4000-8000-000000000002",
@@ -2792,7 +2899,9 @@
                       "estMinutes": 50,
                       "enqueuedAt": "2026-09-10T15:41:12.000Z",
                       "playbookId": null,
-                      "claimed": null
+                      "claimed": null,
+                      "confirmedAt": null,
+                      "waiting": null
                     },
                     {
                       "id": "7a1c0b90-0000-4000-8000-000000000003",
@@ -2806,7 +2915,9 @@
                       "estMinutes": 30,
                       "enqueuedAt": "2026-09-10T15:41:12.000Z",
                       "playbookId": null,
-                      "claimed": null
+                      "claimed": null,
+                      "confirmedAt": null,
+                      "waiting": null
                     }
                   ],
                   "estMinutes": 125
@@ -6618,6 +6729,127 @@
           },
           "500": {
             "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/live-execution": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "The workspace's live-run ceiling and the deployment's limits",
+        "description": "How many live runs may execute at once in this workspace, beside what the deployment\nallows ([#1312](https://github.com/NobuData/ouroboros/issues/1312)). Any member may read\nit. A workspace that never chose runs **one** live run at a time (decision L10); further\nconfirmed items wait as `concurrency_ceiling`.",
+        "operationId": "readLiveExecutionSettings",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The settings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveExecutionSettings"
+                },
+                "example": {
+                  "deploymentEnabled": false,
+                  "ceiling": 1,
+                  "ceilingMax": 4,
+                  "effectiveCeiling": 1,
+                  "wallClockMinutes": 120,
+                  "noProgressMinutes": 15
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Set the workspace's live-run ceiling",
+        "description": "**`owner` or `admin`, people only.** At most `OURO_LIVE_RUN_CEILING_MAX`; a ceiling above\nit is refused rather than clamped, so the number an administrator typed is the number\nin force. Writes `workspace.live_ceiling_changed` when the value moves.",
+        "operationId": "patchLiveExecutionSettings",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiveExecutionSettingsPatch"
+              },
+              "example": {
+                "ceiling": 2
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The settings as they now stand.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveExecutionSettings"
+                },
+                "example": {
+                  "deploymentEnabled": true,
+                  "ceiling": 2,
+                  "ceilingMax": 4,
+                  "effectiveCeiling": 2,
+                  "wallClockMinutes": 120,
+                  "noProgressMinutes": 15
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — not an `owner` or `admin`, or a service account.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`live_ceiling_above_max` — above `OURO_LIVE_RUN_CEILING_MAX`; `details` carries\n`requested` and `maximum`. `validation_failed` — not a whole number from 1 to 100.",
             "content": {
               "application/json": {
                 "schema": {
@@ -58710,7 +58942,9 @@
           "estMinutes",
           "enqueuedAt",
           "playbookId",
-          "claimed"
+          "claimed",
+          "confirmedAt",
+          "waiting"
         ],
         "properties": {
           "id": {
@@ -58802,6 +59036,127 @@
                 "description": "When the lease runs out."
               }
             }
+          },
+          "confirmedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a member holding `can_approve_loops` confirmed the item for a live run\n([#1312](https://github.com/NobuData/ouroboros/issues/1312)), or `null` while nobody\nhas. Set at enqueue when the deployment runs live loops and the person queueing holds\nthe capability; otherwise by `POST /api/v1/queue/{id}/confirm`."
+          },
+          "waiting": {
+            "description": "Why the item is not starting a live run, or `null` when admission would take it now\n— or a worker already holds it ([#1312](https://github.com/NobuData/ouroboros/issues/1312)).\nThe engine's claim is decided by the same evaluator, so the reason shown is the\nreason acted on.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/QueueWaiting"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "QueueWaiting": {
+        "type": "object",
+        "title": "QueueWaiting",
+        "description": "Why a queued item is not starting a live run (DI.4,\n[#1312](https://github.com/NobuData/ouroboros/issues/1312)). Every refusal of the\nengine's claim is one of these codes, and every queued item that waits carries one —\nnothing waits silently.\n\n`scope: workspace` holds every item alike: the deployment switch, a paused or deleted\nworkspace, an engine with no executor, the concurrency ceiling. `scope: item` is the\nitem's own: its repository, its repository's dry-run policy, its pinned workflow, its\nroute, its confirmation. The claim skips an item held for its own reason and takes the\nnext one; a workspace reason refuses the claim.",
+        "additionalProperties": false,
+        "required": [
+          "reason",
+          "scope"
+        ],
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/AdmissionReason"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "workspace",
+              "item"
+            ]
+          }
+        }
+      },
+      "AdmissionReason": {
+        "type": "string",
+        "title": "AdmissionReason",
+        "description": "Live-run admission's reason codes, in precedence order within each scope. Stable — add,\nnever rename.\n\n| Code | Scope | Holds while |\n|---|---|---|\n| `deployment_disabled` | workspace | `OURO_LIVE_EXECUTION_ENABLED` is off |\n| `workspace_paused` | workspace | the workspace is paused |\n| `workspace_pending_delete` | workspace | the workspace is pending deletion |\n| `no_executor` | workspace | the engine has registered no stage executor |\n| `repository_disabled` | item | the issue's repository is not enabled |\n| `policy_not_dry_run` | item | the repository is not in dry-run — live runs open draft PRs only |\n| `workflow_unpublished` | item | the item pins no published workflow version, or one that no longer reads |\n| `route_not_invocable` | item | a route the workflow inherits resolves to no connection cleared for invocation |\n| `needs_confirmation` | item | nobody holding `can_approve_loops` has confirmed the item |\n| `concurrency_ceiling` | workspace | the workspace runs as many live runs as its ceiling allows |",
+        "enum": [
+          "deployment_disabled",
+          "workspace_paused",
+          "workspace_pending_delete",
+          "no_executor",
+          "concurrency_ceiling",
+          "repository_disabled",
+          "policy_not_dry_run",
+          "workflow_unpublished",
+          "route_not_invocable",
+          "needs_confirmation"
+        ]
+      },
+      "LiveExecutionSettings": {
+        "type": "object",
+        "title": "LiveExecutionSettings",
+        "description": "The workspace's live-run ceiling beside the deployment's switch and limits\n([#1312](https://github.com/NobuData/ouroboros/issues/1312)).",
+        "additionalProperties": false,
+        "required": [
+          "deploymentEnabled",
+          "ceiling",
+          "ceilingMax",
+          "effectiveCeiling",
+          "wallClockMinutes",
+          "noProgressMinutes"
+        ],
+        "properties": {
+          "deploymentEnabled": {
+            "type": "boolean",
+            "description": "`OURO_LIVE_EXECUTION_ENABLED`."
+          },
+          "ceiling": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "How many live runs may execute at once, as the workspace set it — 1 when it never did."
+          },
+          "ceilingMax": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "`OURO_LIVE_RUN_CEILING_MAX` — the most `ceiling` may be."
+          },
+          "effectiveCeiling": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The ceiling the claim enforces — the lower of `ceiling` and `ceilingMax`."
+          },
+          "wallClockMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "`OURO_LIVE_RUN_WALL_CLOCK_MINUTES` — a live run running longer is aborted, its branch kept."
+          },
+          "noProgressMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "`OURO_LIVE_RUN_NO_PROGRESS_MINUTES` — a live run silent this long is aborted, its branch kept."
+          }
+        }
+      },
+      "LiveExecutionSettingsPatch": {
+        "type": "object",
+        "title": "LiveExecutionSettingsPatch",
+        "additionalProperties": false,
+        "required": [
+          "ceiling"
+        ],
+        "properties": {
+          "ceiling": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "The new ceiling — at most the deployment's `OURO_LIVE_RUN_CEILING_MAX`."
           }
         }
       },
@@ -80669,6 +81024,7 @@
           "state",
           "sizingStatus",
           "queued",
+          "queueWaiting",
           "githubRepoId",
           "repository",
           "estimate"
@@ -80740,6 +81096,17 @@
             "description": "Whether the run queue holds this issue — the `queued` pill\n([#112](https://github.com/NobuData/ouroboros/issues/112)).\n\n**A field of its own rather than a fifth `sizingStatus`**, because the two are\nindependent facts: an issue can be `needs_human` *and* queued, and one pill field\nwould have to drop one of them. A client rendering a single pill renders this one in\npreference — where the loop will pick the issue up is the more recent fact about it.\n\nDecided against `queue_items` as it stands at this instant rather than copied onto\nthe issue, so it cannot go stale. `POST /api/v1/backlog/queue` is what makes it true,\nand `GET /api/v1/queue` is where the queue row itself is read.",
             "examples": [
               false
+            ]
+          },
+          "queueWaiting": {
+            "description": "Why the queued issue is not starting a live run, or `null` when it is not queued,\nwould be admitted now, or a worker holds it\n([#1312](https://github.com/NobuData/ouroboros/issues/1312)) — the same reason\n`GET /api/v1/queue` gives for its item.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/QueueWaiting"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "githubRepoId": {
@@ -80915,6 +81282,8 @@
           "state",
           "sizingStatus",
           "queued",
+          "queueWaiting",
+          "queueItemId",
           "githubRepoId",
           "repository",
           "body",
@@ -80991,6 +81360,25 @@
             "examples": [
               false
             ]
+          },
+          "queueWaiting": {
+            "description": "Why the queued issue is not starting a live run, or `null` — the row's own field\n([#1312](https://github.com/NobuData/ouroboros/issues/1312)).",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/QueueWaiting"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "queueItemId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The queue item holding this issue, or `null` when it is not queued — what\n**Confirm for live run** sends to `POST /api/v1/queue/{id}/confirm`."
           },
           "githubRepoId": {
             "type": "string",

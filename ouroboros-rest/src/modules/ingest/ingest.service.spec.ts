@@ -314,6 +314,8 @@ function leasedItem(overrides: Partial<QueueItem> = {}): QueueItem {
     claimed_by: "engine-worker-a",
     claim_token: "0b6a1c55-3f2e-4a7d-9c1e-2d8f4b6a9e10",
     claim_key: "worker-a-claim-1",
+    confirmed_at: new Date("2026-10-15T09:00:00.000Z"),
+    confirmed_by: null,
     ...overrides,
   };
 }

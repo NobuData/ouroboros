@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.44"
+  version: "0.41.45"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -1792,6 +1792,8 @@ paths:
                     enqueuedAt: "2026-08-13T01:37:41.000Z"
                     playbookId: null
                     claimed: null
+                    confirmedAt: null
+                    waiting: null
                   - id: 5eed000a-0000-4000-8000-000000000496
                     issueNumber: 496
                     issueTitle: "Telemetry: split ingest into a worker pool"
@@ -1804,6 +1806,8 @@ paths:
                     enqueuedAt: "2026-08-13T13:37:41.000Z"
                     playbookId: null
                     claimed: null
+                    confirmedAt: null
+                    waiting: null
                 activity:
                   inFlight: 3
                   queued: 12
@@ -2790,7 +2794,12 @@ paths:
         **Mutations are deliberately absent.** Reorder, remove and enqueue belong to the
         issues screen's roadmap (mockup 03), where the queue is managed rather than
         displayed; this operation reads. The omission is stated here so it reads as a
-        decision rather than an oversight.
+        decision rather than an oversight. The one exception is
+        `POST /api/v1/queue/{id}/confirm`, which confirms an item for a live run.
+
+        **Every item says why it is waiting** ([#1312](https://github.com/NobuData/ouroboros/issues/1312)):
+        `waiting` is the live-run admission reason the engine's claim would act on, or `null`
+        when the item would be taken now.
 
         **The workspace is the session's**, exactly as the dashboard's: no workspace in this
         path, the session's active organization or `X-Ouro-Tenant` decides, and membership
@@ -2831,6 +2840,8 @@ paths:
                     enqueuedAt: "2026-08-13T01:37:41.000Z"
                     playbookId: null
                     claimed: null
+                    confirmedAt: null
+                    waiting: null
                   - id: 5eed000a-0000-4000-8000-000000000486
                     issueNumber: 486
                     issueTitle: Expose battery health over BLE GATT
@@ -2843,6 +2854,8 @@ paths:
                     enqueuedAt: "2026-08-13T02:37:41.000Z"
                     playbookId: null
                     claimed: null
+                    confirmedAt: null
+                    waiting: null
                 total: 12
                 totalEstMinutes: 580
                 limit: 25
@@ -2889,6 +2902,87 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/queue/{id}/confirm:
+    post:
+      tags: [dashboard]
+      summary: Confirm a queued issue for a live run
+      description: |-
+        **Confirm for live run** (DI.4, [#1312](https://github.com/NobuData/ouroboros/issues/1312);
+        decision L5) — make a queued item claimable by the engine. There is no automatic pickup:
+        an item becomes a live run only after a signed-in person holding `can_approve_loops`
+        has said so, here or by queueing it themselves while the deployment runs live loops.
+        Every item queued before that — including items queued months ago to exercise the
+        simulator — waits as `needs_confirmation` until someone confirms it.
+
+        **Idempotent.** Confirming an item already confirmed keeps the first confirmation and
+        writes no second audit row. The first writes `queue_item.confirmed`.
+
+        **Confirmation is one condition, not the decision.** The answer is the item with its
+        `waiting` reason, which may still be a workspace one (`deployment_disabled`,
+        `concurrency_ceiling`, …) or the item's own (`policy_not_dry_run`, …).
+      operationId: confirmQueueItem
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          description: The queue item — `QueueItemSummary.id`, or `BacklogIssueDetail.queueItemId`.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The item, confirmed, with whatever else still holds it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueItemSummary"
+              example:
+                id: 5eed000a-0000-4000-8000-000000000485
+                issueNumber: 485
+                issueTitle: Watchdog reset on I²C bus lockup
+                effort: m
+                workflowTag: standard-fix
+                workflowVersion: 14
+                workflowPinReason: predicate
+                position: 1
+                estMinutes: 45
+                enqueuedAt: "2026-08-13T09:00:00.000Z"
+                playbookId: null
+                claimed: null
+                confirmedAt: "2026-10-15T09:30:00.000Z"
+                waiting: null
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `capability_required` — the caller lacks `can_approve_loops`, or is a service account
+            (a live run is started by a person); `details.capability` names it. `forbidden` — a
+            `viewer`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `queue_item_not_found` — the workspace's queue holds no such item; it may already
+            have started. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`validation_failed` — `id` is not a uuid."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/backlog:
     get:
       tags: [backlog]
@@ -3031,6 +3125,7 @@ paths:
                     state: open
                     sizingStatus: sized
                     queued: false
+                    queueWaiting: null
                     githubRepoId: dfff0000-0000-0000-0000-00000000000a
                     repository: acme-robotics/helios-firmware
                     estimate:
@@ -3046,6 +3141,7 @@ paths:
                     state: open
                     sizingStatus: estimating
                     queued: false
+                    queueWaiting: null
                     githubRepoId: dfff0000-0000-0000-0000-00000000000a
                     repository: acme-robotics/helios-firmware
                     estimate: null
@@ -3194,6 +3290,8 @@ paths:
                   state: open
                   sizingStatus: sized
                   queued: false
+                  queueWaiting: null
+                  queueItemId: null
                   githubRepoId: dfff0000-0000-0000-0000-00000000000a
                   repository: acme-robotics/helios-firmware
                   body: "Unit 07 in the Fremont pilot rebooted 14 times overnight. Logs show the
@@ -3391,6 +3489,8 @@ paths:
                     enqueuedAt: "2026-09-10T15:41:12.000Z"
                     playbookId: null
                     claimed: null
+                    confirmedAt: null
+                    waiting: null
                   - id: 7a1c0b90-0000-4000-8000-000000000002
                     issueNumber: 484
                     issueTitle: Motor PID integral windup on wheel stall
@@ -3403,6 +3503,8 @@ paths:
                     enqueuedAt: "2026-09-10T15:41:12.000Z"
                     playbookId: null
                     claimed: null
+                    confirmedAt: null
+                    waiting: null
                   - id: 7a1c0b90-0000-4000-8000-000000000003
                     issueNumber: 491
                     issueTitle: Add CRC32 to config persistence layer
@@ -3415,6 +3517,8 @@ paths:
                     enqueuedAt: "2026-09-10T15:41:12.000Z"
                     playbookId: null
                     claimed: null
+                    confirmedAt: null
+                    waiting: null
                 estMinutes: 125
         "400":
           description: |-
@@ -6822,6 +6926,94 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/settings/live-execution:
+    get:
+      tags: [dashboard]
+      summary: The workspace's live-run ceiling and the deployment's limits
+      description: |-
+        How many live runs may execute at once in this workspace, beside what the deployment
+        allows ([#1312](https://github.com/NobuData/ouroboros/issues/1312)). Any member may read
+        it. A workspace that never chose runs **one** live run at a time (decision L10); further
+        confirmed items wait as `concurrency_ceiling`.
+      operationId: readLiveExecutionSettings
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveExecutionSettings"
+              example:
+                deploymentEnabled: false
+                ceiling: 1
+                ceilingMax: 4
+                effectiveCeiling: 1
+                wallClockMinutes: 120
+                noProgressMinutes: 15
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [dashboard]
+      summary: Set the workspace's live-run ceiling
+      description: |-
+        **`owner` or `admin`, people only.** At most `OURO_LIVE_RUN_CEILING_MAX`; a ceiling above
+        it is refused rather than clamped, so the number an administrator typed is the number
+        in force. Writes `workspace.live_ceiling_changed` when the value moves.
+      operationId: patchLiveExecutionSettings
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LiveExecutionSettingsPatch"
+            example:
+              ceiling: 2
+      responses:
+        "200":
+          description: The settings as they now stand.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveExecutionSettings"
+              example:
+                deploymentEnabled: true
+                ceiling: 2
+                ceilingMax: 4
+                effectiveCeiling: 2
+                wallClockMinutes: 120
+                noProgressMinutes: 15
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`forbidden` — not an `owner` or `admin`, or a service account."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `live_ceiling_above_max` — above `OURO_LIVE_RUN_CEILING_MAX`; `details` carries
+            `requested` and `maximum`. `validation_failed` — not a whole number from 1 to 100.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/settings/workspace:
     get:
       tags: [workspace]
@@ -48818,6 +49010,8 @@ components:
           enqueuedAt,
           playbookId,
           claimed,
+          confirmedAt,
+          waiting,
         ]
       properties:
         id:
@@ -48892,6 +49086,132 @@ components:
               type: string
               format: date-time
               description: When the lease runs out.
+        confirmedAt:
+          type: [string, "null"]
+          format: date-time
+          description: |-
+            When a member holding `can_approve_loops` confirmed the item for a live run
+            ([#1312](https://github.com/NobuData/ouroboros/issues/1312)), or `null` while nobody
+            has. Set at enqueue when the deployment runs live loops and the person queueing holds
+            the capability; otherwise by `POST /api/v1/queue/{id}/confirm`.
+        waiting:
+          description: |-
+            Why the item is not starting a live run, or `null` when admission would take it now
+            — or a worker already holds it ([#1312](https://github.com/NobuData/ouroboros/issues/1312)).
+            The engine's claim is decided by the same evaluator, so the reason shown is the
+            reason acted on.
+          oneOf:
+            - $ref: "#/components/schemas/QueueWaiting"
+            - type: "null"
+
+    QueueWaiting:
+      type: object
+      title: QueueWaiting
+      description: |-
+        Why a queued item is not starting a live run (DI.4,
+        [#1312](https://github.com/NobuData/ouroboros/issues/1312)). Every refusal of the
+        engine's claim is one of these codes, and every queued item that waits carries one —
+        nothing waits silently.
+
+        `scope: workspace` holds every item alike: the deployment switch, a paused or deleted
+        workspace, an engine with no executor, the concurrency ceiling. `scope: item` is the
+        item's own: its repository, its repository's dry-run policy, its pinned workflow, its
+        route, its confirmation. The claim skips an item held for its own reason and takes the
+        next one; a workspace reason refuses the claim.
+      additionalProperties: false
+      required: [reason, scope]
+      properties:
+        reason:
+          $ref: "#/components/schemas/AdmissionReason"
+        scope:
+          type: string
+          enum: [workspace, item]
+
+    AdmissionReason:
+      type: string
+      title: AdmissionReason
+      description: |-
+        Live-run admission's reason codes, in precedence order within each scope. Stable — add,
+        never rename.
+
+        | Code | Scope | Holds while |
+        |---|---|---|
+        | `deployment_disabled` | workspace | `OURO_LIVE_EXECUTION_ENABLED` is off |
+        | `workspace_paused` | workspace | the workspace is paused |
+        | `workspace_pending_delete` | workspace | the workspace is pending deletion |
+        | `no_executor` | workspace | the engine has registered no stage executor |
+        | `repository_disabled` | item | the issue's repository is not enabled |
+        | `policy_not_dry_run` | item | the repository is not in dry-run — live runs open draft PRs only |
+        | `workflow_unpublished` | item | the item pins no published workflow version, or one that no longer reads |
+        | `route_not_invocable` | item | a route the workflow inherits resolves to no connection cleared for invocation |
+        | `needs_confirmation` | item | nobody holding `can_approve_loops` has confirmed the item |
+        | `concurrency_ceiling` | workspace | the workspace runs as many live runs as its ceiling allows |
+      enum:
+        - deployment_disabled
+        - workspace_paused
+        - workspace_pending_delete
+        - no_executor
+        - concurrency_ceiling
+        - repository_disabled
+        - policy_not_dry_run
+        - workflow_unpublished
+        - route_not_invocable
+        - needs_confirmation
+
+    LiveExecutionSettings:
+      type: object
+      title: LiveExecutionSettings
+      description: |-
+        The workspace's live-run ceiling beside the deployment's switch and limits
+        ([#1312](https://github.com/NobuData/ouroboros/issues/1312)).
+      additionalProperties: false
+      required:
+        [
+          deploymentEnabled,
+          ceiling,
+          ceilingMax,
+          effectiveCeiling,
+          wallClockMinutes,
+          noProgressMinutes,
+        ]
+      properties:
+        deploymentEnabled:
+          type: boolean
+          description: "`OURO_LIVE_EXECUTION_ENABLED`."
+        ceiling:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: How many live runs may execute at once, as the workspace set it — 1 when it never did.
+        ceilingMax:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: "`OURO_LIVE_RUN_CEILING_MAX` — the most `ceiling` may be."
+        effectiveCeiling:
+          type: integer
+          minimum: 1
+          description: The ceiling the claim enforces — the lower of `ceiling` and `ceilingMax`.
+        wallClockMinutes:
+          type: integer
+          minimum: 1
+          description: "`OURO_LIVE_RUN_WALL_CLOCK_MINUTES` — a live run running longer is aborted, its branch kept."
+        noProgressMinutes:
+          type: integer
+          minimum: 1
+          description: "`OURO_LIVE_RUN_NO_PROGRESS_MINUTES` — a live run silent this long is aborted, its branch kept."
+
+    LiveExecutionSettingsPatch:
+      type: object
+      title: LiveExecutionSettingsPatch
+      additionalProperties: false
+      required: [ceiling]
+      properties:
+        ceiling:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: The new ceiling — at most the deployment's `OURO_LIVE_RUN_CEILING_MAX`.
 
     LoopsLive:
       type: object
@@ -62415,7 +62735,19 @@ components:
         gives and the table has no such column to print.
       additionalProperties: false
       required:
-        [id, number, title, labels, state, sizingStatus, queued, githubRepoId, repository, estimate]
+        [
+          id,
+          number,
+          title,
+          labels,
+          state,
+          sizingStatus,
+          queued,
+          queueWaiting,
+          githubRepoId,
+          repository,
+          estimate,
+        ]
       properties:
         id:
           type: string
@@ -62473,6 +62805,15 @@ components:
             the issue, so it cannot go stale. `POST /api/v1/backlog/queue` is what makes it true,
             and `GET /api/v1/queue` is where the queue row itself is read.
           examples: [false]
+        queueWaiting:
+          description: |-
+            Why the queued issue is not starting a live run, or `null` when it is not queued,
+            would be admitted now, or a worker holds it
+            ([#1312](https://github.com/NobuData/ouroboros/issues/1312)) — the same reason
+            `GET /api/v1/queue` gives for its item.
+          oneOf:
+            - $ref: "#/components/schemas/QueueWaiting"
+            - type: "null"
         githubRepoId:
           type: string
           format: uuid
@@ -62645,6 +62986,8 @@ components:
           state,
           sizingStatus,
           queued,
+          queueWaiting,
+          queueItemId,
           githubRepoId,
           repository,
           body,
@@ -62694,6 +63037,19 @@ components:
             what **Queue for loop** in this panel reads before offering to queue it again
             ([#112](https://github.com/NobuData/ouroboros/issues/112)).
           examples: [false]
+        queueWaiting:
+          description: |-
+            Why the queued issue is not starting a live run, or `null` — the row's own field
+            ([#1312](https://github.com/NobuData/ouroboros/issues/1312)).
+          oneOf:
+            - $ref: "#/components/schemas/QueueWaiting"
+            - type: "null"
+        queueItemId:
+          type: [string, "null"]
+          format: uuid
+          description: |-
+            The queue item holding this issue, or `null` when it is not queued — what
+            **Confirm for live run** sends to `POST /api/v1/queue/{id}/confirm`.
         githubRepoId:
           type: string
           format: uuid

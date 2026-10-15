@@ -78,6 +78,8 @@ const QUEUED: QueueItem = {
   claimed_by: null,
   claim_token: null,
   claim_key: null,
+  confirmed_at: null,
+  confirmed_by: null,
   position: 12,
   est_minutes: null,
   enqueued_at: new Date("2026-08-13T13:37:41.000Z"),
@@ -137,12 +139,12 @@ describe("a queued issue", () => {
   it("preserves an absent estimate rather than calling it zero", () => {
     // `est_minutes` is nullable precisely so that "not sized yet" has a value. A card
     // rendering a null as `0m` would be inventing a claim about how long the work takes.
-    expect(queueItemSummary(QUEUED).estMinutes).toBeNull();
-    expect(queueItemSummary({ ...QUEUED, est_minutes: 45 }).estMinutes).toBe(45);
+    expect(queueItemSummary(QUEUED, null).estMinutes).toBeNull();
+    expect(queueItemSummary({ ...QUEUED, est_minutes: 45 }, null).estMinutes).toBe(45);
   });
 
   it("renames the columns without reinterpreting them", () => {
-    expect(queueItemSummary(QUEUED)).toEqual({
+    expect(queueItemSummary(QUEUED, null)).toEqual({
       id: QUEUED.id,
       issueNumber: 496,
       issueTitle: "Telemetry: split ingest into a worker pool",
@@ -155,6 +157,18 @@ describe("a queued issue", () => {
       enqueuedAt: "2026-08-13T13:37:41.000Z",
       playbookId: null,
       claimed: null,
+      confirmedAt: null,
+      waiting: null,
+    });
+  });
+
+  it("carries the confirmation and why the item is waiting (#1312)", () => {
+    const waiting = { reason: "concurrency_ceiling", scope: "workspace" } as const;
+    const confirmed = { ...QUEUED, confirmed_at: new Date("2026-10-15T09:30:00.000Z") };
+
+    expect(queueItemSummary(confirmed, waiting)).toMatchObject({
+      confirmedAt: "2026-10-15T09:30:00.000Z",
+      waiting,
     });
   });
 
@@ -169,12 +183,12 @@ describe("a queued issue", () => {
       claim_key: "worker-a-claim-1",
     };
 
-    expect(queueItemSummary(leased, now).claimed).toEqual({
+    expect(queueItemSummary(leased, null, now).claimed).toEqual({
       by: "engine-worker-a",
       until: "2026-10-15T14:29:00.000Z",
     });
-    expect(queueItemSummary(leased, new Date("2026-10-15T14:29:00.000Z")).claimed).toBeNull();
-    expect(queueItemSummary(QUEUED, now).claimed).toBeNull();
+    expect(queueItemSummary(leased, null, new Date("2026-10-15T14:29:00.000Z")).claimed).toBeNull();
+    expect(queueItemSummary(QUEUED, null, now).claimed).toBeNull();
   });
 
   it("carries the pin through — the version in force and the reason — without reinterpreting it", () => {
@@ -182,7 +196,10 @@ describe("a queued issue", () => {
     // execute, and why the workflow claimed the issue. The fixture above is a row queued before
     // pinning existed, which is both nulls.
     expect(
-      queueItemSummary({ ...QUEUED, workflow_version: 14, workflow_pin_reason: "most_specific" }),
+      queueItemSummary(
+        { ...QUEUED, workflow_version: 14, workflow_pin_reason: "most_specific" },
+        null,
+      ),
     ).toMatchObject({
       workflowTag: "feature-loop",
       workflowVersion: 14,
@@ -197,8 +214,8 @@ describe("a queued issue's playbook", () => {
     // written, and the summary used to drop it.
     const playbook = "5eed0045-0000-4000-8000-000000000001";
 
-    expect(queueItemSummary(QUEUED).playbookId).toBeNull();
-    expect(queueItemSummary({ ...QUEUED, playbook_id: playbook }).playbookId).toBe(playbook);
+    expect(queueItemSummary(QUEUED, null).playbookId).toBeNull();
+    expect(queueItemSummary({ ...QUEUED, playbook_id: playbook }, null).playbookId).toBe(playbook);
   });
 });
 

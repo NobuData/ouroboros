@@ -44545,6 +44545,72 @@ select pg_temp.must_hold(
 
 delete from ouroboros.organization where "id" = 'org-v145';
 
+-- ===========================================================================
+-- V146 — live-run admission: confirmation and the concurrency ceiling (#1312).
+-- ===========================================================================
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v146', 'Live Admission', 'live-admission-v146', now());
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v146', 'Approver V146', 'approver-v146@example.test', true);
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a1460000-0000-0000-0000-00000000000a', 'org-v146', 'admission-v146', true);
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a146f000-0000-0000-0000-00000000000a', 'a1460000-0000-0000-0000-00000000000a', 'helios-firmware', true, 'main');
+insert into ouroboros.queue_items
+    (id, organization_id, github_repo_id, issue_number, issue_title, effort, workflow_tag, position)
+  values
+  ('a1460000-0000-0000-0000-000000000001', 'org-v146', 'a146f000-0000-0000-0000-00000000000a', 1, 'First', 's', 'standard-fix', 1);
+
+select pg_temp.must_hold(
+  (select confirmed_at is null and confirmed_by is null from ouroboros.queue_items
+    where id = 'a1460000-0000-0000-0000-000000000001'),
+  'a queued item starts unconfirmed');
+
+select pg_temp.must_reject(
+  $$update ouroboros.queue_items set confirmed_by = 'user-v146'
+     where id = 'a1460000-0000-0000-0000-000000000001'$$,
+  'a confirmer needs a confirmation time', 'queue_items_confirmed_by_needs_at');
+
+update ouroboros.queue_items set confirmed_at = now(), confirmed_by = 'user-v146'
+ where id = 'a1460000-0000-0000-0000-000000000001';
+delete from ouroboros."user" where "id" = 'user-v146';
+
+select pg_temp.must_hold(
+  (select confirmed_at is not null and confirmed_by is null from ouroboros.queue_items
+    where id = 'a1460000-0000-0000-0000-000000000001'),
+  'deleting the confirmer keeps the confirmation');
+
+select pg_temp.must_hold(
+  (select live_run_ceiling = 1 and not is_explicit
+     from ouroboros.workspace_settings_effective where organization_id = 'org-v146'),
+  'a workspace that never chose runs one live run at a time');
+
+insert into ouroboros.workspace_settings (organization_id, live_run_ceiling)
+  values ('org-v146', 3);
+
+select pg_temp.must_hold(
+  (select live_run_ceiling = 3
+     from ouroboros.workspace_settings_effective where organization_id = 'org-v146'),
+  'a workspace''s live-run ceiling is its own');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workspace_settings set live_run_ceiling = 0 where organization_id = 'org-v146'$$,
+  'a live-run ceiling is at least one', 'workspace_settings_live_run_ceiling_bounded');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workspace_settings set live_run_ceiling = 101 where organization_id = 'org-v146'$$,
+  'a live-run ceiling is at most one hundred', 'workspace_settings_live_run_ceiling_bounded');
+
+select pg_temp.must_hold(
+  (select pg_get_expr(d.adbin, d.adrelid) = '1'
+     from pg_attrdef d
+     join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+    where d.adrelid = 'ouroboros.workspace_settings'::regclass
+      and a.attname = 'live_run_ceiling'),
+  'the effective view''s default for the live-run ceiling is the column''s');
+
+delete from ouroboros.organization where "id" = 'org-v146';
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

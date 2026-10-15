@@ -1081,7 +1081,7 @@ The issues here are what the chain assumes and nothing filed provides.
 | DI.1 | #1307 | 🟡 Open | ouroboros-engine: [DI.1] Run workspace — a writable working tree per run | A confined tree from the clone cache on a branch named for the run; created, checkpointed, removed | mvp, live-loop, engine, workflow | Y | Y | M | ouroboros-engine, ouroboros-docs |
 | DI.2 | #1310 | 🟡 Open | ouroboros-engine: [DI.2] Branch publisher — attributed commits & single-branch push | Commit the tree's changes with honest authorship; push one branch with a one-call credential | mvp, live-loop, engine, rest, pr | N (after DI.1) | Y | M | ouroboros-engine, ouroboros-rest, ouroboros-docs |
 | DI.3 | #1311 | 🟡 Open | ouroboros-rest: [DI.3] Draft pull-request publisher under dry-run policy | `createPR` as a draft with the run summary and criteria; `run_id` linked; idempotent | mvp, live-loop, rest, pr, runs | N (after DI.2) | Y | M | ouroboros-rest, ouroboros-docs |
-| DI.4 | #1312 | 🟡 Open | ouroboros-rest: [DI.4] Live-run admission — dry-run required, pause honoured, concurrency ceiling | The one gate a queue item passes before the engine may claim it | mvp, live-loop, rest, runs, workflow | Y | Y | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| DI.4 | ✅ #1312 | 🟢 Done | ouroboros-rest: [DI.4] Live-run admission — dry-run required, pause honoured, concurrency ceiling | The one gate a queue item passes before the engine may claim it | mvp, live-loop, rest, runs, workflow | Y | Y | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
 | DI.5 | #1314 | 🟡 Open | ouroboros-db: [DI.5] Slice workflow, seeds & the e2e sandbox fixture | A published `live-slice` workflow, a fixture repository that accepts a push and a pull request, a recorded provider exchange | mvp, live-loop, db, ci, workflow | Y | Y | M | ouroboros-db, tests/e2e, docker-compose.e2e.yml |
 | DI.6 | #1321 | 🟡 Open | ouroboros: [DI.6] Live-slice acceptance — e2e leg & real-provider run | The MVP gate: issue to draft pull request from cold compose, plus a scripted run against a real provider | mvp, live-loop, ci, runs, pr | N (after all MVP) | Y | L | tests/e2e, .github, docs |
 | DI.7 | #1323 | 🟡 Open | ouroboros-engine: [DI.7] Best-of-n attempts | Several attempts at one stage in separate trees; the gate chooses | v2, live-loop, engine, workflow, routing | Y | N | L | ouroboros-engine, ouroboros-rest, ouroboros-ui, ouroboros-docs |
@@ -1289,7 +1289,7 @@ sequenceDiagram
 
 ### Issue DI.4 — ouroboros-rest: [DI.4] Live-run admission — dry-run required, pause honoured, concurrency ceiling
 
-> **GitHub issue:** #1312 · **Status:** 🟡 Open · **Parent epic:** #1295
+> **GitHub issue:** #1312 · **Status:** 🟢 Done · **Parent epic:** #1295
 
 - **Problem Statement:** Today a queue item is a row nothing consumes. The day
   #91 gives the engine a claim operation, every queued item in every workspace

@@ -36,6 +36,8 @@ describe("fresh from the press", () => {
         enqueuedAt: "2026-10-05T09:00:00.000Z",
         playbookId: null,
         claimed: null,
+        confirmedAt: null,
+        waiting: null,
       },
       links: { dashboard: "/dashboard", queue: "/dashboard#dash-up-next-title", console: "/runs/run-1" },
     });
@@ -67,6 +69,8 @@ describe("fresh from the press", () => {
         enqueuedAt: "2026-10-05T09:00:00.000Z",
         playbookId: null,
         claimed: null,
+        confirmedAt: null,
+        waiting: null,
       },
     });
 

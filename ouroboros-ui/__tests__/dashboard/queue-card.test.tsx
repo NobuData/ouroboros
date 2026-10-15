@@ -338,3 +338,40 @@ describe("the card's own shape", () => {
     expect(container.querySelectorAll(".dash-queue__row")).toHaveLength(5);
   });
 });
+
+describe("why the queue is waiting (#1312)", () => {
+  it("says a workspace reason every row shares once, above the list, and not on each row", () => {
+    const off = { reason: "deployment_disabled", scope: "workspace" } as const;
+    render(
+      withQueue([
+        queueItem({ id: "q-1", waiting: off }),
+        queueItem({ id: "q-2", issueNumber: 484, waiting: off }),
+      ]),
+    );
+
+    const notes = within(card()).getAllByRole("note");
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toHaveAttribute("data-reason", "deployment_disabled");
+    expect(within(card()).queryByText("Live runs off")).toBeNull();
+  });
+
+  it("puts an item's own reason on its row as a chip", () => {
+    render(
+      withQueue([
+        queueItem({ id: "q-1", waiting: { reason: "needs_confirmation", scope: "item" } }),
+        queueItem({ id: "q-2", issueNumber: 484, waiting: null }),
+      ]),
+    );
+
+    expect(within(card()).queryByRole("note")).toBeNull();
+    const [first, second] = within(card()).getAllByRole("listitem");
+    expect(within(first!).getByText("Needs confirmation")).toBeInTheDocument();
+    expect(within(second!).queryByText("Needs confirmation")).toBeNull();
+  });
+
+  it("draws nothing extra for a queue that would start now", () => {
+    render(withQueue([queueItem({ waiting: null })]));
+
+    expect(within(card()).queryByRole("note")).toBeNull();
+  });
+});

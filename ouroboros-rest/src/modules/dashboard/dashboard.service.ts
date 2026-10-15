@@ -29,13 +29,15 @@
  * round trips rather than the slowest of them.
  */
 
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
+
+import { AdmissionService, type AdmissionSummaries } from "../admission/admission.service";
 
 import { MetricsService } from "../insights/metrics/metrics.service";
 import type { MetricWindow } from "../insights/metrics/metrics.types";
 import { DashboardRepository } from "./dashboard.repository";
 import { strongEtag } from "./etag";
-import { loopsLive, queueItemSummary, runSummary, type DashboardResource } from "./resources";
+import { loopsLive, runSummary, type DashboardResource } from "./resources";
 import { dashboardWindows, PULSE_RANGE, type DashboardWindows } from "./windows";
 
 /** Milliseconds in a second — `cycle_time` is stored in milliseconds, the pulse speaks seconds. */
@@ -53,6 +55,7 @@ export class DashboardService {
   constructor(
     private readonly dashboard: DashboardRepository,
     private readonly metrics: MetricsService,
+    @Inject(AdmissionService) private readonly admission: AdmissionSummaries,
   ) {}
 
   /**
@@ -70,7 +73,7 @@ export class DashboardService {
   /**
    * The entity tag for what this workspace's dashboard currently says.
    *
-   * Cheap by construction — seven aggregate subqueries and no rows — because this is what a
+   * Cheap by construction — nine aggregate subqueries and no rows — because this is what a
    * poll that ends in `304` costs, and the dashboard is polled for as long as somebody is
    * looking at it.
    *
@@ -97,6 +100,8 @@ export class DashboardService {
       version.pullRequests,
       version.interventionEvents,
       version.metricRollups,
+      version.workspaceLifecycle,
+      version.orgPolicies,
     ]);
   }
 
@@ -167,7 +172,7 @@ export class DashboardService {
       },
       activeRuns: active.map(runSummary),
       recentRuns: recent.map(runSummary),
-      queueHead: head.map((row) => queueItemSummary(row)),
+      queueHead: await this.admission.summaries(organizationId, head, windows.now),
       activity: {
         // Read from the same figures the stat row is rendered from rather than counted
         // again: the subline saying "3 issues in flight" beside a card saying `2` would be

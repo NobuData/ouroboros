@@ -46,6 +46,8 @@
  */
 
 import {
+  CAPABILITY_REQUIRED_CODE,
+  QUEUE_ITEM_NOT_FOUND_CODE,
   BACKLOG_ALREADY_ESTIMATING_CODE,
   BACKLOG_SYNC_RUNNING_CODE,
   BACKLOG_SYNC_TOO_SOON_CODE,
@@ -60,6 +62,10 @@ import { isApiError } from "@/app/api/errors";
 
 import { type QueueOutcome, isWorkflow, offendersOf } from "./bar";
 import {
+  CONFIRM_LIVE_DONE,
+  CONFIRM_LIVE_FAILED,
+  CONFIRM_LIVE_NOT_FOUND,
+  CONFIRM_LIVE_ROLE_REASON,
   REESTIMATE_ONE_BUSY,
   REESTIMATE_ONE_FAILED,
   REESTIMATE_ONE_NOT_FOUND,
@@ -220,6 +226,41 @@ export async function reestimateIssue(issueId: string): Promise<HeadOutcome> {
         return { ok: false, reason: reestimateRateLimited(error.details.retryAfterSeconds) };
       default:
         return { ok: false, reason: error.message === "" ? REESTIMATE_ONE_FAILED : error.message };
+    }
+  }
+}
+
+/**
+ * Confirm a queued issue for a live run — the panel's **Confirm for live run**
+ * ([#1312](https://github.com/NobuData/ouroboros/issues/1312)).
+ *
+ * The capability gate is the service's: a member without loop approval gets its `403`, handed
+ * back as the sentence the button would explain.
+ *
+ * @param itemId The queue item — the panel's `queueItemId`.
+ * @returns That it was confirmed, as a sentence — or why not.
+ * @throws Whatever is not an `ApiError` — Next.js's redirect signal above all.
+ */
+export async function confirmForLive(itemId: string): Promise<HeadOutcome> {
+  if (typeof itemId !== "string" || itemId === "") {
+    return { ok: false, reason: CONFIRM_LIVE_FAILED };
+  }
+
+  try {
+    await backlog.confirm(itemId);
+
+    return { ok: true, message: CONFIRM_LIVE_DONE };
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+
+    switch (error.code) {
+      case CAPABILITY_REQUIRED_CODE:
+      case FORBIDDEN_CODE:
+        return { ok: false, reason: CONFIRM_LIVE_ROLE_REASON };
+      case QUEUE_ITEM_NOT_FOUND_CODE:
+        return { ok: false, reason: CONFIRM_LIVE_NOT_FOUND };
+      default:
+        return { ok: false, reason: error.message === "" ? CONFIRM_LIVE_FAILED : error.message };
     }
   }
 }

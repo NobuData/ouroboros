@@ -55,6 +55,7 @@ vi.mock("@/app/issues/head-actions", () => ({
   queueUnder: vi.fn(),
   reestimateAll: vi.fn(),
   reestimateIssue: vi.fn(),
+  confirmForLive: vi.fn(),
   syncBacklog: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({

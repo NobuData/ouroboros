@@ -2,13 +2,18 @@
  * The engine claims the head of a workspace's queue — #91 (J.3, narrowed by its DG.1 amendment).
  *
  * ```
- * POST /internal/queue/claim {workspace, worker, idempotencyKey}
+ * POST /internal/queue/claim {workspace, worker, idempotencyKey, executors?}
  *   admission ── deployment switch off → 409 deployment_disabled          (DG.2, #1300)
  *            └─ workspace not active   → 409 workspace_paused | …         (#489)
+ *            └─ no stage executor      → 409 no_executor                  (DI.4, #1312)
  *   replay   ── this key already leases an item, still held → that item   (a lost response
  *                                                                          never takes two)
- *   head     ── lowest position nobody holds, `for update skip locked`  → lease it → 200
- *            └─ nothing claimable                                        → 204
+ *   ceiling  ── per-workspace advisory lock; live runs + live leases ≥ ceiling
+ *                                       → 409 concurrency_ceiling        (DI.4)
+ *   next     ── in position order, `for update skip locked`, the first item admission
+ *               admits (repository enabled · dry-run · published pin · route invocable ·
+ *               confirmed) → lease it → 200; the rest keep their place and their reason
+ *            └─ nothing admissible                                       → 204
  *
  * POST /internal/runs {…, queueItem: {id, claimToken}}   (ingest.service.ts)
  *   the lease is still the caller's and the item is this run → open the run, remove the item
@@ -19,23 +24,31 @@
  * (`OURO_QUEUE_CLAIM_LEASE_SECONDS`) and the item is the head again. Removal is the open's, in
  * the transaction that inserts the run.
  *
- * **Admission is decided here and nowhere else.** DG.2's switch and #489's pause hold today;
- * DI.4 ([#1312](https://github.com/NobuData/ouroboros/issues/1312)) adds the dry-run policy,
- * the confirmation and the concurrency ceiling in this same place — the one decision a queued
- * item passes before it becomes work a model is paid to do.
+ * **Admission is decided here and nowhere else.** The decision itself is
+ * `admission/admission.ts` (DI.4, [#1312](https://github.com/NobuData/ouroboros/issues/1312)) —
+ * the same evaluator the queue, the dashboard and the backlog explain a waiting item with — and
+ * this is the one place it is enforced, before a queued item becomes work a model is paid to do.
  */
 
 import { randomUUID } from "node:crypto";
 
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 
+import { AdmissionService } from "../admission/admission.service";
+import type { WorkspaceAdmissionReason } from "../admission/admission";
 import { AppConfigService } from "../config/config.service";
 import type { QueueItem } from "../db/schema";
+import type { ConflictError } from "../errors/error.envelope";
 import { workspaceNotAdmitting } from "../lifecycle/lifecycle.errors";
 import { WorkspaceStateReader } from "../lifecycle/lifecycle.state";
 import { admitsNewWork } from "../lifecycle/lifecycle.states";
 import type { ClaimQueueItemDto } from "./ingest.dto";
-import { claimWorkspaceNotFound, deploymentDisabled } from "./ingest.errors";
+import {
+  claimWorkspaceNotFound,
+  concurrencyCeiling,
+  deploymentDisabled,
+  noExecutor,
+} from "./ingest.errors";
 import { IngestRepository, type Writer } from "./ingest.repository";
 import type { QueueItemClaimedResource } from "./ingest.resources";
 
@@ -45,21 +58,26 @@ export class QueueClaimService {
    * @param queue - The statements — the queue's, beside the ingest contract's own.
    * @param config - The live-execution switch and the lease length.
    * @param states - Whether a workspace is taking new work (#489).
+   * @param admission - The live-run admission decision (DI.4, #1312).
    */
   constructor(
     private readonly queue: IngestRepository,
     private readonly config: AppConfigService,
     private readonly states: WorkspaceStateReader,
+    @Inject(AdmissionService)
+    private readonly admission: Pick<AdmissionService, "executorCount" | "admitNext">,
   ) {}
 
   /**
-   * Lease the head of a workspace's queue to a worker.
+   * Lease a workspace's next admissible queue item to a worker — the first, in queue order, that
+   * live-run admission takes (#1312).
    *
    * @param request - The workspace, the worker and the claim's idempotency key.
    * @param now - The instant the lease is measured from; injectable for tests.
-   * @returns The item and its lease, or `undefined` when nothing is claimable.
-   * @throws {ConflictError} `409 deployment_disabled`, `409 workspace_paused` or
-   *   `409 workspace_pending_delete` — admission refused; nothing was claimed.
+   * @returns The item and its lease, or `undefined` when nothing is admissible.
+   * @throws {ConflictError} `409 deployment_disabled`, `409 workspace_paused`,
+   *   `409 workspace_pending_delete`, `409 no_executor` or `409 concurrency_ceiling` — admission
+   *   refused the workspace; nothing was claimed.
    * @throws {NotFoundError} `404 workspace_not_found`.
    */
   async claim(
@@ -69,6 +87,9 @@ export class QueueClaimService {
     if (!this.config.liveExecutionEnabled) {
       throw deploymentDisabled();
     }
+
+    // Before the transaction: the engine's status is a network call, never made under a lock.
+    const executors = await this.admission.executorCount(request.executors);
 
     return this.queue.transaction(async (trx) => {
       const organizationId = await this.queue.workspaceId(trx, request.workspace);
@@ -83,6 +104,10 @@ export class QueueClaimService {
         throw workspaceNotAdmitting(state);
       }
 
+      if (executors === 0) {
+        throw noExecutor();
+      }
+
       const replayed = await this.queue.leasedBy(trx, organizationId, request.idempotencyKey);
 
       if (replayed !== undefined) {
@@ -93,13 +118,17 @@ export class QueueClaimService {
         await this.queue.releaseLease(trx, replayed.id);
       }
 
-      const head = await this.queue.claimableHead(trx, organizationId, now);
+      const admitted = await this.admission.admitNext(trx, organizationId, now, executors);
 
-      if (head === undefined) {
+      if (admitted.refused !== null) {
+        throw refusal(admitted.refused, admitted.taken, admitted.ceiling);
+      }
+
+      if (admitted.item === undefined) {
         return undefined;
       }
 
-      const leased = await this.queue.lease(trx, head.id, {
+      const leased = await this.queue.lease(trx, admitted.item.id, {
         claimed_at: now,
         claim_expires_at: new Date(now.getTime() + this.config.queueClaimLeaseSeconds * 1000),
         claimed_by: request.worker,
@@ -139,5 +168,28 @@ export class QueueClaimService {
       playbookId: item.playbook_id,
       ticket: ticket ?? null,
     };
+  }
+}
+
+/**
+ * The error a workspace-wide refusal answers with.
+ *
+ * @param reason - Why admission refused the workspace.
+ * @param taken - The slots taken, for `concurrency_ceiling`.
+ * @param ceiling - The ceiling, for `concurrency_ceiling`.
+ * @returns The `409`.
+ */
+function refusal(reason: WorkspaceAdmissionReason, taken: number, ceiling: number): ConflictError {
+  switch (reason) {
+    case "deployment_disabled":
+      return deploymentDisabled();
+    case "workspace_paused":
+      return workspaceNotAdmitting("paused");
+    case "workspace_pending_delete":
+      return workspaceNotAdmitting("pending_delete");
+    case "no_executor":
+      return noExecutor();
+    case "concurrency_ceiling":
+      return concurrencyCeiling(taken, ceiling);
   }
 }

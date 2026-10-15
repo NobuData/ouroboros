@@ -196,6 +196,18 @@ export const QUEUE_ISSUES_CONFLICT_CODE = "queue_issues_conflict";
  */
 export const QUEUE_ISSUES_NOT_QUEUEABLE_CODE = "queue_issues_not_queueable";
 
+/**
+ * `POST /api/v1/queue/{id}/confirm`'s `403` for a caller without `can_approve_loops` — or a
+ * service account ([#1312](https://github.com/NobuData/ouroboros/issues/1312)).
+ */
+export const CAPABILITY_REQUIRED_CODE = "capability_required";
+
+/** `POST /api/v1/queue/{id}/confirm`'s `404`: the queue holds no such item — it may have started. */
+export const QUEUE_ITEM_NOT_FOUND_CODE = "queue_item_not_found";
+
+/** A queue item as the confirmation answers it. */
+export type ConfirmedQueueItem = components["schemas"]["QueueItemSummary"];
+
 /** The backlog, as `ouroboros-rest` serves it. */
 export const backlog = {
   /**
@@ -321,5 +333,21 @@ export const backlog = {
    */
   async queue(selection: QueueSelection, client: ApiClient = api()): Promise<QueuedSelection> {
     return unwrap(await client.POST("/api/v1/backlog/queue", { body: selection }));
+  },
+
+  /**
+   * Confirm a queued issue for a live run — the panel's **Confirm for live run**
+   * ([#1312](https://github.com/NobuData/ouroboros/issues/1312)). Idempotent.
+   *
+   * @param itemId The queue item — `BacklogIssueDetail.queueItemId`.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The item, with whatever else still holds it.
+   * @throws {ApiError} What the service answered — {@link CAPABILITY_REQUIRED_CODE} without
+   *   loop approval, {@link QUEUE_ITEM_NOT_FOUND_CODE} for an item that has left the queue.
+   */
+  async confirm(itemId: string, client: ApiClient = api()): Promise<ConfirmedQueueItem> {
+    return unwrap(
+      await client.POST("/api/v1/queue/{id}/confirm", { params: { path: { id: itemId } } }),
+    );
   },
 };

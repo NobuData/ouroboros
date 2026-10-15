@@ -24,6 +24,7 @@ import { Module } from "@nestjs/common";
 import { ScheduleModule } from "@nestjs/schedule";
 
 import { AuditModule } from "../audit/audit.module";
+import { ControlsModule } from "../controls/controls.module";
 import { DbModule } from "../db/db.module";
 import { FarmArtifactsModule } from "../farm/artifacts/artifacts.module";
 import { GithubModule } from "../github/github.module";
@@ -43,6 +44,8 @@ import { LifecycleStateModule } from "./lifecycle-state.module";
     ScheduleModule.forRoot(),
     LifecycleStateModule,
     AuditModule,
+    // A pause reaches the live runs already executing through their control queue (DI.4, #1312).
+    ControlsModule,
     VaultModule,
     GithubModule,
     StepUpModule,

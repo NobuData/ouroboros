@@ -36,11 +36,13 @@ import { ControlsInternalController } from "./controls.internal.controller";
 import { ControlsRepository } from "./controls.repository";
 import { ControlsService } from "./controls.service";
 import { ControlsSweeper } from "./controls.sweeper";
+import { LiveLimitsSweeper } from "./live-limits.sweeper";
 
 @Module({
   imports: [DbModule, ScheduleModule.forRoot(), FactProposersModule],
   controllers: [ControlsController, ControlsInternalController],
-  providers: [ControlsRepository, ControlsService, ControlsSweeper],
+  // `LiveLimitsSweeper` aborts live runs past a limit (DI.4, #1312).
+  providers: [ControlsRepository, ControlsService, ControlsSweeper, LiveLimitsSweeper],
   exports: [ControlsService],
 })
 export class ControlsModule {}

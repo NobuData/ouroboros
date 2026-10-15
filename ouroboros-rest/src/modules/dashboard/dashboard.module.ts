@@ -31,6 +31,7 @@
 
 import { Module } from "@nestjs/common";
 
+import { AdmissionModule } from "../admission/admission.module";
 import { DbModule } from "../db/db.module";
 import { InsightsModule } from "../insights/insights.module";
 import { DashboardController } from "./dashboard.controller";
@@ -40,7 +41,8 @@ import { DashboardService } from "./dashboard.service";
 @Module({
   // `InsightsModule` for `MetricsService`: the pulse card and the merged stat read the shared
   // windowed metrics rather than computing their own (#437, amending #72).
-  imports: [DbModule, InsightsModule],
+  // `AdmissionModule` for why each queued item is waiting (DI.4, #1312).
+  imports: [DbModule, InsightsModule, AdmissionModule],
   controllers: [DashboardController],
   providers: [DashboardService, DashboardRepository],
   // `DashboardService` is exported for exactly one caller: `/ouro status` (#537), which is the

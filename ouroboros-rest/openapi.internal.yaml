@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.41.44"
+  version: "0.41.45"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -824,14 +824,29 @@ paths:
         default) — so a worker that dies between the claim and the open loses nothing: the item
         is the head again.
 
-        **The head is per workspace**: the lowest `position` that nobody holds, locked
+        **The item is per workspace**: in `position` order among the items nobody holds, locked
         `for update skip locked`, so two workers claiming at once never take the same item —
         the second takes the next, or nothing.
 
-        **Admission is decided here.** `409 deployment_disabled` while
-        `OURO_LIVE_EXECUTION_ENABLED` is off, and `409 workspace_paused` /
-        `workspace_pending_delete` while the workspace is not active (#489). DI.4 (#1312) adds
-        the dry-run policy, confirmation and concurrency ceiling in the same place.
+        **Live-run admission is decided here, and nowhere else** (DI.4,
+        [#1312](https://github.com/NobuData/ouroboros/issues/1312)). The workspace first —
+        each a `409`, nothing claimed:
+
+        - `deployment_disabled` — `OURO_LIVE_EXECUTION_ENABLED` is off;
+        - `workspace_paused` / `workspace_pending_delete` — the workspace is not active (#489);
+        - `no_executor` — the worker declared no `executors`, or (when it declared none) the
+          engine's status reports none;
+        - `concurrency_ceiling` — live runs executing plus items leased and not yet opened
+          already fill the workspace's ceiling (`min(live_run_ceiling, OURO_LIVE_RUN_CEILING_MAX)`,
+          one by default). Held under a per-workspace lock, so two workers racing for one slot
+          get one item and one of these.
+
+        Then each item, in queue order; an item that fails is **skipped, not stopped at** — it
+        keeps its place and the reason `GET /api/v1/queue` shows for it — and the first that
+        passes is leased: its repository is enabled; its repository is in dry-run (the slice
+        opens draft pull requests only); its pinned workflow version is published and reads;
+        every route its model stages inherit resolves to a connection cleared for invocation;
+        and a member holding `can_approve_loops` has confirmed it. `204` when none passes.
 
         **Idempotent by the lease.** A claim replayed with the same `idempotencyKey` answers the
         item that key already leases rather than taking another, so a lost response never
@@ -873,7 +888,7 @@ paths:
                   source: 8f14e45f-ceea-467a-9f0a-4a1c7c3b2d55
                   externalKey: "#482"
         "204":
-          description: Nothing is claimable — the queue is empty, or every item is held.
+          description: Nothing is claimable — the queue is empty, every item is held, or every item waits for a reason of its own (`needs_confirmation`, `policy_not_dry_run`, …).
         "401":
           description: |-
             No `X-Ouro-Internal-Key`, or a value matching neither principal.
@@ -894,8 +909,9 @@ paths:
                   workspace: acme-robotics
         "409":
           description: |-
-            Admission refused, and nothing was claimed: `deployment_disabled` — this deployment
-            does not run live loops — or `workspace_paused` / `workspace_pending_delete`.
+            Admission refused the workspace, and nothing was claimed: `deployment_disabled`,
+            `workspace_paused`, `workspace_pending_delete`, `no_executor`, or
+            `concurrency_ceiling` (with `details.taken` and `details.ceiling`).
           content:
             application/json:
               schema:
@@ -3605,6 +3621,16 @@ components:
           maxLength: 128
           pattern: "^\\S(.*\\S)?$"
           description: The worker claiming, as it names itself — `queue_items.claimed_by`.
+        executors:
+          type: array
+          maxItems: 2
+          items:
+            type: string
+            enum: [native, harness]
+          description: |-
+            The stage-executor kinds this worker has registered
+            ([#1312](https://github.com/NobuData/ouroboros/issues/1312)). An empty list is
+            refused with `409 no_executor`; absent, the engine's status call is asked instead.
 
     QueueItemClaimed:
       type: object

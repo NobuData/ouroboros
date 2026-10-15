@@ -24,13 +24,15 @@
 
 import { Module } from "@nestjs/common";
 
+import { AdmissionModule } from "../admission/admission.module";
 import { DbModule } from "../db/db.module";
 import { QueueController } from "./queue.controller";
 import { QueueRepository } from "./queue.repository";
 import { QueueService } from "./queue.service";
 
 @Module({
-  imports: [DbModule],
+  // `AdmissionModule` for why each queued item is waiting (DI.4, #1312).
+  imports: [DbModule, AdmissionModule],
   controllers: [QueueController],
   providers: [QueueService, QueueRepository],
   // Nothing is exported, for the dashboard module's own reason: the routes are the surface,

@@ -28,7 +28,7 @@
  *     100 000 and V009 holds the queue column to `1 … 20160` or null.
  */
 
-import { queueItemSummary, type QueueItemSummary } from "../dashboard/resources";
+import type { QueueItemSummary } from "../dashboard/resources";
 import type { EstimateEffort, QueueEffort, QueueItem } from "../db/schema";
 
 /**
@@ -132,11 +132,15 @@ export interface QueuedSelection {
  * mapping is the contract, and a contract worth testing is worth testing without a database.
  *
  * @param rows - The inserted `queue_items`, in the order they were appended.
+ * @param items - The same rows as summaries, each with why it is waiting (#1312).
  * @returns The items and their combined estimate.
  */
-export function queuedSelection(rows: readonly QueueItem[]): QueuedSelection {
+export function queuedSelection(
+  rows: readonly QueueItem[],
+  items: readonly QueueItemSummary[],
+): QueuedSelection {
   return {
-    items: rows.map((row) => queueItemSummary(row)),
+    items: [...items],
     // Summed here rather than read back with a second statement: these are the rows that were
     // just written, so a `sum` over them is the same arithmetic the database would do and one
     // round trip fewer. `?? 0` skips a null rather than counting it — see `estMinutes`.

@@ -751,6 +751,24 @@ How long an engine worker holds a queue item it claimed before the item is claim
 
 The window between a claim and the run opened from it: a worker opens the run moments after claiming, and one that died in between gives the item back when this runs out.
 
+### `OURO_LIVE_RUN_CEILING_MAX`
+
+**Development default:** `4`
+
+Live-run admission and limits. The most live runs any workspace may set its ceiling to — each workspace runs one at a time until an administrator raises its own ceiling (PATCH /api/v1/settings/live-execution), which may not exceed this. Optional; 4 when unset. Between 1 and 100.
+
+### `OURO_LIVE_RUN_WALL_CLOCK_MINUTES`
+
+**Development default:** `120`
+
+How long a live run may execute before it is aborted through the control queue, in minutes. The abort keeps the run's branch. Optional; 120 when unset. Between 5 and 1440.
+
+### `OURO_LIVE_RUN_NO_PROGRESS_MINUTES`
+
+**Development default:** `15`
+
+How long a live run may go without reporting an event before it is aborted as stalled, in minutes. The abort keeps the run's branch. Optional; 15 when unset. Between 2 and 360.
+
 ### `OURO_MANAGED_KEY_TRIAL_CENTS`
 
 **Development default:** unset. Example: `500`

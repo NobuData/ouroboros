@@ -311,6 +311,9 @@ export function queueItem(over: Partial<QueueItemSummary> = {}): QueueItemSummar
     playbookId: null,
     // No worker holds it (#91).
     claimed: null,
+    // Nobody confirmed it, and nothing is said about why it waits (#1312) unless a case is.
+    confirmedAt: null,
+    waiting: null,
     ...over,
   };
 }

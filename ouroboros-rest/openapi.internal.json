@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest (internal)",
-    "version": "0.41.44",
+    "version": "0.41.45",
     "summary": "What ouroboros-engine may ask the control plane for — and what it is never given.",
     "description": "The **engine-facing** surface of\n[Ouroboros](https://github.com/NobuData/ouroboros)' communications layer. Two\noperations, one caller, and one idea holding both of them together — roadmap decision\n**P3**, [#224](https://github.com/NobuData/ouroboros/issues/224):\n\n> **A worker never holds a provider credential.**\n\nMockup 07's page subline promises something weaker — *\"keys never leave the control\nplane — workers only ever see short-lived tokens\"* — and this document is where the\nfirst clause is made literal and the second is **improved on**. There is no token. A\nfifteen-minute credential is still a credential: it genuinely reaches the worker,\nrevocation is bounded only by its TTL, and the audit surface widens to every process\nthat ever held one. It is also, for most LLM providers, fiction — almost none support\nderiving short-lived scoped keys, so such a token would in practice be a full API key\nwith a timer bolted on by us.\n\nSo the two operations divide the world:\n\n| Operation | For | Hands over |\n|---|---|---|\n| `POST /internal/llm/invoke` | every **cloud** provider | nothing — the control plane makes the call and streams back the answer |\n| `POST /internal/credentials/lease` | **local** providers only | an address, TTL-bounded and audited |\n\nThe exception is narrow and is not a compromise. An engine worker calling an Ollama\ndaemon on the same box gains nothing from proxying its traffic through this service,\nbecause there is no key on that path to protect — so it is told the address and nothing\nelse, and a lease naming a cloud provider is a `403` by policy, enforced here rather\nthan trusted to the caller.\n\n**What is built.** The lease and the proxy are both implemented. The proxy was\n*specified* by this document first (AD.3) so that AF.1\n([#234](https://github.com/NobuData/ouroboros/issues/234)) could choose an executor\n**against** it, and AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235))\nimplemented it — a custom chain executor inside this service, with no sidecar.\n\n**Authentication is the #51 pattern, in the other direction.** Every operation requires\n`X-Ouro-Internal-Key`, carrying `OURO_ENGINE_SHARED_SECRET` — the same header and the\nsame variable `ouroboros-rest` sends when *it* calls the engine\n([#51](https://github.com/NobuData/ouroboros/issues/51)). The comparison is constant\ntime, a missing header takes the same path as a wrong one, and the rejection is one\nconstant body: `401` with `code: \"unauthenticated\"` and nothing else. A session cookie\nis not accepted here, whoever it belongs to.\n\n**These paths are outside `/api`, and unversioned.** `/api` is the browser's boundary;\nthe only caller of these two is deployed alongside this service and upgraded with it, so\na version in the path would be one nobody could ever be on a different side of. That is\nthe same argument `/health/live` and `ouroboros-engine`'s `/healthz` are written under.\n\n**Every error has the shape every other error in this system has** — `{code, message,\ndetails}`, `docs/ARCHITECTURE.md` § 5.3 — so a worker parses one envelope whether it\nwas refused at the boundary or inside a handler.\n\n**The naming convention changes at this boundary, once.** This service writes\n`camelCase` in its contracts and `ouroboros-engine` writes `snake_case` in its own; each\nside translates in exactly one file — `src/modules/engine/engine.contract.ts` here,\n`ouroboros_engine/control_plane/contract.py` there — so no code on either side carries\nthe other's spelling.",
     "license": {
@@ -724,7 +724,7 @@
           "runs"
         ],
         "summary": "Claim the head of a workspace's queue",
-        "description": "Lease the head of a workspace's queue to the calling worker (#91) — the first half of\nconsuming it. The second is `POST /internal/runs` with `queueItem`, which removes the\nitem in the transaction that opens the run.\n\n**A lease, not a removal.** The item stays queued, shown as held, until the open\nconsumes it or the lease runs out (`OURO_QUEUE_CLAIM_LEASE_SECONDS`, five minutes by\ndefault) — so a worker that dies between the claim and the open loses nothing: the item\nis the head again.\n\n**The head is per workspace**: the lowest `position` that nobody holds, locked\n`for update skip locked`, so two workers claiming at once never take the same item —\nthe second takes the next, or nothing.\n\n**Admission is decided here.** `409 deployment_disabled` while\n`OURO_LIVE_EXECUTION_ENABLED` is off, and `409 workspace_paused` /\n`workspace_pending_delete` while the workspace is not active (#489). DI.4 (#1312) adds\nthe dry-run policy, confirmation and concurrency ceiling in the same place.\n\n**Idempotent by the lease.** A claim replayed with the same `idempotencyKey` answers the\nitem that key already leases rather than taking another, so a lost response never\ncosts a second item. A key whose lease ran out leases the head anew.\n\n**The workspace is named** — the one place on this surface a worker does: a claim asks\n*for* work. Everything the item becomes is resolved from rows from here on.",
+        "description": "Lease the head of a workspace's queue to the calling worker (#91) — the first half of\nconsuming it. The second is `POST /internal/runs` with `queueItem`, which removes the\nitem in the transaction that opens the run.\n\n**A lease, not a removal.** The item stays queued, shown as held, until the open\nconsumes it or the lease runs out (`OURO_QUEUE_CLAIM_LEASE_SECONDS`, five minutes by\ndefault) — so a worker that dies between the claim and the open loses nothing: the item\nis the head again.\n\n**The item is per workspace**: in `position` order among the items nobody holds, locked\n`for update skip locked`, so two workers claiming at once never take the same item —\nthe second takes the next, or nothing.\n\n**Live-run admission is decided here, and nowhere else** (DI.4,\n[#1312](https://github.com/NobuData/ouroboros/issues/1312)). The workspace first —\neach a `409`, nothing claimed:\n\n- `deployment_disabled` — `OURO_LIVE_EXECUTION_ENABLED` is off;\n- `workspace_paused` / `workspace_pending_delete` — the workspace is not active (#489);\n- `no_executor` — the worker declared no `executors`, or (when it declared none) the\n  engine's status reports none;\n- `concurrency_ceiling` — live runs executing plus items leased and not yet opened\n  already fill the workspace's ceiling (`min(live_run_ceiling, OURO_LIVE_RUN_CEILING_MAX)`,\n  one by default). Held under a per-workspace lock, so two workers racing for one slot\n  get one item and one of these.\n\nThen each item, in queue order; an item that fails is **skipped, not stopped at** — it\nkeeps its place and the reason `GET /api/v1/queue` shows for it — and the first that\npasses is leased: its repository is enabled; its repository is in dry-run (the slice\nopens draft pull requests only); its pinned workflow version is published and reads;\nevery route its model stages inherit resolves to a connection cleared for invocation;\nand a member holding `can_approve_loops` has confirmed it. `204` when none passes.\n\n**Idempotent by the lease.** A claim replayed with the same `idempotencyKey` answers the\nitem that key already leases rather than taking another, so a lost response never\ncosts a second item. A key whose lease ran out leases the head anew.\n\n**The workspace is named** — the one place on this surface a worker does: a claim asks\n*for* work. Everything the item becomes is resolved from rows from here on.",
         "operationId": "claimQueueItem",
         "requestBody": {
           "required": true,
@@ -771,7 +771,7 @@
             }
           },
           "204": {
-            "description": "Nothing is claimable — the queue is empty, or every item is held."
+            "description": "Nothing is claimable — the queue is empty, every item is held, or every item waits for a reason of its own (`needs_confirmation`, `policy_not_dry_run`, …)."
           },
           "401": {
             "description": "No `X-Ouro-Internal-Key`, or a value matching neither principal.",
@@ -801,7 +801,7 @@
             }
           },
           "409": {
-            "description": "Admission refused, and nothing was claimed: `deployment_disabled` — this deployment\ndoes not run live loops — or `workspace_paused` / `workspace_pending_delete`.",
+            "description": "Admission refused the workspace, and nothing was claimed: `deployment_disabled`,\n`workspace_paused`, `workspace_pending_delete`, `no_executor`, or\n`concurrency_ceiling` (with `details.taken` and `details.ceiling`).",
             "content": {
               "application/json": {
                 "schema": {
@@ -4090,6 +4090,18 @@
             "maxLength": 128,
             "pattern": "^\\S(.*\\S)?$",
             "description": "The worker claiming, as it names itself — `queue_items.claimed_by`."
+          },
+          "executors": {
+            "type": "array",
+            "maxItems": 2,
+            "items": {
+              "type": "string",
+              "enum": [
+                "native",
+                "harness"
+              ]
+            },
+            "description": "The stage-executor kinds this worker has registered\n([#1312](https://github.com/NobuData/ouroboros/issues/1312)). An empty list is\nrefused with `409 no_executor`; absent, the engine's status call is asked instead."
           }
         }
       },

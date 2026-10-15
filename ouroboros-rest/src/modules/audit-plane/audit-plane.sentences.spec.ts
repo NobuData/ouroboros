@@ -189,6 +189,22 @@ describe("composing the audit card's lines", () => {
       "removed a ticket source",
     );
   });
+  it("names the issue confirmed for a live run (#1312)", () => {
+    expect(eventSentence({ action: "queue_item.confirmed", detail: { issueNumber: 482 } })).toBe(
+      "confirmed #482 for a live run",
+    );
+    expect(eventSentence({ action: "queue_item.confirmed", detail: {} })).toBe(
+      "confirmed a queued issue for a live run",
+    );
+  });
+  it("says what the live-run ceiling became (#1312)", () => {
+    expect(
+      eventSentence({ action: "workspace.live_ceiling_changed", detail: { before: 1, after: 3 } }),
+    ).toBe("set the live-run ceiling to 3");
+    expect(eventSentence({ action: "workspace.live_ceiling_changed", detail: {} })).toBe(
+      "changed the live-run ceiling",
+    );
+  });
 });
 
 describe("the actor column", () => {

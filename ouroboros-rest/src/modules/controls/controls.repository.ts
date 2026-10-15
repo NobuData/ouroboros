@@ -24,7 +24,14 @@ import { Injectable } from "@nestjs/common";
 import { sql, type Kysely, type Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
-import type { Database, Run, RunControl, RunControlKind } from "../db/schema";
+import {
+  ACTIVE_RUN_STATUSES,
+  SCHEMA_NAME,
+  type Database,
+  type Run,
+  type RunControl,
+  type RunControlKind,
+} from "../db/schema";
 import { RUN_EVENT_COLUMNS, enqueueRunEvent } from "../webhooks/webhook.run-events";
 
 /** A connection or a transaction — every method takes whichever the caller is inside. */
@@ -42,8 +49,11 @@ export interface ControlSubmission {
    * that also asks the executor to start the current stage's next attempt. Steer-only.
    */
   readonly retryStage: boolean;
-  /** `"user".id` of whoever asked. */
-  readonly requestedBy: string;
+  /**
+   * `"user".id` of whoever asked, or `null` for a control nobody asked for — a live-run limit or
+   * a workspace pause (DI.4, [#1312](https://github.com/NobuData/ouroboros/issues/1312)).
+   */
+  readonly requestedBy: string | null;
   /** How long it is worth delivering, in seconds. Added to the database's `now()`. */
   readonly ttlSeconds: number;
   /** The caller's key, or absent for the database's fresh one. */
@@ -197,6 +207,116 @@ export class ControlsRepository {
       .executeTakeFirstOrThrow();
 
     return row.seq;
+  }
+
+  /**
+   * Write a transcript entry in the system's name — why a control nobody asked for was queued
+   * (DI.4, #1312).
+   *
+   * @param writer - The transaction.
+   * @param runId - The run.
+   * @param body - The sentence the console prints.
+   * @param payload - The machine-readable half: the control and the reason code.
+   * @returns The entry's `seq`.
+   */
+  async appendSystemEntry(
+    writer: Writer,
+    runId: string,
+    body: string,
+    payload: Record<string, unknown>,
+  ): Promise<number> {
+    const row = await writer
+      .insertInto("run_events")
+      .values({ run_id: runId, actor: "system", stage_key: null, attempt: null, body, payload })
+      .returning("seq")
+      .executeTakeFirstOrThrow();
+
+    return row.seq;
+  }
+
+  // --- live runs (DI.4, #1312) -------------------------------------------------------------
+
+  /**
+   * A workspace's live runs still executing — what a workspace pause reaches.
+   *
+   * @param organizationId - The workspace.
+   * @returns The run ids.
+   */
+  async liveActiveRuns(organizationId: string): Promise<string[]> {
+    const rows = await this.database.db
+      .selectFrom("runs")
+      .select("id")
+      .where("organization_id", "=", organizationId)
+      .where("origin", "=", "live")
+      .where("finished_at", "is", null)
+      .where("status", "in", ACTIVE_RUN_STATUSES)
+      .execute();
+
+    return rows.map((row) => row.id);
+  }
+
+  /**
+   * A workspace's live runs whose last pause-or-resume that took effect is a pause nobody asked
+   * for — the runs a workspace pause paused, and so the runs its resume resumes. A run a person
+   * paused stays paused.
+   *
+   * @param organizationId - The workspace.
+   * @returns The run ids.
+   */
+  async systemPausedRuns(organizationId: string): Promise<string[]> {
+    const rows = await this.database.db
+      .selectFrom("runs")
+      .select("runs.id")
+      .where("runs.organization_id", "=", organizationId)
+      .where("runs.origin", "=", "live")
+      .where("runs.finished_at", "is", null)
+      // The latest pause or resume that was not refused or left to expire. Raw, because the
+      // builder cannot use a correlated scalar subquery as a predicate; the schema is qualified
+      // through `sql.id`, since `WithSchemaPlugin` does not reach a raw fragment.
+      .where(
+        sql<boolean>`coalesce((
+          select c.kind = 'pause' and c.requested_by is null
+            from ${sql.id(SCHEMA_NAME)}.run_controls c
+           where c.run_id = ${sql.ref("runs.id")}
+             and c.kind in ('pause', 'resume')
+             and c.state not in ('rejected', 'expired')
+           order by c.requested_at desc, c.id desc
+           limit 1
+        ), false)`,
+      )
+      .execute();
+
+    return rows.map((row) => row.id);
+  }
+
+  /**
+   * Live runs past a limit, every workspace's — the limits sweeper's read.
+   *
+   * @param startedBefore - A run started before this has run past the wall-clock limit.
+   * @param quietSince - A run whose row has not moved since this has made no progress: every
+   *   event batch the engine reports raises the run's `event_hint`, which moves `updated_at`.
+   * @returns Each overdue run, with which limit it passed — the wall clock first.
+   */
+  async overdueLiveRuns(
+    startedBefore: Date,
+    quietSince: Date,
+  ): Promise<{ id: string; organizationId: string; limit: "wall_clock" | "no_progress" }[]> {
+    const rows = await this.database.db
+      .selectFrom("runs")
+      .select(["id", "organization_id", "started_at", "updated_at"])
+      .where("origin", "=", "live")
+      .where("finished_at", "is", null)
+      .where("status", "in", ACTIVE_RUN_STATUSES)
+      .where((eb) =>
+        eb.or([eb("started_at", "<", startedBefore), eb("updated_at", "<", quietSince)]),
+      )
+      .execute();
+
+    return rows.map((row) => ({
+      id: row.id,
+      organizationId: row.organization_id,
+      limit: row.started_at < startedBefore ? "wall_clock" : "no_progress",
+    }));
   }
 
   // --- controls ----------------------------------------------------------------------------

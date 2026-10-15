@@ -29,6 +29,7 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { BacklogQueueService } from "../backlog/queue.service";
 import { queueItemSummary, type QueueItemSummary } from "../dashboard/resources";
+import type { QueueItem } from "../db/schema";
 import { ConflictError } from "../errors/error.envelope";
 import { OrgPolicyService } from "../policies/org-policy.service";
 import { LaunchRepository, type MirroredPickRow } from "./launch.repository";
@@ -43,7 +44,7 @@ import { pickRequired, stepIncomplete } from "./onboarding.errors";
 import { OnboardingService, type OnboardingSnapshot } from "./onboarding.service";
 
 /** The queue write, as the launcher composes it (M.3, #112). */
-export type LaunchQueue = Pick<BacklogQueueService, "queueSelection">;
+export type LaunchQueue = Pick<BacklogQueueService, "queueSelection" | "summaries">;
 
 /** The dry-run policy, as the launcher confirms it (BA.3, #382). */
 export type LaunchPolicies = Pick<OrgPolicyService, "read">;
@@ -171,7 +172,7 @@ export class FirstRunLauncherService {
     const held = await this.launches.queueItem(organizationId, repositoryId, pick.number);
 
     if (held !== undefined) {
-      return queuedAs("already_queued", queueItemSummary(held));
+      return queuedAs("already_queued", await this.summary(organizationId, held));
     }
 
     const run = await this.launches.latestRun(organizationId, repositoryId, pick.number);
@@ -204,8 +205,21 @@ export class FirstRunLauncherService {
         throw error;
       }
 
-      return queuedAs("already_queued", queueItemSummary(raced));
+      return queuedAs("already_queued", await this.summary(organizationId, raced));
     }
+  }
+
+  /**
+   * One queue item as the receipt publishes it, with why it is waiting (#1312).
+   *
+   * @param organizationId - The workspace.
+   * @param row - The row.
+   * @returns The summary.
+   */
+  private async summary(organizationId: string, row: QueueItem): Promise<QueueItemSummary> {
+    const [summary] = await this.queue.summaries(organizationId, [row]);
+
+    return summary ?? queueItemSummary(row, null);
   }
 }
 

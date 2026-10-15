@@ -34,9 +34,9 @@
 
 import { Body, Controller, Post } from "@nestjs/common";
 
-import type { Organization } from "../db/schema";
 import { CONTRIBUTORS, Roles } from "../tenancy/roles.guard";
-import { CurrentTenant } from "../tenancy/tenant.decorators";
+import { currentService, currentUser, type ActiveMembership } from "../tenancy/tenant.context";
+import { CurrentMember } from "../tenancy/tenant.decorators";
 import { QueueSelectionBody } from "./queue.dto";
 import type { QueuedSelection } from "./queue.resources";
 import { BacklogQueueService } from "./queue.service";
@@ -54,10 +54,14 @@ export class BacklogQueueController {
    * accept for later — a queue write is a transaction, not an engine call, so a `202` would be
    * promising work that has in fact already happened.
    *
-   * @param tenant - The workspace, established by the tenant guard.
+   * A person holding `can_approve_loops` confirms their rows for a live run as they queue them
+   * while the deployment runs live loops (DI.4, #1312); anyone else's — a service account's
+   * included — wait as `needs_confirmation`.
+   *
+   * @param member - The membership, established by the tenant guard.
    * @param body - The issue ids in the order to append them, and the workflow they all run
    *   under when one is named.
-   * @returns The created queue items and their combined estimate.
+   * @returns The created queue items, each with why it is waiting, and their combined estimate.
    * @throws {NotFoundError} `queue_issues_not_found` — an id names no issue in this workspace.
    * @throws {InvalidRequestError} `queue_issues_not_queueable` — an issue is not `sized`.
    * @throws {ConflictError} `queue_issues_conflict` — an issue is already queued.
@@ -65,9 +69,15 @@ export class BacklogQueueController {
   @Post("queue")
   @Roles(...CONTRIBUTORS)
   queueSelection(
-    @CurrentTenant() tenant: Organization,
+    @CurrentMember() member: ActiveMembership,
     @Body() body: QueueSelectionBody,
   ): Promise<QueuedSelection> {
-    return this.queue.queueSelection(tenant.id, body);
+    const user = currentUser();
+    const caller =
+      user === undefined || currentService() !== undefined
+        ? undefined
+        : { userId: user.id, roles: member.roles };
+
+    return this.queue.queueSelection(member.tenant.id, body, undefined, caller);
   }
 }

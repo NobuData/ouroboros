@@ -57,6 +57,7 @@
  * value the *Repository* select sets, so a client can narrow from a row it is looking at.
  */
 
+import type { QueueWaiting } from "../admission/admission";
 import type { EstimateEffort, GithubIssueState, SizingStatus } from "../db/schema";
 import type { BacklogListRow } from "./listing.repository";
 import type { Page } from "../tenancy/pagination";
@@ -111,6 +112,12 @@ export interface BacklogRow {
    * it up* is the more recent fact about an issue that has been both sized and queued.
    */
   readonly queued: boolean;
+  /**
+   * Why the queued issue is not starting a live run, or `null` when it is not queued, would be
+   * admitted now, or a worker holds it (DI.4, [#1312](https://github.com/NobuData/ouroboros/issues/1312)).
+   * The same reason `GET /api/v1/queue` gives for the item.
+   */
+  readonly queueWaiting: QueueWaiting | null;
   /** `github_repos.id` — what `?repo=` takes, so a row can narrow the listing it came from. */
   readonly githubRepoId: string;
   /** `owner/name`, as GitHub spells it. See this file's header on why a row carries it. */
@@ -201,7 +208,11 @@ export interface BacklogListing extends Page<BacklogRow> {
  *   table, and a column here would be a copy of it that goes stale.
  * @returns The row, JSON-safe.
  */
-export function backlogRow(row: BacklogListRow, queued: boolean): BacklogRow {
+export function backlogRow(
+  row: BacklogListRow,
+  queued: boolean,
+  queueWaiting: QueueWaiting | null = null,
+): BacklogRow {
   return {
     id: row.id,
     number: row.number,
@@ -210,6 +221,7 @@ export function backlogRow(row: BacklogListRow, queued: boolean): BacklogRow {
     state: row.state,
     sizingStatus: row.sizingStatus,
     queued,
+    queueWaiting,
     githubRepoId: row.githubRepoId,
     repository: row.repository,
     estimate: estimateOf(row),

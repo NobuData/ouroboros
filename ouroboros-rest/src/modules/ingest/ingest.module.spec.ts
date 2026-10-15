@@ -81,6 +81,7 @@ describe("the ingestion module", () => {
       "GatesModule",
       "LifecycleStateModule",
       "DecisionsModule",
+      "AdmissionModule",
     ]);
   });
 });

@@ -50,6 +50,7 @@ import { ResearchToolsModule } from "../research/tools/research-tools.module";
 import { RoutingModule } from "../routing/routing.module";
 import { LifecycleModule } from "../lifecycle/lifecycle.module";
 import { LoopModule } from "../loop/loop.module";
+import { AdmissionModule } from "../admission/admission.module";
 import { MembersModule } from "../members/members.module";
 import { ServiceAccountsModule } from "../service-accounts/service-accounts.module";
 import { WebhooksModule } from "../webhooks/webhooks.module";
@@ -513,6 +514,11 @@ export class AppModule {
         // report under `/api/v1/loop/capabilities`. It reads the engine's status, the dry-run
         // policy and the workspace's connections and runners; nothing else claims the prefix.
         LoopModule,
+        // DI.4 ([#1312](https://github.com/NobuData/ouroboros/issues/1312)) — live-run admission:
+        // `POST /api/v1/queue/{id}/confirm` beside `QueueModule`'s read, and
+        // `/api/v1/settings/live-execution`. The claim, the queue, the dashboard and the backlog
+        // import it for the one evaluator they share.
+        AdmissionModule,
         // BI.4 ([#435](https://github.com/NobuData/ouroboros/issues/435)) — estimator calibration
         // under `/api/v1/insights/calibration`. `PullRequestsModule` imports it for the merge
         // observer that grades each merged loop; nothing else claims the prefix.

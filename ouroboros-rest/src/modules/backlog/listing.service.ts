@@ -29,16 +29,15 @@
  *     is about when a poll *ran*.
  */
 
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 
+import type { QueueWaiting } from "../admission/admission";
+import { AdmissionService } from "../admission/admission.service";
+import type { QueueItem } from "../db/schema";
 import { pageOf, windowOf, type PageWindow } from "../tenancy/pagination";
 import { DEFAULT_BACKLOG_SORT, DEFAULT_BACKLOG_STATE, type ListBacklogQuery } from "./listing.dto";
 import { backlogRow, type BacklogListing } from "./listing.resources";
-import {
-  BacklogListingRepository,
-  type BacklogFilter,
-  type QueuedIssueKey,
-} from "./listing.repository";
+import { BacklogListingRepository, type BacklogFilter } from "./listing.repository";
 import { SyncStatusService } from "./sync-status.service";
 
 @Injectable()
@@ -46,10 +45,12 @@ export class BacklogListingService {
   /**
    * @param backlog - The four statements.
    * @param sync - Where the freshness tag's instant comes from.
+   * @param admission - Why each queued issue is waiting (DI.4, #1312).
    */
   constructor(
     private readonly backlog: BacklogListingRepository,
     private readonly sync: SyncStatusService,
+    @Inject(AdmissionService) private readonly admission: Pick<AdmissionService, "waiting">,
   ) {}
 
   /**
@@ -74,11 +75,15 @@ export class BacklogListingService {
       this.sync.status(organizationId),
     ]);
 
-    const inQueue = queuedKeys(queued);
+    const inQueue = await this.queuedKeys(organizationId, queued);
 
     return {
       ...pageOf(
-        rows.map((row) => backlogRow(row, inQueue.has(queueKey(row)))),
+        rows.map((row) => {
+          const key = queueKey(row);
+
+          return backlogRow(row, inQueue.has(key), inQueue.get(key) ?? null);
+        }),
         counts.total,
         window,
       ),
@@ -90,17 +95,30 @@ export class BacklogListingService {
       labelFacets,
     };
   }
-}
 
-/**
- * The queue's rows, as a set the mapping can ask one question of.
- *
- * @param queued - Every queued issue of the workspace, or of the repository when one narrows
- *   the listing.
- * @returns The keys, so deciding one row's pill is a lookup rather than a scan of the queue.
- */
-function queuedKeys(queued: readonly QueuedIssueKey[]): Set<string> {
-  return new Set(queued.map(queueKey));
+  /**
+   * The queue's rows, as a map the mapping can ask one question of — whether a row is queued,
+   * and why it is waiting.
+   *
+   * @param organizationId - The workspace.
+   * @param queued - Every queued row of the workspace, or of the repository when one narrows
+   *   the listing.
+   * @returns Why each is waiting, by queue key — so deciding one row's pill is a lookup rather
+   *   than a scan of the queue.
+   */
+  private async queuedKeys(
+    organizationId: string,
+    queued: readonly QueueItem[],
+  ): Promise<Map<string, QueueWaiting | null>> {
+    const waiting = await this.admission.waiting(organizationId, queued);
+
+    return new Map(
+      queued.map((item) => [
+        queueKey({ githubRepoId: item.github_repo_id, number: item.issue_number }),
+        waiting.get(item.id) ?? null,
+      ]),
+    );
+  }
 }
 
 /**

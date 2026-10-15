@@ -307,7 +307,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 20 | **DI.4** | [#1312](https://github.com/NobuData/ouroboros/issues/1312) | Live-run admission — dry-run required, pause honoured, concurrency ceiling | ouroboros-rest, ouroboros-ui, ouroboros-docs | M | DG.2 |
+| 20 | **DI.4** | ✅ [#1312](https://github.com/NobuData/ouroboros/issues/1312) | Live-run admission — dry-run required, pause honoured, concurrency ceiling | ouroboros-rest, ouroboros-ui, ouroboros-docs | M | DG.2 |
 | 21 | **DI.1** | [#1307](https://github.com/NobuData/ouroboros/issues/1307) | Run workspace — a writable working tree per run | ouroboros-engine, ouroboros-docs | M | — |
 | 22 | **J.3** | ✅ [#91](https://github.com/NobuData/ouroboros/issues/91) | Engine→read-model ingestion bridge | ouroboros-engine, ouroboros-rest | L | 6.5, DI.4 |
 | 23 | **T.6** | [#160](https://github.com/NobuData/ouroboros/issues/160) | Workflow execution bridge | ouroboros-engine, ouroboros-rest | L | T.1, J.3, DH.1 |

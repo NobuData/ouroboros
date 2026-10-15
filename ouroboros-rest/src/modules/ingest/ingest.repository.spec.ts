@@ -285,20 +285,7 @@ describe("the ingestion repository", () => {
   });
 
   describe("the queue (#91)", () => {
-    const NOW = new Date("2026-10-15T14:25:00.000Z");
     const ITEM = "5eed0008-0000-4000-8000-000000000001";
-
-    it("claims the lowest-positioned item nobody holds, skipping rows another worker has locked", async () => {
-      await runs.claimableHead(database.service.db, WORKSPACE, NOW);
-
-      const sql = only();
-      expect(sql).toContain('from "ouroboros"."queue_items"');
-      expect(sql).toContain('"claim_expires_at" is null or "claim_expires_at" <= $');
-      expect(sql).toContain('order by "position"');
-      expect(sql).toContain("limit $");
-      expect(sql).toContain("for update skip locked");
-      expect(database.statements[0].parameters).toEqual([WORKSPACE, NOW, 1]);
-    });
 
     it("finds what a claim key leases within the workspace, locked", async () => {
       await runs.leasedBy(database.service.db, WORKSPACE, "worker-a-claim-1");

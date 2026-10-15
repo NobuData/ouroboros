@@ -4,12 +4,13 @@ import { useState } from "react";
 
 import type { BacklogIssueDetail, IssueDetail } from "@/app/api/backlog";
 import { requestSummaryRefresh } from "@/app/dashboard/summary-refresh";
+import { WaitingNotice } from "@/app/queue/waiting";
 import { useSecondsNow } from "@/app/shell/clock";
 import { Button, Card, CardHead, Chip, EmptyState, Tag } from "@/app/ui";
 
 import { offenderLine, queuedToast } from "./bar";
 import type { DetailPollOptions } from "./detail-poll";
-import { queueUnder, reestimateIssue } from "./head-actions";
+import { confirmForLive, queueUnder, reestimateIssue } from "./head-actions";
 import { HeadOutcomeLine } from "./head-outcome";
 import {
   CLOSE_PANEL_LABEL,
@@ -24,6 +25,8 @@ import {
   OPEN_ON_GITHUB_UNLINKED,
   PANEL_TITLE,
   type PanelState,
+  CONFIRM_LIVE_LABEL,
+  CONFIRM_LIVE_ROLE_REASON,
   QUEUE_ONE_LABEL,
   READING_ISSUE,
   REESTIMATE_ONE_LABEL,
@@ -306,7 +309,7 @@ function IssueActions({
   seen: SeenRowMap;
   mayContribute: boolean;
 }>) {
-  const [pending, setPending] = useState<"queue" | "estimate" | null>(null);
+  const [pending, setPending] = useState<"queue" | "estimate" | "confirm" | null>(null);
   const [report, setReport] = useState<{ state: PanelState; outcome: HeadOutcomeOrNull }>({
     state,
     outcome: null,
@@ -345,6 +348,22 @@ function IssueActions({
     }
   }
 
+  /** Confirm the queued issue for a live run (#1312). */
+  async function confirm(itemId: string): Promise<void> {
+    if (pending !== null) return;
+
+    setPending("confirm");
+    setReport({ state, outcome: null });
+
+    try {
+      const result = await confirmForLive(itemId);
+      setReport({ state, outcome: result });
+      if (result.ok) requestSummaryRefresh();
+    } finally {
+      setPending(null);
+    }
+  }
+
   /** Ask for a new version of this issue's estimate. */
   async function reestimate(): Promise<void> {
     if (pending !== null) return;
@@ -362,10 +381,26 @@ function IssueActions({
   }
 
   const href = githubHref(issue.ghUrl);
+  const { queueWaiting, queueItemId } = issue;
+  // Confirming is offered on the one reason it answers; every other reason is fixed elsewhere,
+  // and the notice above says where.
+  const confirmable = queueWaiting?.reason === "needs_confirmation" && queueItemId !== null;
 
   return (
     <>
+      {queueWaiting !== null && <WaitingNotice compact waiting={queueWaiting} />}
       <div className="issues-panel__actions">
+        {confirmable && (
+          <Button
+            aria-busy={pending === "confirm" || undefined}
+            onClick={() => void confirm(queueItemId)}
+            reason={mayContribute ? undefined : CONFIRM_LIVE_ROLE_REASON}
+            size="sm"
+            tone="primary"
+          >
+            {CONFIRM_LIVE_LABEL}
+          </Button>
+        )}
         <Button
           aria-busy={pending === "queue" || undefined}
           onClick={() => void queue()}

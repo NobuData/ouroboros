@@ -1,3 +1,4 @@
+import { admissionStub } from "../admission/admission.fixture";
 import type { QueueItem, Run } from "../db/schema";
 import { metricsAnswering, type MetricsStub } from "../insights/metrics/metrics.fixture";
 import type { MetricWindow } from "../insights/metrics/metrics.types";
@@ -84,6 +85,8 @@ const VERSION: DashboardVersion = {
   pullRequests: "40 2026-08-13T09:00:00.000Z",
   interventionEvents: "2 2026-08-13T09:00:00.000Z",
   metricRollups: "8 2026-08-13T09:00:00.000Z",
+  workspaceLifecycle: "active 2026-08-13T09:00:00.000Z",
+  orgPolicies: "1 2026-08-13T09:00:00.000Z",
 };
 
 const RUN: Run = {
@@ -140,6 +143,8 @@ const QUEUED: QueueItem = {
   claimed_by: null,
   claim_token: null,
   claim_key: null,
+  confirmed_at: null,
+  confirmed_by: null,
   position: 1,
   est_minutes: 45,
   enqueued_at: new Date("2026-08-13T01:37:41.000Z"),
@@ -199,7 +204,7 @@ function serviceOf(
   repository: DashboardRepository,
   metrics: MetricsStub = metricsAnswering(SEEDED_METRICS),
 ): DashboardService {
-  return new DashboardService(repository, metrics);
+  return new DashboardService(repository, metrics, admissionStub());
 }
 
 describe("the dashboard service", () => {
@@ -243,8 +248,10 @@ describe("the dashboard service", () => {
         "pullRequests",
         "interventionEvents",
         "metricRollups",
+        "workspaceLifecycle",
+        "orgPolicies",
       ] as const) {
-        const changed = await new DashboardService(
+        const changed = await serviceOf(
           repositoryAnswering({ version: { ...VERSION, [source]: "changed" } }),
           metricsAnswering(SEEDED_METRICS),
         ).etag(WORKSPACE, WINDOWS);
@@ -375,6 +382,18 @@ describe("the dashboard service", () => {
       ]);
       expect(payload.queueHead).toEqual([
         expect.objectContaining({ issueNumber: 485, effort: "m", estMinutes: 45 }),
+      ]);
+    });
+
+    it("says why each queued issue is waiting, as admission decides it (#1312)", async () => {
+      const payload = await new DashboardService(
+        repositoryAnswering(),
+        metricsAnswering(SEEDED_METRICS),
+        admissionStub({ waiting: { reason: "deployment_disabled", scope: "workspace" } }),
+      ).read(WORKSPACE, WINDOWS);
+
+      expect(payload.queueHead.map((item) => item.waiting)).toEqual([
+        { reason: "deployment_disabled", scope: "workspace" },
       ]);
     });
 

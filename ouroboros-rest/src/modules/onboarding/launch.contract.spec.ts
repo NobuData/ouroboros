@@ -87,6 +87,8 @@ function queueRow(): QueueItem {
     claimed_by: null,
     claim_token: null,
     claim_key: null,
+    confirmed_at: null,
+    confirmed_by: null,
     position: 1,
     est_minutes: 15,
     enqueued_at: at,
@@ -124,8 +126,10 @@ describe("the launch route and the document", () => {
           held = queueRow();
           wizard.queued.add(488);
 
-          return Promise.resolve({ items: [queueItemSummary(held)], estMinutes: 15 });
+          return Promise.resolve({ items: [queueItemSummary(held, null)], estMinutes: 15 });
         },
+        summaries: (_org: string, rows: readonly QueueItem[]) =>
+          Promise.resolve(rows.map((row) => queueItemSummary(row, null))),
       },
       { read: policyRead(options.dryRun ?? true) },
     );

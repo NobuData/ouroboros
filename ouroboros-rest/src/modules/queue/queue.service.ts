@@ -16,9 +16,10 @@
  *     `stats.queued.estMinutes` reports, which is the ticket's cannot-disagree criterion.
  */
 
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 
-import { queueItemSummary, type QueueItemSummary } from "../dashboard/resources";
+import { AdmissionService, type AdmissionSummaries } from "../admission/admission.service";
+import type { QueueItemSummary } from "../dashboard/resources";
 import { pageOf, windowOf, type Page } from "../tenancy/pagination";
 import type { ListQueueQuery } from "./queue.dto";
 import { QueueRepository } from "./queue.repository";
@@ -44,7 +45,14 @@ export interface QueuePage extends Page<QueueItemSummary> {
 
 @Injectable()
 export class QueueService {
-  constructor(private readonly queue: QueueRepository) {}
+  /**
+   * @param queue - The queue's statements.
+   * @param admission - Why each item is waiting (DI.4, #1312).
+   */
+  constructor(
+    private readonly queue: QueueRepository,
+    @Inject(AdmissionService) private readonly admission: AdmissionSummaries,
+  ) {}
 
   /**
    * One page of the workspace's queue, in queue order.
@@ -67,11 +75,7 @@ export class QueueService {
     ]);
 
     return {
-      ...pageOf(
-        rows.map((row) => queueItemSummary(row)),
-        totals.count,
-        window,
-      ),
+      ...pageOf(await this.admission.summaries(organizationId, rows), totals.count, window),
       totalEstMinutes: totals.estMinutes,
     };
   }

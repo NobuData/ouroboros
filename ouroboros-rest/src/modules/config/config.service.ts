@@ -598,6 +598,21 @@ export class AppConfigService {
     return this.config.getOrThrow<number>("queueClaimLeaseSeconds");
   }
 
+  /** The most live runs a workspace's ceiling may allow — `OURO_LIVE_RUN_CEILING_MAX` (#1312). */
+  get liveRunCeilingMax(): number {
+    return this.config.getOrThrow<number>("liveRunCeilingMax");
+  }
+
+  /** Minutes a live run may execute — `OURO_LIVE_RUN_WALL_CLOCK_MINUTES` (#1312). */
+  get liveRunWallClockMinutes(): number {
+    return this.config.getOrThrow<number>("liveRunWallClockMinutes");
+  }
+
+  /** Minutes a live run may go without an event — `OURO_LIVE_RUN_NO_PROGRESS_MINUTES` (#1312). */
+  get liveRunNoProgressMinutes(): number {
+    return this.config.getOrThrow<number>("liveRunNoProgressMinutes");
+  }
+
   /**
    * The managed key pool's trial credit, in cents — `OURO_MANAGED_KEY_TRIAL_CENTS`. `undefined`
    * when unset: the wizard's managed row then names no figure.
@@ -734,6 +749,9 @@ export class AppConfigService {
       managedKeyPool: this.managedKeyPool,
       liveExecutionEnabled: this.liveExecutionEnabled,
       queueClaimLeaseSeconds: this.queueClaimLeaseSeconds,
+      liveRunCeilingMax: this.liveRunCeilingMax,
+      liveRunWallClockMinutes: this.liveRunWallClockMinutes,
+      liveRunNoProgressMinutes: this.liveRunNoProgressMinutes,
       managedKeyTrialCents: this.managedKeyTrialCents,
       hostedRunnerPool: this.hostedRunnerPool,
       dataRegion: this.dataRegion,

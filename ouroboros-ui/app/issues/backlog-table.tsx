@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { BacklogListing, SyncStatus } from "@/app/api/backlog";
 import type { Reading } from "@/app/api/reading";
 import type { PollSnapshot } from "@/app/poll";
+import { WaitingChip, WaitingNotice } from "@/app/queue/waiting";
 import {
   Card,
   CardHead,
@@ -17,7 +18,11 @@ import {
   Tag,
 } from "@/app/ui";
 
-import { type BacklogPage, type BacklogPollOptions, backlogUrl } from "./backlog-poll";
+import {
+  type BacklogPage,
+  type BacklogPollOptions,
+  backlogUrl,
+} from "./backlog-poll";
 import { type BacklogFilter, isFiltered } from "./filter";
 import { FreshnessTag } from "./freshness-tag";
 import { Guidance } from "./guidance";
@@ -45,6 +50,7 @@ import {
   coverage,
   selectLabel,
   statusChanges,
+  sharedQueueWaiting,
   tableRows,
 } from "./table";
 import { useBacklogPoll } from "./use-backlog-poll";
@@ -155,7 +161,10 @@ export function BacklogTable({
   const status = snapshot.data?.sync ?? sync;
   const statusReadAt = snapshot.updatedAt ?? readAt;
   const running = status.ok && status.value.running;
-  const rows = useMemo(() => (shown === null ? [] : tableRows(shown.items)), [shown]);
+  const rows = useMemo(
+    () => (shown === null ? [] : tableRows(shown.items)),
+    [shown],
+  );
 
   /**
    * Which pills have changed since they were first drawn. Adjusted during render, guarded on
@@ -170,7 +179,8 @@ export function BacklogTable({
     setChanges({ rows, ...statusChanges(changes.seen, rows, changes.swapped) });
   }
 
-  const { ids, toggle, select, deselect, detail, inspect, seen } = useIssueSelection();
+  const { ids, toggle, select, deselect, detail, inspect, seen } =
+    useIssueSelection();
   const [current, setCurrent] = useState<string | null>(null);
 
   // The rows are a fact the poll delivers, and the store is the bar's; publishing after the
@@ -202,9 +212,21 @@ export function BacklogTable({
     else select(visible);
   }, [cover, visible, select, deselect]);
 
+  // A workspace reason every queued row shares is said once, above the table (#1312).
+  const sharedWaiting = sharedQueueWaiting(rows);
+  const showWaiting = sharedWaiting === null;
+
   const columns = useMemo(
-    () => tableColumns(cover, toggleAll, toggle, checked, changes.swapped),
-    [cover, toggleAll, toggle, checked, changes.swapped],
+    () =>
+      tableColumns(
+        cover,
+        toggleAll,
+        toggle,
+        checked,
+        changes.swapped,
+        showWaiting,
+      ),
+    [cover, toggleAll, toggle, checked, changes.swapped, showWaiting],
   );
 
   const [pending, setPending] = useState(false);
@@ -245,7 +267,10 @@ export function BacklogTable({
   const paging =
     shown === null
       ? null
-      : pagination({ shown: rows.length, total: shown.total, offset: shown.offset }, page);
+      : pagination(
+          { shown: rows.length, total: shown.total, offset: shown.offset },
+          page,
+        );
 
   /**
    * What the card draws instead of rows: `undefined` while it draws rows, `null` for a page
@@ -259,7 +284,9 @@ export function BacklogTable({
         : guidanceKind(shown, isFiltered(filter), status);
 
   const banner =
-    shown === null ? null : syncBanner(status, empty ?? null, shown.meta.openCount);
+    shown === null
+      ? null
+      : syncBanner(status, empty ?? null, shown.meta.openCount);
 
   return (
     <Card aria-labelledby={TITLE_ID} as="section">
@@ -293,19 +320,33 @@ export function BacklogTable({
       )}
 
       {shown === null ? (
-        <EmptyState note={listing.ok ? undefined : listing.reason} title={BACKLOG_UNREAD} />
-      ) : empty !== undefined ? (
-        <Guidance kind={empty} mayAdminister={mayAdminister} workspaceSlug={workspaceSlug} />
-      ) : (
-        <Table
-          caption={TABLE_CAPTION}
-          captionHidden
-          columns={columns}
-          rowClassName={(row) => row.id === detail && "issues-table__row--inspected"}
-          rowKey={(row) => row.id}
-          rows={rows}
-          selection={selection}
+        <EmptyState
+          note={listing.ok ? undefined : listing.reason}
+          title={BACKLOG_UNREAD}
         />
+      ) : empty !== undefined ? (
+        <Guidance
+          kind={empty}
+          mayAdminister={mayAdminister}
+          workspaceSlug={workspaceSlug}
+        />
+      ) : (
+        <>
+          {sharedWaiting !== null && (
+            <WaitingNotice compact waiting={sharedWaiting} />
+          )}
+          <Table
+            caption={TABLE_CAPTION}
+            captionHidden
+            columns={columns}
+            rowClassName={(row) =>
+              row.id === detail && "issues-table__row--inspected"
+            }
+            rowKey={(row) => row.id}
+            rows={rows}
+            selection={selection}
+          />
+        </>
       )}
 
       {snapshot.error !== null && (
@@ -335,6 +376,7 @@ const TITLE_ID = "backlog-table-title";
  * @param toggle What a row's box does.
  * @param checked Which rows are checked.
  * @param swapped Which rows have been seen to change status — the pills to animate.
+ * @param showWaiting Whether a queued row says why it waits — not when the table already has.
  * @returns The columns.
  */
 function tableColumns(
@@ -343,6 +385,7 @@ function tableColumns(
   toggle: (id: string) => void,
   checked: ReadonlySet<string>,
   swapped: ReadonlySet<string>,
+  showWaiting: boolean,
 ): readonly Column<TableRow>[] {
   return [
     {
@@ -445,6 +488,9 @@ function tableColumns(
           data-swapped={swapped.has(row.id) ? "" : undefined}
         >
           <Chip tone={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</Chip>
+          {showWaiting && row.waiting !== null && (
+            <WaitingChip waiting={row.waiting} />
+          )}
         </span>
       ),
     },

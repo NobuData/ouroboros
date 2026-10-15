@@ -157,6 +157,13 @@ the audit log.
 Leave dry-run on until you trust the rules. Then, before turning it off, check that **Auto-merge
 when all gates green** matches only work you are happy to see merge unread.
 
+**Live execution requires dry-run.** In this version a live run may only open a draft pull
+request. A queued issue starts only while its repository is in dry-run, either through this
+switch or **Dry-run mode for new repos**. Otherwise it waits as **Not in dry-run**. Turning
+dry-run off stops new live runs from starting. It does not turn a running loop's draft into
+a merge: the merge is checked again when it would happen. See
+[Live execution](./live-execution.mdx).
+
 ## Exceptions and allow-once
 
 A protected path is the one rule a person can make an exception to, one file at a time. In the

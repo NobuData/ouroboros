@@ -167,6 +167,9 @@ Build jobs upload their artifacts — test reports, captures, logs — to the RE
 | <EnvVar name="OURO_RESEARCH_SEARXNG_URL" /> | `http://searxng:8080` | The `searxng` service's internal address, where research investigations search by default. The page reader's limits are on [Research tools](../research.mdx). |
 | <EnvVar name="OURO_LIVE_EXECUTION_ENABLED" /> | `false` | Whether this deployment may run the loop for real — call models, edit code, open pull requests. Leave it `false` until every stage you need reports ready: `GET /api/v1/loop/capabilities` lists each stage and, when one is not live, a reason. Off, execution stays unavailable whatever else is ready, and the engine cannot take an issue from any workspace's queue, so an upgrade never starts executing on its own. |
 | <EnvVar name="OURO_QUEUE_CLAIM_LEASE_SECONDS" /> | `300` | How long the engine holds a queued issue it has taken before the issue is available again, in seconds (30–3600). Opening the run removes the issue from the queue; if the engine stops in between, the issue goes back at the end of this window. |
+| <EnvVar name="OURO_LIVE_RUN_CEILING_MAX" /> | `4` | The most live runs any workspace may run at once (1–100). Each workspace runs one at a time until an owner or admin raises its own ceiling — see [Live execution](../live-execution.mdx#limits). |
+| <EnvVar name="OURO_LIVE_RUN_WALL_CLOCK_MINUTES" /> | `120` | How long a live run may go on before it is aborted, in minutes (5–1440). The branch is kept. |
+| <EnvVar name="OURO_LIVE_RUN_NO_PROGRESS_MINUTES" /> | `15` | How long a live run may go without reporting anything before it is aborted as stalled, in minutes (2–360). The branch is kept. |
 
 Everything else — poll intervals, sweeps, retention, budgets — has a working default. The
 [Configuration reference](../configuration/index.mdx) lists them all.

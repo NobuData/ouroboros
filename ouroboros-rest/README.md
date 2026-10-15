@@ -6882,12 +6882,14 @@ narrowed by its DG.1 amendment). Two calls on the internal surface, so a worker 
 between them loses nothing:
 
 ```
-engine ── POST /internal/queue/claim {workspace, worker, idempotencyKey}
+engine ── POST /internal/queue/claim {workspace, worker, idempotencyKey, executors?}
             admission: OURO_LIVE_EXECUTION_ENABLED off → 409 deployment_disabled
                        workspace not active (#489)   → 409 workspace_paused | workspace_pending_delete
-            head: lowest position nobody holds, `for update skip locked`
+                       no stage executor             → 409 no_executor
+                       live runs + leases ≥ ceiling  → 409 concurrency_ceiling   (advisory lock)
+            next: in position order, `for update skip locked`, the first item admission admits
               → 200 {id, claimToken, expiresAt, repository, issueNumber, workflow, ticket, …}
-              → 204 nothing claimable
+              → 204 nothing admissible
 engine ── POST /internal/runs {…, queueItem: {id, claimToken}}
             lease still held and the item is this run → open the run, remove the item,
                                                           close the gap, runs.queue_item_id
@@ -6903,9 +6905,22 @@ engine ── POST /internal/runs {…, queueItem: {id, claimToken}}
 - **Idempotent by the lease** (`queue_items.claim_key`, V145). A claim has no run yet, so
   `run_ingest_receipts` cannot hold its key; a claim replayed with the same key answers the
   item that key already leases instead of taking another.
-- **Admission is decided in the claim and nowhere else.** The deployment switch (DG.2) and the
-  workspace's pause (#489) today; DI.4 ([#1312](https://github.com/NobuData/ouroboros/issues/1312))
-  adds the dry-run policy, the confirmation and the concurrency ceiling in the same place.
+- **Admission is decided in the claim and nowhere else** — `src/modules/admission/`, DI.4
+  ([#1312](https://github.com/NobuData/ouroboros/issues/1312)). Workspace reasons refuse the
+  claim: the deployment switch (DG.2), the workspace's pause (#489), an engine with no executor,
+  and the concurrency ceiling (`workspace_settings.live_run_ceiling`, one by default, at most
+  `OURO_LIVE_RUN_CEILING_MAX`), held under a per-workspace advisory lock so two workers never
+  share the last slot. Item reasons skip the item and take the next: repository disabled, its
+  repository not in dry-run (decision L7), its pin unpublished, a route it inherits resolving to
+  no invocable connection (DH.4), and no confirmation by a member holding `can_approve_loops`
+  (`queue_items.confirmed_at`, V146; decision L5). The same evaluator gives `GET /api/v1/queue`,
+  the dashboard and the backlog their `waiting` reason, so the reason shown is the one acted on.
+  `POST /api/v1/queue/{id}/confirm` confirms; `GET`/`PATCH /api/v1/settings/live-execution`
+  reads and sets the ceiling.
+- **Limits per live run.** `LiveLimitsSweeper` (`src/modules/controls/`) aborts, through the
+  control queue and with the branch kept, a live run past `OURO_LIVE_RUN_WALL_CLOCK_MINUTES` or
+  silent for `OURO_LIVE_RUN_NO_PROGRESS_MINUTES`. Pausing a workspace sends its running live
+  runs a `pause` control; resuming resumes the ones that pause paused.
 - **Spend by stage.** A resources report's `spend` may carry `stage` and `attempt`, stored on
   `token_usage.stage` / `attempt` (V139's columns), so a run's spend reads per stage.
 

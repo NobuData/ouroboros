@@ -441,16 +441,16 @@ describe("the backlog listing repository", () => {
       expect(sql).not.toContain("github_issues");
     });
 
-    it("reads the repository as well as the number, so a pill names one row", async () => {
+    it("reads whole rows, so admission can say why each is waiting (#1312)", async () => {
       // `queue_items` is unique on `(organization_id, issue_number)` and so holds one `#485`
       // per workspace however many repositories number one. V009 says `github_repo_id` is what
-      // disambiguates them **for display**, which is exactly what this read is for.
+      // disambiguates them **for display** — the row carries it, and since DI.4 the pin and the
+      // confirmation the waiting reason is decided from.
       await backlog.queuedIssues(WORKSPACE);
 
       const [{ sql }] = database.statements;
 
-      expect(sql).toContain("github_repo_id");
-      expect(sql).toContain("issue_number");
+      expect(sql).toContain("select *");
     });
 
     it("answers the keys, as the mapping asks about them", async () => {

@@ -51,6 +51,7 @@ const PLANNED_PAGES: Record<string, number> = {
   "administration/providers.mdx": 1195,
   "administration/build-farm.mdx": 1196,
   "administration/policies.mdx": 1197,
+  "administration/live-execution.mdx": 1312,
   "administration/notifications-and-webhooks.mdx": 1198,
   "administration/retention-audit-lifecycle.mdx": 1199,
   "administration/operations.mdx": 1200,

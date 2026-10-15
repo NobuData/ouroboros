@@ -48,27 +48,27 @@ export const OPERATIONS_DOCS = `${DOCS_URL}administration/operations`;
 export const DRY_RUN_AND_LIVE_DOCS = `${DOCS_URL}user-guide/concepts#dry-run-and-live`;
 
 /** How to enable live execution — the deployment's own switch. */
-const HOW_TO_ENABLE: CapabilityFix = {
+export const HOW_TO_ENABLE: CapabilityFix = {
   label: "How to enable",
   href: LIVE_EXECUTION_DOCS,
   external: true,
 };
 
 /** The engine's health, on the operations page. */
-const ENGINE_HEALTH: CapabilityFix = {
+export const ENGINE_HEALTH: CapabilityFix = {
   label: "Check the engine",
   href: OPERATIONS_DOCS,
   external: true,
 };
 
 /** Providers — where a connection is added. */
-const PROVIDERS: CapabilityFix = { label: "Providers →", href: PROVIDERS_PATH, external: false };
+export const PROVIDERS: CapabilityFix = { label: "Providers →", href: PROVIDERS_PATH, external: false };
 
 /** Build Farm — where runners are seen and enrolled. */
 const BUILD_FARM: CapabilityFix = { label: "Build Farm →", href: BUILD_FARM_PATH, external: false };
 
 /** Policies — where the dry-run policy is set. */
-const POLICIES: CapabilityFix = { label: "Policies →", href: POLICIES_PATH, external: false };
+export const POLICIES: CapabilityFix = { label: "Policies →", href: POLICIES_PATH, external: false };
 
 /** What this version has built, for a stage it has not. */
 const WHAT_IS_BUILT: CapabilityFix = {

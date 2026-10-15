@@ -25,16 +25,23 @@
  * and nothing is shared but the definition.
  */
 
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 
+import { AdmissionService } from "../admission/admission.service";
 import { issueNotFound } from "../estimation/estimation.errors";
-import { BacklogDetailRepository } from "./detail.repository";
-import { issueDetail, type IssueDetail } from "./detail.resources";
+import { BacklogDetailRepository, type IssueDetailRow } from "./detail.repository";
+import { issueDetail, NOT_QUEUED, type DetailQueue, type IssueDetail } from "./detail.resources";
 
 @Injectable()
 export class BacklogDetailService {
-  /** @param detail - The two statements. */
-  constructor(private readonly detail: BacklogDetailRepository) {}
+  /**
+   * @param detail - The statements.
+   * @param admission - Why a queued issue is waiting (DI.4, #1312).
+   */
+  constructor(
+    private readonly detail: BacklogDetailRepository,
+    @Inject(AdmissionService) private readonly admission: Pick<AdmissionService, "waiting">,
+  ) {}
 
   /**
    * One issue of this workspace, as the side panel reads it.
@@ -58,6 +65,28 @@ export class BacklogDetailService {
       throw issueNotFound(issueId);
     }
 
-    return issueDetail(issue, estimates);
+    return issueDetail(issue, estimates, await this.queueOf(organizationId, issue));
+  }
+
+  /**
+   * The issue's queue item and why it is waiting — read only for a queued issue.
+   *
+   * @param organizationId - The workspace.
+   * @param issue - The issue.
+   * @returns The item id and reason, or {@link NOT_QUEUED}.
+   */
+  private async queueOf(organizationId: string, issue: IssueDetailRow): Promise<DetailQueue> {
+    if (!issue.queued) {
+      return NOT_QUEUED;
+    }
+
+    const item = await this.detail.queueItem(organizationId, issue.githubRepoId, issue.number);
+    if (item === undefined) {
+      return NOT_QUEUED;
+    }
+
+    const waiting = await this.admission.waiting(organizationId, [item]);
+
+    return { itemId: item.id, waiting: waiting.get(item.id) ?? null };
   }
 }

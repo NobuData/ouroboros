@@ -1,3 +1,4 @@
+import { admissionStub, queueItemRow } from "../admission/admission.fixture";
 import type { SyncStatusResource } from "./sync.resources";
 import { DEFAULT_BACKLOG_SORT, DEFAULT_BACKLOG_STATE, type ListBacklogQuery } from "./listing.dto";
 import type { BacklogListRow, BacklogListingRepository } from "./listing.repository";
@@ -63,7 +64,7 @@ describe("the backlog listing service", () => {
       status: jest.fn().mockResolvedValue(STATUS),
     } as unknown as jest.Mocked<SyncStatusService>;
 
-    listing = new BacklogListingService(backlog, sync);
+    listing = new BacklogListingService(backlog, sync, admissionStub());
   });
 
   describe("the defaults", () => {
@@ -197,7 +198,7 @@ describe("the backlog listing service", () => {
 
     it("is true for one it does, without touching the sizing status", async () => {
       backlog.queuedIssues.mockResolvedValue([
-        { githubRepoId: ROW.githubRepoId, number: ROW.number },
+        queueItemRow({ github_repo_id: ROW.githubRepoId, issue_number: ROW.number }),
       ]);
 
       const [row] = (await listing.list(WORKSPACE, {})).items;
@@ -211,7 +212,10 @@ describe("the backlog listing service", () => {
       // per workspace however many repositories number one — V009's deliberate over-reach. For
       // display that key is too wide, which is why the match carries the repository too.
       backlog.queuedIssues.mockResolvedValue([
-        { githubRepoId: "0f0f0f0f-0000-4000-8000-000000000001", number: ROW.number },
+        queueItemRow({
+          github_repo_id: "0f0f0f0f-0000-4000-8000-000000000001",
+          issue_number: ROW.number,
+        }),
       ]);
 
       const [row] = (await listing.list(WORKSPACE, {})).items;

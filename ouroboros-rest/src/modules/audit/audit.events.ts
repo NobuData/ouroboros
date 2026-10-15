@@ -87,7 +87,8 @@ export type AuditSubjectType =
   | "chat_command"
   | "chat_channel"
   | "on_call_assignment"
-  | "ticket_source";
+  | "ticket_source"
+  | "queue_item";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -736,6 +737,19 @@ export const CHAT_ON_CALL_CHANGED_EVENT = "chat.on_call_changed";
 export const TICKET_SOURCE_REMOVED_EVENT = "ticket_source.removed";
 
 /**
+ * A member holding `can_approve_loops` confirmed a queued issue for a live run (DI.4, #1312).
+ * Subject `queue_item`. The detail is flat: `repository` (`github_repos.id`), `issueNumber` and
+ * `workflow`. Written once — confirming an item already confirmed writes nothing.
+ */
+export const QUEUE_ITEM_CONFIRMED_EVENT = "queue_item.confirmed";
+
+/**
+ * An administrator changed how many live runs the workspace may execute at once (DI.4, #1312).
+ * Subject `workspace`. The detail is flat: `before` and `after`.
+ */
+export const WORKSPACE_LIVE_CEILING_CHANGED_EVENT = "workspace.live_ceiling_changed";
+
+/**
  * An owner or admin queued the Slack connection's dead-lettered messages again (CA.5, #545).
  * Subject `chat_connection`. The detail is flat: `messages`, how many were queued, and `routes`,
  * the kinds of the routes they belong to, comma-joined. Not written when there was nothing to retry.
@@ -852,6 +866,8 @@ export const AUDIT_ACTIONS = [
   CHAT_ON_CALL_CHANGED_EVENT,
   CHAT_DELIVERY_RETRIED_EVENT,
   TICKET_SOURCE_REMOVED_EVENT,
+  QUEUE_ITEM_CONFIRMED_EVENT,
+  WORKSPACE_LIVE_CEILING_CHANGED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

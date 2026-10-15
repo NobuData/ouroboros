@@ -860,7 +860,12 @@ export interface paths {
          *     **Mutations are deliberately absent.** Reorder, remove and enqueue belong to the
          *     issues screen's roadmap (mockup 03), where the queue is managed rather than
          *     displayed; this operation reads. The omission is stated here so it reads as a
-         *     decision rather than an oversight.
+         *     decision rather than an oversight. The one exception is
+         *     `POST /api/v1/queue/{id}/confirm`, which confirms an item for a live run.
+         *
+         *     **Every item says why it is waiting** ([#1312](https://github.com/NobuData/ouroboros/issues/1312)):
+         *     `waiting` is the live-run admission reason the engine's claim would act on, or `null`
+         *     when the item would be taken now.
          *
          *     **The workspace is the session's**, exactly as the dashboard's: no workspace in this
          *     path, the session's active organization or `X-Ouro-Tenant` decides, and membership
@@ -869,6 +874,38 @@ export interface paths {
         get: operations["listQueue"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/queue/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm a queued issue for a live run
+         * @description **Confirm for live run** (DI.4, [#1312](https://github.com/NobuData/ouroboros/issues/1312);
+         *     decision L5) — make a queued item claimable by the engine. There is no automatic pickup:
+         *     an item becomes a live run only after a signed-in person holding `can_approve_loops`
+         *     has said so, here or by queueing it themselves while the deployment runs live loops.
+         *     Every item queued before that — including items queued months ago to exercise the
+         *     simulator — waits as `needs_confirmation` until someone confirms it.
+         *
+         *     **Idempotent.** Confirming an item already confirmed keeps the first confirmation and
+         *     writes no second audit row. The first writes `queue_item.confirmed`.
+         *
+         *     **Confirmation is one condition, not the decision.** The answer is the item with its
+         *     `waiting` reason, which may still be a workspace one (`deployment_disabled`,
+         *     `concurrency_ceiling`, …) or the item's own (`policy_not_dry_run`, …).
+         */
+        post: operations["confirmQueueItem"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2176,6 +2213,35 @@ export interface paths {
          *     `pulse.autoMerge` carries the new position.
          */
         patch: operations["patchAutoMergeSetting"];
+        trace?: never;
+    };
+    "/api/v1/settings/live-execution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's live-run ceiling and the deployment's limits
+         * @description How many live runs may execute at once in this workspace, beside what the deployment
+         *     allows ([#1312](https://github.com/NobuData/ouroboros/issues/1312)). Any member may read
+         *     it. A workspace that never chose runs **one** live run at a time (decision L10); further
+         *     confirmed items wait as `concurrency_ceiling`.
+         */
+        get: operations["readLiveExecutionSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set the workspace's live-run ceiling
+         * @description **`owner` or `admin`, people only.** At most `OURO_LIVE_RUN_CEILING_MAX`; a ceiling above
+         *     it is refused rather than clamped, so the number an administrator typed is the number
+         *     in force. Writes `workspace.live_ceiling_changed` when the value moves.
+         */
+        patch: operations["patchLiveExecutionSettings"];
         trace?: never;
     };
     "/api/v1/settings/workspace": {
@@ -16364,6 +16430,83 @@ export interface components {
                  */
                 until: string;
             } | null;
+            /**
+             * Format: date-time
+             * @description When a member holding `can_approve_loops` confirmed the item for a live run
+             *     ([#1312](https://github.com/NobuData/ouroboros/issues/1312)), or `null` while nobody
+             *     has. Set at enqueue when the deployment runs live loops and the person queueing holds
+             *     the capability; otherwise by `POST /api/v1/queue/{id}/confirm`.
+             */
+            confirmedAt: string | null;
+            /**
+             * @description Why the item is not starting a live run, or `null` when admission would take it now
+             *     — or a worker already holds it ([#1312](https://github.com/NobuData/ouroboros/issues/1312)).
+             *     The engine's claim is decided by the same evaluator, so the reason shown is the
+             *     reason acted on.
+             */
+            waiting: components["schemas"]["QueueWaiting"] | null;
+        };
+        /**
+         * QueueWaiting
+         * @description Why a queued item is not starting a live run (DI.4,
+         *     [#1312](https://github.com/NobuData/ouroboros/issues/1312)). Every refusal of the
+         *     engine's claim is one of these codes, and every queued item that waits carries one —
+         *     nothing waits silently.
+         *
+         *     `scope: workspace` holds every item alike: the deployment switch, a paused or deleted
+         *     workspace, an engine with no executor, the concurrency ceiling. `scope: item` is the
+         *     item's own: its repository, its repository's dry-run policy, its pinned workflow, its
+         *     route, its confirmation. The claim skips an item held for its own reason and takes the
+         *     next one; a workspace reason refuses the claim.
+         */
+        QueueWaiting: {
+            reason: components["schemas"]["AdmissionReason"];
+            /** @enum {string} */
+            scope: "workspace" | "item";
+        };
+        /**
+         * AdmissionReason
+         * @description Live-run admission's reason codes, in precedence order within each scope. Stable — add,
+         *     never rename.
+         *
+         *     | Code | Scope | Holds while |
+         *     |---|---|---|
+         *     | `deployment_disabled` | workspace | `OURO_LIVE_EXECUTION_ENABLED` is off |
+         *     | `workspace_paused` | workspace | the workspace is paused |
+         *     | `workspace_pending_delete` | workspace | the workspace is pending deletion |
+         *     | `no_executor` | workspace | the engine has registered no stage executor |
+         *     | `repository_disabled` | item | the issue's repository is not enabled |
+         *     | `policy_not_dry_run` | item | the repository is not in dry-run — live runs open draft PRs only |
+         *     | `workflow_unpublished` | item | the item pins no published workflow version, or one that no longer reads |
+         *     | `route_not_invocable` | item | a route the workflow inherits resolves to no connection cleared for invocation |
+         *     | `needs_confirmation` | item | nobody holding `can_approve_loops` has confirmed the item |
+         *     | `concurrency_ceiling` | workspace | the workspace runs as many live runs as its ceiling allows |
+         * @enum {string}
+         */
+        AdmissionReason: "deployment_disabled" | "workspace_paused" | "workspace_pending_delete" | "no_executor" | "concurrency_ceiling" | "repository_disabled" | "policy_not_dry_run" | "workflow_unpublished" | "route_not_invocable" | "needs_confirmation";
+        /**
+         * LiveExecutionSettings
+         * @description The workspace's live-run ceiling beside the deployment's switch and limits
+         *     ([#1312](https://github.com/NobuData/ouroboros/issues/1312)).
+         */
+        LiveExecutionSettings: {
+            /** @description `OURO_LIVE_EXECUTION_ENABLED`. */
+            deploymentEnabled: boolean;
+            /** @description How many live runs may execute at once, as the workspace set it — 1 when it never did. */
+            ceiling: number;
+            /** @description `OURO_LIVE_RUN_CEILING_MAX` — the most `ceiling` may be. */
+            ceilingMax: number;
+            /** @description The ceiling the claim enforces — the lower of `ceiling` and `ceilingMax`. */
+            effectiveCeiling: number;
+            /** @description `OURO_LIVE_RUN_WALL_CLOCK_MINUTES` — a live run running longer is aborted, its branch kept. */
+            wallClockMinutes: number;
+            /** @description `OURO_LIVE_RUN_NO_PROGRESS_MINUTES` — a live run silent this long is aborted, its branch kept. */
+            noProgressMinutes: number;
+        };
+        /** LiveExecutionSettingsPatch */
+        LiveExecutionSettingsPatch: {
+            /** @description The new ceiling — at most the deployment's `OURO_LIVE_RUN_CEILING_MAX`. */
+            ceiling: number;
         };
         /**
          * LoopsLive
@@ -26316,6 +26459,13 @@ export interface components {
              */
             queued: boolean;
             /**
+             * @description Why the queued issue is not starting a live run, or `null` when it is not queued,
+             *     would be admitted now, or a worker holds it
+             *     ([#1312](https://github.com/NobuData/ouroboros/issues/1312)) — the same reason
+             *     `GET /api/v1/queue` gives for its item.
+             */
+            queueWaiting: components["schemas"]["QueueWaiting"] | null;
+            /**
              * Format: uuid
              * @description The repository's id — what `repo` takes, so a row can narrow the listing it came from.
              */
@@ -26505,6 +26655,17 @@ export interface components {
              * @example false
              */
             queued: boolean;
+            /**
+             * @description Why the queued issue is not starting a live run, or `null` — the row's own field
+             *     ([#1312](https://github.com/NobuData/ouroboros/issues/1312)).
+             */
+            queueWaiting: components["schemas"]["QueueWaiting"] | null;
+            /**
+             * Format: uuid
+             * @description The queue item holding this issue, or `null` when it is not queued — what
+             *     **Confirm for live run** sends to `POST /api/v1/queue/{id}/confirm`.
+             */
+            queueItemId: string | null;
             /**
              * Format: uuid
              * @description The repository's id — what `GET /api/v1/backlog`'s `repo` parameter takes.
@@ -33860,7 +34021,9 @@ export interface operations {
                      *           "estMinutes": 45,
                      *           "enqueuedAt": "2026-08-13T01:37:41.000Z",
                      *           "playbookId": null,
-                     *           "claimed": null
+                     *           "claimed": null,
+                     *           "confirmedAt": null,
+                     *           "waiting": null
                      *         },
                      *         {
                      *           "id": "5eed000a-0000-4000-8000-000000000496",
@@ -33874,7 +34037,9 @@ export interface operations {
                      *           "estMinutes": null,
                      *           "enqueuedAt": "2026-08-13T13:37:41.000Z",
                      *           "playbookId": null,
-                     *           "claimed": null
+                     *           "claimed": null,
+                     *           "confirmedAt": null,
+                     *           "waiting": null
                      *         }
                      *       ],
                      *       "activity": {
@@ -35210,7 +35375,9 @@ export interface operations {
                      *           "estMinutes": 45,
                      *           "enqueuedAt": "2026-08-13T01:37:41.000Z",
                      *           "playbookId": null,
-                     *           "claimed": null
+                     *           "claimed": null,
+                     *           "confirmedAt": null,
+                     *           "waiting": null
                      *         },
                      *         {
                      *           "id": "5eed000a-0000-4000-8000-000000000486",
@@ -35224,7 +35391,9 @@ export interface operations {
                      *           "estMinutes": 90,
                      *           "enqueuedAt": "2026-08-13T02:37:41.000Z",
                      *           "playbookId": null,
-                     *           "claimed": null
+                     *           "claimed": null,
+                     *           "confirmedAt": null,
+                     *           "waiting": null
                      *         }
                      *       ],
                      *       "total": 12,
@@ -35290,6 +35459,129 @@ export interface operations {
              *     `details` is empty, deliberately.
              */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    confirmQueueItem: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The queue item — `QueueItemSummary.id`, or `BacklogIssueDetail.queueItemId`. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The item, confirmed, with whatever else still holds it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed000a-0000-4000-8000-000000000485",
+                     *       "issueNumber": 485,
+                     *       "issueTitle": "Watchdog reset on I²C bus lockup",
+                     *       "effort": "m",
+                     *       "workflowTag": "standard-fix",
+                     *       "workflowVersion": 14,
+                     *       "workflowPinReason": "predicate",
+                     *       "position": 1,
+                     *       "estMinutes": 45,
+                     *       "enqueuedAt": "2026-08-13T09:00:00.000Z",
+                     *       "playbookId": null,
+                     *       "claimed": null,
+                     *       "confirmedAt": "2026-10-15T09:30:00.000Z",
+                     *       "waiting": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["QueueItemSummary"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `capability_required` — the caller lacks `can_approve_loops`, or is a service account
+             *     (a live run is started by a person); `details.capability` names it. `forbidden` — a
+             *     `viewer`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `queue_item_not_found` — the workspace's queue holds no such item; it may already
+             *     have started. Or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `id` is not a uuid. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -35410,6 +35702,7 @@ export interface operations {
                      *           "state": "open",
                      *           "sizingStatus": "sized",
                      *           "queued": false,
+                     *           "queueWaiting": null,
                      *           "githubRepoId": "dfff0000-0000-0000-0000-00000000000a",
                      *           "repository": "acme-robotics/helios-firmware",
                      *           "estimate": {
@@ -35431,6 +35724,7 @@ export interface operations {
                      *           "state": "open",
                      *           "sizingStatus": "estimating",
                      *           "queued": false,
+                     *           "queueWaiting": null,
                      *           "githubRepoId": "dfff0000-0000-0000-0000-00000000000a",
                      *           "repository": "acme-robotics/helios-firmware",
                      *           "estimate": null
@@ -35601,6 +35895,8 @@ export interface operations {
                      *         "state": "open",
                      *         "sizingStatus": "sized",
                      *         "queued": false,
+                     *         "queueWaiting": null,
+                     *         "queueItemId": null,
                      *         "githubRepoId": "dfff0000-0000-0000-0000-00000000000a",
                      *         "repository": "acme-robotics/helios-firmware",
                      *         "body": "Unit 07 in the Fremont pilot rebooted 14 times overnight. Logs show the IMU holding SDA low after a burst read; the bus never recovers and the hardware watchdog fires ~2 s later.",
@@ -35802,7 +36098,9 @@ export interface operations {
                      *           "estMinutes": 45,
                      *           "enqueuedAt": "2026-09-10T15:41:12.000Z",
                      *           "playbookId": null,
-                     *           "claimed": null
+                     *           "claimed": null,
+                     *           "confirmedAt": null,
+                     *           "waiting": null
                      *         },
                      *         {
                      *           "id": "7a1c0b90-0000-4000-8000-000000000002",
@@ -35816,7 +36114,9 @@ export interface operations {
                      *           "estMinutes": 50,
                      *           "enqueuedAt": "2026-09-10T15:41:12.000Z",
                      *           "playbookId": null,
-                     *           "claimed": null
+                     *           "claimed": null,
+                     *           "confirmedAt": null,
+                     *           "waiting": null
                      *         },
                      *         {
                      *           "id": "7a1c0b90-0000-4000-8000-000000000003",
@@ -35830,7 +36130,9 @@ export interface operations {
                      *           "estMinutes": 30,
                      *           "enqueuedAt": "2026-09-10T15:41:12.000Z",
                      *           "playbookId": null,
-                     *           "claimed": null
+                     *           "claimed": null,
+                     *           "confirmedAt": null,
+                     *           "waiting": null
                      *         }
                      *       ],
                      *       "estMinutes": 125
@@ -40872,6 +41174,192 @@ export interface operations {
              *     `details` is empty, deliberately.
              */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readLiveExecutionSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "deploymentEnabled": false,
+                     *       "ceiling": 1,
+                     *       "ceilingMax": 4,
+                     *       "effectiveCeiling": 1,
+                     *       "wallClockMinutes": 120,
+                     *       "noProgressMinutes": 15
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LiveExecutionSettings"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchLiveExecutionSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "ceiling": 2
+                 *     }
+                 */
+                "application/json": components["schemas"]["LiveExecutionSettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description The settings as they now stand. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "deploymentEnabled": true,
+                     *       "ceiling": 2,
+                     *       "ceilingMax": 4,
+                     *       "effectiveCeiling": 2,
+                     *       "wallClockMinutes": 120,
+                     *       "noProgressMinutes": 15
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LiveExecutionSettings"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — not an `owner` or `admin`, or a service account. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `live_ceiling_above_max` — above `OURO_LIVE_RUN_CEILING_MAX`; `details` carries
+             *     `requested` and `maximum`. `validation_failed` — not a whole number from 1 to 100.
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

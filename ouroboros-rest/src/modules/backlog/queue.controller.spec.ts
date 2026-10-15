@@ -3,7 +3,13 @@ import { PATH_METADATA, METHOD_METADATA } from "@nestjs/common/constants";
 
 import { document } from "../../openapi/specification";
 import type { Organization } from "../db/schema";
+import { FIXTURE_USER } from "../auth/principal.fixture";
 import { CONTRIBUTORS, REQUIRED_ROLES } from "../tenancy/roles.guard";
+import {
+  runWithTenantContext,
+  setTenantContext,
+  type ActiveMembership,
+} from "../tenancy/tenant.context";
 import { TENANT_OPTIONAL } from "../tenancy/tenant.decorators";
 import { BacklogController } from "./backlog.controller";
 import { BacklogDetailController } from "./detail.controller";
@@ -30,6 +36,9 @@ const TENANT: Organization = {
   metadata: null,
 };
 
+/** The membership the tenant guard established. */
+const MEMBERSHIP: ActiveMembership = { tenant: TENANT, roles: ["admin"] };
+
 const ISSUE = "5eed0018-0000-4000-8000-000000000485";
 
 describe("the backlog queue controller", () => {
@@ -49,9 +58,30 @@ describe("the backlog queue controller", () => {
   it("hands the service the workspace the guard established, and the body as sent", async () => {
     const body = { issueIds: [ISSUE], workflow: "standard-fix" };
 
-    await controller.queueSelection(TENANT, body);
+    await controller.queueSelection(MEMBERSHIP, body);
 
-    expect(queue.queueSelection).toHaveBeenCalledWith("acme-robotics-id", body);
+    // No signed-in person in this context: nobody to confirm the rows (DI.4, #1312).
+    expect(queue.queueSelection).toHaveBeenCalledWith(
+      "acme-robotics-id",
+      body,
+      undefined,
+      undefined,
+    );
+  });
+
+  it("names the signed-in person and their roles, who may confirm the rows (#1312)", async () => {
+    const body = { issueIds: [ISSUE], workflow: "standard-fix" };
+
+    await runWithTenantContext(async () => {
+      setTenantContext({ user: FIXTURE_USER, membership: MEMBERSHIP });
+
+      await controller.queueSelection(MEMBERSHIP, body);
+    });
+
+    expect(queue.queueSelection).toHaveBeenCalledWith("acme-robotics-id", body, undefined, {
+      userId: FIXTURE_USER.id,
+      roles: ["admin"],
+    });
   });
 
   it("requires a workspace, by saying nothing", () => {

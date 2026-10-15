@@ -33,6 +33,7 @@
 
 import type { BacklogEstimate, BacklogListing, BacklogRow, SyncStatus } from "@/app/api/backlog";
 import { ageOfSeconds } from "@/app/format";
+import { type QueueWaiting, sharedWaiting } from "@/app/queue/waiting-copy";
 import type { ChipTone, Effort } from "@/app/ui/chip";
 
 import type { HeadOutcome } from "./view";
@@ -170,6 +171,12 @@ export interface TableRow {
   readonly estMinutes: number | null;
   /** Which pill the row wears. */
   readonly status: BacklogStatus;
+  /**
+   * Why a queued row is not starting a live run, or `null` — not queued, or it would be taken
+   * now ([#1312](https://github.com/NobuData/ouroboros/issues/1312)). Drawn beside the
+   * `queued` pill.
+   */
+  readonly waiting: QueueWaiting | null;
 }
 
 /**
@@ -194,7 +201,20 @@ export function tableRows(items: readonly BacklogRow[]): readonly TableRow[] {
     model: row.estimate?.routedModel ?? null,
     estMinutes: row.estimate?.estMinutes ?? null,
     status: statusOf(row),
+    waiting: row.queued ? row.queueWaiting : null,
   }));
+}
+
+/**
+ * The workspace reason every queued row on the page shares, if one does — said once above the
+ * table rather than beside every `queued` pill ([#1312](https://github.com/NobuData/ouroboros/issues/1312)).
+ *
+ * @param rows The page's rows.
+ * @returns The shared reason, or `null` when the queued rows have none in common or the page
+ *   holds no queued row.
+ */
+export function sharedQueueWaiting(rows: readonly TableRow[]): QueueWaiting | null {
+  return sharedWaiting(rows.filter((row) => row.status === "queued").map((row) => row.waiting));
 }
 
 /* ------------------------------------------------------------------ select all */
