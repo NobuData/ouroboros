@@ -343,7 +343,8 @@ export function runHead(
     workflow: workflowCaption(run.workflowTag, head.workflowVersion),
     model: run.model,
     branch: head.branchName,
-    simulated: head.simulated,
+    // Per run, never per deployment (DG.3): the watermark, or DJ.1's origin, which agree.
+    simulated: head.simulated || head.origin === "simulated",
     elapsed: runElapsed(snapshot),
     pullRequest: runPullRequest(snapshot),
     verification,

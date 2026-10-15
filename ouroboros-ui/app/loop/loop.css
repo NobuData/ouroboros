@@ -1,0 +1,40 @@
+/*
+ * The loop capability notice (DG.3, #1301) — a stage that is not live, said where the reader
+ * meets it. The warning hue: unlike the simulated-run watermark (the model hue — a different
+ * kind of run, not a problem), this is something someone can fix, and the link says where.
+ * Tokens only, so both themes and every font scale follow.
+ */
+.loop-notice {
+  margin: 0 0 var(--sp-8);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* Inside a card, under its head: tighter, and no page margin. */
+.loop-notice--compact {
+  margin: var(--sp-4) 0 0;
+  padding: var(--sp-4) var(--sp-5);
+  font-size: var(--t-xs);
+}
+
+.loop-notice__sentence {
+  font-weight: 600;
+  color: var(--warn);
+}
+
+.loop-notice__fix {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.loop-notice__fix:hover,
+.loop-notice__fix:focus-visible {
+  text-decoration: underline;
+}

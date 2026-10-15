@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { stageNotice } from "@/app/loop/capability-copy";
+import { CapabilityNotice } from "@/app/loop/capability-notice";
+import { useLoopCapabilities } from "@/app/shell/use-loop-capabilities";
 import { Button, Card, CardHead, EmptyState, Tag, cx } from "@/app/ui";
 
 import {
@@ -9,7 +12,6 @@ import {
   CHAIN_EMPTY_NOTE,
   CHAIN_EMPTY_TITLE,
   CHAIN_TITLE,
-  RUN_CONSOLE_SOON,
   UNROUTED_TITLE,
   type ChainReading,
   type ChainTag,
@@ -41,10 +43,10 @@ import "./registry.css";
  *
  * ### The head's tag is the honesty
  *
- * A stored run shows `run #482`, drawn as the #46 Button's **inert** form with the reason it
- * cannot act: the run console has no route yet, and a link to a page that does not exist would
- * be the kind of stub that lies. A simulated chain carries
- * `simulated — live runs arrive with invocation` in the same place and **never** a run number.
+ * A stored run shows `run #482`, a link to that run's console. A simulated chain carries
+ * `simulated — no run has resolved it yet` in the same place and **never** a run number; when
+ * DG.2's report says no model can be invoked, the card says why under its head and links the
+ * fix (DG.3, [#1301](https://github.com/NobuData/ouroboros/issues/1301)).
  *
  * ### Answers are held, and a write asks again
  *
@@ -78,18 +80,19 @@ export function ChainCard({
   }, [key, row, route]);
 
   const reading = key === null ? undefined : answers[key];
+  const tag = reading?.ok && reading.source.kind !== "unrouted" ? chainTag(reading.source) : null;
+  const invocation = stageNotice(useLoopCapabilities().capabilities, "invocation");
 
   return (
     <Card aria-labelledby={CHAIN_TITLE_ID} as="section" fill>
       <CardHead
         title={CHAIN_TITLE}
         titleId={CHAIN_TITLE_ID}
-        trailing={
-          reading?.ok && reading.source.kind !== "unrouted" ? (
-            <ChainTagView tag={chainTag(reading.source)} />
-          ) : undefined
-        }
+        trailing={tag === null ? undefined : <ChainTagView tag={tag} />}
       />
+      {tag?.kind === "simulated" && invocation !== null && (
+        <CapabilityNotice compact notice={invocation} />
+      )}
       <ChainBody reading={reading} row={row} />
     </Card>
   );
@@ -99,12 +102,12 @@ export function ChainCard({
  * The head's tag.
  *
  * @param props.tag The tag `chainTag` decided.
- * @returns A stored run as the inert #46 Button carrying why it cannot open the run console
- *   yet; a simulation as a plain tag with the simulated label.
+ * @returns A stored run as a link to its run console; a simulation as a plain tag with the
+ *   simulated label.
  */
 function ChainTagView({ tag }: Readonly<{ tag: ChainTag }>) {
   return tag.kind === "run" ? (
-    <Button reason={RUN_CONSOLE_SOON} size="sm" tone="ghost">
+    <Button href={tag.href} size="sm" tone="ghost">
       {tag.label}
     </Button>
   ) : (

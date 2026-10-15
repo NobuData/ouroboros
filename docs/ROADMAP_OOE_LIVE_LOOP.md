@@ -400,7 +400,7 @@ Complexity chips: **XS · S · M · L**.
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | DG.1 | ✅ #1299 | 🟢 Done | ouroboros: [DG.1] Promote the execution chain — labels, milestones, amendments & roadmap write-back | Relabel ten issues, post thirteen amendments, close out the OOE open decisions, write status back into seven roadmaps | mvp, live-loop, documentation | Y | Y | S | .github, docs |
 | DG.2 | ✅ #1300 | 🟢 Done | ouroboros-rest: [DG.2] Loop capability report | One endpoint that says which loop stages are live in this deployment and workspace, and why not | mvp, live-loop, rest, runs | Y | Y | S | ouroboros-rest, ouroboros-docs |
-| DG.3 | #1301 | 🟡 Open | ouroboros-ui: [DG.3] Capability-driven loop copy — retire "simulated" in the product | Banners, chips, tooltips and empty states read the capability report instead of asserting simulation | mvp, live-loop, ui, runs, design | N (after DG.2) | Y | M | ouroboros-ui, ouroboros-docs |
+| DG.3 | ✅ #1301 | 🟢 Done | ouroboros-ui: [DG.3] Capability-driven loop copy — retire "simulated" in the product | Banners, chips, tooltips and empty states read the capability report instead of asserting simulation | mvp, live-loop, ui, runs, design | N (after DG.2) | Y | M | ouroboros-ui, ouroboros-docs |
 | DG.4 | #1322 | 🟡 Open | ouroboros-docs: [DG.4] Retire "simulated" in the documentation — sweep & wording guard | Every page and repository document that says the loop is simulated, corrected as its stage goes live; a check that keeps it so | mvp, live-loop, documentation, docs-site, ci | N (after DI.6) | Y | M | ouroboros-docs, docs, README.md, HOSTING.md |
 
 ### Issue DG.1 — ouroboros: [DG.1] Promote the execution chain — labels, milestones, amendments & roadmap write-back
@@ -526,7 +526,7 @@ GET /api/v1/loop/capabilities
 
 ### Issue DG.3 — ouroboros-ui: [DG.3] Capability-driven loop copy — retire "simulated" in the product
 
-> **GitHub issue:** #1301 · **Status:** 🟡 Open · **Parent epic:** #1293
+> **GitHub issue:** #1301 · **Status:** 🟢 Done · **Parent epic:** #1293
 
 - **Problem Statement:** The product says "simulated" in places that are
   about to become wrong at different times: the run console's banner, the

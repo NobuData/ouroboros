@@ -6,8 +6,11 @@ import { useEffect, useState } from "react";
 import type { PullRequestRef } from "@/app/api/pull-requests";
 import type { RunConsole } from "@/app/api/runs";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
+import { runConsoleNotice } from "@/app/loop/capability-copy";
+import { CapabilityNotice } from "@/app/loop/capability-notice";
 import { testsPath } from "@/app/paths";
 import { setNavOrigin } from "@/app/shell/nav-registry";
+import { useLoopCapabilities } from "@/app/shell/use-loop-capabilities";
 import { RetryBanner } from "@/app/ui";
 
 import { changesView, commitSource, guardrailsView, resourcesView } from "./cards";
@@ -135,6 +138,7 @@ export function RunScreen({
   // A poll's own verdict supersedes the server's once it has one — either way.
   const error = snapshot.updatedAt === null ? (snapshot.error ?? initialError) : snapshot.error;
   const view = data === null ? null : runHead(data, runVerification(pullRequest, origin.id));
+  const capabilityNotice = runConsoleNotice(useLoopCapabilities().capabilities);
   const stepper = data === null ? null : runStepper(data);
 
   const [requestedStage, setRequestedStage] = useState<string | null>(initialStage);
@@ -188,6 +192,12 @@ export function RunScreen({
           <span className="run__simulated-headline">{SIMULATED_HEADLINE}</span>{" "}
           {SIMULATED_NOTE}
         </p>
+      )}
+
+      {/* The deployment's notice, for a run still going that is not simulated — a simulated
+          run's banner already says what did the work, whatever the deployment can do now. */}
+      {capabilityNotice !== null && view?.simulated === false && data?.head.live === true && (
+        <CapabilityNotice notice={capabilityNotice} />
       )}
 
       {data !== null && view !== null && (
