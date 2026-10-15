@@ -15,6 +15,7 @@ committed file this module loads rather than a document FastAPI derives from the
 (:mod:`ouroboros_engine.openapi`).
 """
 
+import asyncio
 import importlib
 import logging
 from collections.abc import AsyncIterator
@@ -56,6 +57,7 @@ from ouroboros_engine.estimation.model import (
     GatewaySizingCaller,
     ModelEstimator,
 )
+from ouroboros_engine.execution.workspace import RunWorkspaces
 from ouroboros_engine.investigation.control import HttpInvestigationControl
 from ouroboros_engine.investigation.loop import InvestigationLoop
 from ouroboros_engine.investigation.model import GatewayModelCaller
@@ -76,6 +78,8 @@ from ouroboros_engine.tasks.registry import default_registry as default_task_reg
 #: ``tests/test_openapi.py`` asserts the two agree.
 _PUBLIC_PATHS = (health.HEALTH_PATH,)
 
+_log = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -85,12 +89,27 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     in place of the default is the one stopped. On shutdown running tasks are cancelled and
     every record is dropped with the process — see :mod:`ouroboros_engine.tasks.queue`.
 
+    At startup the run working trees (DI.1, #1307) are swept once — trees whose run ended,
+    half-made ones and idle ones — so a restart reclaims what a dead engine left behind. A
+    sweep that fails is logged and the engine still starts.
+
     Args:
         app: The application.
 
     Yields:
         Nothing; the application serves while suspended here.
     """
+    workspaces: RunWorkspaces = app.state.run_workspaces
+    try:
+        swept = await asyncio.to_thread(workspaces.sweep)
+        _log.info(
+            "run workspaces swept: %d terminal, %d orphaned, %d idle",
+            len(swept.terminal),
+            len(swept.orphaned),
+            len(swept.idle),
+        )
+    except OSError:
+        _log.exception("run workspace sweep failed at startup")
     await app.state.tasks.start()
     try:
         yield
@@ -206,6 +225,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         resolved.clone_dir,
         refresh_seconds=resolved.clone_refresh_seconds,
         timeout_seconds=resolved.clone_timeout_seconds,
+    )
+    # Each run's writable working tree (DI.1, #1307), under `OURO_ENGINE_RUN_DIR`, borrowing
+    # objects from those clones. The stage interpreter opens one per run; the lifespan above
+    # sweeps the leftovers once at startup. A test installs its own.
+    app.state.run_workspaces = RunWorkspaces(
+        resolved.run_dir,
+        app.state.code_clones,
+        max_bytes=resolved.run_max_mb * 1024 * 1024,
+        idle_seconds=resolved.run_idle_hours * 3600.0,
     )
 
     # And the Workflow Copilot's turn runner (CD.1, #559): the control-plane client built
