@@ -24,9 +24,12 @@ import ast
 import inspect
 import json
 import re
+import shutil
+import subprocess
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 from urllib import error as urllib_error
 from urllib import request as urllib_request
@@ -887,21 +890,31 @@ def test_the_engine_holds_no_estimate_arithmetic_of_its_own() -> None:
 
 _HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@$")
 
+#: The marker after a line whose file does not end in a newline, as ``git diff`` writes it.
+_NO_NEWLINE = "\\ No newline at end of file"
+
 
 def _lines(text: str) -> list[str]:
-    """Split newline-terminated text into its lines, without their newlines."""
-    assert text == "" or text.endswith("\n"), "the applier reads whole lines only"
-    return text.split("\n")[:-1]
+    r"""Split text into its lines at ``\n`` only, each keeping its line end.
+
+    The last line keeps none when the file does not end in a newline, and a lone ``\r`` stays
+    inside its line — so ``"".join(_lines(text)) == text`` for every text, empty included.
+    """
+    return re.findall(r"[^\n]*\n|[^\n]+\Z", text)
 
 
 def apply_unified(
     diff: str, base: dict[str, str]
 ) -> tuple[dict[str, str], dict[str, tuple[int, int]]]:
-    """Apply a unified diff to a set of files, strictly.
+    r"""Apply a unified diff to a set of files, strictly and byte for byte.
 
     Every context line and every removed line must be exactly what the base holds at the
-    place the hunk names, and every hunk must be as long as its header says: a diff that
-    does not describe the base is refused rather than applied loosely.
+    place the hunk names — its line end included, so a line the diff marks
+    ``\ No newline at end of file`` must really have none — and every hunk must be as long
+    as its header says: a diff that does not describe the base is refused rather than
+    applied loosely. Every file opens with ``diff --git``; a created or deleted one says so
+    (``new file mode`` / ``deleted file mode``), and only such a file, created or deleted
+    empty, may have no hunk.
 
     Args:
         diff: The diff, as :meth:`VirtualWorkspace.diff` renders it.
@@ -919,17 +932,31 @@ def apply_unified(
     assert rows.pop() == "", "a diff ends at a line end"
     at = 0
     while at < len(rows):
+        # git's header: every file opens with one, and a creation or deletion says so.
+        assert rows[at].startswith("diff --git a/"), "a file opens with diff --git"
+        named = rows[at][len("diff --git a/") :].split(" b/")[0]
+        at += 1
+        extended = None
+        if rows[at] in ("new file mode 100644", "deleted file mode 100644"):
+            extended = rows[at]
+            at += 1
         assert rows[at].startswith("--- ") and rows[at + 1].startswith("+++ ")
         source, target = rows[at][4:], rows[at + 1][4:]
         at += 2
         path = (target if target != "/dev/null" else source)[2:]
+        assert path == named, f"{path} is announced as {named}"
+        assert (extended == "new file mode 100644") == (source == "/dev/null")
+        assert (extended == "deleted file mode 100644") == (target == "/dev/null")
         assert source == (f"a/{path}" if path in base else "/dev/null")
         assert target in (f"b/{path}", "/dev/null")
         assert path not in counts, f"{path} appears twice"
         before = _lines(base.get(path, ""))
         after: list[str] = []
         cursor = added = removed = 0
-        assert at < len(rows) and _HUNK.match(rows[at]), f"{path} has no hunk"
+        if at >= len(rows) or not _HUNK.match(rows[at]):
+            # No hunk: an empty file appearing or disappearing, and nothing else.
+            assert extended is not None, f"{path} has no hunk"
+            assert before == [], f"{path} is deleted with lines the diff does not show"
         while at < len(rows) and (header := _HUNK.match(rows[at])) is not None:
             at += 1
             old_left = 1 if header[2] is None else int(header[2])
@@ -942,12 +969,17 @@ def apply_unified(
             while old_left or new_left:
                 mark, text = rows[at][:1], rows[at][1:]
                 at += 1
+                ending = "\n"
+                if at < len(rows) and rows[at] == _NO_NEWLINE:
+                    ending = ""
+                    at += 1
+                line = text + ending
                 if mark in (" ", "-"):
-                    assert before[cursor] == text, f"{path}:{cursor + 1} differs"
+                    assert before[cursor] == line, f"{path}:{cursor + 1} differs"
                     cursor += 1
                     old_left -= 1
                 if mark in (" ", "+"):
-                    after.append(text)
+                    after.append(line)
                     new_left -= 1
                 assert mark in (" ", "-", "+") and old_left >= 0 and new_left >= 0
                 added += mark == "+"
@@ -957,7 +989,7 @@ def apply_unified(
             assert after == [], f"{path} is deleted but lines remain"
             del state[path]
         else:
-            state[path] = "".join(line + "\n" for line in after)
+            state[path] = "".join(after)
         counts[path] = (added, removed)
     return state, counts
 
@@ -965,6 +997,12 @@ def apply_unified(
 #: A file long enough for two changes to land in two hunks.
 LONG = "".join(f"line {number}\n" for number in range(1, 41))
 TWO_HUNKS = LONG.replace("line 3\n", "line three\n").replace("line 37\n", "")
+
+#: A file the pinned commit holds empty.
+EMPTY = "docs/empty.txt"
+
+#: A file whose last line has no newline.
+UNTERMINATED = "docs/unterminated.txt"
 
 #: Shapes of a stage's drafting: ``(path, content)`` writes a file, ``(path,)`` deletes it.
 SHAPES: dict[str, list[tuple[str, ...]]] = {
@@ -1003,10 +1041,36 @@ SHAPES: dict[str, list[tuple[str, ...]]] = {
         ("docs/backoff.md", "--- a/not-a-header\n+++ b/nor-this\n@@ -1 +1 @@\n-- \n"),
         ("README.md", "# helios-firmware\n--- rule\n+++ plus\n"),
     ],
+    # #1746: the four shapes the diff used to misstate.
+    "a new file with no final newline": [("docs/note.txt", "first\nno newline")],
+    "an edit to a file with no final newline": [(UNTERMINATED, "first\nchanged")],
+    "adding only the final newline": [(UNTERMINATED, "first\nno newline\n")],
+    "removing only the final newline": [("docs/long.txt", LONG[:-1])],
+    "an empty new file": [("docs/empty-new.txt", "")],
+    "deleting an empty file": [(EMPTY,)],
+    "emptying a file": [("README.md", "")],
+    "filling an empty file": [(EMPTY, "now there is something\n")],
+    "a lone carriage return": [
+        ("docs/cr.txt", "a\rb\n"),
+        (UNTERMINATED, "first\rstill first\nno newline"),
+    ],
+    "every edge at once": [
+        ("docs/empty-new.txt", ""),
+        (EMPTY,),
+        ("README.md", ""),
+        (UNTERMINATED, "first\r\nno newline\n"),
+        ("docs/long.txt", LONG + "tail"),
+    ],
 }
 
-#: The repository the fidelity runs read: the seeded files and one long one.
-REPOSITORY = {**FILES, "docs/long.txt": LONG}
+#: The repository the fidelity runs read: the seeded files, one long one, an empty one and
+#: one that does not end in a newline.
+REPOSITORY = {
+    **FILES,
+    "docs/long.txt": LONG,
+    EMPTY: "",
+    UNTERMINATED: "first\nno newline",
+}
 
 
 def faithful(ops: list[tuple[str, ...]]) -> None:
@@ -1065,6 +1129,45 @@ def faithful(ops: list[tuple[str, ...]]) -> None:
 def test_the_rendered_diff_applied_to_the_base_is_the_overlay(shape: str) -> None:
     """For each shape of drafting, applying the run's diff reproduces the overlay exactly."""
     faithful(SHAPES[shape])
+
+
+#: The git executable, when the machine has one.
+GIT = shutil.which("git")
+
+
+@pytest.mark.skipif(GIT is None, reason="git is not installed")
+@pytest.mark.parametrize("shape", list(SHAPES))
+def test_git_applies_the_rendered_diff_to_the_base_as_the_overlay(
+    shape: str, tmp_path: Path
+) -> None:
+    """``git apply`` itself, not only this file's applier, takes each diff to the overlay (#1746)."""
+    space = VirtualWorkspace(RecordingReader(dict(REPOSITORY)), ReadCache(), SLUG, SHA)
+    expected = dict(REPOSITORY)
+    for path, *content in SHAPES[shape]:
+        if content:
+            space.write(path, content[0])
+            expected[path] = content[0]
+        else:
+            space.delete(path)
+            del expected[path]
+    for path, text in REPOSITORY.items():
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_bytes(text.encode("utf-8"))
+
+    applied = subprocess.run(  # noqa: S603 — a fixed binary and fixed arguments
+        [str(GIT), "apply", "--whitespace=nowarn", "-"],
+        cwd=tmp_path,
+        input=space.diff().encode("utf-8"),
+        capture_output=True,
+        check=False,
+    )
+
+    assert applied.returncode == 0, applied.stderr.decode()
+    assert {
+        file.relative_to(tmp_path).as_posix(): file.read_bytes().decode("utf-8")
+        for file in tmp_path.rglob("*")
+        if file.is_file()
+    } == expected
 
 
 def test_every_splice_of_a_file_diffs_back_to_what_the_overlay_reads() -> None:

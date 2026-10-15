@@ -151,7 +151,10 @@ def test_the_diff_artifact_is_the_overlay_and_only_in_memory():
     _, done = bench.run()
     diff = next(a for a in done.artifacts if a.kind == "overlay_diff")
 
-    assert diff.content.startswith(f"--- a/{ARBITRATION}\n+++ b/{ARBITRATION}\n@@ ")
+    assert diff.content.startswith(
+        f"diff --git a/{ARBITRATION} b/{ARBITRATION}\n"
+        f"--- a/{ARBITRATION}\n+++ b/{ARBITRATION}\n@@ "
+    )
     assert "+\t\tk_sleep(K_USEC(backoff_us)); /* exponential backoff */" in diff.content
     assert (
         "-\t\tcan_retry_tx(dev, frame); /* immediate retry floods the bus */"

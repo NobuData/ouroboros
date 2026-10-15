@@ -482,6 +482,11 @@ and its added and removed line counts: `drivers/can/arbitration.c +41 −9`.
 It is the edit the workflow *would* make. No branch, commit or pull request was created for
 it.
 
+The diff is exactly that edit, written the way `git diff` writes one: copied out and applied
+with `git apply` to the commit the run read, it reproduces the drafted files byte for byte. A
+file that does not end in a newline is marked `\ No newline at end of file`, and an empty file
+that is created or deleted shows as `new file mode` or `deleted file mode` with no lines.
+
 A long diff scrolls inside the block. A very large one is cut off, and the block then says
 so underneath with both sizes: `Truncated — showing the first 64.0 KB of 212.4 KB.`
 

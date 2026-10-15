@@ -240,14 +240,82 @@ def test_an_empty_overlay_asks_the_git_host_nothing():
     assert reader.calls == []
 
 
-def test_a_new_empty_file_and_a_missing_final_newline_still_diff():
+def test_each_file_opens_with_git_s_header_and_says_when_it_is_created_or_deleted():
     workspace, _ = space()
-    workspace.write("empty.txt", "")
-    workspace.write("README.md", "# helios-firmware\nno newline")
+    workspace.write("z/new.c", "int z;\n")
+    workspace.delete("README.md")
 
-    assert workspace.changed_paths() == ["README.md", "empty.txt"]
-    assert workspace.diff().endswith("\n")
-    assert "+no newline\n" in workspace.diff()
+    diff = workspace.diff()
+
+    assert diff.startswith(
+        "diff --git a/README.md b/README.md\ndeleted file mode 100644\n--- a/README.md\n"
+    )
+    assert (
+        "diff --git a/z/new.c b/z/new.c\nnew file mode 100644\n"
+        "--- /dev/null\n+++ b/z/new.c\n@@ -0,0 +1 @@\n+int z;\n"
+    ) in diff
+
+
+# -- the four shapes the diff used to misstate (#1746) ----------------------------------
+
+
+def test_a_missing_final_newline_is_marked_as_git_marks_it():
+    workspace, _ = space()
+    workspace.write("note.txt", "first\nno newline")
+
+    assert workspace.diff().endswith(
+        "+first\n+no newline\n\\ No newline at end of file\n"
+    )
+    assert workspace.line_counts() == [("note.txt", 2, 0)]
+
+
+def test_adding_only_the_final_newline_is_one_line_changed_and_counted():
+    workspace, _ = space(
+        reader=RecordingReader({**FILES, "note.txt": "first\nno newline"})
+    )
+    workspace.write("note.txt", "first\nno newline\n")
+
+    assert workspace.diff().endswith(
+        "-no newline\n\\ No newline at end of file\n+no newline\n"
+    )
+    assert workspace.changed_paths() == ["note.txt"]
+    assert workspace.line_counts() == [("note.txt", 1, 1)]
+
+
+def test_an_empty_file_created_or_deleted_is_its_headers_alone():
+    workspace, _ = space(reader=RecordingReader({**FILES, "empty.txt": ""}))
+    workspace.write("new-empty.txt", "")
+    workspace.delete("empty.txt")
+
+    assert workspace.changed_paths() == ["empty.txt", "new-empty.txt"]
+    assert workspace.diff() == (
+        "diff --git a/empty.txt b/empty.txt\ndeleted file mode 100644\n"
+        "--- a/empty.txt\n+++ /dev/null\n"
+        "diff --git a/new-empty.txt b/new-empty.txt\nnew file mode 100644\n"
+        "--- /dev/null\n+++ b/new-empty.txt\n"
+    )
+    assert workspace.line_counts() == [("empty.txt", 0, 0), ("new-empty.txt", 0, 0)]
+
+
+def test_emptying_a_file_is_an_edit_and_filling_one_is_not_a_creation():
+    workspace, _ = space(reader=RecordingReader({**FILES, "empty.txt": ""}))
+    workspace.write("README.md", "")
+    workspace.write("empty.txt", "now full\n")
+
+    diff = workspace.diff()
+
+    assert "--- a/README.md\n+++ b/README.md\n" in diff
+    assert "--- a/empty.txt\n+++ b/empty.txt\n@@ -0,0 +1 @@\n+now full\n" in diff
+    assert "/dev/null" not in diff
+    assert "file mode" not in diff
+
+
+def test_a_lone_carriage_return_stays_inside_its_line():
+    workspace, _ = space()
+    workspace.write("cr.txt", "a\rb\n")
+
+    assert workspace.diff().endswith("@@ -0,0 +1 @@\n+a\rb\n")
+    assert workspace.line_counts() == [("cr.txt", 1, 0)]
 
 
 def test_an_oversized_write_is_refused():

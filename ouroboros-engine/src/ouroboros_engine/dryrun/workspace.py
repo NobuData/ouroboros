@@ -38,6 +38,15 @@ from urllib.parse import quote
 #: The most bytes of one file the workspace will read or hold. A larger file is refused.
 MAX_FILE_BYTES: Final = 1_000_000
 
+#: What follows a diff line whose file does not end in a newline — ``git diff``'s marker.
+NO_NEWLINE: Final = "\\ No newline at end of file"
+
+#: The mode an empty file created or deleted is announced with — a regular file's.
+FILE_MODE: Final = "100644"
+
+#: One line as a diff counts it: up to and including ``\n``, or the unterminated rest.
+_LINE: Final = re.compile(r"[^\n]*\n|[^\n]+\Z")
+
 #: The most bytes the process-wide read cache holds before it evicts the least recently used.
 CACHE_BYTES: Final = 64 * 1024 * 1024
 
@@ -484,26 +493,43 @@ class VirtualWorkspace:
         return [path for path, _, _ in self._changes()]
 
     def diff(self) -> str:
-        """Render the overlay as a unified diff against the pinned commit.
+        r"""Render the overlay as a unified diff against the pinned commit.
+
+        The diff is the overlay exactly (#1746): applied to the pinned files it reproduces
+        what the run wrote, byte for byte. So, as ``git diff`` writes them:
+
+        * lines are split at ``\n`` only — a lone ``\r`` is part of its line, not an end;
+        * a last line with no newline is followed by ``\ No newline at end of file``;
+        * ``/dev/null`` stands for a side where the *file* does not exist — an emptied file
+          is ``b/<path>`` with every line removed, not a deletion;
+        * every file opens with git's ``diff --git`` line, and a created or deleted file
+          says so (``new file mode`` / ``deleted file mode``) — so ``git apply`` takes it, and
+          an empty file created or deleted, which has no line to show, is its headers alone.
 
         Returns:
             The diff, files in path order; ``""`` when nothing changed.
         """
         parts: list[str] = []
         for path, before, after in self._changes():
-            parts.extend(
-                difflib.unified_diff(
-                    before.splitlines(keepends=True),
-                    after.splitlines(keepends=True),
-                    fromfile=f"a/{path}" if before else "/dev/null",
-                    tofile=f"b/{path}" if after else "/dev/null",
-                )
+            old, new = _lines(before or ""), _lines(after or "")
+            source = "/dev/null" if before is None else f"a/{path}"
+            target = "/dev/null" if after is None else f"b/{path}"
+            parts.append(f"diff --git a/{path} b/{path}\n")
+            if before is None:
+                parts.append(f"new file mode {FILE_MODE}\n")
+            elif after is None:
+                parts.append(f"deleted file mode {FILE_MODE}\n")
+            rendered = list(
+                difflib.unified_diff(old, new, fromfile=source, tofile=target)
             )
-        text = "".join(part if part.endswith("\n") else part + "\n" for part in parts)
-        return text
+            # An empty file created or deleted has no line to show: its headers are the change.
+            parts.extend(rendered or [f"--- {source}\n", f"+++ {target}\n"])
+        return "".join(
+            part if part.endswith("\n") else f"{part}\n{NO_NEWLINE}\n" for part in parts
+        )
 
     def line_counts(self) -> list[tuple[str, int, int]]:
-        """Count the lines each changed file adds and removes.
+        """Count the lines each changed file adds and removes — the diff's own ``+`` and ``-``.
 
         Returns:
             ``(path, added, removed)`` per changed file, in path order.
@@ -511,7 +537,7 @@ class VirtualWorkspace:
         counts: list[tuple[str, int, int]] = []
         for path, before, after in self._changes():
             added = removed = 0
-            for line in difflib.ndiff(before.splitlines(), after.splitlines()):
+            for line in difflib.ndiff(_lines(before or ""), _lines(after or "")):
                 added += line.startswith("+ ")
                 removed += line.startswith("- ")
             counts.append((path, added, removed))
@@ -519,21 +545,21 @@ class VirtualWorkspace:
 
     # -- internals ----------------------------------------------------------------------
 
-    def _changes(self) -> list[tuple[str, str, str]]:
+    def _changes(self) -> list[tuple[str, str | None, str | None]]:
         """Pair every overlay entry with the pinned text it replaces.
 
         Returns:
-            ``(path, before, after)`` for entries that differ, in path order; a missing
-            side is ``""``.
+            ``(path, before, after)`` for entries that differ, in path order; a side where
+            the file does not exist is ``None`` — distinct from an empty file, ``""``.
         """
         if not self._overlay:
             return []
         base = {entry.path for entry in self._tree().entries}
-        changes: list[tuple[str, str, str]] = []
+        changes: list[tuple[str, str | None, str | None]] = []
         for path in sorted(self._overlay):
-            after = self._overlay[path] or ""
-            before = self._base(path) if path in base else ""
-            if before != after or (path in base) != (self._overlay[path] is not None):
+            after = self._overlay[path]
+            before = self._base(path) if path in base else None
+            if before != after:
                 changes.append((path, before, after))
         return changes
 
@@ -604,6 +630,20 @@ class VirtualWorkspace:
         """Record a limit the workspace ran into, once."""
         if note not in self.notes:
             self.notes.append(note)
+
+
+def _lines(text: str) -> list[str]:
+    r"""Split text into its lines as a diff counts them: at ``\n`` and nowhere else.
+
+    Args:
+        text: A file's text.
+
+    Returns:
+        Its lines, each with its ``\n`` — the last without one when the file does not end
+        in a newline. ``str.splitlines`` would also split at ``\r`` and other separators,
+        and a diff of those lines would not apply back to the file (#1746).
+    """
+    return _LINE.findall(text)
 
 
 def _checked(path: str) -> str:
