@@ -158,6 +158,10 @@
 -- `1365 + issue_number` instead: `#482` is `Loop #1847` in every database, the numbers
 -- ascend with the issues, and the fifty-three are distinct because the issue numbers are.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.runs (id, organization_id, github_repo_id, issue_number, issue_title,
                             loop_seq, workflow_tag, model, status,
                             stage_label, stage_index, stage_total, started_at)

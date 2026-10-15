@@ -109,6 +109,10 @@
 -- #465 and #479 exist only as run numbers, so their tickets are written from the run: #465 carries
 -- the `refactor` label the org policy's human_review rule matches (V092, #484's v1–v7).
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.tickets
   (id, organization_id, source_id, external_id, external_key, external_url, title, body,
    state, labels, author, source_created_at, source_updated_at, synced_at, sizing_status, meta)

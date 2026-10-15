@@ -147,6 +147,10 @@
 -- `createdAt` has no default on this table (the library always supplies it), so the
 -- seed does the same; idempotency keeps it stable, because a re-run inserts nothing.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.organization ("id", "name", "slug", "createdAt", "metadata")
 select seed.id, seed.name, seed.slug, now(), seed.metadata
   from (values

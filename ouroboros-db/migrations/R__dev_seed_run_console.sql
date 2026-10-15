@@ -200,6 +200,10 @@
 -- to the values already there is a no-op — including `simulated`, which
 -- `runs_simulated_is_fixed()` allows through unchanged however much transcript exists.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 update ouroboros.runs run
    set branch_name          = 'loop/482-canbus-flake',
        workflow_version_pin = 14,

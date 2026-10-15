@@ -153,6 +153,10 @@
 -- `source_created_at` (`tickets_updated_after_created`), and on the four newest — the unsized
 -- ones, opened this week — the two are equal. Every instant is relative to `now()`.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.tickets
   (id, organization_id, source_id, external_id, external_key, external_url, title, body,
    state, labels, author, source_created_at, source_updated_at, synced_at, sizing_status,

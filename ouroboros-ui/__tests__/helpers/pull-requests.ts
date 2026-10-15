@@ -157,6 +157,7 @@ export function prHeadOf(over: Partial<PullRequestHead> = {}): PullRequestHead {
     state: "verifying",
     headBranch: "loop/482-canbus-flake",
     baseBranch: "main",
+    origin: "live",
     additions: 68,
     deletions: 15,
     changedFiles: 3,

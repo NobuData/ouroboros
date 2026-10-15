@@ -105,6 +105,10 @@
 -- workspaces) and V030's schema. Read by Q.2 (#139), Q.3 (#140), Q.4 (#141) and AM.3 (#285).
 -- Asserted in tests/seed.sql and tests/seed.test.sh.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.ticket_sources
     (id, organization_id, kind, display_name, config, credentials_encrypted, status)
 select seed.id::uuid, org."id", seed.kind, seed.display_name, seed.config::jsonb,

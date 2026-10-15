@@ -116,6 +116,29 @@ describe("every body", () => {
     ]);
   });
 
+  it.each(SHAPES)("refuses a claimed origin on %s", async (_name, type, body) => {
+    // DJ.1 (#1313): a run's origin is the principal's, and a derived row's is its run's. No
+    // ingestion route takes one — live, simulated or seeded — from the body.
+    for (const origin of ["live", "simulated", "seeded"]) {
+      expect(await violations(type, { ...body, origin })).toEqual(["origin"]);
+    }
+  });
+
+  it("refuses an origin nested in an event or a spend report", async () => {
+    expect(
+      await violations(IngestEventsDto, {
+        ...GOOD.events,
+        events: [{ ...GOOD.events.events[0], origin: "seeded" }],
+      }),
+    ).toEqual(["events"]);
+    expect(
+      await violations(ReportResourcesDto, {
+        ...GOOD.resources,
+        spend: { ...GOOD.resources.spend, origin: "live" },
+      }),
+    ).toEqual(["spend"]);
+  });
+
   it.each(SHAPES)("refuses a claimed watermark on %s", async (_name, type, body) => {
     // Decision R4: `simulated` follows the principal. A field would make it a claim, however
     // carefully the service then ignored it.

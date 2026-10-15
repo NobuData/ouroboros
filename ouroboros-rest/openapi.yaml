@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.37"
+  version: "0.41.38"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -2068,6 +2068,7 @@ paths:
                   workflowVersion: 14
                   branchName: loop/482-canbus-flake
                   simulated: true
+                  origin: simulated
                   live: true
                   repository:
                     owner: acme
@@ -43600,6 +43601,16 @@ components:
         format: uuid
       example: 5eed001a-0000-4000-8000-000000000001
   schemas:
+    DataOrigin:
+      type: string
+      title: DataOrigin
+      enum: [live, simulated, seeded]
+      description: |-
+        Where a row came from (DJ.1, [#1313](https://github.com/NobuData/ouroboros/issues/1313)):
+        `live` — a real executor or a person; `simulated` — the run simulator; `seeded` — a seed
+        file (development and e2e only). Set once by the path that wrote the row, inherited from
+        the run where there is one, and never accepted from a caller.
+
     Error:
       type: object
       title: Error
@@ -46914,8 +46925,11 @@ components:
           createdAt,
           updatedAt,
           syncedAt,
+          origin,
         ]
       properties:
+        origin:
+          $ref: "#/components/schemas/DataOrigin"
         id:
           type: string
           format: uuid
@@ -47041,8 +47055,11 @@ components:
           latestRevision,
           gates,
           reviewRequested,
+          origin,
         ]
       properties:
+        origin:
+          $ref: "#/components/schemas/DataOrigin"
         id:
           type: string
           format: uuid
@@ -48081,8 +48098,10 @@ components:
       title: RunConsoleHead
       description: What the page head adds to the run row — eyebrow, pin, branch, watermark, liveness.
       additionalProperties: false
-      required: [loopSeq, workflowVersion, branchName, simulated, live]
+      required: [loopSeq, workflowVersion, branchName, simulated, live, origin]
       properties:
+        origin:
+          $ref: "#/components/schemas/DataOrigin"
         loopSeq:
           type: integer
           minimum: 1
@@ -72045,8 +72064,11 @@ components:
           startedAt,
           finishedAt,
           exitCode,
+          origin,
         ]
       properties:
+        origin:
+          $ref: "#/components/schemas/DataOrigin"
         id:
           type: string
           format: uuid

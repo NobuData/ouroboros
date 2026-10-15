@@ -133,6 +133,10 @@
 -- Complete, with no duration split: mockup 12 does not say what its wall time was, and Builds 1
 -- and 2 carry none either. Totals are written as zero and recounted below.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, commit_sha, status,
                                  started_at)
 select '5eed0031-0000-4000-8000-000000004824'::uuid,

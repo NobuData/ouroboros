@@ -40,6 +40,7 @@ import type {
   RunStageReturnReason,
   RunStageStatus,
 } from "../db/schema";
+import type { DataOrigin } from "../db/schema";
 import { GUARDRAIL_CHECKS } from "../db/schema";
 import { SECRETS_RULESET_DISCLOSURE } from "../guardrails/guardrails.ruleset";
 import type { SpendTotals } from "./run.spend";
@@ -87,6 +88,11 @@ export interface RunConsoleHead {
   readonly branchName: string | null;
   /** Decision **R4**'s watermark — the run was opened by the simulator principal. */
   readonly simulated: boolean;
+  /**
+   * Where it came from — `live`, `simulated` or `seeded` (V141, DJ.1 #1313). Set once by the path
+   * that wrote it and never by a caller.
+   */
+  readonly origin: DataOrigin;
   /**
    * Whether the run is still moving — its status is one of the three active ones.
    *

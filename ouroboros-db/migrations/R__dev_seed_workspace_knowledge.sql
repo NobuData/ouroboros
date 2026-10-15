@@ -158,6 +158,10 @@
 -- `skills_current_version_fk`, the workflows seed's reason). `created_at` is a day before each
 -- skill's first version.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.skills (id, organization_id, slug, name, description, scope, repo_ref,
                               enabled, required, draft, origin, created_at)
 select ('5eed0042-0000-4000-8000-' || lpad(seed.ordinal::text, 12, '0'))::uuid,

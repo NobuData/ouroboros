@@ -2547,6 +2547,21 @@ neither gets a workflow**, which is the studio's own empty state: a workspace th
 opened it has an empty rail and a **+ New workflow** tile, and that is what switching to the
 personal workspace shows.
 
+**Every row a seed writes is `seeded`** (V141, DJ.1 [#1313](https://github.com/NobuData/ouroboros/issues/1313)).
+`runs`, `token_usage`, `build_jobs`, `pull_requests` and `test_runs` carry an `origin` — `live`,
+`simulated` or `seeded` — set once by the path that wrote the row and never updated. A derived
+row inherits its run's (a trigger copies it and refuses a different one); a row with no run is
+`live` unless the writer says otherwise. Each seed file says `seeded` once, as its first statement:
+
+```sql
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+```
+
+so a new seed statement needs nothing of its own. `tests/seed.sql` asserts the whole seed comes out
+`seeded`, and `ci/db` rehearses V141's back-fill (`tests/rehearsal/origin-*.sql`). That back-fill
+refuses to guess: a run with neither a `5eed` id, the simulator's watermark nor an AP.1 receipt
+stops the migration with a count.
+
 Every seeded row carries an id beginning `5eed` —
 `5eed0001-0000-4000-8000-000000000001` is the acme-robotics organization,
 `5eed0009-…-000000000482` the run against issue `#482` — so demo data is recognisable on

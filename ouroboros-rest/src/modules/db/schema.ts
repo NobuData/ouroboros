@@ -63,6 +63,20 @@ export const SCHEMA_NAME = "ouroboros";
 export type Stamped = ColumnType<Date, Date | undefined, never>;
 
 /**
+ * Where a row came from (V141, DJ.1 [#1313](https://github.com/NobuData/ouroboros/issues/1313)):
+ * a real executor or person, the run simulator, or a seed file. Set once by the path, never by a
+ * caller.
+ */
+export type DataOrigin = "live" | "simulated" | "seeded";
+
+/** Every {@link DataOrigin}, in the order a reader is told them. */
+export const DATA_ORIGINS = [
+  "live",
+  "simulated",
+  "seeded",
+] as const satisfies readonly DataOrigin[];
+
+/**
  * The tables BetterAuth owns, which this service reads and does not write.
  *
  * `V004` and `V005` are the library's own DDL, and the library is the only thing that writes
@@ -955,6 +969,12 @@ export interface RunsTable {
    * alone, only on a finished run. Null while the transcript is kept.
    */
   events_swept_at: ColumnType<Date | null, never, never>;
+  /**
+   * `live`, `simulated` or `seeded` — set once by the path that wrote the row (V141, DJ.1 #1313).
+   * Inherited from the run where there is one; never updated, which is why its update type is
+   * `never`.
+   */
+  origin: ColumnType<DataOrigin, DataOrigin | undefined, never>;
 }
 
 /**
@@ -1163,6 +1183,8 @@ export interface RunsWithStageView {
   change_set_seq: number;
   playbook_id: string | null;
   events_swept_at: Date | null;
+  /** `runs.origin` (V141). */
+  origin: DataOrigin;
 }
 
 /**
@@ -1512,6 +1534,12 @@ export interface PullRequestsTable {
    * a sync that found nothing changed, which leaves `updated_at` where it was.
    */
   synced_at: Date | null;
+  /**
+   * `live`, `simulated` or `seeded` — set once by the path that wrote the row (V141, DJ.1 #1313).
+   * Inherited from the run where there is one; never updated, which is why its update type is
+   * `never`.
+   */
+  origin: ColumnType<DataOrigin, DataOrigin | undefined, never>;
 }
 
 /**
@@ -2422,6 +2450,12 @@ export interface TokenUsageTable {
   /** The harness credential whose facade call this row records (V140, DH.2 #1303). */
   harness_credential_id: string | null;
   created_at: Stamped;
+  /**
+   * `live`, `simulated` or `seeded` — set once by the path that wrote the row (V141, DJ.1 #1313).
+   * Inherited from the run where there is one; never updated, which is why its update type is
+   * `never`.
+   */
+  origin: ColumnType<DataOrigin, DataOrigin | undefined, never>;
 }
 
 /**
@@ -5383,6 +5417,12 @@ export interface BuildJobsTable {
    * string when read.
    */
   log_lines: ColumnType<string, never, never>;
+  /**
+   * `live`, `simulated` or `seeded` — set once by the path that wrote the row (V141, DJ.1 #1313).
+   * Inherited from the run where there is one; never updated, which is why its update type is
+   * `never`.
+   */
+  origin: ColumnType<DataOrigin, DataOrigin | undefined, never>;
 }
 
 /** `build_jobs.test_selection.scope` — which re-run button asked (V061). */
@@ -5489,6 +5529,12 @@ export interface TestRunsTable {
   parse_warnings: ColumnType<unknown[], string | undefined, string>;
   created_at: Stamped;
   updated_at: Stamped;
+  /**
+   * `live`, `simulated` or `seeded` — set once by the path that wrote the row (V141, DJ.1 #1313).
+   * Inherited from the run where there is one; never updated, which is why its update type is
+   * `never`.
+   */
+  origin: ColumnType<DataOrigin, DataOrigin | undefined, never>;
 }
 
 /** `test_suites.kind` — which half of the wall-time split a suite belongs to (V051). */
@@ -8371,6 +8417,7 @@ export const TABLE_COLUMNS = {
     "change_set_seq",
     "playbook_id",
     "events_swept_at",
+    "origin",
   ],
   run_stages: [
     "id",
@@ -8441,6 +8488,7 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
     "synced_at",
+    "origin",
   ],
   pr_revisions: [
     "id",
@@ -8643,6 +8691,7 @@ export const TABLE_COLUMNS = {
     "resolution_snapshot_id",
     "harness_credential_id",
     "created_at",
+    "origin",
   ],
   workspace_settings: [
     "organization_id",
@@ -9351,6 +9400,7 @@ export const TABLE_COLUMNS = {
     "artifact_globs",
     "test_selection",
     "log_lines",
+    "origin",
   ],
   build_log_chunks: [
     "id",
@@ -9393,6 +9443,7 @@ export const TABLE_COLUMNS = {
     "parse_warnings",
     "created_at",
     "updated_at",
+    "origin",
   ],
   test_suites: [
     "id",
@@ -10473,6 +10524,7 @@ export const TABLE_COLUMNS = {
     "change_set_seq",
     "playbook_id",
     "events_swept_at",
+    "origin",
   ],
   run_events_jsonl: ["run_id", "seq", "line"],
   v_run_guardrails_latest: [

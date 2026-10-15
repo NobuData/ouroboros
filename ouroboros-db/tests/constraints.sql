@@ -14053,12 +14053,14 @@ select pg_temp.must_reject(
   'and cannot be declared simulated either, which would watermark two entries that were reported as real',
   'runs_simulated_is_fixed');
 
--- Before the first entry, either direction is fine: that is where the ingestion contract sets
--- the flag from the principal that opened the run, and nothing is claiming anything yet.
-update ouroboros.runs set simulated = true
- where id = 'a6100000-0000-0000-0000-000000000484';
-update ouroboros.runs set simulated = false
- where id = 'a6100000-0000-0000-0000-000000000484';
+-- Before the first entry the transcript claims nothing yet, but since V141 (DJ.1, #1313) the run
+-- itself does: the watermark is set at insert by the principal that opened the run, with the
+-- run's origin, and flipping it would contradict that origin. A live run is never watermarked.
+select pg_temp.must_reject(
+  $$update ouroboros.runs set simulated = true
+    where id = 'a6100000-0000-0000-0000-000000000484'$$,
+  'a live run cannot be watermarked simulated after it is opened, even before its first entry',
+  'runs_origin_watermark');
 
 select pg_temp.must_hold(
   (select not simulated from ouroboros.runs
@@ -44248,6 +44250,109 @@ select pg_temp.must_hold(
   'a run''s credentials go with it');
 
 delete from ouroboros.organization where "id" in ('org-v140', 'org-v140b');
+
+-- ===========================================================================
+-- V141 — data origin on runs and what derives from them (DJ.1, #1313).
+-- ===========================================================================
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v141', 'Data Origin', 'data-origin-v141', now());
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a1410000-0000-0000-0000-00000000000a', 'org-v141', 'origin-v141', true);
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a141f000-0000-0000-0000-00000000000a', 'a1410000-0000-0000-0000-00000000000a', 'helios-firmware', true, 'main');
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a1410000-0000-0000-0000-0000000000f1', 'org-v141', 'github', 'GitHub · origin');
+
+-- A run that states no origin: live, or simulated when it carries R4's watermark.
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq)
+  values
+    ('a1410000-0000-0000-0000-000000000001', 'org-v141', 'a141f000-0000-0000-0000-00000000000a',
+     1, 'Live', 'standard-fix', 'claude-fable-5', 'building', 'Build', 4, 8, now(), 1);
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq, simulated)
+  values
+    ('a1410000-0000-0000-0000-000000000002', 'org-v141', 'a141f000-0000-0000-0000-00000000000a',
+     2, 'Simulated', 'standard-fix', 'claude-fable-5', 'building', 'Build', 4, 8, now(), 2, true);
+select pg_temp.must_hold(
+  (select origin = 'live' from ouroboros.runs where id = 'a1410000-0000-0000-0000-000000000001')
+  and (select origin = 'simulated' from ouroboros.runs where id = 'a1410000-0000-0000-0000-000000000002'),
+  'a run is live unless it carries the simulator''s watermark');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq, simulated, origin)
+    values ('a1410000-0000-0000-0000-000000000003', 'org-v141', 'a141f000-0000-0000-0000-00000000000a',
+            3, 'x', 'standard-fix', 'm', 'building', 'Build', 4, 8, now(), 3, true, 'live')$$,
+  'a run opened with the simulator''s watermark can never be live', 'runs_origin_watermark');
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq, origin)
+    values ('a1410000-0000-0000-0000-000000000003', 'org-v141', 'a141f000-0000-0000-0000-00000000000a',
+            3, 'x', 'standard-fix', 'm', 'building', 'Build', 4, 8, now(), 3, 'simulated')$$,
+  'and one opened without it can never be simulated', 'runs_origin_watermark');
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq, origin)
+    values ('a1410000-0000-0000-0000-000000000003', 'org-v141', 'a141f000-0000-0000-0000-00000000000a',
+            3, 'x', 'standard-fix', 'm', 'building', 'Build', 4, 8, now(), 3, 'imagined')$$,
+  'an origin is one of three', 'runs_origin_known');
+select pg_temp.must_reject(
+  $$update ouroboros.runs set origin = 'seeded' where id = 'a1410000-0000-0000-0000-000000000001'$$,
+  'a run''s origin cannot be updated', 'runs_origin_immutable');
+
+-- Inside a seed file, a row that states nothing is seeded.
+select set_config('ouroboros.seed_origin', 'seeded', true);
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq)
+  values
+    ('a1410000-0000-0000-0000-000000000004', 'org-v141', 'a141f000-0000-0000-0000-00000000000a',
+     4, 'Seeded', 'standard-fix', 'claude-fable-5', 'building', 'Build', 4, 8, now(), 4);
+select set_config('ouroboros.seed_origin', '', true);
+select pg_temp.must_hold(
+  (select origin = 'seeded' from ouroboros.runs where id = 'a1410000-0000-0000-0000-000000000004'),
+  'a seed file''s run is seeded without saying so row by row');
+
+-- Derived rows inherit, and cannot differ.
+insert into ouroboros.token_usage (organization_id, run_id, provider, model, tokens_in, tokens_out)
+  values ('org-v141', 'a1410000-0000-0000-0000-000000000002', 'anthropic', 'claude', 1, 1);
+select pg_temp.must_hold(
+  (select origin = 'simulated' from ouroboros.token_usage
+    where run_id = 'a1410000-0000-0000-0000-000000000002'),
+  'usage on a simulated run is simulated');
+select pg_temp.must_reject(
+  $$insert into ouroboros.token_usage (organization_id, run_id, provider, model, tokens_in, tokens_out, origin)
+    values ('org-v141', 'a1410000-0000-0000-0000-000000000002', 'anthropic', 'claude', 1, 1, 'live')$$,
+  'a derived row cannot state an origin other than its run''s', 'token_usage_origin_inherited');
+select pg_temp.must_reject(
+  $$update ouroboros.token_usage set origin = 'live' where run_id = 'a1410000-0000-0000-0000-000000000002'$$,
+  'nor change it afterwards', 'token_usage_origin_immutable');
+
+insert into ouroboros.test_runs (organization_id, run_id, attempt_seq)
+  values ('org-v141', 'a1410000-0000-0000-0000-000000000002', 1);
+select pg_temp.must_hold(
+  (select origin = 'simulated' from ouroboros.test_runs where run_id = 'a1410000-0000-0000-0000-000000000002'),
+  'test results inherit their run''s origin');
+
+-- A pull request a person opened, with no run, is live — and stays its own origin's.
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title, head_branch, base_branch)
+  values ('a1410000-0000-0000-0000-0000000000e1', 'org-v141', 'a1410000-0000-0000-0000-0000000000f1',
+          41, 'https://github.com/o/r/pull/41', 'By hand', 'fix', 'main');
+select pg_temp.must_hold(
+  (select origin = 'live' from ouroboros.pull_requests where id = 'a1410000-0000-0000-0000-0000000000e1'),
+  'a pull request a person opened is live');
+update ouroboros.pull_requests set run_id = 'a1410000-0000-0000-0000-000000000001'
+ where id = 'a1410000-0000-0000-0000-0000000000e1';
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set run_id = 'a1410000-0000-0000-0000-000000000002'
+     where id = 'a1410000-0000-0000-0000-0000000000e1'$$,
+  'a live pull request cannot be linked to a simulated run', 'pull_requests_origin_inherited');
+
+delete from ouroboros.organization where "id" = 'org-v141';
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

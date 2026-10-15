@@ -13095,6 +13095,15 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * DataOrigin
+         * @description Where a row came from (DJ.1, [#1313](https://github.com/NobuData/ouroboros/issues/1313)):
+         *     `live` — a real executor or a person; `simulated` — the run simulator; `seeded` — a seed
+         *     file (development and e2e only). Set once by the path that wrote the row, inherited from
+         *     the run where there is one, and never accepted from a caller.
+         * @enum {string}
+         */
+        DataOrigin: "live" | "simulated" | "seeded";
+        /**
          * Error
          * @description The body of **every** error this API answers with, and the same shape
          *     `ouroboros-engine` uses behind it (`docs/ARCHITECTURE.md` § 5.3). A failure the
@@ -15174,6 +15183,7 @@ export interface components {
          * @description A PR's head — the page's `h1` and meta chips.
          */
         PullRequestHead: {
+            origin: components["schemas"]["DataOrigin"];
             /** Format: uuid */
             id: string;
             /** @example 514 */
@@ -15232,6 +15242,7 @@ export interface components {
          * @description One row of the listing — the head, the latest revision and its aggregate, and the needs-you flag.
          */
         PullRequestSummary: {
+            origin: components["schemas"]["DataOrigin"];
             /** Format: uuid */
             id: string;
             /** @example 514 */
@@ -15822,6 +15833,7 @@ export interface components {
          * @description What the page head adds to the run row — eyebrow, pin, branch, watermark, liveness.
          */
         RunConsoleHead: {
+            origin: components["schemas"]["DataOrigin"];
             /**
              * @description The *Loop #1847* counter — a per-workspace display sequence.
              * @example 1847
@@ -32461,6 +32473,7 @@ export interface components {
          *     }
          */
         BuildJob: {
+            origin: components["schemas"]["DataOrigin"];
             /** Format: uuid */
             id: string;
             /** @description The job's public name within its workspace — mockup 08's `#479`. */
@@ -34162,6 +34175,7 @@ export interface operations {
                      *         "workflowVersion": 14,
                      *         "branchName": "loop/482-canbus-flake",
                      *         "simulated": true,
+                     *         "origin": "simulated",
                      *         "live": true,
                      *         "repository": {
                      *           "owner": "acme",

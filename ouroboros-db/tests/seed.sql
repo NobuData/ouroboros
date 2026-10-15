@@ -7928,5 +7928,15 @@ select pg_temp.must_hold(
   'Ken''s personal workspace has no chat connection');
 
 
+-- Every row the seed writes is seeded (DJ.1, #1313, V141): each seed file says so once, and the
+-- origin triggers carry it onto every run and every row derived from one.
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.runs where origin <> 'seeded')
+  and not exists (select 1 from ouroboros.token_usage where origin <> 'seeded')
+  and not exists (select 1 from ouroboros.build_jobs where origin <> 'seeded')
+  and not exists (select 1 from ouroboros.pull_requests where origin <> 'seeded')
+  and not exists (select 1 from ouroboros.test_runs where origin <> 'seeded'),
+  'the development seed is all seeded — runs, usage, builds, pull requests and test results');
+
 \o
 \echo 'seed.sql: all assertions passed'

@@ -75,6 +75,7 @@ export function runRow(over: Partial<Run> = {}): Run {
     change_set_seq: 0,
     playbook_id: null,
     events_swept_at: null,
+    origin: "live",
     ...over,
   };
 }
