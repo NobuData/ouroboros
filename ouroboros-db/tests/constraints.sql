@@ -4254,8 +4254,9 @@ select pg_temp.must_hold(
   (select array_agg(name order by sort_order) = array['implement', 'docs', 'test-gen']
      from ouroboros.task_kinds
     where organization_id = 'org-matrix'
-      -- V142's row, which every workspace is given (#1748); it sits at 1000.
-      and name <> 'copilot-workflow'),
+      -- V142's and V144's rows, which every workspace is given (#1748, #123); they sit at
+      -- 1000 and 1001.
+      and name not in ('copilot-workflow', 'estimate')),
   'a one-statement matrix reorder succeeds inside a transaction');
 
 -- --- V142: every workspace has the copilot's task kind (#1748) ----------------
@@ -4281,6 +4282,29 @@ select pg_temp.must_hold(
                        where kind.organization_id = 'org-matrix'
                          and kind.name = 'copilot-workflow')),
   'the kind comes with no route — a route needs a hop, and a hop needs an alias the workspace chose');
+
+-- --- V144: every workspace has the estimate task kind (#123) ------------------------------
+--
+-- The kind the issue estimator routes through. No route is the state that means *use the
+-- workspace's Ollama connection*, so the kind arrives without one; it sits after the copilot's.
+select pg_temp.must_hold(
+  (select count(*) = 1 and min(sort_order) = 1001
+     from ouroboros.task_kinds
+    where organization_id = 'org-matrix' and name = 'estimate'),
+  'a new workspace is given the estimate task kind, at sort order 1001');
+
+select ouroboros.estimate_task_kind_seed('org-matrix');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.task_kinds
+    where organization_id = 'org-matrix' and name = 'estimate'),
+  'seeding the estimate task kind again leaves the one it has');
+
+select pg_temp.must_hold(
+  (select not exists (select 1 from ouroboros.routes route
+                        join ouroboros.task_kinds kind on kind.id = route.task_kind_id
+                       where kind.organization_id = 'org-matrix' and kind.name = 'estimate')),
+  'the estimate kind comes with no route — no route means the Ollama default');
 
 update ouroboros.task_kinds
    set sort_order = case sort_order when 5 then 7 when 7 then 5 end
@@ -44166,7 +44190,17 @@ select pg_temp.must_reject(
 select pg_temp.must_reject(
   $$insert into ouroboros.token_usage (organization_id, provider, model, tokens_in, tokens_out, subject_kind, subject_id)
     values ('org-v139', 'anthropic', 'claude', 1, 1, 'workflow', 'a1390000-0000-0000-0000-0000000000d2')$$,
-  'only the four subject kinds', 'token_usage_subject_kind');
+  'only the known subject kinds', 'token_usage_subject_kind');
+
+-- V144 (#123): a sizing call is attributed to the issue, ticket or draft it sized.
+insert into ouroboros.token_usage
+    (organization_id, run_id, provider, model, tokens_in, tokens_out, subject_kind, subject_id)
+  values ('org-v139', null, 'ollama', 'llama3.1:8b', 900, 120, 'estimate',
+          'a1390000-0000-0000-0000-0000000000e1');
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.token_usage
+    where organization_id = 'org-v139' and subject_kind = 'estimate'),
+  'an estimate is a subject a model call can be metered against');
 select pg_temp.must_reject(
   $$insert into ouroboros.token_usage (organization_id, run_id, provider, model, tokens_in, tokens_out, subject_kind, subject_id)
     values ('org-v139', 'a1390000-0000-0000-0000-000000000001', 'anthropic', 'claude', 1, 1, 'run',

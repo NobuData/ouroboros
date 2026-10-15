@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.7.35
+  version: 0.7.36
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -2885,6 +2885,82 @@ components:
         context:
           $ref: "#/components/schemas/EstimationContext"
           description: The vocabularies an answer may use.
+        model:
+          $ref: "#/components/schemas/EstimateModel"
+          description: |-
+            The model to size with (O.2's core,
+            [#123](https://github.com/NobuData/ouroboros/issues/123)) — the workspace's
+            `estimate` route, or its Ollama connection and `llama3.1:8b`. Absent: the
+            heuristic (`heuristic-v0`) answers, and the trace's first signal says why. A model
+            that cannot answer, or answers outside the contract, also ends in the heuristic's
+            estimate, with a `fallback:` signal naming the reason — never in an error.
+        model_unavailable:
+          type: string
+          minLength: 1
+          maxLength: 400
+          description: Why there is no `model`, for the trace to say.
+          examples: [no estimate route and no Ollama connection]
+
+    EstimateModel:
+      type: object
+      title: EstimateModel
+      description: |-
+        Which model sizes the issue, as the invocation gateway is asked for it: exactly one of
+        a routing `alias` (the gateway walks the route's chain behind it) or a provider
+        `connection` with the `model_id` to ask it for. The engine holds no credential and
+        names no provider either way. The call is attributed to `subject` (`runCtx.run`) with
+        `runCtx.stage = estimate`.
+      additionalProperties: false
+      required: [label, subject]
+      properties:
+        alias:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: "`model_aliases.alias`. Exclusive with `connection`."
+        connection:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: "`provider_connections.id`. Exclusive with `alias`; requires `model_id`."
+        model_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: The provider's model id, sent as `payload.model` with a connection.
+          examples: [llama3.1:8b]
+        label:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: What the trace names as the estimator.
+          examples: [llama3.1:8b]
+        resolution_version:
+          type: [string, "null"]
+          maxLength: 32
+          description: The route resolution's version; null for a connection.
+        cost_cap_cents:
+          type: [integer, "null"]
+          minimum: 0
+          description: The route's per-run cap in cents; null for none.
+        subject:
+          $ref: "#/components/schemas/EstimateSubject"
+
+    EstimateSubject:
+      type: object
+      title: EstimateSubject
+      description: What a sizing call is metered against — the thing being sized.
+      additionalProperties: false
+      required: [kind, id]
+      properties:
+        kind:
+          type: string
+          enum: [issue, ticket, draft]
+        id:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: "`github_issues.id`, `tickets.id` or `ticket_drafts.id`."
 
     Breakdown:
       type: object

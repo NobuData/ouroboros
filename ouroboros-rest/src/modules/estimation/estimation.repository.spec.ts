@@ -47,6 +47,29 @@ describe("EstimationRepository", () => {
     repository = new EstimationRepository(database.service);
   });
 
+  describe("the Ollama connection an estimate defaults to (#123)", () => {
+    it("reads the workspace's first enabled, unpaused Ollama connection, by name", async () => {
+      database.answers({ rows: [{ id: "5eed000c-0000-4000-8000-000000000005" }] });
+
+      await expect(repository.ollamaConnection("org-estimation")).resolves.toBe(
+        "5eed000c-0000-4000-8000-000000000005",
+      );
+
+      const [statement] = database.statements;
+      expect(statement.sql).toContain('from "ouroboros"."provider_connections"');
+      expect(statement.sql).toContain('order by "display_name"');
+      expect(statement.parameters).toEqual(
+        expect.arrayContaining(["org-estimation", "ollama", true, "paused"]),
+      );
+    });
+
+    it("answers undefined for a workspace with none", async () => {
+      database.answers({ rows: [] });
+
+      await expect(repository.ollamaConnection("org-estimation")).resolves.toBeUndefined();
+    });
+  });
+
   describe("reading one issue", () => {
     it("joins the repository and its organisation to build `owner/name`", async () => {
       database.answers({ rows: [ROW] });

@@ -1369,6 +1369,24 @@ select pg_temp.must_hold(
    ) as per_workspace),
   'every workspace has the copilot-workflow task kind (V142)');
 
+-- …and exactly one estimate kind (V144, #123): the acme workspace's is the seed's, routed
+-- through `estimate-primary`; every other workspace's is unrouted, which means the Ollama default.
+select pg_temp.must_hold(
+  (select bool_and(estimate_kinds = 1) from (
+     select count(kind.id) filter (where kind.name = 'estimate') as estimate_kinds
+       from ouroboros.organization org
+       left join ouroboros.task_kinds kind on kind.organization_id = org."id"
+      group by org."id"
+   ) as per_workspace),
+  'every workspace has the estimate task kind (V144)');
+
+select pg_temp.must_hold(
+  (select sort_order = 2 and description = 'Size effort XS–XL before queueing'
+     from ouroboros.task_kinds kind
+     join ouroboros.organization org on org."id" = kind.organization_id
+    where org."slug" = 'acme-robotics' and kind.name = 'estimate'),
+  'the seeded workspace''s estimate kind keeps its place and description in the matrix');
+
 -- ---------------------------------------------------------------------------
 -- The escalation rules — `3 active`, and their sentences character for character.
 --
@@ -1565,8 +1583,9 @@ select pg_temp.must_hold(
      select 1 from ouroboros.task_kinds k
        join ouroboros.organization o on o."id" = k.organization_id
       where o."slug" in ('kensuenobu', 'acme-labs')
-        -- V142's copilot kind is every workspace's; it has no route here (#1748).
-        and k.name <> 'copilot-workflow'
+        -- V142's copilot kind and V144's estimate kind are every workspace's; neither has a
+        -- route here (#1748, #123).
+        and k.name not in ('copilot-workflow', 'estimate')
      union all
      select 1 from ouroboros.routes r
        join ouroboros.organization o on o."id" = r.organization_id
@@ -1854,12 +1873,14 @@ select pg_temp.must_hold(
 -- ---------------------------------------------------------------------------
 -- The id convention, for the routing seed's own rows.
 --
--- 427 rows under eight prefixes — an alias, a kind, a route, a hop, a rule, a routed call, a
+-- 426 rows under eight prefixes — an alias, a kind, a route, a hop, a rule, a routed call, a
 -- price override and a resolution are each recognisable on sight in a log or a URL — so a
--- row added later with a generated id is caught here rather than by nobody.
+-- row added later with a generated id is caught here rather than by nobody. The `estimate`
+-- and `copilot-workflow` kinds are not the seed's rows: V144 and V142 give every workspace
+-- one, with a generated id, and the seed only places the first in the matrix (#123).
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
-  (select count(*) = 427 from (
+  (select count(*) = 426 from (
      select id from ouroboros.model_aliases    where id::text like '5eed000f-0000-4000-8000-%'
      union all
      select id from ouroboros.task_kinds       where id::text like '5eed0010-0000-4000-8000-%'
@@ -1877,7 +1898,7 @@ select pg_temp.must_hold(
      select id from ouroboros.resolution_snapshots
                                                where id::text like '5eed0017-0000-4000-8000-%'
    ) as seeded),
-  'the routing seed created its 427 prefixed rows and no 428th');
+  'the routing seed created its 426 prefixed rows and no 427th');
 
 
 -- ===========================================================================

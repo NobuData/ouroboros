@@ -91,13 +91,33 @@ The panel shows the issue's description and an **AI Work Breakdown**:
 - The suggested workflow and the routed model.
 
 The **Estimation trace** at the bottom says which estimator sized the issue and when (for
-example **sized by heuristic-v0 · 2m ago**), and which signals it used. Each re-estimate is
+example **sized by llama3.1:8b · 2m ago**), and which signals it used. Each re-estimate is
 kept as a new version beside the last, shown as **v2**, **v3** and so on.
+
+### Which model sizes your issues
+
+Issues are sized by a model your workspace chooses, the same way it chooses every other model:
+
+1. **The `estimate` route.** If the `estimate` task kind has a route under
+   [Model routing](./models.mdx#routing-a-task-kind-that-has-no-route), its models size your
+   issues, in order — the first that answers. The trace names the model, for example
+   **sized by claude-haiku-4-5**.
+2. **Otherwise, Ollama.** With no `estimate` route, issues are sized by your workspace's
+   Ollama connection (see [Providers](../administration/providers.mdx)) with the model
+   `llama3.1:8b`. That model has to be pulled on that machine (`ollama pull llama3.1:8b`).
+3. **Otherwise, the built-in rules.** With neither, or when the model cannot be reached or
+   gives an answer that does not fit, the built-in rules size the issue instead
+   (**sized by heuristic-v0**). The first signal in the trace says why — for example
+   *model: none — no estimate route and no Ollama connection*, or *fallback: heuristic-v0 —
+   llama3.1:8b: provider_unavailable: …*. Nothing is left unsized because a model is down.
+
+A model estimate also reports how many tokens it took. The estimated files touched still come
+from the built-in rules, so an estimate may name no files whichever model sized it.
 
 ### Where confidence comes from
 
 The estimator sizes an issue from what the issue says: its title, its description and its
-labels. Signals that agree raise the confidence; a missing description or no useful labels
+labels — and, for a model, the confirmed facts your workspace knows about the repository. Signals that agree raise the confidence; a missing description or no useful labels
 lower it. An issue sized below the workspace's confidence floor — 70% unless your
 administrator changed `OURO_ESTIMATION_CONFIDENCE_FLOOR` — is marked **needs human** rather
 than **sized**. The estimate is still shown, so you can see what the estimator thought.

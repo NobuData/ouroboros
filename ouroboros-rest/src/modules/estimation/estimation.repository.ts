@@ -134,6 +134,29 @@ export class EstimationRepository {
   constructor(private readonly database: DatabaseService) {}
 
   /**
+   * The workspace's Ollama connection the estimator defaults to when it has no `estimate` route
+   * (O.2's core, #123): the first, by name, that is switched on and not paused.
+   *
+   * @param organizationId - The workspace.
+   * @returns `provider_connections.id`, or undefined when the workspace has none to use.
+   */
+  async ollamaConnection(organizationId: string): Promise<string | undefined> {
+    const row = await this.database.db
+      .selectFrom("provider_connections")
+      .select("id")
+      .where("organization_id", "=", organizationId)
+      .where("kind", "=", "ollama")
+      .where("enabled", "=", true)
+      .where("status", "<>", "paused")
+      .orderBy("display_name")
+      .orderBy("id")
+      .limit(1)
+      .executeTakeFirst();
+
+    return row?.id;
+  }
+
+  /**
    * Read one issue and everything an estimation request needs.
    *
    * @param issueId - `github_issues.id`.

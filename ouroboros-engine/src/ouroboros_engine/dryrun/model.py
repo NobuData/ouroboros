@@ -20,18 +20,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from ouroboros_engine.control_plane.client import ControlPlaneClient, ControlPlaneError
+from ouroboros_engine.control_plane.client import ControlPlaneClient
 from ouroboros_engine.control_plane.contract import (
-    DeltaEvent,
-    ErrorEvent,
     RunContext,
-    UsageEvent,
 )
-from ouroboros_engine.copilot.gateway import Gateway, GatewayError
+from ouroboros_engine.copilot.gateway import Gateway
 from ouroboros_engine.investigation.model import (
-    CallUsage,
     ModelAnswer,
-    ModelFailureError,
+    collect_answer,
 )
 
 #: The most output tokens one turn of a stage may ask for.
@@ -108,31 +104,4 @@ class GatewayStageCaller:
             },
             alias=call.alias,
         )
-        text: list[str] = []
-        usage: list[CallUsage] = []
-        try:
-            for event in self._client.read_events(self._gateway.stream(outgoing)):
-                if isinstance(event, DeltaEvent):
-                    text.append(event.text)
-                elif isinstance(event, UsageEvent):
-                    usage.append(
-                        CallUsage(
-                            hop=event.hop,
-                            connection=event.connection,
-                            model=event.model,
-                            input_tokens=event.input_tokens,
-                            output_tokens=event.output_tokens,
-                            cost_cents=event.cost_cents,
-                        )
-                    )
-                elif isinstance(event, ErrorEvent):
-                    raise ModelFailureError(event.code, event.message, usage)
-        except GatewayError as failed:
-            raise ModelFailureError(failed.code, failed.message, usage) from failed
-        except (ControlPlaneError, ValueError) as refused:
-            raise ModelFailureError(
-                "gateway_refused",
-                "the invocation gateway answered outside its contract",
-                usage,
-            ) from refused
-        return ModelAnswer(text="".join(text), usage=usage)
+        return collect_answer(self._client, self._gateway, outgoing)

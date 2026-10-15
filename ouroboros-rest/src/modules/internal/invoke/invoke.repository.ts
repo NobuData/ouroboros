@@ -37,12 +37,18 @@ export interface AliasBinding {
   readonly kind: ProviderConnectionKind | null;
 }
 
-/** The four tables an invocation can be attributed to, in lookup order. */
+/**
+ * The tables an invocation can be attributed to, in lookup order — each with its own
+ * `organization_id`. An estimate (V144, #123) is attributed to what it sized: a GitHub issue or
+ * a canonical ticket here, a ticket draft through its batch ({@link InvokeRepository.subjectOf}).
+ */
 const SUBJECT_TABLES = [
   ["run", "runs"],
   ["copilot_session", "copilot_sessions"],
   ["dry_run", "dry_runs"],
   ["investigation", "investigations"],
+  ["estimate", "github_issues"],
+  ["estimate", "tickets"],
 ] as const;
 
 @Injectable()
@@ -50,7 +56,8 @@ export class InvokeRepository {
   constructor(private readonly database: DatabaseService) {}
 
   /**
-   * Which workspace a `runCtx.run` belongs to, and what kind of thing it is.
+   * Which workspace a `runCtx.run` belongs to, and what kind of thing it is — a run, a copilot
+   * session, a dry run, an investigation, or what an estimate sized (#123).
    *
    * @param id - A uuid.
    * @returns The subject, or undefined when no owner table has the id.
@@ -68,7 +75,17 @@ export class InvokeRepository {
       }
     }
 
-    return undefined;
+    // A ticket draft has no workspace of its own: its batch is its whole tenancy (V034).
+    const draft = await this.database.db
+      .selectFrom("ticket_drafts")
+      .innerJoin("draft_batches", "draft_batches.id", "ticket_drafts.batch_id")
+      .select("draft_batches.organization_id")
+      .where("ticket_drafts.id", "=", id)
+      .executeTakeFirst();
+
+    return draft === undefined
+      ? undefined
+      : { organizationId: draft.organization_id, kind: "estimate", id };
   }
 
   /**

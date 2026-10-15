@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.41.42"
+  version: "0.41.43"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -375,7 +375,8 @@ paths:
         floor — capped by the org policy's spend guard and `runCtx.costCapCents`.
 
         **Who the call is attributed to.** `runCtx.run` is a run, a Copilot session, a dry
-        run or an investigation id; the workspace is the one that owns it. Every attempted
+        run or an investigation id — or, for the issue estimator, the GitHub issue, ticket or
+        ticket draft it sizes (`estimate`, #123); the workspace is the one that owns it. Every attempted
         hop's usage is stored per hop, attributed to the connection and model that served it.
 
         **Failover.** `provider_unavailable` (5xx, timeouts), `provider_rate_limited` (after a
@@ -449,8 +450,8 @@ paths:
                 details: {}
         "404":
           description: |-
-            `run_not_found` — no run, Copilot session, dry run or investigation has the
-            `runCtx.run` id. Also `alias_not_found` and `connection_not_found` for a target the
+            `run_not_found` — no run, Copilot session, dry run, investigation, or issue, ticket
+            or draft being estimated has the `runCtx.run` id. Also `alias_not_found` and `connection_not_found` for a target the
             run's workspace does not have.
           content:
             application/json:

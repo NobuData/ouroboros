@@ -261,6 +261,42 @@ export interface EstimateRequest {
   issue: IssueContext;
   /** The vocabularies an answer may use. */
   context: EstimationContext;
+  /**
+   * The model the workspace sizes with (O.2's core, #123) — its `estimate` route, or the Ollama
+   * default — or absent, when it has none and the engine's heuristic answers.
+   */
+  model?: EstimateModel;
+  /** Why there is no {@link model}, for the trace to say; absent when there is one. */
+  modelUnavailable?: string;
+}
+
+/** What an estimate is metered against: the GitHub issue, canonical ticket or draft it sizes. */
+export interface EstimateSubject {
+  readonly kind: "issue" | "ticket" | "draft";
+  /** `github_issues.id`, `tickets.id` or `ticket_drafts.id`. */
+  readonly id: string;
+}
+
+/**
+ * Which model sizes the issue, as the invocation gateway is asked for it — a routing alias
+ * (the workspace's `estimate` route, walked with its fallbacks) **or** a concrete provider
+ * connection and model (the Ollama default), never both.
+ */
+export interface EstimateModel {
+  /** `model_aliases.alias` — the route's primary. Exclusive with {@link connection}. */
+  readonly alias?: string;
+  /** `provider_connections.id`. Exclusive with {@link alias}; requires {@link modelId}. */
+  readonly connection?: string;
+  /** The provider's model id — sent as `payload.model` with a connection. */
+  readonly modelId?: string;
+  /** What the trace names as the estimator — `llama3.1:8b`. */
+  readonly label: string;
+  /** The route resolution's version, for the gateway to check; null for a connection. */
+  readonly resolutionVersion: string | null;
+  /** The route's per-run cost cap in cents; null for none. */
+  readonly costCapCents: number | null;
+  /** What the call is metered against. */
+  readonly subject: EstimateSubject;
 }
 
 /** The *AI Work Breakdown* panel's numbers — `issue_estimates.breakdown`, exactly. */
@@ -405,6 +441,28 @@ export function estimateRequestBody(request: EstimateRequest): Record<string, un
       model_defaults: request.context.modelDefaults,
       facts: request.context.facts.map((fact) => ({ id: fact.id, text: fact.text })),
     },
+    ...(request.model === undefined ? {} : { model: estimateModelBody(request.model) }),
+    ...(request.modelUnavailable === undefined
+      ? {}
+      : { model_unavailable: request.modelUnavailable }),
+  };
+}
+
+/**
+ * The model target as the engine spells it.
+ *
+ * @param model - The target.
+ * @returns Its snake_case body, absent keys left out.
+ */
+function estimateModelBody(model: EstimateModel): Record<string, unknown> {
+  return {
+    ...(model.alias === undefined ? {} : { alias: model.alias }),
+    ...(model.connection === undefined ? {} : { connection: model.connection }),
+    ...(model.modelId === undefined ? {} : { model_id: model.modelId }),
+    label: model.label,
+    resolution_version: model.resolutionVersion,
+    cost_cap_cents: model.costCapCents,
+    subject: { kind: model.subject.kind, id: model.subject.id },
   };
 }
 

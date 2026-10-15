@@ -60,6 +60,7 @@ import { EngineModule } from "../engine/engine.module";
 import { RoutingModule } from "../routing/routing.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
 import { EstimationContextService } from "./estimation.context";
+import { EstimationModelService } from "./estimation.model";
 import { EstimationController } from "./estimation.controller";
 import { EstimationKnowledge } from "./estimation.knowledge";
 import { EstimationLimiter } from "./estimation.limiter";
@@ -84,6 +85,7 @@ import { ResizeReviewEmitter } from "./resize-review.emitter";
     EstimationOrchestrator,
     EstimationRepository,
     EstimationContextService,
+    EstimationModelService,
     EstimationKnowledge,
     EstimationSweeper,
     EstimationTriggerService,

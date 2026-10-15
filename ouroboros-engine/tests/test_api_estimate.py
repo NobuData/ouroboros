@@ -157,6 +157,38 @@ def test_the_heuristic_is_the_estimator_installed_by_default(
     assert body["trace"]["estimator"] == "heuristic-v0"
     assert body["trace"]["tokens_used"] == 0
     assert body["breakdown"]["files"] == []
+    # The model estimator (#123) is what `create_app` installs; a request naming no model is
+    # its heuristic floor, and the trace's first signal says so.
+    assert body["trace"]["signals"][0] == "model: none — no model configured"
+
+
+def test_the_model_estimator_is_installed_with_the_heuristic_behind_it(
+    client: TestClient,
+) -> None:
+    from ouroboros_engine.estimation.model import ModelEstimator
+
+    assert isinstance(client.app.state.estimator, ModelEstimator)
+    assert client.app.state.estimator.name == "heuristic-v0"
+
+
+def test_the_estimator_runs_off_the_event_loop(
+    client: TestClient, estimate_body: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A model estimate waits on the invocation gateway; on the loop it would stall every
+    # other request for as long as the model took.
+    from ouroboros_engine.api import estimate as route
+
+    threaded: list[object] = []
+    real = route.run_in_threadpool
+
+    async def recording(function, *args):
+        threaded.append(function)
+        return await real(function, *args)
+
+    monkeypatch.setattr(route, "run_in_threadpool", recording)
+
+    assert client.post(ESTIMATE_PATH, json=estimate_body).status_code == 200
+    assert threaded == [client.app.state.estimator.estimate]
 
 
 def test_an_issue_opened_without_a_description_can_be_sized(

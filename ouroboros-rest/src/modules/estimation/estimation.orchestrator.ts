@@ -67,10 +67,16 @@ import { AppConfigService } from "../config/config.service";
 import type { EstimableIssue, EstimationIntake } from "../backlog-sync/estimation.intake";
 import { EngineClient } from "../engine/engine.client";
 import type { ContextManifest } from "../context-assembly/context-assembly.resources";
-import type { Estimate, EstimateRequest, EstimationContext } from "../engine/engine.contract";
+import type {
+  Estimate,
+  EstimateRequest,
+  EstimateSubject,
+  EstimationContext,
+} from "../engine/engine.contract";
 import { describeForLog } from "../errors/failure";
 import { EstimationContextService, type EstimationVocabulary } from "./estimation.context";
 import { EstimationKnowledge, factsOf } from "./estimation.knowledge";
+import { EstimationModelService } from "./estimation.model";
 import { ResizeReviewEmitter } from "./resize-review.emitter";
 import { draftEstimateRow, estimateRow, statusFor, ticketEstimateRow } from "./estimation.outcome";
 import { EstimationQueue } from "./estimation.queue";
@@ -214,6 +220,7 @@ export class EstimationOrchestrator implements EstimationIntake {
     private readonly context: EstimationContextService,
     private readonly config: AppConfigService,
     private readonly knowledge: EstimationKnowledge,
+    private readonly models: EstimationModelService,
     @Optional() private readonly resizes?: ResizeReviewEmitter,
   ) {
     this.queue = new EstimationQueue(config.estimationConcurrency);
@@ -455,10 +462,12 @@ export class EstimationOrchestrator implements EstimationIntake {
       const subject = `ticket ${ticket.externalKey} (${ticketId})`;
       const issue = ticketIssueContext(ticket);
       const manifest = await this.knowledge.manifestFor(ticket.organizationId, issue.repo);
-      const estimate = await this.attempt(subject, {
-        issue,
-        context: withFacts(context, manifest),
-      });
+      const estimate = await this.attempt(
+        subject,
+        { issue, context: withFacts(context, manifest) },
+        ticket.organizationId,
+        { kind: "ticket", id: ticketId },
+      );
 
       if (estimate === undefined) {
         await this.giveUpTicket(ticket, "the engine could not be reached or could not answer");
@@ -550,16 +559,21 @@ export class EstimationOrchestrator implements EstimationIntake {
     }
 
     const manifest = await this.knowledge.manifestFor(draft.organizationId, request.repo);
-    const estimate = await this.attempt(`draft ${draft.localKey} (batch ${draft.batchId})`, {
-      issue: {
-        number: draftNumber(draft.localKey),
-        title: draft.title,
-        body: draft.body,
-        labels: [],
-        repo: request.repo,
+    const estimate = await this.attempt(
+      `draft ${draft.localKey} (batch ${draft.batchId})`,
+      {
+        issue: {
+          number: draftNumber(draft.localKey),
+          title: draft.title,
+          body: draft.body,
+          labels: [],
+          repo: request.repo,
+        },
+        context: withFacts(context, manifest),
       },
-      context: withFacts(context, manifest),
-    });
+      draft.organizationId,
+      { kind: "draft", id: draft.draftId },
+    );
 
     if (estimate === undefined) {
       this.logger.warn(
@@ -611,29 +625,50 @@ export class EstimationOrchestrator implements EstimationIntake {
     issue: EstimableIssueRow,
     context: EstimationContext,
   ): Promise<Estimate | undefined> {
-    return this.attempt(`${issue.repo}#${String(issue.number)}`, {
-      issue: {
-        number: issue.number,
-        title: issue.title,
-        body: issue.body,
-        labels: issue.labels,
-        repo: issue.repo,
+    return this.attempt(
+      `${issue.repo}#${String(issue.number)}`,
+      {
+        issue: {
+          number: issue.number,
+          title: issue.title,
+          body: issue.body,
+          labels: issue.labels,
+          repo: issue.repo,
+        },
+        context,
       },
-      context,
-    });
+      issue.organizationId,
+      { kind: "issue", id: issue.issueId },
+    );
   }
 
   /**
-   * One engine call, with one retry — the policy issues and drafts share.
+   * One engine call, with one retry — the policy issues, tickets and drafts share.
+   *
+   * The model is chosen first (#123): the workspace's `estimate` route, or its Ollama
+   * connection, or none — and the engine is told which, or why none, so its trace can say.
    *
    * @param subject - How the log names what was being sized.
-   * @param request - The sizing request.
+   * @param request - The sizing request, without its model.
+   * @param organizationId - The workspace, whose routing chooses the model.
+   * @param sized - What the model call is metered against.
    * @returns The estimate, or `undefined` when every attempt failed.
    */
-  private async attempt(subject: string, request: EstimateRequest): Promise<Estimate | undefined> {
+  private async attempt(
+    subject: string,
+    request: EstimateRequest,
+    organizationId: string,
+    sized: EstimateSubject,
+  ): Promise<Estimate | undefined> {
+    const choice = await this.models.choose(organizationId, sized);
+    const routed: EstimateRequest =
+      choice.model === undefined
+        ? { ...request, modelUnavailable: choice.unavailable }
+        : { ...request, model: choice.model };
+
     for (let attempt = 1; attempt <= MAX_ENGINE_ATTEMPTS; attempt += 1) {
       try {
-        return await this.engine.estimate(request);
+        return await this.engine.estimate(routed);
       } catch (error) {
         this.logger.error(
           `Estimating ${subject} failed ` +

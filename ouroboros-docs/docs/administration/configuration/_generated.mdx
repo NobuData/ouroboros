@@ -425,7 +425,7 @@ An estimate below the floor is still stored in full, trace and all. It is a real
 
 How long an issue may sit in `estimating` before the sweep re-queues it, in seconds. Optional; 600 (ten minutes) when unset. Between 60 and 86400.
 
-Not a timeout on an estimate — the engine gateway's own five-second deadline is that — but how long a row may claim to be estimating with nothing estimating it. A process killed mid-flight is the case: the row says `estimating`, no queue holds it, and without this sweep the page would show that pill until somebody re-estimated by hand.
+Not a timeout on an estimate — the engine gateway's own deadline is that: five seconds, or 150 for an estimate that asks the workspace's model, each tried twice — but how long a row may claim to be estimating with nothing estimating it. A process killed mid-flight is the case: the row says `estimating`, no queue holds it, and without this sweep the page would show that pill until somebody re-estimated by hand. Keep it above 300 when issues are sized by a model, or a slow model's issue is re-queued while it is still being sized.
 
 ### `OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS`
 

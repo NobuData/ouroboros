@@ -15,7 +15,7 @@ describe("the chain executor's repository", () => {
   });
 
   describe("subjectOf", () => {
-    it("looks in runs, Copilot sessions, dry runs and investigations, in that order", async () => {
+    it("looks in runs, Copilot sessions, dry runs, investigations, then what an estimate sizes", async () => {
       await expect(repository.subjectOf(ID)).resolves.toBeUndefined();
 
       expect(database.sql().map((sql) => /from "ouroboros"\."(\w+)"/.exec(sql)?.[1])).toEqual([
@@ -23,7 +23,40 @@ describe("the chain executor's repository", () => {
         "copilot_sessions",
         "dry_runs",
         "investigations",
+        "github_issues",
+        "tickets",
+        "ticket_drafts",
       ]);
+    });
+
+    it.each([
+      [4, "a GitHub issue"],
+      [5, "a canonical ticket"],
+    ])("attributes a call to an estimate when the id is %s's (#123)", async (misses) => {
+      database.answers(...Array.from({ length: misses }, () => ({ rows: [] })), {
+        rows: [{ organization_id: ORG }],
+      });
+
+      await expect(repository.subjectOf(ID)).resolves.toEqual({
+        organizationId: ORG,
+        kind: "estimate",
+        id: ID,
+      });
+    });
+
+    it("finds a ticket draft's workspace through its batch, as an estimate (#123)", async () => {
+      database.answers(...Array.from({ length: 6 }, () => ({ rows: [] })), {
+        rows: [{ organization_id: ORG }],
+      });
+
+      await expect(repository.subjectOf(ID)).resolves.toEqual({
+        organizationId: ORG,
+        kind: "estimate",
+        id: ID,
+      });
+      const last = database.statements.at(-1);
+      expect(last?.sql).toContain('inner join "ouroboros"."draft_batches"');
+      expect(last?.parameters).toEqual([ID]);
     });
 
     it("stops at the first table that has the id", async () => {

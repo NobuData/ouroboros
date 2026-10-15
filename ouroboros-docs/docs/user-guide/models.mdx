@@ -68,9 +68,13 @@ are defined.
 ### Routing a task kind that has no route
 
 A task kind can be in the matrix with no route yet — its **Primary model** cell is empty. Every
-workspace has one from the start: `copilot-workflow`, the task kind the
-[Workflow Copilot](./workflows/copilot.mdx) replies through. Until it has a route, the Copilot
-cannot reply.
+workspace has two from the start:
+
+- `copilot-workflow`, the task kind the [Workflow Copilot](./workflows/copilot.mdx) replies
+  through. Until it has a route, the Copilot cannot reply.
+- `estimate`, the task kind your [issues are sized](./issues.mdx#which-model-sizes-your-issues)
+  on. With no route, issues are sized by your workspace's Ollama connection with `llama3.1:8b`;
+  give it a route to size them on a model of your choosing.
 
 To route it, select the row. Owners and admins see an empty chain with *No route yet. Add a hop
 and save routes to create `<task kind>-primary`.* Choose **+ Add hop**, pick an alias, set the

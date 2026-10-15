@@ -2369,7 +2369,13 @@ export interface HarnessCredentialsTable {
 }
 
 /** What a `token_usage` row is attributed to (V139) — the four owners of an invocation. */
-export type TokenUsageSubjectKind = "run" | "copilot_session" | "dry_run" | "investigation";
+export type TokenUsageSubjectKind =
+  | "run"
+  | "copilot_session"
+  | "dry_run"
+  | "investigation"
+  /** A sizing call (V144, #123): the GitHub issue, ticket or draft the estimator sized. */
+  | "estimate";
 
 /**
  * `ouroboros.token_usage` — the append-only token spend ledger (V010,
