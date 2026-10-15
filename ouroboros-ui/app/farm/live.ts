@@ -283,12 +283,13 @@ export function emptyLogNote(live: boolean | null, retained: boolean): string {
 
 /**
  * Why **Full log ↗** opens a sheet rather than a page — `JOB_SHEET_NOTE`'s argument, for the
- * log: its honest destination is mockup 10's run console (#309), linked from a build by AJ.3
- * (#265), and neither exists yet.
+ * log: its honest destination is mockup 10's run console (#309, built), and a build is linked to
+ * its run's console by AJ.3 (#265), which is not built yet. DG.3 (#1301) retired the claim that
+ * the console itself was still to come.
  */
 export const LOG_SHEET_NOTE =
-  "The run console arrives with #309 — until then this is the build's whole log, from its " +
-  "first byte.";
+  "A build links to its run console with #265 — until then this is the build's whole log, " +
+  "from its first byte.";
 
 /**
  * The sheet's name — its eyebrow, and what the dialog answers to.

@@ -28,9 +28,26 @@
       ],
       "caption": "One loop in the run console: its stage timeline, the agent's transcript and the changes so far.",
       "alt": "The run console for a loop fixing a flaky CAN-bus telemetry test: the stage timeline with three stages done and Implementing on attempt 2 of 3, the agent transcript, and three changed files.",
-      "capturedAt": "2026-10-08T20:38:18.053Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "7bc35ec67cea14bf6d8e66197513397670cf9d15"
+      "capturedAt": "2026-10-15T03:58:22.637Z",
+      "uiVersion": "0.167.3",
+      "seedRef": "55e68fdca11d7d27f787e101a4eb3ac116e772a2"
+    },
+    {
+      "id": "user-guide.concepts.loop-unavailable",
+      "route": "/runs/5eed0009-0000-4000-8000-000000000479?from=dashboard",
+      "workspace": "acme-robotics",
+      "ready": ".loop-notice",
+      "clip": "page",
+      "masks": [
+        ".run-head__elapsed",
+        ".run-entry__time",
+        ".run-resources__line:has-text('Wall clock') .run-resources__figure"
+      ],
+      "caption": "A run on a deployment with live execution off: the notice names the reason and links how to enable it.",
+      "alt": "The run console for a building loop, with a notice above the head reading Live execution is off for this deployment — ask an administrator, followed by a How to enable link.",
+      "capturedAt": "2026-10-15T03:58:43.029Z",
+      "uiVersion": "0.167.3",
+      "seedRef": "55e68fdca11d7d27f787e101a4eb3ac116e772a2"
     },
     {
       "id": "user-guide.sign-in",

@@ -28,6 +28,8 @@ import {
   runConsole,
   seededStages,
 } from "../helpers/runs";
+import { answerCapabilities, deploymentOff, live, withOff } from "../helpers/loop-capabilities";
+import { LIVE_EXECUTION_DOCS } from "@/app/loop/capability-copy";
 
 /**
  * The run console's frame (#309), rendered: the seeded head against the mockup, the anchored
@@ -37,6 +39,11 @@ import {
 
 // The Server Action is never reached here: the controls' cases pass their own sender.
 vi.mock("@/app/runs/control-actions", () => ({ submitRunControl: vi.fn() }));
+
+// DG.2's report, as each case states it (DG.3, #1301) — unread unless a case says otherwise.
+vi.mock("@/app/shell/use-loop-capabilities", async () =>
+  (await import("../helpers/loop-capabilities")).loopCapabilitiesModule(),
+);
 
 /** A poll that never answers — the page shows the server's first read. */
 const QUIET: RunPollOptions = { read: () => new Promise(() => {}), visible: () => true };
@@ -249,6 +256,60 @@ describe("the simulated watermark", () => {
     draw(runConsole(), { poll: LIVE });
 
     expect(await screen.findByRole("note")).toHaveTextContent(SIMULATED_HEADLINE);
+  });
+});
+
+describe("the deployment notice, under DG.2's report (DG.3)", () => {
+  afterEach(() => answerCapabilities(null));
+
+  it("says nothing about simulation when every stage is live", () => {
+    answerCapabilities(live());
+    draw();
+
+    expect(screen.queryByRole("note")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/simulat/i);
+  });
+
+  it("names the switch and links how to enable it when execution is off", () => {
+    answerCapabilities(deploymentOff());
+    draw();
+
+    const note = screen.getByRole("note");
+
+    expect(note).toHaveTextContent("Live execution is off for this deployment — ask an administrator.");
+    expect(within(note).getByRole("link", { name: "How to enable" })).toHaveAttribute(
+      "href",
+      LIVE_EXECUTION_DOCS,
+    );
+    expect(note).toHaveAttribute("data-reason", "deployment_disabled");
+  });
+
+  it("says builds will wait, and links the Build Farm, when no runner is online", () => {
+    answerCapabilities(withOff({ buildIntegration: "no_runner" }));
+    draw();
+
+    const note = screen.getByRole("note");
+
+    expect(note).toHaveTextContent("No runner is online — builds will wait.");
+    expect(within(note).getByRole("link", { name: "Build Farm →" })).toHaveAttribute("href", BUILD_FARM_PATH);
+  });
+
+  it("keeps a simulated run's banner, and only it, in either state", () => {
+    for (const report of [live(), deploymentOff()]) {
+      answerCapabilities(report);
+      const { unmount } = draw(runConsole({ head: { simulated: true, origin: "simulated" } }));
+
+      expect(screen.getAllByRole("note")).toHaveLength(1);
+      expect(screen.getByRole("note")).toHaveTextContent(SIMULATED_HEADLINE);
+      unmount();
+    }
+  });
+
+  it("is not drawn on a finished run — nothing waits on the deployment any more", () => {
+    answerCapabilities(deploymentOff());
+    draw(runConsole({ head: { live: false } }));
+
+    expect(screen.queryByRole("note")).toBeNull();
   });
 });
 

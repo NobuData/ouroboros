@@ -182,7 +182,7 @@ describe("run #482, drawn for coder-max", () => {
 
   it("reproduces the mockup's rail, field for field", () => {
     expect(view).toEqual({
-      tag: { kind: "run", label: "run #482" },
+      tag: { kind: "run", label: "run #482", href: "/runs/5eed0006-0000-4000-8000-000000000482" },
       taskKind: "implement",
       routeTag: "implement-primary",
       alias: "coder-max",
@@ -212,7 +212,7 @@ describe("the same run, asked about a hop it did not resolve through", () => {
   it("draws coder-fallback struck, with the resolution's sentence verbatim", () => {
     const view = chainView("coder-fallback", { kind: "snapshot", snapshot: seededSnapshot() });
 
-    expect(view.tag).toEqual({ kind: "run", label: "run #482" });
+    expect(view.tag).toEqual({ kind: "run", label: "run #482", href: "/runs/5eed0006-0000-4000-8000-000000000482" });
     expect(view.hop).toEqual({
       dropped: true,
       provider: "GitHub Copilot",
@@ -256,7 +256,7 @@ describe("a simulated chain", () => {
 
     expect(view.tag).toEqual({ kind: "simulated", label: SIMULATED_LABEL });
     expect(JSON.stringify(view)).not.toMatch(/run #/);
-    expect(SIMULATED_LABEL).toBe("simulated — live runs arrive with invocation");
+    expect(SIMULATED_LABEL).toBe("simulated — no run has resolved it yet");
   });
 
   it("resolves without a duration, because Simulate times nothing", () => {
@@ -292,7 +292,7 @@ describe("a simulated chain", () => {
 
 describe("the tag", () => {
   it("is composed from a snapshot's run and from nothing else", () => {
-    expect(chainTag({ kind: "snapshot", snapshot: seededSnapshot() })).toEqual({ kind: "run", label: "run #482" });
+    expect(chainTag({ kind: "snapshot", snapshot: seededSnapshot() })).toEqual({ kind: "run", label: "run #482", href: "/runs/5eed0006-0000-4000-8000-000000000482" });
     expect(chainTag({ kind: "simulated", resolution: analyzeSimulation() })).toEqual({
       kind: "simulated",
       label: SIMULATED_LABEL,

@@ -106,7 +106,43 @@ called, nothing runs and nothing is recorded. See
 
 **A simulated run** is marked with a **Simulated run** banner on the run console. It was
 opened by Ouroboros' simulated-run driver, not by a real loop: no executor, repository or
-model did the work it shows. The screenshot above is one, from the demonstration data.
+model did the work it shows. The screenshot above is one, from the demonstration data. The
+banner belongs to the run, not to the deployment: once your deployment runs loops for real,
+an old simulated run still wears it.
+
+### When a stage cannot run for real
+
+Ouroboros does not say "simulated" about the product as a whole. It asks the deployment
+which stages of the loop can run for real — calling models, executing stages, building,
+publishing pull requests — and says something only where one cannot. Each notice names the
+reason in one sentence and links to where it is fixed. When every stage can run, the
+notice is not shown.
+
+<Screenshot id="user-guide.concepts.loop-unavailable" />
+
+| What you see | Why | Where it is fixed |
+| --- | --- | --- |
+| **Live execution is off for this deployment — ask an administrator.** | The deployment's switch, `OURO_LIVE_EXECUTION_ENABLED`, is off — the shipped default. | **How to enable** — [Containers](../administration/deploy/containers.mdx) |
+| **The engine is not answering — live runs cannot start.** | The engine did not answer its status call. | **Check the engine** — [Operations](../administration/operations.mdx) |
+| **The engine runs no task queue — live runs cannot start.** | The engine answered but runs no task queue. | **Check the engine** |
+| **The engine has no stage executor registered — live runs cannot start.** | The engine answered but has no executor to run a stage. | **Check the engine** |
+| **No provider connection can be invoked — models cannot be called.** | No provider connection may serve model calls. | <UiPath path="Models > Providers & keys" /> |
+| **No runner is online — builds will wait.** | None of the workspace's runners is online. | [Build Farm](../administration/build-farm.mdx) |
+| **No online runner can check out source — builds will wait.** | Runners are online, but none can check out the repository. | [Build Farm](../administration/build-farm.mdx) |
+| **The workspace's dry-run policy is off — pull requests are not published.** | Publishing needs the dry-run policy on. | <UiPath path="Settings > Policies" /> |
+| **This version does not build this stage yet.** | The stage is not built in this version. | **What is built** — this section |
+
+Where you see them:
+
+- **The run console**, above the head of a run that is still going: the execution notice
+  when live execution is off, or the build notice when only the farm is missing. A
+  simulated run shows its own banner instead, and a finished run shows neither.
+- **Models › Registry**, on the **Resolution chain** card: a chain no run has resolved
+  yet is tagged **simulated — no run has resolved it yet**, with the invocation notice
+  under it when no model can be called. A chain a run did resolve is tagged with that
+  run, and the tag opens its run console.
+
+An administrator can read the same answer directly from `GET /api/v1/loop/capabilities`.
 
 ## What can go wrong
 

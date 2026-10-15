@@ -37,6 +37,7 @@ import type { ResolutionSnapshot } from "@/app/api/registry";
 import type { Resolution, RoutingTaskKind } from "@/app/api/routing";
 import { outcomeLabel } from "@/app/models/simulation";
 import { KIND_LABELS } from "@/app/providers/catalog";
+import { runPath } from "@/app/paths";
 
 import { NO_PROVIDER, type TableRow } from "./table";
 
@@ -219,7 +220,7 @@ export type ChainTone = "ok" | "err" | "neutral";
 
 /** The tag at the head of the card: a stored run, or the simulation label. */
 export type ChainTag =
-  | { readonly kind: "run"; readonly label: string }
+  | { readonly kind: "run"; readonly label: string; readonly href: string }
   | { readonly kind: "simulated"; readonly label: string };
 
 /** The selected alias's hop, as the rail draws it. */
@@ -260,13 +261,13 @@ export const CHAIN_TITLE = "Resolution chain";
 /** The caption under the rail, verbatim. */
 export const CHAIN_CAPTION = "Every hop is inspectable in the run console transcript.";
 
-/** The tag a simulated chain carries instead of a run number — decision **R9**, verbatim. */
-export const SIMULATED_LABEL = "simulated — live runs arrive with invocation";
-
-/** Why the run tag cannot open the run console yet. */
-export const RUN_CONSOLE_SOON =
-  "The run console is not built yet — it arrives with its own roadmap (mockup 10), so this " +
-  "run cannot be opened from here.";
+/**
+ * The tag a simulated chain carries instead of a run number — decision **R9**. It says what the
+ * chain is and nothing about when live runs arrive: whether a model can be invoked is DG.2's
+ * report to answer, and the card says so beside it when one cannot (DG.3,
+ * [#1301](https://github.com/NobuData/ouroboros/issues/1301)).
+ */
+export const SIMULATED_LABEL = "simulated — no run has resolved it yet";
 
 /** The status word for a dropped hop. The contract's own word. */
 export const DROPPED = "dropped";
@@ -312,7 +313,11 @@ export function runLabel(issueNumber: number): string {
  */
 export function chainTag(source: Exclude<ChainSource, { kind: "unrouted" }>): ChainTag {
   return source.kind === "snapshot"
-    ? { kind: "run", label: runLabel(source.snapshot.run.issueNumber) }
+    ? {
+        kind: "run",
+        label: runLabel(source.snapshot.run.issueNumber),
+        href: runPath(source.snapshot.run.id),
+      }
     : { kind: "simulated", label: SIMULATED_LABEL };
 }
 

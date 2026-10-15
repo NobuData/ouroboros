@@ -7,7 +7,6 @@ import {
   CHAIN_EMPTY_TITLE,
   CHAIN_TITLE,
   DROPPED,
-  RUN_CONSOLE_SOON,
   SIMULATED_LABEL,
   UNROUTED_NOTE,
   UNROUTED_TITLE,
@@ -15,8 +14,10 @@ import {
   type RouteLookup,
   chainLoading,
 } from "@/app/registry/chain";
+import { REASON_COPY } from "@/app/loop/capability-copy";
 import { type TableRow, tableRows } from "@/app/registry/table";
 
+import { answerCapabilities, deploymentOff, live } from "../helpers/loop-capabilities";
 import { FLOOR_BREACHED, failRunExample } from "../helpers/models";
 import { PALETTES, maskIds, renderInPalette } from "../helpers/palettes";
 import {
@@ -40,6 +41,10 @@ import {
 
 /** What the Server Action answers, per case. */
 const readChain = vi.fn<(alias: string, route: RouteLookup) => Promise<ChainReading>>();
+
+vi.mock("@/app/shell/use-loop-capabilities", async () =>
+  (await import("../helpers/loop-capabilities")).loopCapabilitiesModule(),
+);
 
 vi.mock("@/app/registry/chain-actions", () => ({
   readChain: (alias: string, route: RouteLookup) => readChain(alias, route),
@@ -80,6 +85,7 @@ function answering(reading: ChainReading): Promise<ChainReading> {
 
 beforeEach(() => {
   readChain.mockReset().mockImplementation(() => new Promise(() => {}));
+  answerCapabilities(null);
 });
 
 describe("with nothing selected", () => {
@@ -147,14 +153,21 @@ describe("the seeded run #482, for coder-max", () => {
     expect(container.querySelector(".registry-chain--dropped")).toBeNull();
   });
 
-  it("tags the run as an inert control that says why, rather than a link to a page that is not there", async () => {
+  it("tags the run as a link to its run console", async () => {
     render(<ChainCard route={PLAN} row={row("coder-max")} />);
 
-    const tag = await screen.findByRole("button", { name: "run #482" });
+    const tag = await screen.findByRole("link", { name: "run #482" });
 
-    expect(tag).toHaveAttribute("aria-disabled", "true");
-    expect(tag).toHaveAttribute("title", RUN_CONSOLE_SOON);
-    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(tag).toHaveAttribute("href", "/runs/5eed0006-0000-4000-8000-000000000482");
+  });
+
+  it("says nothing about invocation beside a stored run, whatever the deployment can do", async () => {
+    answerCapabilities(deploymentOff());
+    render(<ChainCard route={PLAN} row={row("coder-max")} />);
+
+    await screen.findByRole("link", { name: "run #482" });
+
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
   });
 
   it("prints the caption, verbatim", async () => {
@@ -169,7 +182,7 @@ describe("the seeded run #482, for coder-max", () => {
     await screen.findByText(DROPPED);
 
     // Still run #482: an alias being skipped is what somebody inspecting it needs to see.
-    expect(screen.getByRole("button", { name: "run #482" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "run #482" })).toBeInTheDocument();
     expect(container.querySelector(".registry-chain")).toHaveClass("registry-chain--dropped");
     expect(screen.getByText(/GitHub Copilot is unreachable/)).toHaveClass("registry-chain__explanation");
   });
@@ -188,6 +201,8 @@ describe("an alias with no snapshot", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(screen.getByText("resolved")).toHaveClass("registry-chain__status");
     expect(readChain).toHaveBeenCalledWith("coder-std", ANALYZE);
+    // An unread report asserts nothing either way.
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
   });
 
   it("shows the dropped hop with its explanation after the alias is disabled and re-viewed", async () => {
@@ -268,5 +283,35 @@ describe("both themes", () => {
     }
 
     expect(markup[0]).toBe(markup[1]);
+  });
+});
+
+describe("a simulated chain, under DG.2's report (DG.3)", () => {
+  beforeEach(() => {
+    readChain.mockImplementation(() =>
+      answering({ ok: true, source: { kind: "simulated", resolution: analyzeSimulation() } }),
+    );
+  });
+
+  it("claims nothing about invocation when a model can be invoked", async () => {
+    answerCapabilities(live());
+    render(<ChainCard route={ANALYZE} row={row("coder-std")} />);
+
+    expect(await screen.findByText(SIMULATED_LABEL)).toBeInTheDocument();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/arrive/);
+  });
+
+  it("names the reason and links Providers when no connection can be invoked", async () => {
+    answerCapabilities(deploymentOff());
+    render(<ChainCard route={ANALYZE} row={row("coder-std")} />);
+
+    const note = await screen.findByRole("note");
+
+    expect(note).toHaveTextContent(REASON_COPY.no_invocable_connection.sentence);
+    expect(within(note).getByRole("link", { name: "Providers →" })).toHaveAttribute(
+      "href",
+      "/models/providers",
+    );
   });
 });
