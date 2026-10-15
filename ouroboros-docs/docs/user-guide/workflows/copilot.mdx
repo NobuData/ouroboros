@@ -39,6 +39,11 @@ Choose **+ New workflow** in the rail. Under **Start with**, pick **Copilot** in
 opens on its Copilot page rather than on the canvas. Opened from a Copilot page, the dialog
 already has **Copilot** selected.
 
+A draft the Copilot builds from nothing can be [promoted](#promoting-a-draft) and
+[dry-run](#dry-runs) like any other once its checks pass. To pass, it needs a **trigger
+stage**, where a run enters, and at least one ending stage. Setting the trigger only decides
+which issues start a run, so the Copilot adds the trigger stage as a stage of its own.
+
 ### Promoting a draft
 
 **Promote draft → `<slug>` vN** publishes the draft as the workflow's next version, for
@@ -138,7 +143,7 @@ the reply at the point it happened, in small type:
 | --- | --- |
 | `adding stage exploit-verify… ✓` | A stage was added. Updating and removing a stage read the same way. |
 | `connecting test → exploit-verify… ✓` | Two stages were connected. `disconnecting … ✓` removes a connection. |
-| `set trigger… ✓` | The workflow's trigger was changed. |
+| `set trigger… ✓` | The workflow's trigger, which decides which issues start a run, was changed. It adds no stage. |
 | `set spend cap $5.00/run… proposed, not applied` | A guard was recorded. It is **not** part of the draft; see [Promoting a draft](#promoting-a-draft) for where a guard is enforced. |
 | `⚠ exploit-verify: …` | The change named something the workspace does not have yet. See [Unresolved references](#unresolved-references). |
 | `read catalog…` | The Copilot read something before answering: the draft, the stage catalog, the skills or the issues. |

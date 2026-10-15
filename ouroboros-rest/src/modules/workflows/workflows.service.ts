@@ -34,6 +34,7 @@ import type { Database, DraftEditor, Workflow, WorkflowVersion } from "../db/sch
 import { pageOf, windowOf, type Page, type PageQuery } from "../tenancy/pagination";
 import { DatabaseService } from "../db/db.service";
 import { draftEtag, ifMatchAdmits } from "./draft.etag";
+import { emptyWorkflowDocument } from "./dsl.schema";
 import { validateWorkflowDocument } from "./dsl.validator";
 import { WorkflowPublishGate } from "./publish.gate";
 import { nextFreeSlug, slugify } from "./slug";
@@ -87,9 +88,6 @@ export interface WorkflowRail {
   /** One entry per non-archived workflow, in the rail's order. Empty is the studio's empty state. */
   readonly workflows: readonly WorkflowStats[];
 }
-
-/** The document a workflow's canvas opens on when the request named none. */
-const BLANK_CANVAS: Record<string, unknown> = {};
 
 /**
  * How many times {@link WorkflowsService.createFromTemplate} re-picks a slug after losing one to
@@ -182,7 +180,9 @@ export class WorkflowsService {
       const { workflow, draft } = await this.workflows.create(organizationId, {
         slug,
         name: body.name,
-        definition: body.definition ?? BLANK_CANVAS,
+        // The canvas opens on the empty DSL document when the request named none, so a draft
+        // built on it by operations alone carries `dsl_version` (#1744).
+        definition: body.definition ?? emptyWorkflowDocument(),
       });
 
       return workflowDetail(workflow, draft, undefined);

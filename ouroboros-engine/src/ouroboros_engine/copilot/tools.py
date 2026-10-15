@@ -219,7 +219,13 @@ class Tool:
 
 #: Every tool the copilot has. Order is the order the manifest is rendered in.
 MANIFEST: Final[tuple[Tool, ...]] = (
-    Tool("add_stage", "Add a stage to the draft.", AddStageArguments, writes=True),
+    Tool(
+        "add_stage",
+        "Add a stage to the draft. A workflow needs exactly one stage of type "
+        '"trigger" (where a run enters) and at least one of type "term".',
+        AddStageArguments,
+        writes=True,
+    ),
     Tool(
         "set_stage",
         "Replace an existing stage's whole definition (title, config, position).",
@@ -236,7 +242,8 @@ MANIFEST: Final[tuple[Tool, ...]] = (
     Tool("remove_edge", "Disconnect two stages.", RemoveEdgeArguments, writes=True),
     Tool(
         "set_trigger",
-        "Set what starts a run — the event and its conditions.",
+        "Set what starts a run — the event and its conditions. It adds no stage: the "
+        'draft also needs one stage of type "trigger", added with add_stage.',
         SetTriggerArguments,
         writes=True,
     ),

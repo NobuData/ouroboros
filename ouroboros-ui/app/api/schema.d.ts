@@ -6693,10 +6693,15 @@ export interface paths {
          *     letter or digit yields no slug and answers `422 workflow_slug_required` rather than
          *     inventing one.
          *
-         *     **`definition` is stored as-is and validated at publish.** `{}` — the blank canvas — is
-         *     a legal stored state, which is what lets **Browse templates**
+         *     **`definition` is stored as-is and validated at publish.** A half-built document is a
+         *     legal stored state, which is what lets **Browse templates**
          *     ([#159](https://github.com/NobuData/ouroboros/issues/159)) create from a starter
          *     without this operation needing to know what a template is.
+         *
+         *     **Omitted, the draft is the blank canvas: `{"dsl_version": "1.0", "nodes": [], "edges": []}`**
+         *     — the empty DSL document, which is also what the copilot's operations build on, so a
+         *     draft made by operations alone can be published and dry-run
+         *     ([#1744](https://github.com/NobuData/ouroboros/issues/1744)).
          *
          *     **`owner` or `admin`.**
          */

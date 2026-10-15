@@ -226,7 +226,8 @@ describe("the workflow lifecycle, against a migrated database", () => {
         currentVersion: null,
         version: null,
       });
-      expect(created.draft.definition).toEqual({});
+      // The blank canvas is the empty DSL document, so operations alone can make it whole (#1744).
+      expect(created.draft.definition).toEqual({ dsl_version: "1.0", nodes: [], edges: [] });
 
       // --- the first draft ------------------------------------------------------------
       const drafted = await saveDraft(place, created.id, created.draft.etag, STANDARD_FIX);
@@ -473,7 +474,11 @@ describe("the workflow lifecycle, against a migrated database", () => {
         .expect(400);
 
       expect(bodyOf<{ code: string }>(response).code).toBe("workflow_draft_etag_required");
-      expect((await read(place, created.id)).draft.definition).toEqual({});
+      expect((await read(place, created.id)).draft.definition).toEqual({
+        dsl_version: "1.0",
+        nodes: [],
+        edges: [],
+      });
     });
 
     it("accepts a document as large as the DSL admits", async () => {

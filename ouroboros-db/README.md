@@ -1504,7 +1504,11 @@
 > `workflow_draft_replay()`, is not the stored draft. ci/db holds every stored operation to
 > [`schemas/workflow-dsl/operations-v1.json`](../schemas/workflow-dsl/operations-v1.json), which
 > `$ref`s the DSL, through [`scripts/draft-ops-parity.mjs`](scripts/draft-ops-parity.mjs) — a DSL
-> change that would reject recorded history fails there.
+> change that would reject recorded history fails there. `V143`
+> ([#1744](https://github.com/NobuData/ouroboros/issues/1744)) has the writer read a stored
+> draft over `workflow_blank_document()` — `{"dsl_version": "1.0", "nodes": [], "edges": []}`,
+> the stored draft's own keys taking precedence — so a draft built on a blank workflow's `{}` is a
+> DSL document, the same one ouroboros-rest judged; it backfills the drafts that lacked those keys.
 >
 > `V111` ([#557](https://github.com/NobuData/ouroboros/issues/557), CC.3) records **deep dry
 > runs in a domain of their own** (decision **W4**) — mockup 20's dry-run card. `dry_runs` holds

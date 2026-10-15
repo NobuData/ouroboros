@@ -107,6 +107,19 @@ def test_the_rendered_manifest_names_every_tool_and_its_arguments() -> None:
     assert "(no arguments)" in text
 
 
+def test_the_manifest_says_a_trigger_stage_is_needed_and_how_to_add_one() -> None:
+    # set_trigger sets the document's root trigger and adds no node, so the model has to be
+    # told that the trigger stage is an add_stage of its own (#1744).
+    set_trigger = tool_named("set_trigger")
+    add_stage = tool_named("add_stage")
+
+    assert set_trigger is not None and add_stage is not None
+    assert 'type "trigger", added with add_stage' in set_trigger.purpose
+    assert 'exactly one stage of type "trigger"' in add_stage.purpose
+    assert 'type "term"' in add_stage.purpose
+    assert set_trigger.purpose in manifest_text()
+
+
 def test_ask_user_needs_two_to_six_options() -> None:
     with pytest.raises(ValidationError):
         AskUserArguments.model_validate(

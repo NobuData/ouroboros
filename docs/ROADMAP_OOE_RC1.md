@@ -53,13 +53,13 @@ in RC1; they are candidates for the release candidates after it. The Studio moun
 
 ## Progress
 
-**10 of 44 ordered issues are closed.** Every issue number in this document links to its
+**11 of 44 ordered issues are closed.** Every issue number in this document links to its
 GitHub issue, and a **✅** in front of one means that issue is **closed**.
 
 | Status | Phases | Issues |
 |--------|--------|-------:|
-| ✅ **Complete** | — | **10** |
-| 🟡 **In progress** | R0, R1, R2, R7 | **10** of 29 |
+| ✅ **Complete** | — | **11** |
+| 🟡 **In progress** | R0, R1, R2, R7 | **11** of 29 |
 | ⬜ **Not started** | R3, R4, R5, R6 | **0** of 15 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -272,7 +272,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **6 issues** · unsized (defects carry no complexity chip) · order **#14–#19**
 > **Source:** defects filed under epic [#552](https://github.com/NobuData/ouroboros/issues/552) — five found by [#564](https://github.com/NobuData/ouroboros/issues/564) (CD.6), one by [#567](https://github.com/NobuData/ouroboros/issues/567) (CE.3)
-> **Status:** ⬜ **Not started** — 0 of 6 issues closed
+> **Status:** 🟡 **In progress** — 2 of 6 issues closed
 
 **Goal.** Close the six open Workflow Copilot defects: a workspace that cannot route the copilot at all, drafts on a blank workflow that can never publish, human edits missing from the operation log, a promote dialog that never blocks on an unknown alias, and two places where the dry-run evidence misstates itself.
 
@@ -285,7 +285,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 14 | *bug* | ✅ [#1748](https://github.com/NobuData/ouroboros/issues/1748) | No copilot-workflow task kind or route exists, so the copilot cannot be routed | ouroboros-db, ouroboros-rest | — | — |
-| 15 | *bug* | [#1744](https://github.com/NobuData/ouroboros/issues/1744) | Copilot drafts on a blank workflow cannot be published or dry-run | ouroboros-rest | — | — |
+| 15 | *bug* | ✅ [#1744](https://github.com/NobuData/ouroboros/issues/1744) | Copilot drafts on a blank workflow cannot be published or dry-run | ouroboros-rest | — | — |
 | 16 | *bug* | [#1751](https://github.com/NobuData/ouroboros/issues/1751) | Canvas and code saves record no draft operation, so provenance, the draft rev and edit counts ignore human edits | ouroboros-rest | — | — |
 | 17 | *bug* | [#1745](https://github.com/NobuData/ouroboros/issues/1745) | The promote dialog never reports an unknown model alias | ouroboros-rest | — | — |
 | 18 | *bug* | [#1746](https://github.com/NobuData/ouroboros/issues/1746) | Dry-run diff does not equal the overlay in four edge cases | ouroboros-engine | — | — |

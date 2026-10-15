@@ -27,7 +27,13 @@ import { z, type ZodIssue } from "zod";
 
 import { SCHEMA_STAGE_CODES, type DslDiagnostic } from "../workflows/dsl.errors";
 import type { DslCatalogue } from "../workflows/dsl.references";
-import { EdgeSchema, NodeIdSchema, NodeShapeSchema, TriggerSchema } from "../workflows/dsl.schema";
+import {
+  EdgeSchema,
+  emptyWorkflowDocument,
+  NodeIdSchema,
+  NodeShapeSchema,
+  TriggerSchema,
+} from "../workflows/dsl.schema";
 import { validateWorkflowDocument } from "../workflows/dsl.validator";
 
 /** `draft_operations.op.kind` — the vocabulary `draft_op_shape_valid()` accepts (V110). */
@@ -89,7 +95,8 @@ export interface ProposedOperation {
  * `trigger` and leave everything else exactly as it was.
  */
 export interface DraftDocument {
-  readonly dsl_version: string;
+  /** As stored — `"1.0"` only when the stored draft has none, exactly as V143's writer fills it. */
+  readonly dsl_version: unknown;
   readonly trigger?: unknown;
   readonly nodes: readonly unknown[];
   readonly edges: readonly unknown[];
@@ -97,7 +104,7 @@ export interface DraftDocument {
 }
 
 /** `workflow_draft_base()` for a workflow with nothing published: the document the first operation builds on. */
-export const EMPTY_DRAFT: DraftDocument = { dsl_version: "1.0", nodes: [], edges: [] };
+export const EMPTY_DRAFT: DraftDocument = emptyWorkflowDocument();
 
 /** A trigger that fires on every queued ticket — what a node is probed under before the draft has one. */
 const PROBE_TRIGGER = { event: "ticket_queued", conditions: {} };
@@ -144,7 +151,10 @@ export function operationFromCall(
 }
 
 /**
- * Read a stored document loosely, defaulting what the operations need.
+ * Read a stored document the way `apply_draft_batch()` reads it (V143, #1744): over
+ * {@link EMPTY_DRAFT}'s keys, with whatever the stored draft carries taking precedence. A blank
+ * `{}` reads as the empty document — and the database writes the same document, so the verdict
+ * given here is the verdict on the stored row.
  *
  * @param stored - The draft as the row holds it, or `null`/`undefined` for no draft.
  * @returns The document, with `nodes` and `edges` arrays whatever was stored.
@@ -153,8 +163,8 @@ export function asDraftDocument(stored: unknown): DraftDocument {
   if (stored === null || typeof stored !== "object" || Array.isArray(stored)) return EMPTY_DRAFT;
   const record = stored as Record<string, unknown>;
   return {
+    ...EMPTY_DRAFT,
     ...record,
-    dsl_version: typeof record.dsl_version === "string" ? record.dsl_version : "1.0",
     nodes: Array.isArray(record.nodes) ? record.nodes : [],
     edges: Array.isArray(record.edges) ? record.edges : [],
   };

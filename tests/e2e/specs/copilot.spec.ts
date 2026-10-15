@@ -35,9 +35,9 @@
  * * **Every reply and every model stage asks a model** through `POST /internal/llm/invoke`, which
  *   answers `501` until the invocation gateway (AF.2,
  *   [#235](https://github.com/NobuData/ouroboros/issues/235)). *Real models* is the claim under
- *   test, so this is the one dependency the chain cannot stub.
- * * **A draft built on a blank workflow cannot be dry-run or published**
- *   ([#1744](https://github.com/NobuData/ouroboros/issues/1744)).
+ *   test, so this is the one dependency the chain cannot stub. (A draft built on a blank
+ *   workflow can be dry-run and published since
+ *   [#1744](https://github.com/NobuData/ouroboros/issues/1744).)
  *
  * The chain's body has therefore **never been run**. It is the issue's steps in the page's own
  * labels, to be corrected against a live stack by whoever un-parks it.
@@ -490,10 +490,7 @@ test.describe("the conversational chain, end to end against a live gateway", () 
   }) => {
     // PARKED — see this file's header, § *What is parked, and on what*. Never run: correct it
     // against a live stack when un-parking.
-    test.fixme(
-      true,
-      "a reply and a model stage need the invocation gateway (AF.2, #235) and a publishable blank draft (#1744)",
-    );
+    test.fixme(true, "a reply and a model stage need the invocation gateway (AF.2, #235)");
     test.slow();
 
     const name = `e2e-copilot-${Date.now()}`;
