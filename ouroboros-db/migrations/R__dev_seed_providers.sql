@@ -146,6 +146,10 @@
 -- carry instead is what their chips actually print — vLLM's `detail`, and Ollama's model
 -- count beside the machine it runs on.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.provider_connections
     (id, organization_id, kind, display_name, base_url, credentials_encrypted,
      status, last_checked_at, health, monthly_cap_cents, added_by, last_used_at,

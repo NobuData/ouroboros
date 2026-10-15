@@ -252,6 +252,10 @@
 -- long after this file was written the stack is brought up. A literal date would be right
 -- on the day it was typed and wrong on every day after it.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.github_issues
   (id, organization_id, github_repo_id, number, title, body, state, labels,
    author_login, gh_created_at, gh_updated_at, gh_url, synced_at, sizing_status)

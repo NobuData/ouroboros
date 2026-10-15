@@ -36,6 +36,7 @@ import type {
   PullRequestState,
   RunStatus,
 } from "../../db/schema";
+import type { DataOrigin } from "../../db/schema";
 import type { RunControlResource } from "../../controls/controls.resources";
 import type { Page } from "../../tenancy/pagination";
 import type { CriteriaMatrixResource } from "../criteria/criteria.resources";
@@ -103,6 +104,11 @@ export interface PullRequestHeadResource {
    * (#370). Null for a PR no sync has written.
    */
   readonly syncedAt: string | null;
+  /**
+   * Where it came from — `live`, `simulated` or `seeded` (V141, DJ.1 #1313). A pull request a
+   * person opened is live; one a run opened has the run's origin.
+   */
+  readonly origin: DataOrigin;
 }
 
 /** `pr_gate_aggregate` — `5 of 7 green`. */
@@ -369,6 +375,7 @@ export function headResource(row: PrHeadRow): PullRequestHeadResource {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     syncedAt: iso(row.syncedAt),
+    origin: row.origin,
   };
 }
 

@@ -141,7 +141,7 @@ describe("the console service", () => {
 
   describe("the page", () => {
     it("carries the run in the listing's own shape, and the head's extra facts", async () => {
-      const row = findable({ simulated: true });
+      const row = findable({ simulated: true, origin: "simulated" });
 
       const page = await service.read(TENANT, RUN_ID);
 
@@ -152,6 +152,7 @@ describe("the console service", () => {
         workflowVersion: 14,
         branchName: "loop/482-canbus-flake",
         simulated: true,
+        origin: "simulated",
         live: true,
         repository: { owner: "acme", name: "helios-firmware" },
       });

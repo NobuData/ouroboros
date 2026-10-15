@@ -47,6 +47,10 @@
 -- ---------------------------------------------------------------------------
 -- RS-127.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.investigations (id, organization_id, kind_id, seq, question, depth,
                                       tools_enabled, status, estimate,
                                       estimate_calibration_version, actuals, provenance, origin,

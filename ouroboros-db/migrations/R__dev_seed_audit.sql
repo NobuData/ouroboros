@@ -112,6 +112,10 @@
 -- names `null` and reaches the same `left join` with nothing to match — which is why that
 -- join is a `left` one.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.audit_events
     (id, organization_id, actor_id, action, subject_type, subject_id, ip, detail, occurred_at)
 select ('5eed0015-0000-4000-8000-' || lpad(seed.n::text, 12, '0'))::uuid,

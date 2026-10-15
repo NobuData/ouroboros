@@ -7,6 +7,7 @@
  */
 
 import type { BuildExecutor, BuildJobStatus } from "../../db/schema";
+import type { DataOrigin } from "../../db/schema";
 import { parseCommand } from "./command";
 import type { JobView } from "./dispatch.repository";
 
@@ -86,6 +87,11 @@ export interface BuildJobResource {
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
   readonly exitCode: number | null;
+  /**
+   * Where it came from — `live`, `simulated` or `seeded` (V141, DJ.1 #1313). Set once by the path
+   * that wrote it and never by a caller.
+   */
+  readonly origin: DataOrigin;
 }
 
 /**
@@ -119,5 +125,6 @@ export function buildJobResource(view: JobView): BuildJobResource {
     startedAt: job.started_at?.toISOString() ?? null,
     finishedAt: job.finished_at?.toISOString() ?? null,
     exitCode: job.exit_code,
+    origin: job.origin,
   };
 }

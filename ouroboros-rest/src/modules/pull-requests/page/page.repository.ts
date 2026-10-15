@@ -38,6 +38,7 @@ import type {
   PullRequestState,
   RunStatus,
 } from "../../db/schema";
+import type { DataOrigin } from "../../db/schema";
 import { GuardrailsRepository } from "../../guardrails/guardrails.repository";
 import { budgetStageOf } from "../../runs/console.resources";
 import { inheritedTaskOf } from "../../runs/console.route";
@@ -98,6 +99,8 @@ export interface PrHeadRow {
   readonly updatedAt: Date;
   /** When the sync last asked the host and was answered (V066, #370); null before any sync. */
   readonly syncedAt: Date | null;
+  /** `pull_requests.origin` (V141). */
+  readonly origin: DataOrigin;
   readonly run: PrRunRow | null;
   readonly ticket: PrTicketRow | null;
 }
@@ -567,6 +570,7 @@ export class PageRepository implements PageStore {
         "p.created_at",
         "p.updated_at",
         "p.synced_at",
+        "p.origin",
         "r.id as run_id",
         "r.loop_seq",
         "r.issue_number",
@@ -604,6 +608,7 @@ export class PageRepository implements PageStore {
           createdAt: row.created_at,
           updatedAt: row.updated_at,
           syncedAt: row.synced_at,
+          origin: row.origin,
           run:
             row.run_id === null
               ? null

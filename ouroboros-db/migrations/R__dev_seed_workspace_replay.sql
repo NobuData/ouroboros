@@ -30,6 +30,10 @@
 -- ---------------------------------------------------------------------------
 -- The build row — the draft's `build` stage, replayed from history.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.dry_run_stages (id, organization_id, dry_run_id, seq, stage_key, display_name,
                                       verdict, how, note, metrics, skip_reason)
 select '5eed008b-0000-4000-8000-000000000104'::uuid, r.organization_id, r.id, 4, 'build', 'build',

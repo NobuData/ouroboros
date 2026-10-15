@@ -151,6 +151,7 @@ export class ConsoleService {
         workflowVersion: run.workflow_version_pin,
         branchName: run.branch_name,
         simulated: run.simulated,
+        origin: run.origin,
         live: isLive(run.status),
         ...(repository === undefined ? {} : { repository }),
       },

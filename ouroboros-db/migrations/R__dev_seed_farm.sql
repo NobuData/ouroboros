@@ -157,6 +157,10 @@
 -- (#260) submit dialog prefills; `pool-b` runs two kinds of job and has no default, so a
 -- submission there names its own — the fixture for `farm_command_required`.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.runner_pools
   (id, organization_id, name, description, executor, image, env_allowlist,
    max_concurrency, enabled, autoscale_pref, tags, default_command)

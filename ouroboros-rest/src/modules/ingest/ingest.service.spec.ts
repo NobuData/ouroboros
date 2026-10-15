@@ -9,7 +9,7 @@ import type { GuardrailRequest, GuardrailScheduler } from "./ingest.guardrails";
 import { INGEST_ERRORS } from "./ingest.errors";
 import { requestDigest } from "./ingest.idempotency";
 import type { IngestRepository } from "./ingest.repository";
-import { IngestService, RECEIPT_KEY_CONSTRAINT, stageResource } from "./ingest.service";
+import { IngestService, RECEIPT_KEY_CONSTRAINT, originOf, stageResource } from "./ingest.service";
 
 /**
  * The five steps, and the decisions between them.
@@ -93,6 +93,7 @@ function run(over: Partial<Run> = {}): Run {
     change_set_seq: 2,
     playbook_id: null,
     events_swept_at: null,
+    origin: "simulated",
     ...over,
   };
 }
@@ -311,10 +312,10 @@ describe("opening a run", () => {
     const service = new IngestService(repository, stubGuardrails(), ACTIVE_STATES);
 
     await service.openRun(OPEN, true);
-    expect(spy.insertRun.mock.calls[0][1]).toMatchObject({ simulated: true });
+    expect(spy.insertRun.mock.calls[0][1]).toMatchObject({ simulated: true, origin: "simulated" });
 
     await service.openRun({ ...OPEN, idempotencyKey: "second" }, false);
-    expect(spy.insertRun.mock.calls[1][1]).toMatchObject({ simulated: false });
+    expect(spy.insertRun.mock.calls[1][1]).toMatchObject({ simulated: false, origin: "live" });
   });
 
   it("snapshots the pin's first stage and its node count onto V008's columns", async () => {
@@ -1233,5 +1234,12 @@ describe("a workspace that is not active (#489)", () => {
     } as never);
 
     expect(spy.updateStage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("originOf", () => {
+  it("makes an engine's run live and a simulator's simulated — never seeded (DJ.1, #1313)", () => {
+    expect(originOf(false)).toBe("live");
+    expect(originOf(true)).toBe("simulated");
   });
 });

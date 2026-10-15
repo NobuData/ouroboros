@@ -165,6 +165,10 @@
 -- `metadata` is null, as on the two shared workspaces of R__dev_seed.sql: it is not a personal
 -- workspace. `createdAt` has no default — the library always supplies it — so the seed does.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.organization ("id", "name", "slug", "createdAt", "metadata")
 select '5eed0049-0000-4000-8000-000000000001', 'Acme Onboarding', 'acme-onboarding', now(), null
  where ${ouro_dev_seed}

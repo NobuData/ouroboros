@@ -49,6 +49,10 @@
 -- ---------------------------------------------------------------------------
 -- The attempts — one per run whose failure somebody classified, four minutes into the loop.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, status, started_at)
 select ('5eed0056-0000-4000-8000-' || lpad(seed.issue_number::text, 12, '0'))::uuid,
        org."id", run.id, 1, 'complete', run.started_at + interval '4 minutes'

@@ -190,6 +190,10 @@
 -- day's top build is the merge's first. Runners follow the farm seed's fleet: forge-00 alone
 -- before forge-01–03 enrolled, never after forge-00's last build; bigiron before anvil-mac.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.build_jobs
   (id, organization_id, number, pool_id, runner_id, github_repo_id, git_ref, commit_sha,
    label, title, executor, image, command, status,

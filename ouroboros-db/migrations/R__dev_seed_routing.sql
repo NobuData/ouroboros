@@ -298,6 +298,10 @@
 -- connection somebody has deleted is *skipped* rather than inserted as unbound, because V019
 -- would refuse it enabled and take the whole migration down with it.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.model_aliases
     (id, organization_id, alias, provider_connection_id, model_id, params,
      enabled, restrictions, updated_by)

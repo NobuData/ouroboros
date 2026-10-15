@@ -26,6 +26,7 @@ describe("the build job resource", () => {
       startedAt: null,
       finishedAt: null,
       exitCode: null,
+      origin: "live",
     });
   });
 

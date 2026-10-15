@@ -66,6 +66,10 @@
 -- ---------------------------------------------------------------------------
 -- The installed workspace — mockup 19's header: `Slack · 24 members · Ouroboros app v2.4`.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.chat_connections (id, organization_id, platform, workspace_id, workspace_name,
                                         bot_token_sealed, bot_user_id, install_meta, installed_by,
                                         installed_at, last_verified_at)

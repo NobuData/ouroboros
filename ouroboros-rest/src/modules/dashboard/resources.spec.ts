@@ -42,6 +42,7 @@ const LIVE: Run = {
   change_set_seq: 0,
   playbook_id: null,
   events_swept_at: null,
+  origin: "live",
 };
 
 /** Its counterpart on the completions card — the same table, the other half of decision F2. */

@@ -193,6 +193,9 @@ jobs:
             echo "SEED_DB_NAME=ouroboros_seed"
             # The third, which rehearses #708's cut-over from a populated V005 state.
             echo "REHEARSAL_DB_NAME=ouroboros_rehearsal"
+            # The fifth and sixth rehearse V141's origin back-fill (DJ.1, #1313).
+            echo "ORIGIN_DB_NAME=ouroboros_origin"
+            echo "ORIGIN_PLANTED_DB_NAME=ouroboros_origin_planted"
             # The fourth, left with an empty schema so #710's drift check can ask the
             # library to describe what it expects from nothing.
             echo "DRIFT_DB_NAME=ouroboros_drift"
@@ -776,6 +779,41 @@ jobs:
             "$POSTGRES_IMAGE" \
             psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$REHEARSAL_DB_NAME" \
               -v ON_ERROR_STOP=1 -f /tests/rehearsal/post.sql
+
+      # V141's back-fill (DJ.1, #1313) classifies rows it finds, so it has to meet some. A
+      # seeded database is migrated to V140 only (the seeds' repeatables apply too, as they
+      # would on a deployment that already ran them), copied, and then:
+      #
+      #   * the copy gets one run nothing classifies (origin-plant.sql) and V141 must refuse
+      #     it, naming the count — a migration that guessed would pass here and fail the step;
+      #   * the original gets the shapes a real deployment holds (origin-pre.sql) and V141
+      #     must classify every row, seeded and planted alike (origin-post.sql).
+      - name: Rehearse V141's origin back-fill against a seeded V140 database
+        run: |
+          docker run --rm --network=host --env PGPASSWORD "$POSTGRES_IMAGE" \
+            createdb -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" "$ORIGIN_DB_NAME"
+          OURO_DB_NAME="$ORIGIN_DB_NAME" ouroboros-db/scripts/migrate --config flyway.seed.toml -target=140
+          docker run --rm --network=host --env PGPASSWORD "$POSTGRES_IMAGE" \
+            createdb -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" \
+              -T "$ORIGIN_DB_NAME" "$ORIGIN_PLANTED_DB_NAME"
+
+          psql_file() {
+            docker run --rm --network=host --env PGPASSWORD \
+              --volume "$PWD/ouroboros-db/tests:/tests:ro" "$POSTGRES_IMAGE" \
+              psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$1" \
+                -v ON_ERROR_STOP=1 -f "/tests/rehearsal/$2"
+          }
+
+          psql_file "$ORIGIN_PLANTED_DB_NAME" origin-plant.sql
+          if out=$(OURO_DB_NAME="$ORIGIN_PLANTED_DB_NAME" ouroboros-db/scripts/migrate --config flyway.seed.toml 2>&1); then
+            echo "V141 classified a run nothing identifies — it must refuse to guess" >&2
+            exit 1
+          fi
+          echo "$out" | grep -q '1 run(s) cannot be classified' || { echo "$out" >&2; exit 1; }
+
+          psql_file "$ORIGIN_DB_NAME" origin-pre.sql
+          OURO_DB_NAME="$ORIGIN_DB_NAME" ouroboros-db/scripts/migrate --config flyway.seed.toml
+          psql_file "$ORIGIN_DB_NAME" origin-post.sql
 
   # ---------------------------------------------------------------------------
   # The published artefact — ouroboros-db/Dockerfile, which is this module in the

@@ -193,6 +193,7 @@ export function runConsole(over: RunConsoleOverrides = {}): RunConsole {
       workflowVersion: 14,
       branchName: "loop/482-canbus-flake",
       simulated: false,
+      origin: "live",
       live: true,
       repository: { owner: "acme", name: "helios-firmware" },
       ...over.head,

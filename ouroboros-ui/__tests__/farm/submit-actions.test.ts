@@ -38,6 +38,7 @@ const SUBMISSION: BuildJobSubmission = {
 const JOB: BuildJob = {
   id: "5eed0028-0000-4000-8000-000000000483",
   number: 483,
+  origin: "live",
   status: "queued",
   pool: "pool-a",
   repository: "acme-robotics/helios-firmware",

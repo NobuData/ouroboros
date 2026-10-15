@@ -212,6 +212,10 @@
 -- `created_at` is the instant each workflow's v1 was published, which is also the rail's
 -- order: P.4 lists `order by created_at asc, slug asc`.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.workflows (id, organization_id, slug, name, status, created_at)
 select ('5eed001b-0000-4000-8000-' || lpad(seed.ordinal::text, 12, '0'))::uuid,
        org."id", seed.slug, seed.slug, seed.status,

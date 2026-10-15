@@ -132,6 +132,10 @@
 -- would be the fabrication this file's header refuses. The sum `4m sim + 2m 12s physical` is
 -- `test_runs_duration_split`'s to hold.
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, commit_sha, status,
                                  started_at, wall_ms, sim_ms, physical_ms)
 select ('5eed0031-0000-4000-8000-' || lpad((seed.issue_number * 10 + seed.attempt)::text, 12, '0'))::uuid,

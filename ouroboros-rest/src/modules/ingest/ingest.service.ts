@@ -55,7 +55,7 @@
 import { Inject, Injectable, Optional } from "@nestjs/common";
 import type { Transaction } from "kysely";
 
-import type { Database, Run, RunIngestOperation, RunStage } from "../db/schema";
+import type { DataOrigin, Database, Run, RunIngestOperation, RunStage } from "../db/schema";
 import { ProtectedPathEmitter } from "../guardrails/protected-path.emitter";
 import { GATE_EVIDENCE, type GateEvidenceSink } from "../pull-requests/gates/gate.evidence";
 import { workspaceNotAdmitting } from "../lifecycle/lifecycle.errors";
@@ -243,6 +243,9 @@ export class IngestService {
         branch_name: request.branchName ?? null,
         merge_strategy: request.mergeStrategy ?? null,
         simulated,
+        // DJ.1 (#1313): the origin is the principal's too, never the request's — an engine run
+        // is live, a simulator's is simulated. The database refuses any other pairing.
+        origin: originOf(simulated),
         playbook_id: playbookId,
       });
 
@@ -975,3 +978,18 @@ export function stageResource(stage: RunStage): StageTransitionResource {
 
 /** Re-exported so `ingest.module.ts` binds the token without importing two files. */
 export { GUARDRAIL_SCHEDULER };
+
+/**
+ * A run's origin, from the principal that opened it — DJ.1
+ * ([#1313](https://github.com/NobuData/ouroboros/issues/1313)), decision R4 extended.
+ *
+ * The engine's secret opens a live run and the simulator's a simulated one; nothing a caller
+ * sends can choose otherwise, and V141's `runs_origin_watermark` refuses the pairing if code
+ * here ever tried.
+ *
+ * @param simulated - Whether the simulator's principal opened the run.
+ * @returns `simulated` or `live`. Never `seeded`: only a seed file writes that.
+ */
+export function originOf(simulated: boolean): Exclude<DataOrigin, "seeded"> {
+  return simulated ? "simulated" : "live";
+}

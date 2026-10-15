@@ -41,6 +41,7 @@ import { sql, type Kysely, type Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
 import type {
+  DataOrigin,
   Database,
   Run,
   RunFileStatus,
@@ -328,6 +329,7 @@ export class IngestRepository {
       branch_name: string | null;
       merge_strategy: Database["runs"]["merge_strategy"];
       simulated: boolean;
+      origin: DataOrigin;
       playbook_id?: string | null;
     },
   ): Promise<Run> {

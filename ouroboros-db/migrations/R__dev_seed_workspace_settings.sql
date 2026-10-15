@@ -98,6 +98,10 @@
 -- ---------------------------------------------------------------------------
 -- The policy handle. `dry_run` null: the seed answers nothing about dry-run (V092).
 -- ---------------------------------------------------------------------------
+-- Every row this file writes is seeded (DJ.1, #1313): the origin triggers read this
+-- transaction-local setting for a row that states none.
+select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
+
 insert into ouroboros.org_policies (organization_id, dry_run)
 select org."id", null
   from ouroboros.organization org
