@@ -308,6 +308,7 @@ describe("the routing management endpoints", () => {
         "review",
         "docs",
         "copilot-workflow",
+        "estimate",
       ]);
     });
 
@@ -437,9 +438,11 @@ describe("the routing management endpoints", () => {
       // The spend card is present and in its zero-state rather than absent: a workspace with no
       // foundations still has a card to draw, and `localTokenShare: null` is what it says —
       // *nothing ran*, not *nothing ran locally*.
-      // Bare but for V142's copilot kind, which every workspace has, unrouted (#1748).
+      // Bare but for V142's copilot kind and V144's estimate kind, which every workspace has,
+      // unrouted (#1748, #123).
       expect(matrix.taskKinds.map((row) => [row.name, row.route])).toEqual([
         ["copilot-workflow", null],
+        ["estimate", null],
       ]);
       expect(matrix.rules).toEqual([]);
       expect(matrix.spend).toMatchObject({
@@ -946,8 +949,9 @@ describe("the routing management endpoints", () => {
         await api.as(owner)("get", MATRIX).set(TENANT_HEADER, mine.slug).expect(200),
       );
 
-      // Three of its own, and V142's `copilot-workflow`, which every workspace has (#1748).
-      expect(matrix.taskKinds).toHaveLength(4);
+      // Three of its own, and V142's `copilot-workflow` and V144's `estimate`, which every
+      // workspace has (#1748, #123).
+      expect(matrix.taskKinds).toHaveLength(5);
       expect(await storedChain(theirs.id, "implement")).toHaveLength(3);
     });
 

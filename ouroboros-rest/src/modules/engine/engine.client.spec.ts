@@ -3,6 +3,7 @@ import { HttpStatus, Logger } from "@nestjs/common";
 import { AppConfigService } from "../config/config.service";
 import { testConfiguration } from "../config/configuration.fixture";
 import {
+  ENGINE_ESTIMATE_MODEL_TIMEOUT_MS,
   ENGINE_TIMEOUT_MS,
   EngineClient,
   MAX_ATTEMPTS,
@@ -200,6 +201,31 @@ describe("sizing an issue", () => {
   function estimated(): Response {
     return jsonResponse(ENGINE_ESTIMATE_BODY);
   }
+
+  it("waits longer for an estimate that names a model, and the usual deadline otherwise (#123)", async () => {
+    const deadlines = jest.spyOn(AbortSignal, "timeout");
+    const engine = alwaysAnswering(estimated);
+
+    await clientWith(engine).estimate(ESTIMATE_REQUEST);
+    await clientWith(engine).estimate({
+      ...ESTIMATE_REQUEST,
+      model: {
+        connection: "5eed000c-0000-4000-8000-000000000005",
+        modelId: "llama3.1:8b",
+        label: "llama3.1:8b",
+        resolutionVersion: null,
+        costCapCents: null,
+        subject: { kind: "issue", id: "e1000000-0000-0000-0000-000000000485" },
+      },
+    });
+
+    expect(deadlines.mock.calls.map(([ms]) => ms)).toEqual([
+      ENGINE_TIMEOUT_MS,
+      ENGINE_ESTIMATE_MODEL_TIMEOUT_MS,
+    ]);
+    expect(ENGINE_ESTIMATE_MODEL_TIMEOUT_MS).toBe(150_000);
+    deadlines.mockRestore();
+  });
 
   it("posts the issue to the engine's estimate route", async () => {
     const engine = alwaysAnswering(estimated);

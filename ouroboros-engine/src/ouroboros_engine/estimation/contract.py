@@ -55,7 +55,7 @@ response — that is an edit to this file and to ``openapi.yaml`` together, not 
 implementation behind the seam gets to do at runtime.
 """
 
-from typing import Annotated, Literal, get_args
+from typing import Annotated, Literal, Self, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -269,6 +269,76 @@ class EstimationContext(BaseModel):
     )
 
 
+#: The longest reason the caller can give for sending no model.
+MAX_UNAVAILABLE_LENGTH = 400
+
+#: What a sizing call can be attributed to — ``token_usage.subject_kind = 'estimate'`` (V144).
+SubjectKind = Literal["issue", "ticket", "draft"]
+
+
+class EstimateSubject(BaseModel):
+    """What the model call is metered against: the thing being sized.
+
+    Attributes:
+        kind: A GitHub issue, a canonical ticket or a ticket draft.
+        id: Its row id — ``runCtx.run`` on the invocation.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: SubjectKind
+    id: str = Field(min_length=1, max_length=64)
+
+
+class EstimateModel(BaseModel):
+    """Which model sizes the issue (O.2's core, #123) — the workspace's choice.
+
+    Exactly one target: a routing ``alias`` (the workspace's ``estimate`` route, which the
+    invocation gateway walks with its fallbacks), or a concrete provider ``connection`` with
+    the ``model_id`` to ask it for (the default: the workspace's Ollama connection and
+    ``llama3.1:8b``). The engine holds no credential and names no provider either way.
+
+    Attributes:
+        alias: ``model_aliases.alias``; exclusive with ``connection``.
+        connection: ``provider_connections.id``; exclusive with ``alias``.
+        model_id: The provider's model id, sent as ``payload.model`` with a connection.
+        label: What the trace names as the estimator.
+        resolution_version: The route resolution's version, or ``None``.
+        cost_cap_cents: The route's per-run cap, or ``None`` for none.
+        subject: What the call is metered against.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    alias: str | None = Field(default=None, min_length=1, max_length=MAX_MODEL_LENGTH)
+    connection: str | None = Field(default=None, min_length=1, max_length=64)
+    model_id: str | None = Field(
+        default=None, min_length=1, max_length=MAX_MODEL_LENGTH
+    )
+    label: str = Field(
+        min_length=1, max_length=MAX_MODEL_LENGTH, examples=["llama3.1:8b"]
+    )
+    resolution_version: str | None = Field(default=None, max_length=32)
+    cost_cap_cents: int | None = Field(default=None, ge=0)
+    subject: EstimateSubject
+
+    @model_validator(mode="after")
+    def _one_target(self) -> Self:
+        """Hold the target to exactly one of an alias or a connection with its model.
+
+        Returns:
+            The model, unchanged.
+
+        Raises:
+            ValueError: When it names both, neither, or a connection without a model.
+        """
+        if (self.alias is None) == (self.connection is None):
+            raise ValueError("a model names exactly one of alias or connection")
+        if self.connection is not None and self.model_id is None:
+            raise ValueError("a connection needs the model_id to ask it for")
+        return self
+
+
 class EstimateRequest(BaseModel):
     """The body of a ``POST /v0/estimate`` request.
 
@@ -279,12 +349,18 @@ class EstimateRequest(BaseModel):
     Attributes:
         issue: The issue to size.
         context: The vocabularies an answer may use.
+        model: The model to size with (#123), or ``None`` — the heuristic answers.
+        model_unavailable: Why there is no model, for the trace to say.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     issue: IssueContext
     context: EstimationContext
+    model: EstimateModel | None = None
+    model_unavailable: str | None = Field(
+        default=None, min_length=1, max_length=MAX_UNAVAILABLE_LENGTH
+    )
 
 
 class Breakdown(BaseModel):

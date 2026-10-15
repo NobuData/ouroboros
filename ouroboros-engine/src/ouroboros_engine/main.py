@@ -51,6 +51,11 @@ from ouroboros_engine.dryrun.estimates import HttpReplayEstimates
 from ouroboros_engine.dryrun.harness import DryRunHarness
 from ouroboros_engine.dryrun.model import GatewayStageCaller
 from ouroboros_engine.estimation.heuristic import HeuristicEstimator
+from ouroboros_engine.estimation.model import (
+    ESTIMATE_GATEWAY_TIMEOUT_SECONDS,
+    GatewaySizingCaller,
+    ModelEstimator,
+)
 from ouroboros_engine.investigation.control import HttpInvestigationControl
 from ouroboros_engine.investigation.loop import InvestigationLoop
 from ouroboros_engine.investigation.model import GatewayModelCaller
@@ -162,12 +167,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.uptime = Uptime()
 
     # Which estimator answers `POST /v0/estimate` is a property of the application rather
-    # than of the route, so replacing it — the LLM estimator (#123), with the heuristic
-    # retained behind it as the fallback path — is this line and nothing else, and a test
-    # installs its own by assigning to the same attribute. `HeuristicEstimator` is L.2's
-    # rule engine: deterministic, and provenance `heuristic-v0` in every trace it writes.
-    # See `ouroboros_engine.estimation.heuristic`.
-    app.state.estimator = HeuristicEstimator()
+    # than of the route, and a test installs its own by assigning to the same attribute.
+    # `ModelEstimator` (#123) sizes on the model the request names — the workspace's
+    # `estimate` route, or its Ollama connection and `llama3.1:8b` — through the invocation
+    # gateway, with L.2's `HeuristicEstimator` (`heuristic-v0`) behind it whenever there is no
+    # model or the model cannot answer. See `ouroboros_engine.estimation.model`.
+    app.state.estimator = ModelEstimator(
+        GatewaySizingCaller(
+            ControlPlaneClient(resolved.rest_url, resolved.shared_secret),
+            UrllibGateway(timeout=ESTIMATE_GATEWAY_TIMEOUT_SECONDS),
+        ),
+        HeuristicEstimator(),
+    )
 
     # And which planner answers `POST /v0/plan`, for the same reason and by the same rule.
     # `OutlinePlanner` is AL.1's deterministic parser: provenance `outline-v0` in every

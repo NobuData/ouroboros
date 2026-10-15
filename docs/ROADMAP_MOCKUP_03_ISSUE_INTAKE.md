@@ -2381,6 +2381,19 @@ GitHub ── issues webhook (signed) ──▶ receiver ─▶ upsert (idempote
 
 > **GitHub issue:** #123 · **Status:** 🟡 Open · **Parent epic:** #98
 
+> **Partly delivered (the core — `ouroboros-engine` 0.7.36, `ouroboros-rest` 0.41.43, V144; the
+> issue stays open):** the estimator sizes on **the workspace's model**. Every workspace has an
+> `estimate` task kind (V144); REST resolves its route under Model routing — or, with none, the
+> workspace's Ollama connection and `llama3.1:8b` — and sends it as `EstimateRequest.model`;
+> the engine's `ModelEstimator` (`estimation/model.py`) asks it through the invocation gateway
+> (metered as `token_usage.subject_kind = 'estimate'` against the issue, ticket or draft),
+> validates the JSON answer against the contract and the offered vocabularies, and names the
+> model and its tokens in the trace. **The heuristic is the floor:** no model, a provider
+> outage, or an answer outside the contract gives `heuristic-v0`'s estimate with a trace signal
+> saying why. **Still open here:** the benchmark against v0 on a labeled fixture set, `files[]`
+> prediction (still the heuristic's), per-org cost caps beyond the route's own, and the async
+> `202` path (REST waits up to 150 s instead).
+
 - **Problem Statement:** Heuristic v0 sizes crudely and cannot estimate files;
   the product promise (file-touch prediction, calibrated confidence, real
   routing) needs models — which need the provider stack (mockup 07) first.

@@ -3,7 +3,7 @@ import { Logger } from "@nestjs/common";
 import type { AppConfigService } from "../config/config.service";
 import type { EngineClient } from "../engine/engine.client";
 import { engineUnavailable } from "../engine/engine.errors";
-import type { Estimate, EstimateRequest } from "../engine/engine.contract";
+import type { Estimate, EstimateRequest, EstimateSubject } from "../engine/engine.contract";
 import type { EstimationContextService } from "./estimation.context";
 import {
   deferred,
@@ -38,6 +38,7 @@ import type {
   InjectionInput,
 } from "../context-assembly/context-assembly.service";
 import { EstimationKnowledge } from "./estimation.knowledge";
+import type { EstimationModelChoice, EstimationModelService } from "./estimation.model";
 import type { EstimatedStatus } from "./estimation.outcome";
 
 /**
@@ -62,6 +63,8 @@ interface RepositoryLog {
   /** What context assembly was asked for, and what was recorded against it (#414). */
   assembled: { organizationId: string; repo: string | null | undefined }[];
   injected: { organizationId: string; injection: InjectionInput }[];
+  /** Every model choice asked for (#123): the workspace and what was being sized. */
+  chosen: { organizationId: string; subject: EstimateSubject }[];
 }
 
 /** How a stand-in is told to behave. */
@@ -95,6 +98,8 @@ interface Behaviour {
   ticketVersion?: number;
   /** The Needs-You emitter (#461), when the case listens to it. */
   resizes?: ResizeReviewEmitter;
+  /** What the model choice answers (#123); no model, by default. */
+  model?: EstimationModelChoice;
 }
 
 /**
@@ -114,6 +119,7 @@ function build(behaviour: Behaviour = {}) {
     ticketsSettled: [],
     assembled: [],
     injected: [],
+    chosen: [],
   };
   const requests: EstimateRequest[] = [];
   const staleReads: { olderThan: Date; limit: number }[] = [];
@@ -249,6 +255,12 @@ function build(behaviour: Behaviour = {}) {
       context,
       config,
       new EstimationKnowledge(assembly),
+      {
+        choose: (organizationId: string, subject: EstimateSubject) => {
+          log.chosen.push({ organizationId, subject });
+          return Promise.resolve(behaviour.model ?? { unavailable: "no model configured" });
+        },
+      } as unknown as EstimationModelService,
       behaviour.resizes,
     ),
     log,
@@ -330,6 +342,7 @@ describe("the happy path", () => {
         repo: "acme-robotics/helios-firmware",
       },
       context: { ...FIXTURE_CONTEXT, facts: [] },
+      modelUnavailable: "no model configured",
     });
   });
 
@@ -589,6 +602,55 @@ describe("the recovery sweep", () => {
   });
 });
 
+describe("the model that sizes it (#123)", () => {
+  const MODEL = {
+    connection: "5eed000c-0000-4000-8000-000000000005",
+    modelId: "llama3.1:8b",
+    label: "llama3.1:8b",
+    resolutionVersion: null,
+    costCapCents: null,
+    subject: { kind: "issue" as const, id: "ignored-by-the-stub" },
+  };
+
+  it("asks for the workspace's model per subject and sends the engine the target it chose", async () => {
+    const { orchestrator, log, requests } = build({ model: { model: MODEL } });
+
+    await orchestrator.accept([handoff()]);
+    await orchestrator.settled();
+
+    expect(log.chosen).toEqual([
+      { organizationId: FIXTURE_WORKSPACE, subject: { kind: "issue", id: FIXTURE_ISSUE_ID } },
+    ]);
+    expect(requests[0]?.model).toEqual(MODEL);
+    expect(requests[0]?.modelUnavailable).toBeUndefined();
+  });
+
+  it("tells the engine why there is no model, so the heuristic's trace can say", async () => {
+    const { orchestrator, requests } = build({
+      model: { unavailable: "no estimate route and no Ollama connection" },
+    });
+
+    await orchestrator.accept([handoff()]);
+    await orchestrator.settled();
+
+    expect(requests[0]?.model).toBeUndefined();
+    expect(requests[0]?.modelUnavailable).toBe("no estimate route and no Ollama connection");
+  });
+
+  it("chooses once per estimate, not once per engine attempt", async () => {
+    const { orchestrator, log, requests } = build({
+      engine: async (attempt) =>
+        attempt === 1 ? Promise.reject(engineUnavailable()) : Promise.resolve(estimate()),
+    });
+
+    await orchestrator.accept([handoff()]);
+    await orchestrator.settled();
+
+    expect(requests).toHaveLength(2);
+    expect(log.chosen).toHaveLength(1);
+  });
+});
+
 describe("sizing a ticket draft (AL.4, #280 — one sizer, decision N3)", () => {
   /** The draft every case sizes. */
   const DRAFT_ID = "d2800000-0000-0000-0000-0000000000d3";
@@ -628,6 +690,7 @@ describe("sizing a ticket draft (AL.4, #280 — one sizer, decision N3)", () => 
         repo: "acme-robotics/helios-firmware",
       },
       context: { ...FIXTURE_CONTEXT, facts: [] },
+      modelUnavailable: "no model configured",
     });
     expect(log.draftsPersisted).toHaveLength(1);
     expect(log.draftsPersisted[0].row).toMatchObject({ draft_id: DRAFT_ID, github_issue_id: null });
@@ -747,6 +810,7 @@ describe("sizing a canonical ticket (AL.5, #281 — one sizer, decision N9)", ()
           repo: "acme-robotics/helios-telemetry",
         },
         context: { ...FIXTURE_CONTEXT, facts: [] },
+        modelUnavailable: "no model configured",
       },
     ]);
     expect(log.ticketsPersisted).toHaveLength(1);

@@ -180,6 +180,14 @@ keeps the old one if it does not — *The working address is unchanged.*
 
 Ollama authenticates nobody. Keep its port on a private network, never on a public interface.
 
+**Issue sizing uses it by default.** A workspace whose `estimate` task kind has no route under
+[Model routing](../user-guide/models.mdx#routing-a-task-kind-that-has-no-route) sizes its issues
+on its Ollama connection with the model `llama3.1:8b` — the first connection by name that is
+switched on and not paused. Pull that model on the host (`ollama pull llama3.1:8b`, or **Pull
+latest** on the card once it is listed). If the workspace has no Ollama connection, or the model
+does not answer, issues are sized by the built-in rules instead, and the estimate's trace says
+why. See [Which model sizes your issues](../user-guide/issues.mdx#which-model-sizes-your-issues).
+
 The engine's workers reach local model servers directly, at the addresses listed in
 <EnvVar name="OURO_LOCAL_PROVIDER_URLS" />. Set that variable to the same Ollama address if the
 engine should use it.

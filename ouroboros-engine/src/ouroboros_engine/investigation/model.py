@@ -22,7 +22,11 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from ouroboros_engine.control_plane.client import ControlPlaneClient, ControlPlaneError
+from ouroboros_engine.control_plane.client import (
+    ControlPlaneClient,
+    ControlPlaneError,
+    ControlPlaneRequest,
+)
 from ouroboros_engine.control_plane.contract import (
     DeltaEvent,
     ErrorEvent,
@@ -191,36 +195,60 @@ class GatewayModelCaller:
             },
             alias=call.alias,
         )
-        text: list[str] = []
-        usage: list[CallUsage] = []
+        return collect_answer(self._client, self._gateway, outgoing)
 
-        try:
-            for event in self._client.read_events(self._gateway.stream(outgoing)):
-                if isinstance(event, DeltaEvent):
-                    text.append(event.text)
-                elif isinstance(event, UsageEvent):
-                    usage.append(
-                        CallUsage(
-                            hop=event.hop,
-                            connection=event.connection,
-                            model=event.model,
-                            input_tokens=event.input_tokens,
-                            output_tokens=event.output_tokens,
-                            cost_cents=event.cost_cents,
-                        )
+
+def collect_answer(
+    client: ControlPlaneClient, gateway: Gateway, outgoing: ControlPlaneRequest
+) -> ModelAnswer:
+    """Send one invocation and read its stream to the end — every gateway caller's loop.
+
+    The investigation loop, a dry-run stage and the issue estimator (#123) all make a call the
+    same way: send it, keep the ``delta`` text and every ``usage`` hop, and turn an ``error``
+    event, a transport failure or an answer outside the contract into one
+    :class:`ModelFailureError` that still carries what was spent.
+
+    Args:
+        client: Reads the events.
+        gateway: Puts the request on a socket.
+        outgoing: The invocation, from :meth:`ControlPlaneClient.invoke_request`.
+
+    Returns:
+        The text and usage.
+
+    Raises:
+        ModelFailureError: When there is no answer.
+    """
+    text: list[str] = []
+    usage: list[CallUsage] = []
+
+    try:
+        for event in client.read_events(gateway.stream(outgoing)):
+            if isinstance(event, DeltaEvent):
+                text.append(event.text)
+            elif isinstance(event, UsageEvent):
+                usage.append(
+                    CallUsage(
+                        hop=event.hop,
+                        connection=event.connection,
+                        model=event.model,
+                        input_tokens=event.input_tokens,
+                        output_tokens=event.output_tokens,
+                        cost_cents=event.cost_cents,
                     )
-                elif isinstance(event, ErrorEvent):
-                    raise ModelFailureError(event.code, event.message, usage)
-        except GatewayError as failed:
-            raise ModelFailureError(failed.code, failed.message, usage) from failed
-        except (ControlPlaneError, ValueError) as refused:
-            raise ModelFailureError(
-                "gateway_refused",
-                "the invocation gateway answered outside its contract",
-                usage,
-            ) from refused
+                )
+            elif isinstance(event, ErrorEvent):
+                raise ModelFailureError(event.code, event.message, usage)
+    except GatewayError as failed:
+        raise ModelFailureError(failed.code, failed.message, usage) from failed
+    except (ControlPlaneError, ValueError) as refused:
+        raise ModelFailureError(
+            "gateway_refused",
+            "the invocation gateway answered outside its contract",
+            usage,
+        ) from refused
 
-        return ModelAnswer(text="".join(text), usage=usage)
+    return ModelAnswer(text="".join(text), usage=usage)
 
 
 def remaining_cap(spend_cents: int | None, spent: float) -> int | None:

@@ -139,6 +139,14 @@ import {
 export const ENGINE_TIMEOUT_MS = 5_000;
 
 /**
+ * How long an estimate that names a model may take (O.2's core, #123). Longer than the engine's
+ * own bound on the model call, so a slow or silent model ends in the engine's heuristic fallback
+ * — an answer — rather than in this deadline. An estimate with no model keeps
+ * {@link ENGINE_TIMEOUT_MS}: the heuristic invokes nothing.
+ */
+export const ENGINE_ESTIMATE_MODEL_TIMEOUT_MS = 150_000;
+
+/**
  * The socket failures worth one more attempt.
  *
  * Every code here means the request was *never delivered*: nothing was listening
@@ -241,7 +249,9 @@ export class EngineClient {
    * it, and never branches on which engine build answered. Two things the heuristic always
    * reports are worth knowing before writing against them: `breakdown.files` is empty,
    * because a rule engine cannot know which files an issue touches, and `trace.tokensUsed`
-   * is `0`, because it invoked nothing.
+   * is `0`, because it invoked nothing. When the request names a model (#123), the engine asks
+   * it and the trace names it, with its tokens; the deadline is then
+   * {@link ENGINE_ESTIMATE_MODEL_TIMEOUT_MS}.
    *
    * @param request - The issue to size and the vocabularies an answer may use.
    * @returns The estimate, parsed and in this service's names.
@@ -252,11 +262,16 @@ export class EngineClient {
    *   change that arrives with the estimator needing it.
    */
   async estimate(request: EstimateRequest): Promise<Estimate> {
-    return this.call(ENGINE_ESTIMATE_ROUTE, estimateSchema, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(estimateRequestBody(request)),
-    });
+    return this.call(
+      ENGINE_ESTIMATE_ROUTE,
+      estimateSchema,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(estimateRequestBody(request)),
+      },
+      request.model === undefined ? ENGINE_TIMEOUT_MS : ENGINE_ESTIMATE_MODEL_TIMEOUT_MS,
+    );
   }
 
   /**
@@ -723,14 +738,21 @@ export class EngineClient {
    * @param route - A route relative to `OURO_ENGINE_URL`, from `engine.contract.ts`.
    * @param schema - What the answer must be. Parsed rather than asserted; see that file.
    * @param init - Method, headers and body for anything that is not a plain `GET`.
+   * @param timeoutMs - The deadline; {@link ENGINE_TIMEOUT_MS} but for an estimate that names
+   *   a model.
    * @returns The parsed body, in this service's names.
    * @throws {UpstreamError} `engine_unavailable` for a transport failure, a deadline, a
    *   non-2xx status, a body that is not JSON, or a body that is not the contract. One
    *   answer, because a client can act on exactly one of them.
    */
-  private async call<T>(route: string, schema: ZodType<T>, init: RequestInit = {}): Promise<T> {
+  private async call<T>(
+    route: string,
+    schema: ZodType<T>,
+    init: RequestInit = {},
+    timeoutMs: number = ENGINE_TIMEOUT_MS,
+  ): Promise<T> {
     const url = engineRouteUrl(this.config.engineUrl, route);
-    const response = await this.send(url, init);
+    const response = await this.send(url, init, timeoutMs);
 
     if (!response.ok) {
       await this.refuse(response, url, init);

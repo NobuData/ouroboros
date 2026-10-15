@@ -348,6 +348,54 @@ describe("the estimate schema", () => {
 });
 
 describe("estimateRequestBody", () => {
+  it("sends the model the workspace sizes with, in the engine's spelling (#123)", () => {
+    const body = estimateRequestBody({
+      ...ESTIMATE_REQUEST,
+      model: {
+        connection: "5eed000c-0000-4000-8000-000000000005",
+        modelId: "llama3.1:8b",
+        label: "llama3.1:8b",
+        resolutionVersion: null,
+        costCapCents: null,
+        subject: { kind: "draft", id: "d0000000-0000-0000-0000-000000000001" },
+      },
+    });
+
+    expect(body.model).toEqual({
+      connection: "5eed000c-0000-4000-8000-000000000005",
+      model_id: "llama3.1:8b",
+      label: "llama3.1:8b",
+      resolution_version: null,
+      cost_cap_cents: null,
+      subject: { kind: "draft", id: "d0000000-0000-0000-0000-000000000001" },
+    });
+    expect(body).not.toHaveProperty("model_unavailable");
+  });
+
+  it("sends a routed alias without a connection, and the reason when there is no model", () => {
+    const routed = estimateRequestBody({
+      ...ESTIMATE_REQUEST,
+      model: {
+        alias: "sizer",
+        label: "claude-haiku-4-5",
+        resolutionVersion: "r1",
+        costCapCents: 25,
+        subject: { kind: "issue", id: "e1000000-0000-0000-0000-000000000485" },
+      },
+    });
+    expect(routed.model).toEqual({
+      alias: "sizer",
+      label: "claude-haiku-4-5",
+      resolution_version: "r1",
+      cost_cap_cents: 25,
+      subject: { kind: "issue", id: "e1000000-0000-0000-0000-000000000485" },
+    });
+
+    const none = estimateRequestBody({ ...ESTIMATE_REQUEST, modelUnavailable: "no route" });
+    expect(none).not.toHaveProperty("model");
+    expect(none.model_unavailable).toBe("no route");
+  });
+
   it("writes the engine's `snake_case`, at both depths", () => {
     expect(estimateRequestBody(ESTIMATE_REQUEST)).toEqual({
       issue: {

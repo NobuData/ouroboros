@@ -53,6 +53,7 @@ of those are the same change.
 import logging
 
 from fastapi import APIRouter, Request
+from fastapi.concurrency import run_in_threadpool
 
 from ouroboros_engine.api.v0 import V0_PREFIX, V0_TAG
 from ouroboros_engine.estimation.contract import Estimate, EstimateRequest
@@ -111,7 +112,9 @@ async def estimate_issue(request: Request, payload: EstimateRequest) -> Estimate
             caller's.
     """
     estimator: Estimator = request.app.state.estimator
-    estimate = estimator.estimate(payload)
+    # On a worker thread: the model estimator (#123) waits on the invocation gateway, and a
+    # blocking call made on the event loop would stall every other request while it waited.
+    estimate = await run_in_threadpool(estimator.estimate, payload)
 
     # Checked before it is logged and before it is returned: an answer outside the
     # caller's vocabularies is not an estimate, so nothing downstream of here should see

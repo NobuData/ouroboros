@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-engine",
-    "version": "0.7.35",
+    "version": "0.7.36",
     "summary": "Internal backend for Ouroboros — executes the work ouroboros-rest brokers.",
     "description": "The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the\nservice that executes the work `ouroboros-rest` brokers.\n\nIt is **internal only**. Every request arrives from `ouroboros-rest`, inside the\ncluster, carrying a shared secret on the `X-Ouro-Internal-Key` header; a browser\nnever reaches it. That is a deployment claim, so the service enforces it itself\nrather than trusting it — **every path but `/healthz` requires the key**, the\ncomparison is constant time, and a request without one is refused before routing.\n\nA rejection is therefore one constant body whether the path exists or not: status\ncodes are how a surface gets mapped from outside, and an unauthenticated caller cannot\ntell `/v0/status` from `/v0/anything-else`. Read the `401` documented on each operation\nbelow as the answer to *anything* unauthenticated, including paths this document does\nnot list.\n\n**Every error has one shape** — `{code, message, details}`, the same envelope\n`ouroboros-rest` answers a browser with (`docs/ARCHITECTURE.md` § 5.3), so a failure\ncrossing the gateway does not change form on the way out. `code` is stable and\nmachine-readable and is what a caller branches on; `message` is written for a person\nand is a constant for anything `5xx`, because the real diagnosis names the inside of\nthis process and belongs in a log; `details` carries what is specific to the failure,\nwhich for a `422` is one entry per field that was refused. That covers the answers no\nroute produced too — a path nothing claims, a method a path does not allow, a body\nthat could not be parsed.\n\n`/v0` is the versioned internal prefix. It is unstable by definition — it changes\nwith the two services that share it, which deploy together — and a stable `/v1` is a\nlater promise, not this one. A field may be added to a response and a route may be\nadded to the prefix; a field that disappears, changes type or changes meaning is a\n`/v1` served alongside this one, not an edit to it.",
     "license": {
@@ -3213,6 +3213,106 @@
           "context": {
             "$ref": "#/components/schemas/EstimationContext",
             "description": "The vocabularies an answer may use."
+          },
+          "model": {
+            "$ref": "#/components/schemas/EstimateModel",
+            "description": "The model to size with (O.2's core,\n[#123](https://github.com/NobuData/ouroboros/issues/123)) — the workspace's\n`estimate` route, or its Ollama connection and `llama3.1:8b`. Absent: the\nheuristic (`heuristic-v0`) answers, and the trace's first signal says why. A model\nthat cannot answer, or answers outside the contract, also ends in the heuristic's\nestimate, with a `fallback:` signal naming the reason — never in an error."
+          },
+          "model_unavailable": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 400,
+            "description": "Why there is no `model`, for the trace to say.",
+            "examples": [
+              "no estimate route and no Ollama connection"
+            ]
+          }
+        }
+      },
+      "EstimateModel": {
+        "type": "object",
+        "title": "EstimateModel",
+        "description": "Which model sizes the issue, as the invocation gateway is asked for it: exactly one of\na routing `alias` (the gateway walks the route's chain behind it) or a provider\n`connection` with the `model_id` to ask it for. The engine holds no credential and\nnames no provider either way. The call is attributed to `subject` (`runCtx.run`) with\n`runCtx.stage = estimate`.",
+        "additionalProperties": false,
+        "required": [
+          "label",
+          "subject"
+        ],
+        "properties": {
+          "alias": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "`model_aliases.alias`. Exclusive with `connection`."
+          },
+          "connection": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "`provider_connections.id`. Exclusive with `alias`; requires `model_id`."
+          },
+          "model_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The provider's model id, sent as `payload.model` with a connection.",
+            "examples": [
+              "llama3.1:8b"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "What the trace names as the estimator.",
+            "examples": [
+              "llama3.1:8b"
+            ]
+          },
+          "resolution_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 32,
+            "description": "The route resolution's version; null for a connection."
+          },
+          "cost_cap_cents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The route's per-run cap in cents; null for none."
+          },
+          "subject": {
+            "$ref": "#/components/schemas/EstimateSubject"
+          }
+        }
+      },
+      "EstimateSubject": {
+        "type": "object",
+        "title": "EstimateSubject",
+        "description": "What a sizing call is metered against — the thing being sized.",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "id"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "issue",
+              "ticket",
+              "draft"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "`github_issues.id`, `tickets.id` or `ticket_drafts.id`."
           }
         }
       },

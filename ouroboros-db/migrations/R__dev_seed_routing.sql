@@ -357,7 +357,8 @@ select ('5eed0010-0000-4000-8000-' || lpad(seed.sort_order::text, 12, '0'))::uui
        org."id", seed.name, seed.description, seed.sort_order
   from (values
          (1, 'analyze',    'Read the issue, map the affected code paths'),
-         (2, 'estimate',   'Size effort XS–XL before queueing'),
+         -- 2 is `estimate`: V144 gives every workspace that kind, and it is put in its place
+         -- below rather than inserted here, where its name would collide.
          (3, 'plan',       'Decompose into steps, pick a workflow'),
          (4, 'implement',  'Write the change, run tests, iterate to green'),
          (5, 'test-gen',   'Generate unit and regression tests for the diff'),
@@ -370,6 +371,15 @@ select ('5eed0010-0000-4000-8000-' || lpad(seed.sort_order::text, 12, '0'))::uui
   join ouroboros.organization org on org."slug" = 'acme-robotics'
  where ${ouro_dev_seed}
 on conflict (id) do nothing;
+
+-- `estimate` is V144's row (every workspace has it, #123): here it takes the matrix's second
+-- place and the description the mockup prints.
+update ouroboros.task_kinds kind
+   set sort_order = 2, description = 'Size effort XS–XL before queueing'
+  from ouroboros.organization org
+ where org."slug" = 'acme-robotics' and kind.organization_id = org."id"
+   and kind.name = 'estimate'
+   and ${ouro_dev_seed};
 
 -- ---------------------------------------------------------------------------
 -- The eleven routes — one per kind (the copilot's kind is V142's, #1748), and the inspector's
