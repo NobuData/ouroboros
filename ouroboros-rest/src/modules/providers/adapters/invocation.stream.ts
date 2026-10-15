@@ -325,6 +325,51 @@ export class SseDecoder {
 }
 
 /**
+ * POST JSON to a provider, bounding only the wait for its response headers.
+ *
+ * The deadline is {@link INVOCATION_CONNECT_TIMEOUT_MS} until the headers arrive and then
+ * lifted: a long answer is not a slow one, and a timeout signal handed straight to `fetch`
+ * would also abort the body a minute into a stream. The caller's signal stays live throughout.
+ * Redirects are not followed (`PROVIDER_REDIRECT`).
+ *
+ * @param init - The request.
+ * @returns The response, whatever its status.
+ * @throws {ProviderAdapterError} `network` when nothing answered in time or the socket failed.
+ */
+export async function postProvider(init: InvocationRequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const onCaller = (): void => {
+    controller.abort(init.signal.reason);
+  };
+  const deadline = setTimeout(() => {
+    controller.abort(new DOMException("connect timed out", "TimeoutError"));
+  }, INVOCATION_CONNECT_TIMEOUT_MS);
+
+  if (init.signal.aborted) {
+    onCaller();
+  } else {
+    init.signal.addEventListener("abort", onCaller, { once: true });
+  }
+
+  try {
+    return await fetch(init.url, {
+      method: "POST",
+      headers: { ...init.headers, "content-type": "application/json" },
+      body: JSON.stringify(init.body),
+      redirect: PROVIDER_REDIRECT,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    throw new ProviderAdapterError(
+      "network",
+      `${init.host} ${describeTransportFailure(error, INVOCATION_CONNECT_TIMEOUT_MS)}`,
+    );
+  } finally {
+    clearTimeout(deadline);
+  }
+}
+
+/**
  * Send one invocation and hand back the body that streams its answer.
  *
  * Redirects are not followed (`PROVIDER_REDIRECT`), for the reason every adapter request
@@ -341,23 +386,7 @@ export async function openInvocation(
   init: InvocationRequestInit,
   detect: RefusalDetector,
 ): Promise<AsyncIterable<Uint8Array>> {
-  const connect = AbortSignal.timeout(INVOCATION_CONNECT_TIMEOUT_MS);
-  let response: Response;
-
-  try {
-    response = await fetch(init.url, {
-      method: "POST",
-      headers: { ...init.headers, "content-type": "application/json" },
-      body: JSON.stringify(init.body),
-      redirect: PROVIDER_REDIRECT,
-      signal: AbortSignal.any([init.signal, connect]),
-    });
-  } catch (error) {
-    throw new ProviderAdapterError(
-      "network",
-      `${init.host} ${describeTransportFailure(error, INVOCATION_CONNECT_TIMEOUT_MS)}`,
-    );
-  }
+  const response = await postProvider(init);
 
   if (!response.ok) {
     throw await refusalOf(response, detect);

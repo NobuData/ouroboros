@@ -14,9 +14,11 @@
  * as the answer; the Messages-format facade (DH.2) relays those byte for byte instead.
  */
 
-import type { InvocationChunk, InvocationUsage } from "../provider.adapter";
+import type { InvocationChunk, InvocationUsage, RelayedMessages } from "../provider.adapter";
+import { isRedirect } from "../provider.address";
 import {
   ProviderAdapterError,
+  classifyHttpStatus,
   type ModelRefusal,
   type ProviderErrorClass,
 } from "../provider.errors";
@@ -182,4 +184,181 @@ export async function* parseAnthropicStream(source: ByteSource): AsyncGenerator<
   }
 
   throw endedEarly();
+}
+
+/**
+ * Reads usage off a Messages stream the facade is relaying, without touching the bytes — DH.2
+ * ([#1303](https://github.com/NobuData/ouroboros/issues/1303)).
+ *
+ * Fed every chunk as it is relayed. It never throws: a frame it cannot read is the provider's
+ * business and the harness's to see, and a relay must not stop because its meter could not
+ * parse something.
+ */
+export class AnthropicUsageTap {
+  private readonly decoder = new SseDecoder();
+  private readonly state: AnthropicState = {
+    usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    stopReason: null,
+  };
+  private seen = false;
+  private done = false;
+
+  /**
+   * Feed a relayed chunk.
+   *
+   * @param chunk - The bytes, exactly as relayed.
+   */
+  push(chunk: Uint8Array): void {
+    try {
+      this.read(this.decoder.push(chunk));
+    } catch {
+      // Unreadable framing is relayed regardless; the meter keeps what it has.
+    }
+  }
+
+  /** The stream ended. */
+  end(): void {
+    try {
+      this.read(this.decoder.end());
+    } catch {
+      // As above.
+    }
+  }
+
+  /** @returns The cumulative usage the provider reported, or null when it reported none. */
+  usage(): InvocationUsage | null {
+    return this.seen ? this.state.usage : null;
+  }
+
+  /** @returns Whether `message_stop` arrived. */
+  completed(): boolean {
+    return this.done;
+  }
+
+  /**
+   * Fold events into the usage.
+   *
+   * @param events - Complete events.
+   */
+  private read(events: readonly SseEvent[]): void {
+    for (const event of events) {
+      let chunks: InvocationChunk[];
+
+      try {
+        chunks = step(event, this.state);
+      } catch {
+        continue;
+      }
+
+      for (const chunk of chunks) {
+        this.seen ||= chunk.kind === "usage";
+        this.done ||= chunk.kind === "done";
+      }
+    }
+  }
+}
+
+/**
+ * The usage a non-streamed Messages response reports.
+ *
+ * @param body - The parsed response body.
+ * @returns The usage, or null when the body carries none.
+ */
+export function messageUsage(body: unknown): InvocationUsage | null {
+  const usage = field(body, "usage");
+
+  if (typeof usage !== "object" || usage === null) {
+    return null;
+  }
+
+  return merged(
+    { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    usage,
+  );
+}
+
+/**
+ * A provider response as the facade relays it: a refusal classified from its body, or a
+ * success whose usage is read as it passes — DH.2 ([#1303](https://github.com/NobuData/ouroboros/issues/1303)).
+ *
+ * @param response - The Messages API's response.
+ * @returns The relayed answer. The body's bytes are the provider's, unmodified.
+ */
+export async function relayed(response: Response): Promise<RelayedMessages> {
+  const contentType = response.headers.get("content-type") ?? "application/json";
+  const requestId = response.headers.get("request-id");
+
+  if (!response.ok) {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    let parsed: unknown = null;
+
+    try {
+      parsed = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+    } catch {
+      parsed = null;
+    }
+
+    const errorClass = isRedirect(response.status) ? "config" : classifyHttpStatus(response.status);
+
+    return {
+      status: response.status,
+      contentType,
+      requestId,
+      failure: {
+        errorClass,
+        refusal: errorClass === "config" ? anthropicRefusal(response.status, parsed) : null,
+      },
+      body: once(bytes),
+      usage: () => null,
+    };
+  }
+
+  const streamed = contentType.includes("text/event-stream");
+  const tap = new AnthropicUsageTap();
+  const collected: Uint8Array[] = [];
+  let usage: InvocationUsage | null = null;
+  const source = (response.body ?? once(new Uint8Array())) as AsyncIterable<Uint8Array>;
+
+  async function* passing(): AsyncGenerator<Uint8Array> {
+    for await (const chunk of source) {
+      if (streamed) {
+        tap.push(chunk);
+      } else {
+        collected.push(chunk);
+      }
+
+      yield chunk;
+    }
+
+    if (streamed) {
+      tap.end();
+      usage = tap.usage();
+    } else {
+      try {
+        usage = messageUsage(JSON.parse(Buffer.concat(collected).toString("utf8")) as unknown);
+      } catch {
+        usage = null;
+      }
+    }
+  }
+
+  return {
+    status: response.status,
+    contentType,
+    requestId,
+    failure: null,
+    body: passing(),
+    usage: () => (streamed && usage === null ? tap.usage() : usage),
+  };
+}
+
+/**
+ * A body of one chunk.
+ *
+ * @param bytes - The bytes.
+ * @yields Them, once.
+ */
+async function* once(bytes: Uint8Array): AsyncGenerator<Uint8Array> {
+  await Promise.resolve();
+  yield bytes;
 }

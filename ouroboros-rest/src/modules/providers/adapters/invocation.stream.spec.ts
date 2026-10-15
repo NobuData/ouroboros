@@ -6,6 +6,7 @@ import {
   streamedResponse,
 } from "./http.recordings.fixture";
 import {
+  INVOCATION_CONNECT_TIMEOUT_MS,
   LineDecoder,
   MAX_FRAME_BYTES,
   SseDecoder,
@@ -14,6 +15,7 @@ import {
   errorText,
   frameJson,
   openInvocation,
+  postProvider,
 } from "./invocation.stream";
 
 const INIT = {
@@ -167,5 +169,33 @@ describe("openInvocation", () => {
       errorClass: "network",
       detail: expect.stringContaining("api.example.test") as string,
     });
+  });
+});
+
+describe("postProvider", () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("bounds the wait for headers only, so a long stream is never cut by the deadline", async () => {
+    jest.useFakeTimers();
+    const spy = recordResponses(streamedResponse("data: x\n\n"));
+
+    await postProvider(INIT);
+
+    const signal = (spy.mock.calls[0][1] as RequestInit).signal as AbortSignal;
+
+    jest.advanceTimersByTime(INVOCATION_CONNECT_TIMEOUT_MS * 2);
+    expect(signal.aborted).toBe(false);
+  });
+
+  it("still aborts when the caller leaves", async () => {
+    const spy = recordResponses(streamedResponse("data: x\n\n"));
+    const caller = new AbortController();
+
+    await postProvider({ ...INIT, signal: caller.signal });
+    caller.abort();
+
+    expect(((spy.mock.calls[0][1] as RequestInit).signal as AbortSignal).aborted).toBe(true);
   });
 });

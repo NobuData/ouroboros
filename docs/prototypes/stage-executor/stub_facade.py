@@ -159,8 +159,14 @@ def _sse(blocks: list[dict[str, Any]], input_tokens: int) -> Iterator[bytes]:
     yield event("message_stop", {"type": "message_stop"})
 
 
-def serve(facade: Facade) -> ThreadingHTTPServer:
-    """Start the stub on a free loopback port, in a daemon thread."""
+def serve(facade: Facade, port: int = 0) -> ThreadingHTTPServer:
+    """Start the stub on a loopback port, in a daemon thread.
+
+    Args:
+        facade: The script and the request log.
+        port: The port, or ``0`` for a free one. ``facade_compat.py`` fixes it, because there
+            the stub stands behind ``ouroboros-rest`` as the recorded Anthropic API (DH.2, #1303).
+    """
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_: object) -> None:
@@ -211,6 +217,6 @@ def serve(facade: Facade) -> ThreadingHTTPServer:
             self.send_response(404)
             self.end_headers()
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server

@@ -191,9 +191,18 @@ export default tseslint.config(
       "src/modules/research/tools/tools.internal.*.ts",
       "src/modules/research/tools/research-tool.invoker.ts",
     ],
+    //
+    // One shipped exemption, and it is the design of DH.2 (#1303): `harness.credential.ts` is
+    // the one file that names a credential the internal surface hands out on purpose — the
+    // run-scoped harness token. It is not a provider credential: it opens no key, names no
+    // provider, buys one alias for one stage of one run for two hours, and is useless outside
+    // the internal network. The rest of `internal/harness/` stays under the rule, which is
+    // why the token is minted and shaped in this file alone and every other file holds only
+    // its digest or the ids it is bound to.
     ignores: [
       "src/modules/internal/no-secret-responses.spec.ts",
       "src/modules/research/tools/*.spec.ts",
+      "src/modules/internal/harness/harness.credential.ts",
     ],
     plugins: { ouroboros },
     rules: { "ouroboros/no-secret-in-internal-response": "error" },

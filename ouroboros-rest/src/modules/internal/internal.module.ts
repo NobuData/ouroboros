@@ -10,6 +10,11 @@ import { RoutingModule } from "../routing/routing.module";
 import { CredentialsController } from "./credentials.controller";
 import { InternalKeyGuard } from "./internal.guard";
 import { InternalRepository } from "./internal.repository";
+import { HarnessCredentialsController } from "./harness/harness.credentials.controller";
+import { HarnessCredentialsService } from "./harness/harness.credentials.service";
+import { HarnessFacadeController } from "./harness/harness.facade.controller";
+import { HarnessFacadeService } from "./harness/harness.facade.service";
+import { HarnessRepository } from "./harness/harness.repository";
 import { InvokeRepository } from "./invoke/invoke.repository";
 import { InvokeService } from "./invoke/invoke.service";
 import { LeaseAudit } from "./lease.audit";
@@ -74,7 +79,12 @@ import { LocalProviders } from "./local.providers";
     PricingModule,
     PoliciesModule,
   ],
-  controllers: [CredentialsController, LlmController],
+  controllers: [
+    CredentialsController,
+    LlmController,
+    HarnessCredentialsController,
+    HarnessFacadeController,
+  ],
   providers: [
     LocalProviders,
     InternalRepository,
@@ -82,6 +92,9 @@ import { LocalProviders } from "./local.providers";
     LeaseService,
     InvokeRepository,
     InvokeService,
+    HarnessRepository,
+    HarnessCredentialsService,
+    HarnessFacadeService,
     { provide: APP_GUARD, useClass: InternalKeyGuard },
   ],
 })

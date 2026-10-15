@@ -539,7 +539,8 @@ describe("TABLE_COLUMNS", () => {
     // write. The next two are BZ.2's (#536): V134's `chat_outbox`, the intent behind each message,
     // and V132's `on_call_assignments`, which a *DM on-call* route reads. The two after are
     // BZ.4's (#538): V135's `decision_escalation_timers` and `decision_escalation_overrides`.
-    expect(TABLE_NAMES).toHaveLength(183);
+    // The hundred-and-eighty-fourth is DH.2's (#1303): V140's `harness_credentials`.
+    expect(TABLE_NAMES).toHaveLength(184);
   });
 
   it("mirrors what V136 made of a command typed in the console", () => {

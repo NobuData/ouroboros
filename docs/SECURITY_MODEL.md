@@ -451,11 +451,9 @@ So the division is by **what a provider needs in order to be reached**:
 
 ### 4.2 Proxied invocation
 
-> **Status: Specified.** The shapes are committed and the route answers
-> `501 invocation_not_implemented` naming AF.2
-> ([#235](https://github.com/NobuData/ouroboros/issues/235)) — deliberately rather than
-> `404`, so an executor being written against it can tell *the path is right and the other
-> half is not built* from *I have the URL wrong*.
+> **Status: Shipped** — AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)), a chain
+> executor inside `ouroboros-rest` (AF.1's decision 4-A). A harness that makes its own model calls
+> reaches the same executor through the Messages-format facade in [§ 4.7](#47-the-harness-facade-and-the-run-scoped-credential).
 
 ```mermaid
 flowchart LR
@@ -557,10 +555,70 @@ one constant body. **A session cookie is not accepted here, whoever it belongs t
 test enumerates all three categories of route — *needs a session*, *needs nothing*, *needs
 the key* — and asserts each one in both directions.
 
+**One family of routes is not behind the key**: the harness facade's two Messages routes, which
+a run-scoped credential authenticates instead ([§ 4.7](#47-the-harness-facade-and-the-run-scoped-credential)).
+They are named in `CREDENTIAL_AUTHENTICATED_PATHS`, and the same tests that hold every other
+`/internal` route to the key hold those two to the credential.
+
 These paths sit outside `/api` and are unversioned, because `/api` is the browser's
 boundary: CORS-configured, session-authenticated and published in the document
 `ouroboros-ui` generates a client from. The only caller of these two is deployed alongside
 this service and upgraded with it.
+
+### 4.7 The harness facade and the run-scoped credential
+
+> **Status: Shipped** — DH.2 ([#1303](https://github.com/NobuData/ouroboros/issues/1303)),
+> roadmap decision **L6**.
+
+A stage harness — the Claude Agent SDK (DH.3, [#1308](https://github.com/NobuData/ouroboros/issues/1308))
+— makes its own model calls, in the Anthropic Messages format. Giving it the customer's key would
+make § 4's first sentence false. It is given two things instead:
+
+```mermaid
+flowchart LR
+    W["engine worker"] -->|"POST /internal/harness/credentials<br/>run · stage · alias · attempt<br/>(X-Ouro-Internal-Key)"| R
+    R["ouroboros-rest"] -->|"ouro_hrn_… shown once"| W
+    W -->|"ANTHROPIC_API_KEY = ouro_hrn_…<br/>ANTHROPIC_BASE_URL = …/internal/harness/anthropic"| H["harness"]
+    H -->|"POST /v1/messages {model: alias}"| F["facade"]
+    F --> V["vault: unwrap in request scope"]
+    V --> P["Anthropic"]
+    P -->|"SSE relayed byte for byte"| H
+```
+
+- **`ANTHROPIC_BASE_URL`** names the facade, `/internal/harness/anthropic`.
+- **`ANTHROPIC_API_KEY`** is a **run-scoped credential**, `ouro_hrn_` and 32 random bytes:
+  - minted by the control plane for one run, one stage, one routing alias and one attempt;
+  - lives two hours at most, and is revoked when the stage ends;
+  - stored only as its sha-256 (`harness_credentials`, V140) and shown once, in the minting
+    answer.
+
+  It is the harness's only secret, and it is useless off the internal network: it names no
+  provider and opens no key.
+
+What the facade enforces on every call, in order:
+
+1. **The credential.** An unknown, expired or revoked one is refused. So is one whose run has
+   finished, or one presented beside an `x-ouroboros-run` header naming another run. The refusal
+   is `401`, in the Messages API's own error shape.
+2. **The alias.** `model` must be the credential's alias. A credential minted for one alias
+   cannot call another (`403`).
+3. **Resolution, not pass-through.** The alias is resolved as `/internal/llm/invoke` resolves it.
+   Every hop that is not Anthropic-format is skipped, and named in `x-ouroboros-skipped-hops`. A
+   chain with none left is refused with a reason that says so.
+4. **The cap**, before every call, never by cutting a stream. A breach refuses the next call,
+   naming the cap, and the stage halts.
+5. **The key**, unwrapped for one hop inside one request scope. It replaces whatever the harness
+   sent as its credential. Nothing the facade returns carries it.
+
+The answer is relayed **byte for byte**: server-sent events, `ping` frames and the provider's own
+error bodies. `anthropic-version` and `anthropic-beta` are forwarded unchanged, as the vendor's
+gateway guide requires. Every call writes a usage row attributed to run, stage, attempt, provider,
+model and credential. At session end the harness's own per-model totals are reconciled against
+those rows. A difference is stored and logged, never averaged away.
+
+`docs/prototypes/stage-executor/facade_compat.sh` runs the pinned SDK through the real facade with
+a canary provider key. It asserts the key is in none of the harness's environment, arguments,
+stderr, config directory or working tree.
 
 ---
 

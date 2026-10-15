@@ -79,8 +79,10 @@ import {
 import { ANTHROPIC_DEFAULT_BASE_URL, ANTHROPIC_VERSION } from "../../provider-health/checks";
 import type {
   InvocationCall,
-  InvocationCapableAdapter,
   InvocationChunk,
+  MessagesRelayAdapter,
+  MessagesRelayRequest,
+  RelayedMessages,
   NormalizedModel,
   ProviderCapabilities,
   ProviderConnectionContext,
@@ -100,9 +102,9 @@ import {
   describeHttpRefusal,
   describeTransportFailure,
 } from "../provider.errors";
-import { anthropicRefusal, parseAnthropicStream } from "./anthropic.stream";
+import { anthropicRefusal, parseAnthropicStream, relayed } from "./anthropic.stream";
 import { anthropicBody } from "./invocation.payload";
-import { openInvocation } from "./invocation.stream";
+import { openInvocation, postProvider } from "./invocation.stream";
 
 /**
  * The property the API key is submitted under.
@@ -514,7 +516,7 @@ export function missingConfiguration(
  * only safe because nothing about a connection is remembered between calls.
  */
 @Injectable()
-export class AnthropicAdapter implements InvocationCapableAdapter {
+export class AnthropicAdapter implements MessagesRelayAdapter {
   /** V015's `provider_connections.kind` for this provider, and the registry's key. */
   readonly kind = "anthropic" as const;
 
@@ -562,6 +564,44 @@ export class AnthropicAdapter implements InvocationCapableAdapter {
    * @yields Deltas, cumulative usage, and one `done` last.
    * @throws {ProviderAdapterError} Every failure, classified; see `invocation.stream.ts`.
    */
+  /**
+   * Relay one harness request to the Messages API, untouched — DH.2
+   * ([#1303](https://github.com/NobuData/ouroboros/issues/1303)).
+   *
+   * The key is set here, from the opened connection, and replaces whatever credential header
+   * the harness sent; the harness's own credential never leaves the control plane either.
+   *
+   * @param connection - The saved connection, opened for this one call.
+   * @param request - The harness's request, `model` already the hop's.
+   * @returns The provider's response, whatever its status.
+   * @throws {ProviderAdapterError} `config` with no key, `network` when nothing answered.
+   */
+  async relayMessages(
+    connection: ProviderConnectionContext,
+    request: MessagesRelayRequest,
+  ): Promise<RelayedMessages> {
+    const missing = missingConfiguration(connection.config, connection.secret);
+
+    if (missing.length > 0 || connection.secret === null) {
+      throw new ProviderAdapterError("config", `${missing.join(", ")} required`);
+    }
+
+    const response = await postProvider({
+      url: `${ANTHROPIC_DEFAULT_BASE_URL}${request.path}`,
+      host: new URL(ANTHROPIC_DEFAULT_BASE_URL).host,
+      headers: {
+        "anthropic-version": ANTHROPIC_VERSION,
+        ...request.headers,
+        accept: request.body.stream === true ? "text/event-stream" : "application/json",
+        "x-api-key": connection.secret,
+      },
+      body: request.body,
+      signal: request.signal,
+    });
+
+    return relayed(response);
+  }
+
   invoke(
     connection: ProviderConnectionContext,
     call: InvocationCall,
