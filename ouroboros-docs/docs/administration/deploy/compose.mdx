@@ -99,8 +99,11 @@ services:
       OURO_LOG_LEVEL: info
       # The code & git mining tool's repository clones, kept across restarts.
       OURO_ENGINE_CLONE_DIR: /var/lib/ouroboros-engine/clones
+      # Each live run's working tree, kept across restarts at its last checkpoint.
+      OURO_ENGINE_RUN_DIR: /var/lib/ouroboros-engine/runs
     volumes:
       - ouroboros-engine-clones:/var/lib/ouroboros-engine/clones
+      - ouroboros-engine-runs:/var/lib/ouroboros-engine/runs
     restart: unless-stopped
 
   rest:
@@ -178,6 +181,7 @@ volumes:
   ouroboros-runner-releases:
   ouroboros-artifacts:
   ouroboros-engine-clones:
+  ouroboros-engine-runs:
 ```
 
 What the file does, service by service, is on [Container images](./containers.mdx). Four

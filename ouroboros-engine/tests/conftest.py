@@ -54,6 +54,9 @@ _ENGINE_VARIABLES = (
     "OURO_ENGINE_CLONE_DIR",
     "OURO_ENGINE_CLONE_REFRESH_SECONDS",
     "OURO_ENGINE_CLONE_TIMEOUT_SECONDS",
+    "OURO_ENGINE_RUN_DIR",
+    "OURO_ENGINE_RUN_MAX_MB",
+    "OURO_ENGINE_RUN_IDLE_HOURS",
 )
 
 #: The shared secret the suite runs with. Not a credential and never deployed — the

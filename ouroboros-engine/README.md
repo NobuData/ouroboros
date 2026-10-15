@@ -547,6 +547,26 @@ writes, and that every operation leaves a clone's — and the remote's — bytes
 fixture repository (`tests/code_fixtures.py`) is built commit by commit with fixed dates, so its
 ids are the same everywhere and the documented examples are what it answers.
 
+## Run workspaces
+
+DI.1 ([#1307](https://github.com/NobuData/ouroboros/issues/1307)) gives the stage that writes code a
+real tree to write in: `ouroboros_engine/execution/workspace.py`.
+
+- `RunWorkspaces.open(RunSpec)` makes `OURO_ENGINE_RUN_DIR/<run>/tree` at the run's base commit on
+  branch `ouro/run-<run>-<issue>`. The tree is a repository of its own that borrows the clone's
+  objects through `objects/info/alternates` (git's `clone --shared`), so the mirror is never
+  written and a mirror refresh, which prunes branches the remote lacks, cannot touch the run's
+  branch. It has no remote and holds no token. Opening it again resets it to the last checkpoint
+  and drops untracked files. An exclusive lock means one holder at a time.
+- `RunWorkspace.resolve(path)` is `execution/confine.py`'s `resolve_in_tree`, the same check the
+  tool policy (DH.1) calls. `checkpoint(stage)` commits on the run branch, locally.
+  `changes()` is the tree's diff against the base, as `IngestFile`s for AP.1's `PUT /files`.
+  `finish("pushed" | "abandoned")` removes the tree.
+- `sweep()` runs at startup and before each new tree. It removes trees marked terminal,
+  half-made trees and trees unopened for `OURO_ENGINE_RUN_IDLE_HOURS`, and never an open one.
+  `OURO_ENGINE_RUN_MAX_MB` caps one tree, and a new tree is refused while the volume has less
+  than that free.
+
 ## The task queue
 
 `ouroboros_engine/tasks/` (#54) is a registry of task kinds, an in-process `asyncio.Queue` and a pool
@@ -830,6 +850,9 @@ Development default port: **8000** (`PORT`).
 | `OURO_ENGINE_CLONE_DIR` | Where the code & git mining tool keeps its bare clones; a volume in a deployment ([#617](https://github.com/NobuData/ouroboros/issues/617)) | `<temp dir>/ouroboros-engine/clones` |
 | `OURO_ENGINE_CLONE_REFRESH_SECONDS` | How long a fetched clone is read without fetching again (0–86400) | `300` |
 | `OURO_ENGINE_CLONE_TIMEOUT_SECONDS` | The socket timeout of one fetch (1–3600) | `120` |
+| `OURO_ENGINE_RUN_DIR` | Where each run's writable working tree lives; a volume in a deployment ([#1307](https://github.com/NobuData/ouroboros/issues/1307)) | `<temp dir>/ouroboros-engine/runs` |
+| `OURO_ENGINE_RUN_MAX_MB` | One run tree's size limit, and the free space a new run needs (16–1048576) | `2048` |
+| `OURO_ENGINE_RUN_IDLE_HOURS` | How long a tree may go unopened before the sweep removes it (1–8760) | `168` |
 
 Values come from the **process environment layered over `.env` files** — the repo-root
 one, then this module's, then the real environment, later winning

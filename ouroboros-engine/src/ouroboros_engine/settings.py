@@ -95,6 +95,15 @@ class Settings(BaseSettings):
             clone is read without fetching again.
         clone_timeout_seconds: ``OURO_ENGINE_CLONE_TIMEOUT_SECONDS``, the socket timeout
             of one fetch.
+        run_dir: ``OURO_ENGINE_RUN_DIR``, where each run's writable working tree lives
+            (DI.1, #1307), one directory per run. Defaults under the system temporary
+            directory; a deployment points it at a volume so a restarted engine finds the
+            trees at their last checkpoint.
+        run_max_mb: ``OURO_ENGINE_RUN_MAX_MB``, one run tree's size limit, ``.git``
+            included. A tree over it is refused at the next tool boundary, and a new run is
+            refused while the run volume has less than this free.
+        run_idle_hours: ``OURO_ENGINE_RUN_IDLE_HOURS``, how long a tree may go unopened
+            before the sweeper removes it as orphaned.
     """
 
     model_config = SettingsConfigDict(
@@ -150,6 +159,24 @@ class Settings(BaseSettings):
         ge=1,
         le=3_600,
         validation_alias="OURO_ENGINE_CLONE_TIMEOUT_SECONDS",
+    )
+    run_dir: Path = Field(
+        default_factory=lambda: (
+            Path(tempfile.gettempdir()) / "ouroboros-engine" / "runs"
+        ),
+        validation_alias="OURO_ENGINE_RUN_DIR",
+    )
+    run_max_mb: int = Field(
+        default=2048,
+        ge=16,
+        le=1_048_576,
+        validation_alias="OURO_ENGINE_RUN_MAX_MB",
+    )
+    run_idle_hours: int = Field(
+        default=168,
+        ge=1,
+        le=8_760,
+        validation_alias="OURO_ENGINE_RUN_IDLE_HOURS",
     )
 
 

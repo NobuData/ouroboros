@@ -53,13 +53,13 @@ in RC1; they are candidates for the release candidates after it. The Studio moun
 
 ## Progress
 
-**16 of 44 ordered issues are closed.** Every issue number in this document links to its
+**17 of 44 ordered issues are closed.** Every issue number in this document links to its
 GitHub issue, and a **✅** in front of one means that issue is **closed**.
 
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | R2 | **15** |
-| 🟡 **In progress** | R0, R1, R3, R7 | **10** of 29 |
+| 🟡 **In progress** | R0, R1, R3, R7 | **11** of 29 |
 | ⬜ **Not started** | R4, R5, R6 | **0** of 9 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -295,7 +295,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **6 issues** · 26 complexity points · order **#20–#25**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epics DI, DH; Phase 2) · promoted from Dashboard (J.3), Workflow Studio (T.6) and Run Console (AR.1)
-> **Status:** ⬜ **Not started** — 0 of 6 issues closed
+> **Status:** 🟡 **In progress** — 3 of 6 issues closed
 
 **Goal.** Admit a live run (dry-run policy required, pause honoured, one at a time), give it a writable working tree, claim it from the queue, interpret the pinned workflow version through the SPI, run the `implement` stage through the Claude Agent SDK executor, and enforce guardrails before a tool call happens rather than after.
 
@@ -308,7 +308,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 20 | **DI.4** | ✅ [#1312](https://github.com/NobuData/ouroboros/issues/1312) | Live-run admission — dry-run required, pause honoured, concurrency ceiling | ouroboros-rest, ouroboros-ui, ouroboros-docs | M | DG.2 |
-| 21 | **DI.1** | [#1307](https://github.com/NobuData/ouroboros/issues/1307) | Run workspace — a writable working tree per run | ouroboros-engine, ouroboros-docs | M | — |
+| 21 | **DI.1** | ✅ [#1307](https://github.com/NobuData/ouroboros/issues/1307) | Run workspace — a writable working tree per run | ouroboros-engine, ouroboros-docs | M | — |
 | 22 | **J.3** | ✅ [#91](https://github.com/NobuData/ouroboros/issues/91) | Engine→read-model ingestion bridge | ouroboros-engine, ouroboros-rest | L | 6.5, DI.4 |
 | 23 | **T.6** | [#160](https://github.com/NobuData/ouroboros/issues/160) | Workflow execution bridge | ouroboros-engine, ouroboros-rest | L | T.1, J.3, DH.1 |
 | 24 | **DH.3** | [#1308](https://github.com/NobuData/ouroboros/issues/1308) | Claude Agent SDK stage executor | ouroboros-engine, ouroboros-docs | L | DH.1, DH.2, DI.1, 6.5 |

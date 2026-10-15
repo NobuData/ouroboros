@@ -84,6 +84,47 @@ The abort goes through the run's control queue like any other abort. The engine 
 what a run may spend is set separately, by the route and the policy's spend guard — see
 [Policies & guardrails](./policies.mdx).
 
+## Disk and cleanup
+
+The engine gives every live run its own **working tree** to edit, under
+<EnvVar name="OURO_ENGINE_RUN_DIR" />:
+
+- **One tree per run, never shared.** Two runs on the same repository have two trees and
+  never see each other's files. A tree is open in one engine at a time.
+- **Made from the clone the engine already keeps.** The tree is checked out at the run's base
+  commit, on a branch named `ouro/run-<run id>-<issue number>`. It borrows git objects from
+  the repository's clone under <EnvVar name="OURO_ENGINE_CLONE_DIR" /> instead of copying
+  them, so a run costs only its checkout and its edits. Keep both directories on volumes.
+- **No credential is stored.** The tree and its git configuration hold no token and no
+  remote.
+- **Confined.** A tool may only touch paths inside the tree. Paths that leave it are refused:
+  through `..`, an absolute path elsewhere, or a symbolic link that points out. So is any path
+  through a `.git` directory.
+- **Checkpointed.** At each stage boundary the engine commits the tree on the run branch. The
+  commit is local only and never pushed as is. If the engine stops mid-stage, the tree is put
+  back at the last checkpoint when the run resumes. Half-written files from the stopped stage
+  are dropped.
+- **What the run console shows is what is on disk.** The *Changes* card is the tree's own
+  diff against the base commit. Untracked files count; files the repository ignores do not.
+
+Trees are removed when they are no longer needed:
+
+| When | What happens |
+| --- | --- |
+| The run ends — its branch is pushed, or the run is abandoned | The engine removes the tree. |
+| The engine starts, and whenever a new run's tree is made | A sweep removes trees whose run has ended, trees left half-made by a crash, and trees nobody has opened for <EnvVar name="OURO_ENGINE_RUN_IDLE_HOURS" /> hours. A tree that is open is never swept. |
+
+Set <EnvVar name="OURO_ENGINE_RUN_IDLE_HOURS" /> longer than a run may wait on a person at a
+gate. A run whose tree was swept while it waited cannot resume its stage.
+
+Two limits keep the run volume from filling:
+
+- **Per run.** A tree larger than <EnvVar name="OURO_ENGINE_RUN_MAX_MB" />, `.git` included,
+  is refused at the next tool call or stage boundary. The error says how large the tree is.
+- **Per volume.** A new run is refused while the volume has less than
+  <EnvVar name="OURO_ENGINE_RUN_MAX_MB" /> free. The error says how much space is free and
+  how much a run may need. Runs already going are not affected.
+
 ## Pausing
 
 Pausing the workspace (<UiPath path="Settings > Danger zone" />) has two effects:
@@ -103,5 +144,8 @@ paused.
 | <EnvVar name="OURO_LIVE_RUN_CEILING_MAX" /> | `4` | The highest ceiling any workspace may set (1–100). |
 | <EnvVar name="OURO_LIVE_RUN_WALL_CLOCK_MINUTES" /> | `120` | The wall-clock limit (5–1440). |
 | <EnvVar name="OURO_LIVE_RUN_NO_PROGRESS_MINUTES" /> | `15` | The no-progress limit (2–360). |
+| <EnvVar name="OURO_ENGINE_RUN_DIR" /> | `<temp dir>/ouroboros-engine/runs` | Where the engine keeps each run's working tree. Mount a volume there. |
+| <EnvVar name="OURO_ENGINE_RUN_MAX_MB" /> | `2048` | One tree's size limit in MB, and the free space a new run needs (16–1048576). |
+| <EnvVar name="OURO_ENGINE_RUN_IDLE_HOURS" /> | `168` | How long a tree may go unopened before the sweep removes it (1–8760). |
 
 The [Configuration reference](./configuration/index.mdx) lists every variable.

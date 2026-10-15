@@ -14,9 +14,10 @@ The rules, in the order they are checked — the first that refuses decides:
    else — no shell, no network, no MCP.
 2. ``stage_permission`` — the tool is ``push_fixup`` and the stage declared
    ``push_fixup: false`` (decision **P9**).
-3. ``working_tree`` — a path resolves outside the run's working tree, or into its ``.git``
+3. ``working_tree`` — a path resolves outside the run's working tree, or through a ``.git``
    directory, or a write names no path at all. Symbolic links are resolved first, so a link
-   that points out is out.
+   that points out is out. The check is DI.1's
+   :func:`~ouroboros_engine.execution.confine.resolve_in_tree`, re-exported here.
 4. ``stage_permission`` — a write lands on CI configuration
    (:data:`~ouroboros_engine.execution.glob.CI_CONFIG_GLOBS`) and the stage declared
    ``touch_ci: false``.
@@ -26,12 +27,12 @@ Reads are held to rules 1 and 3 only: reading a protected file changes nothing, 
 judges change-sets, not reads.
 """
 
-import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Annotated, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from ouroboros_engine.execution.confine import resolve_in_tree
 from ouroboros_engine.execution.glob import CI_CONFIG_GLOBS, first_match
 from ouroboros_engine.workflows.dsl import LlmPermissions
 
@@ -51,9 +52,6 @@ L5_TOOLS: Final[frozenset[str]] = frozenset(
 
 #: The tool decision P9's ``push_fixup`` permission governs.
 PUSH_FIXUP_TOOL: Final = "push_fixup"
-
-#: The directory inside a working tree that is not part of it: git's own, hooks included.
-GIT_DIR: Final = ".git"
 
 #: Why a request was refused.
 PolicyRule = Literal["allow_list", "stage_permission", "working_tree", "protected_path"]
@@ -155,33 +153,6 @@ def _deny(
 ) -> ToolVerdict:
     """A refusal."""
     return ToolVerdict(decision="deny", rule=rule, reason=reason, path=path, glob=glob)
-
-
-def resolve_in_tree(working_tree: str, path: str) -> str | None:
-    """The working-tree-relative form of a path, or ``None`` when it is not inside the tree.
-
-    Symbolic links are resolved on both sides, so a link inside the tree that points out of
-    it resolves out. A path need not exist: a file about to be written is resolved through
-    its nearest existing parent.
-
-    Args:
-        working_tree: The tree's absolute path.
-        path: Absolute, or relative to the tree.
-
-    Returns:
-        The relative path with forward slashes (``"."`` for the root itself), or ``None``
-        when it escapes, names the ``.git`` directory, or is not a usable path at all.
-    """
-    if not path or "\x00" in path:
-        return None
-    root = Path(os.path.realpath(working_tree))
-    candidate = Path(os.path.realpath(root / path))
-    if not candidate.is_relative_to(root):
-        return None
-    relative = PurePosixPath(candidate.relative_to(root).as_posix())
-    if relative.parts and relative.parts[0] == GIT_DIR:
-        return None
-    return str(relative)
 
 
 def evaluate(policy: ToolPolicy, request: ToolRequest) -> ToolVerdict:

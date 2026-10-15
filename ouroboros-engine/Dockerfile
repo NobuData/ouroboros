@@ -146,17 +146,17 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PORT=8000
 
 # Debian's tools rather than Alpine's, this not being an Alpine base. --system keeps the
-# account out of the login range, and --no-create-home is honest: the one thing this process
-# writes is the code & git mining tool's clone cache (#617), so a home directory would only
-# be somewhere for it to try.
+# account out of the login range, and --no-create-home is honest: the only things this process
+# writes are the code & git mining tool's clone cache (#617) and the run working trees
+# (#1307), so a home directory would only be somewhere for it to try.
 #
-# That cache's directory is created here, owned by the service's user, because a named volume
-# mounted over it starts with the image directory's ownership — and the deployment's
-# OURO_ENGINE_CLONE_DIR points there (no default is baked in; unset, the clones go under the
-# temporary directory and do not outlive the container).
+# Their directories are created here, owned by the service's user, because a named volume
+# mounted over one starts with the image directory's ownership — and the deployment's
+# OURO_ENGINE_CLONE_DIR / OURO_ENGINE_RUN_DIR point there (no default is baked in; unset, both
+# go under the temporary directory and do not outlive the container).
 RUN groupadd --system engine \
     && useradd --system --gid engine --no-create-home engine
-RUN mkdir -p /var/lib/ouroboros-engine/clones \
+RUN mkdir -p /var/lib/ouroboros-engine/clones /var/lib/ouroboros-engine/runs \
     && chown -R engine:engine /var/lib/ouroboros-engine
 
 WORKDIR /app

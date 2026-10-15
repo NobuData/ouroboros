@@ -183,8 +183,12 @@ services:
       # restart does not re-clone every enabled repository. The image creates the directory
       # owned by the service's user, which is what a fresh named volume inherits.
       OURO_ENGINE_CLONE_DIR: /var/lib/ouroboros-engine/clones
+      # Each run's writable working tree (DI.1, #1307) — on a volume too, so a restarted
+      # engine finds a tree at its last checkpoint. The trees borrow the clones' objects.
+      OURO_ENGINE_RUN_DIR: /var/lib/ouroboros-engine/runs
     volumes:
       - ouroboros-engine-clones:/var/lib/ouroboros-engine/clones
+      - ouroboros-engine-runs:/var/lib/ouroboros-engine/runs
     # The image's HEALTHCHECK decides *what* is probed and how often once it is up; this
     # adds the one thing a long-lived deployment does not need and a cold `up` does. The
     # image probes every 30 seconds, which is right for a scheduler watching a service
@@ -636,3 +640,6 @@ volumes:
   # The engine's bare repository clones (#617). Named so `down` keeps them — a first clone of a
   # large repository takes minutes — and `down -v` drops them; nothing in them is not on GitHub.
   ouroboros-engine-clones:
+  # The engine's run working trees (#1307). Removed by the engine when a run ends; `down -v`
+  # drops any that are left.
+  ouroboros-engine-runs:
