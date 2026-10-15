@@ -42,6 +42,7 @@ import { sql, type Kysely, type Transaction } from "kysely";
 import { DatabaseService } from "../db/db.service";
 import type {
   DataOrigin,
+  QueueItem,
   Database,
   Run,
   RunFileStatus,
@@ -331,6 +332,8 @@ export class IngestRepository {
       simulated: boolean;
       origin: DataOrigin;
       playbook_id?: string | null;
+      /** The queue item the run is opened from (#91), or null. */
+      queue_item_id?: string | null;
     },
   ): Promise<Run> {
     return writer
@@ -846,6 +849,10 @@ export class IngestRepository {
       task_kind: string | null;
       latency_ms: number | null;
       occurred_at?: Date;
+      /** The stage of the pinned workflow the spend belongs to (#91), or null. */
+      stage: string | null;
+      /** Which attempt of that stage, or null. */
+      attempt: number | null;
     },
   ): Promise<void> {
     await writer.insertInto("token_usage").values(usage).execute();
@@ -863,5 +870,200 @@ export class IngestRepository {
    */
   async spendTotals(writer: Writer, run: string): Promise<SpendTotals> {
     return readSpendTotals(writer, run);
+  }
+
+  // --- the queue (#91) -------------------------------------------------------------------
+
+  /**
+   * The workspace a claim names, by its id or its slug.
+   *
+   * @param writer - The transaction.
+   * @param workspace - `organization.id` or `organization.slug`.
+   * @returns The id, or `undefined` when no workspace answers to it.
+   */
+  async workspaceId(writer: Writer, workspace: string): Promise<string | undefined> {
+    const row = await writer
+      .selectFrom("organization")
+      .select("id")
+      .where((where) => where.or([where("id", "=", workspace), where("slug", "=", workspace)]))
+      .orderBy("id")
+      .limit(1)
+      .executeTakeFirst();
+
+    return row?.id;
+  }
+
+  /**
+   * The item a claim key leases in a workspace, locked — what a replayed claim answers.
+   *
+   * @param writer - The transaction.
+   * @param organizationId - The workspace.
+   * @param claimKey - The claim's idempotency key.
+   * @returns The item, or `undefined` when the key leases nothing.
+   */
+  async leasedBy(
+    writer: Writer,
+    organizationId: string,
+    claimKey: string,
+  ): Promise<QueueItem | undefined> {
+    return writer
+      .selectFrom("queue_items")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where("claim_key", "=", claimKey)
+      .forUpdate()
+      .executeTakeFirst();
+  }
+
+  /**
+   * Let a lease go: the item is unheld again. For a key whose lease ran out before it was
+   * replayed — the key is about to lease whatever is now the head.
+   *
+   * @param writer - The transaction.
+   * @param item - `queue_items.id`.
+   */
+  async releaseLease(writer: Writer, item: string): Promise<void> {
+    await writer
+      .updateTable("queue_items")
+      .set({
+        claimed_at: null,
+        claim_expires_at: null,
+        claimed_by: null,
+        claim_token: null,
+        claim_key: null,
+      })
+      .where("id", "=", item)
+      .execute();
+  }
+
+  /**
+   * The head of a workspace's queue that nobody holds, locked — **`for update skip locked`**, so
+   * two workers claiming at once never take the same item: the second skips the row the first
+   * has locked and takes the next, or nothing.
+   *
+   * @param writer - The transaction.
+   * @param organizationId - The workspace.
+   * @param now - The instant a lease is measured against.
+   * @returns The lowest-positioned item whose lease is absent or has run out, or `undefined`.
+   */
+  async claimableHead(
+    writer: Writer,
+    organizationId: string,
+    now: Date,
+  ): Promise<QueueItem | undefined> {
+    return writer
+      .selectFrom("queue_items")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where((where) =>
+        where.or([where("claim_expires_at", "is", null), where("claim_expires_at", "<=", now)]),
+      )
+      .orderBy("position")
+      .limit(1)
+      .forUpdate()
+      .skipLocked()
+      .executeTakeFirst();
+  }
+
+  /**
+   * Lease an item to a worker.
+   *
+   * @param writer - The transaction that locked it.
+   * @param item - `queue_items.id`.
+   * @param lease - The lease's five columns.
+   * @returns The item as leased.
+   */
+  async lease(
+    writer: Writer,
+    item: string,
+    lease: {
+      claimed_at: Date;
+      claim_expires_at: Date;
+      claimed_by: string;
+      claim_token: string;
+      claim_key: string;
+    },
+  ): Promise<QueueItem> {
+    return writer
+      .updateTable("queue_items")
+      .set(lease)
+      .where("id", "=", item)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+  }
+
+  /**
+   * A queue item, locked — what opening a run from it checks the lease of.
+   *
+   * @param writer - The transaction.
+   * @param item - `queue_items.id`.
+   * @returns The item, or `undefined` when it is gone.
+   */
+  async lockQueueItem(writer: Writer, item: string): Promise<QueueItem | undefined> {
+    return writer
+      .selectFrom("queue_items")
+      .selectAll()
+      .where("id", "=", item)
+      .forUpdate()
+      .executeTakeFirst();
+  }
+
+  /**
+   * Remove a consumed item and close the gap it leaves, so the queue stays dense from `1`
+   * (V009's convention; `queue_items_organization_position_key` is deferred, so the shift
+   * commits whole).
+   *
+   * @param writer - The transaction.
+   * @param item - The item, as locked.
+   */
+  async removeQueueItem(writer: Writer, item: QueueItem): Promise<void> {
+    await writer.deleteFrom("queue_items").where("id", "=", item.id).execute();
+    await writer
+      .updateTable("queue_items")
+      .set((set) => ({ position: set("position", "-", 1) }))
+      .where("organization_id", "=", item.organization_id)
+      .where("position", ">", item.position)
+      .execute();
+  }
+
+  /**
+   * The canonical ticket of a queued GitHub issue — what the run is opened for. Matched as the
+   * GitHub source mirrors it: the issue number and the repository's owner and name.
+   *
+   * @param writer - The transaction.
+   * @param organizationId - The workspace.
+   * @param repository - `github_repos.id`.
+   * @param issueNumber - The issue's number.
+   * @returns The ticket's source and key — the oldest when two sources mirror it — or
+   *   `undefined` when no source has mirrored the issue.
+   */
+  async ticketOfQueuedIssue(
+    writer: Writer,
+    organizationId: string,
+    repository: string,
+    issueNumber: number,
+  ): Promise<{ source: string; externalKey: string } | undefined> {
+    const row = await writer
+      .selectFrom("tickets")
+      .innerJoin("ticket_sources", "ticket_sources.id", "tickets.source_id")
+      .innerJoin("github_repos", (join) => join.on("github_repos.id", "=", repository))
+      .innerJoin("github_orgs", "github_orgs.id", "github_repos.org_id")
+      .select(["tickets.source_id as source", "tickets.external_key as externalKey"])
+      .where("tickets.organization_id", "=", organizationId)
+      .where("github_orgs.organization_id", "=", organizationId)
+      .where("ticket_sources.kind", "=", "github")
+      .where("tickets.external_id", "=", String(issueNumber))
+      .where(
+        sql<boolean>`lower(${sql.ref("tickets.meta")}->'github'->>'owner') = lower(${sql.ref("github_orgs.login")})`,
+      )
+      .where(
+        sql<boolean>`lower(${sql.ref("tickets.meta")}->'github'->>'repo') = lower(${sql.ref("github_repos.name")})`,
+      )
+      .orderBy("tickets.created_at")
+      .orderBy("tickets.id")
+      .limit(1)
+      .executeTakeFirst();
+
+    return row;
   }
 }

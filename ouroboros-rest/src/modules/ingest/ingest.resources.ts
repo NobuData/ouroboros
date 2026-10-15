@@ -36,6 +36,37 @@ import type {
   RunStageStatus,
 } from "../db/schema";
 
+/**
+ * `POST /internal/queue/claim` — the queue item a worker now holds (#91).
+ *
+ * Everything the worker needs to open the run: the lease to present, the repository, the issue,
+ * the workflow pin, and the ticket the run is opened for — the item's GitHub issue as the
+ * canonical mirror has it, or `null` when no source has mirrored it yet (the worker cannot open
+ * a run for it, and lets the lease run out).
+ */
+export interface QueueItemClaimedResource {
+  /** `queue_items.id`. */
+  readonly id: string;
+  /** The lease's secret — `queueItem.claimToken` on the open. */
+  readonly claimToken: string;
+  /** When the lease runs out, ISO 8601. */
+  readonly expiresAt: string;
+  /** The workspace the item is queued in. */
+  readonly organizationId: string;
+  /** `github_repos.id` — the open's `repository`. */
+  readonly repository: string;
+  /** The issue's number. */
+  readonly issueNumber: number;
+  /** The issue's title, as queued. */
+  readonly issueTitle: string;
+  /** The workflow version the item was queued under — the open's `workflow`. */
+  readonly workflow: { readonly tag: string; readonly version: number | null };
+  /** The playbook the item was launched through, or `null`. */
+  readonly playbookId: string | null;
+  /** The ticket to open the run for — the open's `ticket` — or `null` when none is mirrored. */
+  readonly ticket: { readonly source: string; readonly externalKey: string } | null;
+}
+
 /** `POST /internal/runs` — the run that was opened. */
 export interface RunOpenedResource {
   /** `runs.id`, which every later report is addressed to. */

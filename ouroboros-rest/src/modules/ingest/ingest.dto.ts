@@ -235,6 +235,20 @@ export class WorkflowPinDto {
   version!: number;
 }
 
+/**
+ * The lease a run is opened from (#91): the queue item an engine worker claimed, and the token
+ * the claim gave it. Opening the run removes the item in the same transaction.
+ */
+export class QueueItemLeaseDto {
+  /** `queue_items.id`, as the claim answered it. */
+  @IsUUID()
+  id!: string;
+
+  /** The lease's secret, as the claim answered it. */
+  @IsUUID()
+  claimToken!: string;
+}
+
 /** `POST /internal/runs` — open a run. */
 export class OpenRunDto extends IdempotentRequestDto {
   /**
@@ -289,6 +303,38 @@ export class OpenRunDto extends IdempotentRequestDto {
   @IsIn(RUN_MERGE_STRATEGIES)
   @IsOptional()
   mergeStrategy?: RunMergeStrategy;
+
+  /**
+   * The queue item this run consumes (#91): the lease `POST /internal/queue/claim` answered.
+   * Absent for a run opened without one. Present, the item must still be held under this token
+   * and name this run's workspace, repository, issue and pin — and it is removed with the open.
+   */
+  @IsObject()
+  @ValidateNested()
+  @Type(() => QueueItemLeaseDto)
+  @IsOptional()
+  queueItem?: QueueItemLeaseDto;
+}
+
+/**
+ * `POST /internal/queue/claim` — lease the head of a workspace's queue (#91).
+ *
+ * The one place a worker names a workspace itself: a claim asks *for* work rather than reporting
+ * on it, and whose queue to take from is the question. Everything the item then becomes —
+ * the run, its reports, its spend — is resolved from rows, as the rest of this contract is.
+ */
+export class ClaimQueueItemDto extends IdempotentRequestDto {
+  /** The workspace — `organization.id` or its slug. */
+  @MaxLength(128)
+  @MinLength(1)
+  @IsString()
+  workspace!: string;
+
+  /** The worker claiming, as it names itself — `queue_items.claimed_by`. */
+  @Matches(/^\S(.*\S)?$/, { message: "worker must not be empty or padded with whitespace" })
+  @MaxLength(128)
+  @IsString()
+  worker!: string;
 }
 
 /**
@@ -667,6 +713,23 @@ export class TokenSpendDto {
   @IsISO8601({ strict: true })
   @IsOptional()
   occurredAt?: string;
+
+  /**
+   * The stage of the pinned workflow the spend belongs to — its key, `implement` — so a run's
+   * spend reads by stage (`token_usage.stage`, V139; #91). Absent for spend no stage owns.
+   */
+  @MaxLength(64)
+  @MinLength(1)
+  @IsString()
+  @IsOptional()
+  stage?: string;
+
+  /** Which attempt of that stage, from 1 (`token_usage.attempt`). Absent with no stage. */
+  @Max(1_000)
+  @Min(1)
+  @IsInt()
+  @IsOptional()
+  attempt?: number;
 }
 
 /** `POST /internal/runs/:id/resources` — token and cost deltas, and the farm link. */

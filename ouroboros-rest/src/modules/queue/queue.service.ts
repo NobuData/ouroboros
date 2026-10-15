@@ -67,7 +67,11 @@ export class QueueService {
     ]);
 
     return {
-      ...pageOf(rows.map(queueItemSummary), totals.count, window),
+      ...pageOf(
+        rows.map((row) => queueItemSummary(row)),
+        totals.count,
+        window,
+      ),
       totalEstMinutes: totals.estMinutes,
     };
   }

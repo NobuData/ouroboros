@@ -73,6 +73,7 @@ from ouroboros_engine.control_plane.contract import (
     RunContext,
 )
 from ouroboros_engine.control_plane.ingest import (
+    QUEUE_CLAIM_PATH,
     RUN_COMMITS_PATH,
     RUN_EVENTS_PATH,
     RUN_FILES_PATH,
@@ -80,10 +81,12 @@ from ouroboros_engine.control_plane.ingest import (
     RUN_STAGE_TRANSITIONS_PATH,
     RUNS_PATH,
     ChangeSet,
+    ClaimQueueItemRequest,
     CommitsAppended,
     EventsAppended,
     IngestEventsRequest,
     OpenRunRequest,
+    QueueItemClaimed,
     ReportCommitsRequest,
     ReportFilesRequest,
     ReportResourcesRequest,
@@ -423,6 +426,37 @@ class ControlPlaneClient:
     #
     # One builder and one reader per operation. The builders share `_write` and the readers
     # share `_read`, so every write carries the key and its idempotency key in one way.
+
+    def claim_queue_item_request(
+        self, body: ClaimQueueItemRequest
+    ) -> ControlPlaneRequest:
+        """Build the request that leases the head of a workspace's queue (#91).
+
+        Args:
+            body: The workspace, the worker and the claim's idempotency key.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", QUEUE_CLAIM_PATH, body)
+
+    def read_claim(self, status: int, body: dict[str, Any]) -> QueueItemClaimed | None:
+        """Read the answer to a claim.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            The item and its lease, or ``None`` on ``204`` — nothing is claimable.
+
+        Raises:
+            ControlPlaneError: On any status but ``200`` or ``204`` — ``deployment_disabled``,
+                ``workspace_paused``, ``workspace_not_found`` among them.
+        """
+        if status == HTTPStatus.NO_CONTENT:
+            return None
+        return _read(status, body, QueueItemClaimed)
 
     def open_run_request(self, body: OpenRunRequest) -> ControlPlaneRequest:
         """Build the request that opens a run.

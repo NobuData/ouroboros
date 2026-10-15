@@ -44483,6 +44483,68 @@ select pg_temp.must_hold(
 
 delete from ouroboros.organization where "id" = 'org-v143';
 
+-- ===========================================================================
+-- V145 — the engine claims the head of a workspace's queue (#91).
+-- ===========================================================================
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v145', 'Queue Claims', 'queue-claims-v145', now());
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a1450000-0000-0000-0000-00000000000a', 'org-v145', 'claims-v145', true);
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a145f000-0000-0000-0000-00000000000a', 'a1450000-0000-0000-0000-00000000000a', 'helios-firmware', true, 'main');
+insert into ouroboros.queue_items
+    (id, organization_id, github_repo_id, issue_number, issue_title, effort, workflow_tag, position)
+  values
+  ('a1450000-0000-0000-0000-000000000001', 'org-v145', 'a145f000-0000-0000-0000-00000000000a', 1, 'First', 's', 'standard-fix', 1),
+  ('a1450000-0000-0000-0000-000000000002', 'org-v145', 'a145f000-0000-0000-0000-00000000000a', 2, 'Second', 's', 'standard-fix', 2);
+
+select pg_temp.must_hold(
+  (select bool_and(claimed_at is null and claim_token is null) from ouroboros.queue_items
+    where organization_id = 'org-v145'),
+  'a queued item starts unleased');
+
+update ouroboros.queue_items
+   set claimed_at = now() - interval '10 minutes', claim_expires_at = now() - interval '5 minutes',
+       claimed_by = 'worker-a', claim_token = 'a1450000-0000-0000-0000-0000000000aa',
+       claim_key = 'claim-1'
+ where id = 'a1450000-0000-0000-0000-000000000001';
+
+-- The claim's own read: the head among items nobody holds or whose lease ran out.
+select pg_temp.must_hold(
+  (select id = 'a1450000-0000-0000-0000-000000000001'
+     from ouroboros.queue_items
+    where organization_id = 'org-v145'
+      and (claim_expires_at is null or claim_expires_at <= now())
+    order by position limit 1),
+  'an item whose lease ran out is the head again');
+
+select pg_temp.must_reject(
+  $$update ouroboros.queue_items set claimed_at = now(), claim_expires_at = now() + interval '5 minutes'
+     where id = 'a1450000-0000-0000-0000-000000000002'$$,
+  'a lease is whole: a claim time with no worker, token or key is refused', 'queue_items_claim_whole');
+
+select pg_temp.must_reject(
+  $$update ouroboros.queue_items
+       set claimed_at = now(), claim_expires_at = now() - interval '1 minute', claimed_by = 'w',
+           claim_token = gen_random_uuid(), claim_key = 'claim-2'
+     where id = 'a1450000-0000-0000-0000-000000000002'$$,
+  'a lease cannot expire before it was taken', 'queue_items_claim_after');
+
+select pg_temp.must_reject(
+  $$update ouroboros.queue_items
+       set claimed_at = now(), claim_expires_at = now() + interval '5 minutes', claimed_by = 'w',
+           claim_token = gen_random_uuid(), claim_key = 'claim-1'
+     where id = 'a1450000-0000-0000-0000-000000000002'$$,
+  'one claim key leases one item at a time in a workspace', 'queue_items_claim_key');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'runs_with_stage'
+      and column_name = 'queue_item_id'),
+  'runs_with_stage carries the queue item a run was opened from');
+
+delete from ouroboros.organization where "id" = 'org-v145';
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

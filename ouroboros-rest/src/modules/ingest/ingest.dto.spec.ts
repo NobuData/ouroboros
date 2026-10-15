@@ -2,6 +2,7 @@ import { plainToInstance, type ClassConstructor } from "class-transformer";
 import { validate, type ValidationError } from "class-validator";
 
 import {
+  ClaimQueueItemDto,
   IngestEventsDto,
   MAX_HUNKS_PER_FILE,
   MAX_HUNK_LINE_LENGTH,
@@ -485,5 +486,68 @@ describe("the run in the path", () => {
       [],
     );
     expect(await violations(RunIdParams, { id: "482" })).toEqual(["id"]);
+  });
+});
+
+describe("the queue claim and the lease (#91)", () => {
+  const claim = {
+    idempotencyKey: "worker-a-claim-1",
+    workspace: "acme-robotics",
+    worker: "engine-worker-a",
+  };
+
+  it("takes a workspace, a worker and a key", async () => {
+    expect(await violations(ClaimQueueItemDto, claim)).toEqual([]);
+  });
+
+  it.each([
+    ["no workspace", { ...claim, workspace: undefined }, "workspace"],
+    ["an empty workspace", { ...claim, workspace: "" }, "workspace"],
+    ["a padded worker", { ...claim, worker: " a " }, "worker"],
+    ["no key", { ...claim, idempotencyKey: undefined }, "idempotencyKey"],
+    ["a field it does not define", { ...claim, priority: 1 }, "priority"],
+  ])("refuses %s", async (_what, body, field) => {
+    expect(await violations(ClaimQueueItemDto, body)).toContain(field);
+  });
+
+  it("opens from a lease of a uuid id and a uuid token, and from no lease", async () => {
+    const lease = {
+      id: "5eed0008-0000-4000-8000-000000000001",
+      claimToken: "0b6a1c55-3f2e-4a7d-9c1e-2d8f4b6a9e10",
+    };
+
+    expect(await violations(OpenRunDto, { ...GOOD.open, queueItem: lease })).toEqual([]);
+    expect(await violations(OpenRunDto, GOOD.open)).toEqual([]);
+    expect(
+      await violations(OpenRunDto, { ...GOOD.open, queueItem: { ...lease, claimToken: "x" } }),
+    ).toContain("queueItem");
+    expect(await violations(OpenRunDto, { ...GOOD.open, queueItem: { id: lease.id } })).toContain(
+      "queueItem",
+    );
+  });
+});
+
+describe("spend by stage (#91)", () => {
+  const spend = { provider: "anthropic", model: "claude-sonnet-5-5", tokensIn: 1, tokensOut: 1 };
+
+  it("takes a stage and an attempt, or neither", async () => {
+    expect(
+      await violations(ReportResourcesDto, {
+        idempotencyKey: "k",
+        spend: { ...spend, stage: "implement", attempt: 2 },
+      }),
+    ).toEqual([]);
+    expect(await violations(ReportResourcesDto, { idempotencyKey: "k", spend })).toEqual([]);
+  });
+
+  it.each([
+    ["an empty stage", { stage: "" }],
+    ["a stage past 64 characters", { stage: "s".repeat(65) }],
+    ["attempt 0", { attempt: 0 }],
+    ["a fractional attempt", { attempt: 1.5 }],
+  ])("refuses %s", async (_what, change) => {
+    expect(
+      await violations(ReportResourcesDto, { idempotencyKey: "k", spend: { ...spend, ...change } }),
+    ).toContain("spend");
   });
 });

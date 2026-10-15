@@ -117,6 +117,12 @@ export interface QueueItemSummary {
    * run to ask (BG.6, [#422](https://github.com/NobuData/ouroboros/issues/422)).
    */
   readonly playbookId: string | null;
+  /**
+   * The engine worker that has claimed the item and until when (#91), or `null` for an item
+   * nobody holds — including one whose lease has run out, which is claimable again. A claimed
+   * item keeps its place in the queue until the run opened from it removes it.
+   */
+  readonly claimed: { readonly by: string; readonly until: string } | null;
 }
 
 /** *Loops live* — how many runs are in flight, and in which stage. */
@@ -330,10 +336,14 @@ export function runSummary(row: Run): RunSummary {
  * One queued issue, as the card draws it.
  *
  * @param row - The row.
+ * @param now - The instant a lease is measured against (#91).
  * @returns The resource. `estMinutes` is passed through rather than coalesced — see
  *   {@link QueueItemSummary.estMinutes}.
  */
-export function queueItemSummary(row: QueueItem): QueueItemSummary {
+export function queueItemSummary(row: QueueItem, now: Date = new Date()): QueueItemSummary {
+  const held =
+    row.claimed_by !== null && row.claim_expires_at !== null && row.claim_expires_at > now;
+
   return {
     id: row.id,
     issueNumber: row.issue_number,
@@ -346,6 +356,10 @@ export function queueItemSummary(row: QueueItem): QueueItemSummary {
     estMinutes: row.est_minutes,
     enqueuedAt: at(row.enqueued_at),
     playbookId: row.playbook_id,
+    claimed:
+      held && row.claimed_by !== null && row.claim_expires_at !== null
+        ? { by: row.claimed_by, until: at(row.claim_expires_at) }
+        : null,
   };
 }
 

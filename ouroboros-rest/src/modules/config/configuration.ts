@@ -366,6 +366,22 @@ export const MAX_ESTIMATION_CONFIDENCE_FLOOR = 100;
 export const DEFAULT_ESTIMATION_STALE_SECONDS = 600;
 
 /**
+ * How long an engine worker holds a queue item it claimed before the item is claimable again,
+ * when `OURO_QUEUE_CLAIM_LEASE_SECONDS` is not set — five minutes (#91).
+ *
+ * The window between a claim and the open that consumes it: a worker opens the run moments
+ * after claiming, so five minutes is generous, and a worker that died in between gives the item
+ * back within it.
+ */
+export const DEFAULT_QUEUE_CLAIM_LEASE_SECONDS = 300;
+
+/** Shortest lease an operator may set — thirty seconds, room for one retried open. */
+export const MIN_QUEUE_CLAIM_LEASE_SECONDS = 30;
+
+/** Longest lease an operator may set — an hour; past that a dead worker strands the head. */
+export const MAX_QUEUE_CLAIM_LEASE_SECONDS = 3600;
+
+/**
  * Shortest staleness an operator may set — sixty seconds.
  *
  * A floor rather than a preference: an estimate legitimately takes two engine attempts of five
@@ -1370,6 +1386,12 @@ export interface Configuration {
    */
   readonly liveExecutionEnabled: boolean;
   /**
+   * How long a queue item claimed by an engine worker stays held before it is claimable again
+   * (#91). From `OURO_QUEUE_CLAIM_LEASE_SECONDS`, {@link DEFAULT_QUEUE_CLAIM_LEASE_SECONDS} when
+   * unset.
+   */
+  readonly queueClaimLeaseSeconds: number;
+  /**
    * The trial credit the managed key pool gives a new workspace, in cents. From
    * `OURO_MANAGED_KEY_TRIAL_CENTS`; `undefined` when unset, and the managed row then names no
    * figure — the service never invents one. Between 1 and {@link MAX_MANAGED_KEY_TRIAL_CENTS},
@@ -1487,6 +1509,7 @@ export const VARIABLES = {
   onboardingUnlockThreshold: "OURO_ONBOARDING_UNLOCK_THRESHOLD",
   managedKeyPool: "OURO_MANAGED_KEY_POOL",
   liveExecutionEnabled: "OURO_LIVE_EXECUTION_ENABLED",
+  queueClaimLeaseSeconds: "OURO_QUEUE_CLAIM_LEASE_SECONDS",
   managedKeyTrialCents: "OURO_MANAGED_KEY_TRIAL_CENTS",
   hostedRunnerPool: "OURO_HOSTED_RUNNER_POOL",
   dataRegion: "OURO_DATA_REGION",
@@ -2328,6 +2351,12 @@ const environmentShape = z.object({
   OURO_MANAGED_KEY_POOL: capabilityFlag(),
   // The live-execution switch (DG.2, #1300, decision L10): off unless declared.
   OURO_LIVE_EXECUTION_ENABLED: capabilityFlag(),
+  // How long a claimed queue item is held for the worker that claimed it (#91).
+  OURO_QUEUE_CLAIM_LEASE_SECONDS: cadenceSeconds(
+    MIN_QUEUE_CLAIM_LEASE_SECONDS,
+    DEFAULT_QUEUE_CLAIM_LEASE_SECONDS,
+    MAX_QUEUE_CLAIM_LEASE_SECONDS,
+  ),
   OURO_MANAGED_KEY_TRIAL_CENTS: z
     .string()
     .regex(/^\d+$/, `expected between 1 and ${MAX_MANAGED_KEY_TRIAL_CENTS} cents`)
@@ -2646,6 +2675,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     onboardingUnlockThreshold: values.OURO_ONBOARDING_UNLOCK_THRESHOLD,
     managedKeyPool: values.OURO_MANAGED_KEY_POOL,
     liveExecutionEnabled: values.OURO_LIVE_EXECUTION_ENABLED,
+    queueClaimLeaseSeconds: values.OURO_QUEUE_CLAIM_LEASE_SECONDS,
     managedKeyTrialCents: values.OURO_MANAGED_KEY_TRIAL_CENTS,
     hostedRunnerPool: values.OURO_HOSTED_RUNNER_POOL,
     dataRegion: values.OURO_DATA_REGION,

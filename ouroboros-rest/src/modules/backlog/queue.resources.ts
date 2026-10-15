@@ -136,7 +136,7 @@ export interface QueuedSelection {
  */
 export function queuedSelection(rows: readonly QueueItem[]): QueuedSelection {
   return {
-    items: rows.map(queueItemSummary),
+    items: rows.map((row) => queueItemSummary(row)),
     // Summed here rather than read back with a second statement: these are the rows that were
     // just written, so a `sum` over them is the same arithmetic the database would do and one
     // round trip fewer. `?? 0` skips a null rather than counting it — see `estMinutes`.

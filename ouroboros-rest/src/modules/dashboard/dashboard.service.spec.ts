@@ -121,6 +121,7 @@ const RUN: Run = {
   playbook_id: null,
   events_swept_at: null,
   origin: "live",
+  queue_item_id: null,
 };
 
 const QUEUED: QueueItem = {
@@ -134,6 +135,11 @@ const QUEUED: QueueItem = {
   workflow_version: 14,
   workflow_pin_reason: "predicate",
   playbook_id: null,
+  claimed_at: null,
+  claim_expires_at: null,
+  claimed_by: null,
+  claim_token: null,
+  claim_key: null,
   position: 1,
   est_minutes: 45,
   enqueued_at: new Date("2026-08-13T01:37:41.000Z"),

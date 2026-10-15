@@ -25,11 +25,16 @@ Three rules from the document shape what is *absent* below:
   checked for order and is not adopted.
 """
 
+from __future__ import annotations
+
 from typing import Annotated, Literal
 
 from pydantic import Field
 
 from ouroboros_engine.control_plane.contract import _Request, _Response
+
+#: ``POST``: lease the head of a workspace's queue (#91). The open consumes the lease.
+QUEUE_CLAIM_PATH = "/internal/queue/claim"
 
 #: ``POST``: open a run for a canonical ticket, pinned to one published workflow version.
 RUNS_PATH = "/internal/runs"
@@ -51,6 +56,7 @@ RUN_RESOURCES_PATH = "/internal/runs/{id}/resources"
 
 #: Every ingestion path, in the order a run meets them.
 INGEST_PATHS: tuple[str, ...] = (
+    QUEUE_CLAIM_PATH,
     RUNS_PATH,
     RUN_STAGE_TRANSITIONS_PATH,
     RUN_EVENTS_PATH,
@@ -130,6 +136,10 @@ INGEST_ERRORS: tuple[str, ...] = (
     "idempotency_key_reused",
     "workspace_paused",
     "workspace_pending_delete",
+    "deployment_disabled",
+    "workspace_not_found",
+    "queue_claim_lost",
+    "queue_item_mismatch",
 )
 
 #: The idempotency key every write carries: the caller's name for one submission. Replaying
@@ -156,6 +166,103 @@ ReturnReason = Literal[
 EventActor = Literal["plan", "tool", "model", "gate", "user", "system"]
 FileStatus = Literal["added", "modified", "deleted", "renamed"]
 MergeStrategy = Literal["squash", "merge", "rebase"]
+
+
+# --- claiming the queue (#91) ---------------------------------------------------------------
+
+
+class ClaimQueueItemRequest(_Request):
+    """The body of ``POST /internal/queue/claim``.
+
+    Attributes:
+        idempotency_key: This claim's name. A replay answers the item it already leases.
+        workspace: ``organization.id`` or its slug — whose queue to take from.
+        worker: The worker claiming, as it names itself.
+    """
+
+    idempotency_key: IdempotencyKey
+    workspace: str = Field(min_length=1, max_length=128)
+    worker: str = Field(min_length=1, max_length=128, pattern=r"^\S(.*\S)?$")
+
+
+class ClaimedWorkflow(_Response):
+    """The workflow an item was queued under.
+
+    Attributes:
+        tag: ``workflows.slug``.
+        version: The pinned version, or ``None`` for an item queued without one.
+    """
+
+    tag: str
+    version: int | None = None
+
+
+class ClaimedTicket(_Response):
+    """The ticket the claimed item's run is opened for.
+
+    Attributes:
+        source: ``ticket_sources.id``.
+        external_key: ``tickets.external_key``.
+    """
+
+    source: str
+    external_key: str
+
+    def reference(self) -> TicketReference:
+        """The ticket as the open names it.
+
+        Returns:
+            A :class:`TicketReference`.
+        """
+        return TicketReference(source=self.source, external_key=self.external_key)
+
+
+class QueueItemClaimed(_Response):
+    """A queue item leased to this worker, with what opening its run needs.
+
+    Attributes:
+        id: ``queue_items.id``.
+        claim_token: The lease's secret — :attr:`QueueItemLease.claim_token` on the open.
+        expires_at: When the lease runs out, ISO 8601.
+        organization_id: The workspace.
+        repository: ``github_repos.id`` — the open's ``repository``.
+        issue_number: The issue's number.
+        issue_title: The issue's title, as queued.
+        workflow: The workflow the item was queued under.
+        playbook_id: The playbook it was launched through, or ``None``.
+        ticket: The ticket to open the run for, or ``None`` when no source has mirrored it.
+    """
+
+    id: str
+    claim_token: str
+    expires_at: str
+    organization_id: str
+    repository: str
+    issue_number: int
+    issue_title: str
+    workflow: ClaimedWorkflow
+    playbook_id: str | None = None
+    ticket: ClaimedTicket | None = None
+
+    def lease(self) -> QueueItemLease:
+        """The lease as the open presents it.
+
+        Returns:
+            A :class:`QueueItemLease`.
+        """
+        return QueueItemLease(id=self.id, claim_token=self.claim_token)
+
+
+class QueueItemLease(_Request):
+    """The queue item a run is opened from, and its lease. Opening the run removes the item.
+
+    Attributes:
+        id: ``queue_items.id``.
+        claim_token: The lease's secret.
+    """
+
+    id: str
+    claim_token: str
 
 
 # --- opening a run --------------------------------------------------------------------------
@@ -196,6 +303,7 @@ class OpenRunRequest(_Request):
         model: ``runs.model``, what the dashboard's row renders.
         branch_name: The branch the loop works on, when it has one.
         merge_strategy: How the pinned terminal merges.
+        queue_item: The claimed queue item the run consumes (#91), when it has one.
     """
 
     idempotency_key: IdempotencyKey
@@ -205,6 +313,7 @@ class OpenRunRequest(_Request):
     model: str = Field(min_length=1, max_length=200)
     branch_name: str | None = Field(default=None, max_length=255)
     merge_strategy: MergeStrategy | None = None
+    queue_item: QueueItemLease | None = None
 
 
 class RunOpened(_Response):
@@ -535,6 +644,8 @@ class TokenSpend(_Request):
         task_kind: The task kind, for the routing aggregates.
         latency_ms: How long the call took.
         occurred_at: When, ISO 8601.
+        stage: The stage of the pinned workflow the spend belongs to (#91).
+        attempt: Which attempt of that stage.
     """
 
     provider: str = Field(max_length=64, pattern=r"^[a-z0-9]+([._-][a-z0-9]+)*$")
@@ -547,6 +658,8 @@ class TokenSpend(_Request):
     )
     latency_ms: int | None = Field(default=None, ge=0, le=86_400_000)
     occurred_at: str | None = None
+    stage: str | None = Field(default=None, min_length=1, max_length=64)
+    attempt: int | None = Field(default=None, ge=1, le=1_000)
 
 
 class ReportResourcesRequest(_Request):

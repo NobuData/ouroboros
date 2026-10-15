@@ -77,7 +77,8 @@ def _wire(model: type[BaseModel]) -> set[str]:
 # --- the mirror -----------------------------------------------------------------------------
 
 
-def test_the_six_paths_are_the_documents_runs_family() -> None:
+def test_the_seven_paths_are_the_documents_runs_family() -> None:
+    # AP.1's six run routes, and #91's queue claim, which opens the family.
     documented = {
         path
         for path, item in _document()["paths"].items()
@@ -85,7 +86,7 @@ def test_the_six_paths_are_the_documents_runs_family() -> None:
     }
 
     assert set(INGEST_PATHS) == documented
-    assert len(INGEST_PATHS) == 6
+    assert len(INGEST_PATHS) == 7
 
 
 def test_the_change_set_report_is_the_one_put() -> None:

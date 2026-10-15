@@ -41,7 +41,7 @@
  * lookup is by id, and a workspace is what it *returns*.
  */
 
-import { ConflictError, NotFoundError } from "../errors/error.envelope";
+import { ConflictError, InvalidRequestError, NotFoundError } from "../errors/error.envelope";
 import type { RunStageStatus } from "../db/schema";
 import type { RunIngestOperation } from "../db/schema";
 
@@ -95,6 +95,18 @@ export const INGEST_ERRORS = {
 
   /** This key has already answered a different request. */
   idempotencyKeyReused: "idempotency_key_reused",
+
+  /** The deployment does not run live loops, so nothing is claimable (DG.2; #91). */
+  deploymentDisabled: "deployment_disabled",
+
+  /** The workspace a claim names does not exist (#91). */
+  workspaceNotFound: "workspace_not_found",
+
+  /** The queue item a run is opened from is no longer held under that lease (#91). */
+  queueClaimLost: "queue_claim_lost",
+
+  /** The queue item a run is opened from is for another issue, repository or pin (#91). */
+  queueItemMismatch: "queue_item_mismatch",
 } as const;
 
 /** One of {@link INGEST_ERRORS}' values. */
@@ -403,5 +415,69 @@ export function idempotencyKeyReused(
     "That idempotency key has already answered a different request. A key names one " +
       "submission; use a fresh one, or re-send the submission it named.",
     { operation, idempotencyKey },
+  );
+}
+
+/**
+ * `409` — this deployment does not run live loops, so a claim takes nothing (#91; DG.2,
+ * [#1300](https://github.com/NobuData/ouroboros/issues/1300)).
+ *
+ * The first of the admission refusals the claim makes before a queued item becomes paid work;
+ * DI.4 ([#1312](https://github.com/NobuData/ouroboros/issues/1312)) adds the rest in the same
+ * place. Refused rather than answered `204`: an empty queue and a switched-off deployment are
+ * different things to an operator reading the worker's log.
+ *
+ * @returns The error to throw.
+ */
+export function deploymentDisabled(): ConflictError {
+  return new ConflictError(
+    INGEST_ERRORS.deploymentDisabled,
+    "This deployment does not run live loops: OURO_LIVE_EXECUTION_ENABLED is off. Nothing was claimed.",
+  );
+}
+
+/**
+ * `404` — the workspace a claim names does not exist (#91).
+ *
+ * @param workspace - The id or slug that was named.
+ * @returns The error to throw.
+ */
+export function claimWorkspaceNotFound(workspace: string): NotFoundError {
+  return new NotFoundError(
+    INGEST_ERRORS.workspaceNotFound,
+    "There is no workspace by that id or slug.",
+    { workspace },
+  );
+}
+
+/**
+ * `409` — the queue item a run is opened from is not held under that lease any more (#91):
+ * the lease ran out and another worker claimed the item, the token is not the lease's, or the
+ * item is gone. Nothing was opened; the worker claims again.
+ *
+ * @param queueItem - The item that was named.
+ * @returns The error to throw.
+ */
+export function queueClaimLost(queueItem: string): ConflictError {
+  return new ConflictError(
+    INGEST_ERRORS.queueClaimLost,
+    "That queue item is no longer held under this lease. Nothing was opened; claim again.",
+    { queueItem },
+  );
+}
+
+/**
+ * `422` — the queue item a run is opened from is not the run being opened (#91): another
+ * workspace, repository, issue or workflow pin. Nothing was opened and the lease is kept.
+ *
+ * @param queueItem - The item that was named.
+ * @param field - The first field that differs.
+ * @returns The error to throw.
+ */
+export function queueItemMismatch(queueItem: string, field: string): InvalidRequestError {
+  return new InvalidRequestError(
+    INGEST_ERRORS.queueItemMismatch,
+    `That queue item is not for the run being opened: its ${field} differs.`,
+    { queueItem, field },
   );
 }

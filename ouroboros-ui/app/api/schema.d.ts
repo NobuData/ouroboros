@@ -16350,6 +16350,20 @@ export interface components {
              *     be given.
              */
             playbookId: string | null;
+            /**
+             * @description The engine worker that has claimed the item and until when (#91), or `null` for an
+             *     item nobody holds — including one whose lease has run out, which is claimable again.
+             *     A claimed item keeps its place until the run opened from it removes it.
+             */
+            claimed: {
+                /** @description The worker, as it named itself. */
+                by: string;
+                /**
+                 * Format: date-time
+                 * @description When the lease runs out.
+                 */
+                until: string;
+            } | null;
         };
         /**
          * LoopsLive
@@ -33845,7 +33859,8 @@ export interface operations {
                      *           "position": 1,
                      *           "estMinutes": 45,
                      *           "enqueuedAt": "2026-08-13T01:37:41.000Z",
-                     *           "playbookId": null
+                     *           "playbookId": null,
+                     *           "claimed": null
                      *         },
                      *         {
                      *           "id": "5eed000a-0000-4000-8000-000000000496",
@@ -33858,7 +33873,8 @@ export interface operations {
                      *           "position": 12,
                      *           "estMinutes": null,
                      *           "enqueuedAt": "2026-08-13T13:37:41.000Z",
-                     *           "playbookId": null
+                     *           "playbookId": null,
+                     *           "claimed": null
                      *         }
                      *       ],
                      *       "activity": {
@@ -35193,7 +35209,8 @@ export interface operations {
                      *           "position": 1,
                      *           "estMinutes": 45,
                      *           "enqueuedAt": "2026-08-13T01:37:41.000Z",
-                     *           "playbookId": null
+                     *           "playbookId": null,
+                     *           "claimed": null
                      *         },
                      *         {
                      *           "id": "5eed000a-0000-4000-8000-000000000486",
@@ -35206,7 +35223,8 @@ export interface operations {
                      *           "position": 2,
                      *           "estMinutes": 90,
                      *           "enqueuedAt": "2026-08-13T02:37:41.000Z",
-                     *           "playbookId": null
+                     *           "playbookId": null,
+                     *           "claimed": null
                      *         }
                      *       ],
                      *       "total": 12,
@@ -35783,7 +35801,8 @@ export interface operations {
                      *           "position": 4,
                      *           "estMinutes": 45,
                      *           "enqueuedAt": "2026-09-10T15:41:12.000Z",
-                     *           "playbookId": null
+                     *           "playbookId": null,
+                     *           "claimed": null
                      *         },
                      *         {
                      *           "id": "7a1c0b90-0000-4000-8000-000000000002",
@@ -35796,7 +35815,8 @@ export interface operations {
                      *           "position": 5,
                      *           "estMinutes": 50,
                      *           "enqueuedAt": "2026-09-10T15:41:12.000Z",
-                     *           "playbookId": null
+                     *           "playbookId": null,
+                     *           "claimed": null
                      *         },
                      *         {
                      *           "id": "7a1c0b90-0000-4000-8000-000000000003",
@@ -35809,7 +35829,8 @@ export interface operations {
                      *           "position": 6,
                      *           "estMinutes": 30,
                      *           "enqueuedAt": "2026-09-10T15:41:12.000Z",
-                     *           "playbookId": null
+                     *           "playbookId": null,
+                     *           "claimed": null
                      *         }
                      *       ],
                      *       "estMinutes": 125
