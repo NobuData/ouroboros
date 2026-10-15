@@ -119,7 +119,7 @@ describe("which model sizes an issue (#123)", () => {
           resolution([hop("sizer", "claude-haiku-4-5", "dropped")], {
             outcome: "fail_run",
             failure: { code: "no_eligible_hop", explanation: "every hop was dropped" },
-          } as Partial<Resolution>),
+          }),
         ),
       () => Promise.resolve(OLLAMA),
     );

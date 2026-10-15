@@ -1026,7 +1026,7 @@ class _Run:
             if report.steps
         )
         if plan:
-            artifacts.append(_artifact("plan_excerpt", plan[:MAX_EXCERPT], []))
+            artifacts.append(_artifact("plan_excerpt", plan, [], max_chars=MAX_EXCERPT))
         reviews = "\n\n".join(
             f"{node.id}: {report.verdict}"
             + (f"\n{report.summary}" if report.summary else "")
@@ -1035,7 +1035,9 @@ class _Run:
             if report.verdict is not None
         )
         if reviews:
-            artifacts.append(_artifact("review_excerpt", reviews[:MAX_EXCERPT], []))
+            artifacts.append(
+                _artifact("review_excerpt", reviews, [], max_chars=MAX_EXCERPT)
+            )
         return artifacts
 
 
@@ -1080,28 +1082,40 @@ def nothing_to_do_reason(summary: str, skip_input: str | None) -> str:
     return f"the stage had nothing to do{lacking}"
 
 
-def _artifact(kind: str, content: str, summary: list[PathChange]) -> DryRunArtifact:
-    """Bound an artifact to V111's size, saying so when it is cut.
+def _artifact(
+    kind: str,
+    content: str,
+    summary: list[PathChange],
+    *,
+    max_chars: int | None = None,
+) -> DryRunArtifact:
+    """Bound an artifact to its size, saying so when it is cut.
+
+    Every cut is made here, from the whole text, so ``truncated`` and ``original_bytes``
+    always describe what was cut rather than what was kept (#1747): an excerpt sliced before
+    it arrived would read as whole.
 
     Args:
         kind: Which artifact.
         content: Its whole text.
         summary: Per-file counts, for a diff.
+        max_chars: An excerpt's own bound in characters (:data:`MAX_EXCERPT`), applied before
+            V111's byte bound; ``None`` for the diff, which has only the byte bound.
 
     Returns:
-        The artifact: whole, or cut at the last line that fits with ``truncated`` set and
-        ``original_bytes`` the size it had.
+        The artifact: whole, or cut — at ``max_chars``, and at the last line that fits V111's
+        bytes — with ``truncated`` set and ``original_bytes`` the size the whole text had.
     """
     raw = content.encode("utf-8")
-    if len(raw) <= MAX_ARTIFACT_BYTES:
-        kept = content
-    else:
-        cut = raw[:MAX_ARTIFACT_BYTES].decode("utf-8", errors="ignore")
+    kept = content if max_chars is None else content[:max_chars]
+    kept_raw = kept.encode("utf-8")
+    if len(kept_raw) > MAX_ARTIFACT_BYTES:
+        cut = kept_raw[:MAX_ARTIFACT_BYTES].decode("utf-8", errors="ignore")
         kept = cut[: cut.rfind("\n") + 1] or cut
     return DryRunArtifact(
         kind=kind,  # type: ignore[arg-type]
         content=kept,
-        truncated=len(raw) > MAX_ARTIFACT_BYTES,
+        truncated=kept != content,
         original_bytes=len(raw),
         path_summary=summary,
     )
