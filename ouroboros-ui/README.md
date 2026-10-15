@@ -2473,8 +2473,8 @@ grid with the copy the security model approved, and every state the page can be 
 not *five cards* is designed rather than blank.
 
 ```
- This month            $76.00 of $95 cap · 4 seats ⓘ ← "Warning only — enforcement arrives with invocation."
- ▓▓▓▓▓▓▓▓░░ (warn, 80%)                              ↑ CAP_WARNING_ONLY, removed by AF.4 (#237)
+ This month            $76.00 of $95 cap · 4 seats ⓘ ← "At the cap, model calls skip this provider — nothing else stops."
+ ▓▓▓▓▓▓▓▓░░ (warn, 80%)                              ↑ CAP_WARNING_ONLY, since AF.2 (#235)
  ─────────────────────────────────────────────────────────────
  [Test connection]                       Monthly cap [   $95]  ← blur or Enter saves; empty → null (—)
                                                                   $0 → zero, a real cap

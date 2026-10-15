@@ -338,6 +338,8 @@ class UsageEvent(_Response):
         model: The model as the provider names it.
         input_tokens: Tokens sent.
         output_tokens: Tokens received.
+        cache_read_tokens: Prompt tokens served from the provider's cache.
+        cache_write_tokens: Prompt tokens written to the provider's cache.
         cost_cents: What it cost, or ``None`` when nothing prices it. ``None`` rather than
             ``0``: a local model's tokens are *unpriced*, which is a different statement
             from *free*, and a zero is spend nobody incurred appearing in an aggregate.
@@ -349,7 +351,24 @@ class UsageEvent(_Response):
     model: str
     input_tokens: int
     output_tokens: int
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     cost_cents: float | None = None
+
+
+class InvokeCap(_Response):
+    """Which cap stopped a call — the designed error naming the cap (AF.2, #235).
+
+    Attributes:
+        source: ``route`` or ``spend_guard`` (routing's), ``worker`` (a tighter
+            ``cost_cap_cents``) or ``provider`` (the hop's connection's monthly cap).
+        limit_cents: The limit.
+        spent_cents: What had been spent against it when it stopped the call.
+    """
+
+    source: Literal["route", "spend_guard", "worker", "provider"]
+    limit_cents: float
+    spent_cents: float
 
 
 class HopEvent(_Response):
@@ -362,16 +381,22 @@ class HopEvent(_Response):
         kind: Always ``"hop"``.
         hop: Which hop.
         connection: The provider connection attempted.
+        alias: The routing alias the hop came from (gap G7).
+        at: When the attempt ended, ISO 8601, stamped by the control plane (gap G7).
         outcome: ``ok``, ``failed_over`` or ``aborted``.
         code: Why, when it was not ``ok``.
+        cap: The cap that ended the hop, when ``code`` is ``cost_cap_exceeded``.
         latency_ms: How long the attempt took.
     """
 
     kind: Literal["hop"]
     hop: int
     connection: str
+    alias: str | None = None
+    at: str | None = None
     outcome: Literal["ok", "failed_over", "aborted"]
     code: str | None = None
+    cap: InvokeCap | None = None
     latency_ms: int
 
 
@@ -383,12 +408,16 @@ class ErrorEvent(_Response):
         hop: Which hop was in flight, when one was.
         code: Which rule fired — see :data:`INVOKE_ERROR_CODES`.
         message: A sentence for a person. Never a provider's own error text.
+        cap: The cap that stopped the call, when ``code`` is ``cost_cap_exceeded``.
+        reason: Routing's ``failure.code``, when ``code`` is ``resolution_failed``.
     """
 
     kind: Literal["error"]
     hop: int | None = None
     code: str
     message: str
+    cap: InvokeCap | None = None
+    reason: str | None = None
 
 
 class DoneEvent(_Response):
@@ -398,11 +427,14 @@ class DoneEvent(_Response):
         kind: Always ``"done"``.
         hop: Which hop served the answer — the one the run should be attributed to.
         finish_reason: Why generation stopped, in the provider's own vocabulary.
+        unpriced_not_counted: A cap applied and some usage was unpriced, so it passed
+            without being counted toward the cap (gap G6).
     """
 
     kind: Literal["done"]
     hop: int
     finish_reason: str
+    unpriced_not_counted: bool = False
 
 
 #: One line of the streamed answer.
@@ -426,23 +458,36 @@ EVENT_MODELS: dict[str, type[InvokeEvent]] = {
 #: ``provider_rate_limited``
 #:     429 or a provider throttle. Backs off, then advances.
 #: ``provider_auth_failed``
-#:     The credential was refused. Does **not** retry; marks the provider in error.
+#:     The credential was refused. Does **not** retry; advances to the next hop (G3).
+#: ``context_window_exceeded``
+#:     The prompt is longer than this hop's model takes. Advances (G8).
+#: ``model_not_found``
+#:     This hop's provider does not have the model. Advances (G8).
 #: ``request_invalid``
 #:     A 4xx that is not auth. Aborts — the next hop would refuse it too.
 #: ``floor_exhausted``
 #:     The chain reached its floor. Aborts with the floor reason.
 #: ``cost_cap_exceeded``
-#:     The run's cap is spent. Aborts, naming the cap.
+#:     The run's cap is spent — aborts, naming the cap — or a hop's provider's monthly cap,
+#:     which fails that hop over.
 #: ``chain_exhausted``
 #:     Every hop failed and there was no floor to stop at. Aborts.
+#: ``vote_execution_unavailable``
+#:     The resolution carries a vote, and votes are deferred to AZ.1 (#371). Refused (G5).
+#: ``resolution_failed``
+#:     Routing answered ``fail_run``. Nothing runs; ``reason`` carries its failure code.
 INVOKE_ERROR_CODES: tuple[str, ...] = (
     "provider_unavailable",
     "provider_rate_limited",
     "provider_auth_failed",
+    "context_window_exceeded",
+    "model_not_found",
     "request_invalid",
     "floor_exhausted",
     "cost_cap_exceeded",
     "chain_exhausted",
+    "vote_execution_unavailable",
+    "resolution_failed",
 )
 
 

@@ -99,6 +99,9 @@ import {
   MODEL_ALIAS_TOKENS_MIN,
 } from "../../db/schema";
 import type {
+  InvocationCall,
+  InvocationCapableAdapter,
+  InvocationChunk,
   ModelPullProgress,
   NormalizedModel,
   ProviderCapabilities,
@@ -126,6 +129,9 @@ import {
 } from "../provider.config";
 import { ProviderAdapterError, classifyHttpStatus } from "../provider.errors";
 import { MODEL_PARAM_DIALECT, copyParamSchema, type ModelParamSchema } from "../provider.params";
+import { ollamaBody } from "./invocation.payload";
+import { openInvocation } from "./invocation.stream";
+import { ollamaRefusal, parseOllamaStream } from "./ollama.stream";
 
 /** What the address row's `<label>` says — mockup 07's **Host**, not *Base URL*. */
 export const OLLAMA_HOST_TITLE = "Host";
@@ -167,6 +173,9 @@ export const OLLAMA_TAGS_PATH = "/api/tags";
 
 /** The pull route. Answers NDJSON, one progress object per line. */
 export const OLLAMA_PULL_PATH = "/api/pull";
+
+/** The chat route an invocation posts to. Answers NDJSON, one chunk per line. */
+export const OLLAMA_CHAT_PATH = "/api/chat";
 
 /**
  * The `status` Ollama's last line carries when a pull finished.
@@ -809,7 +818,7 @@ const OLLAMA_PARAM_SCHEMA: ModelParamSchema = {
  * separate object with a separate lifetime and no idea which provider it is watching.
  */
 @Injectable()
-export class OllamaAdapter implements PullCapableAdapter {
+export class OllamaAdapter implements PullCapableAdapter, InvocationCapableAdapter {
   /** V015's `provider_connections.kind` for this provider, and the registry's key. */
   readonly kind = "ollama" as const;
 
@@ -838,8 +847,44 @@ export class OllamaAdapter implements PullCapableAdapter {
    *
    * @returns All four flags, freshly built and equal on every call.
    */
-  capabilities(): ProviderCapabilities & { readonly pull: true } {
-    return { discovery: true, pull: true, entitlements: false, invocation: false };
+  capabilities(): ProviderCapabilities & { readonly pull: true; readonly invocation: true } {
+    return { discovery: true, pull: true, entitlements: false, invocation: true };
+  }
+
+  /**
+   * Make one streamed model call — AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)).
+   *
+   * Cleared by the provider-terms record (DH.4, `invocation.terms.ts`). The configuration is
+   * checked before any socket opens, as the listing checks it, so a missing field is a
+   * `config` failure rather than a `network` one.
+   *
+   * @param connection - The saved connection, opened for this one call.
+   * @param call - The model, the payload in the common chat shape, and the signal.
+   * @yields Deltas, cumulative usage, and one `done` last.
+   * @throws {ProviderAdapterError} Every failure, classified; see `invocation.stream.ts`.
+   */
+  invoke(
+    connection: ProviderConnectionContext,
+    call: InvocationCall,
+  ): AsyncIterable<InvocationChunk> {
+    return parseOllamaStream(async () => {
+      const endpoint = daemonEndpoint(connection.config);
+
+      if (!endpoint.ok) {
+        throw new ProviderAdapterError("config", endpoint.detail);
+      }
+
+      return openInvocation(
+        {
+          url: daemonUrl(endpoint.root, OLLAMA_CHAT_PATH),
+          host: endpoint.host,
+          headers: { accept: "application/x-ndjson" },
+          body: ollamaBody(call.modelId, call.payload),
+          signal: call.signal,
+        },
+        ollamaRefusal,
+      );
+    });
   }
 
   /**

@@ -55,8 +55,11 @@ import addFormats from "ajv-formats";
 
 import { PROVIDER_CONNECTION_KINDS } from "../db/schema";
 import {
+  supportsInvocation,
   supportsPull,
   validationPill,
+  type InvocationChunk,
+  type InvocationUsage,
   type ModelPullProgress,
   type ModelProviderAdapter,
   type NormalizedModel,
@@ -73,6 +76,7 @@ import {
   CONNECTED_PILL,
   PROVIDER_ERROR_CLASSES,
   PROVIDER_ERROR_PILLS,
+  ProviderAdapterError,
   type ProviderErrorClass,
 } from "./provider.errors";
 import { invocationCleared } from "./invocation.terms";
@@ -146,6 +150,30 @@ export interface AdapterConformance {
    * kit fails on either mismatch.
    */
   readonly pull: (() => AsyncIterable<ModelPullProgress>) | null;
+  /**
+   * The invocation suites' recordings — AF.2 (#235). Null exactly when the adapter does not
+   * declare `invocation`; the kit asserts the two agree.
+   */
+  readonly invoke: InvocationConformance | null;
+}
+
+/**
+ * Recorded invocations for one adapter, each a call made with `fetch` already recorded.
+ *
+ * Every member is a thunk that records its response and calls `invoke`, so a suite never
+ * reaches a network.
+ */
+export interface InvocationConformance {
+  /** A recorded streamed answer. */
+  readonly answer: () => AsyncIterable<InvocationChunk>;
+  /** The same recording, delivered one byte per chunk — frames split everywhere. */
+  readonly answerSplit: () => AsyncIterable<InvocationChunk>;
+  /** The text the recording carries, joined. */
+  readonly expectedText: string;
+  /** The usage the provider reported in the recording — what a usage row must reconcile with. */
+  readonly expectedUsage: InvocationUsage;
+  /** One recorded refusal per adapter class; each must throw a `ProviderAdapterError` of it. */
+  readonly failures: Readonly<Record<ProviderErrorClass, () => AsyncIterable<InvocationChunk>>>;
 }
 
 /**
@@ -754,6 +782,69 @@ export function pullStreamViolations(events: readonly ModelPullProgress[]): stri
  *   sent it to a provider would be sending a workspace's internal identifier, and a recorded
  *   fixture is where that shows up.
  */
+/**
+ * What is wrong with a completed invocation stream, if anything.
+ *
+ * @param chunks - Everything the stream yielded.
+ * @param expectedText - The recording's text.
+ * @param expectedUsage - The recording's provider-reported usage.
+ * @param secret - The connection's credential, which must appear nowhere.
+ * @returns The violations.
+ */
+export function invocationStreamViolations(
+  chunks: readonly InvocationChunk[],
+  expectedText: string,
+  expectedUsage: InvocationUsage,
+  secret: string | null,
+): string[] {
+  const violations: string[] = [];
+  const done = chunks.filter((chunk) => chunk.kind === "done");
+
+  if (done.length !== 1 || chunks[chunks.length - 1]?.kind !== "done") {
+    violations.push("exactly one done chunk, and it must be the last");
+  }
+
+  const text = chunks.map((chunk) => (chunk.kind === "delta" ? chunk.text : "")).join("");
+
+  if (text !== expectedText) {
+    violations.push(
+      `the deltas joined must be the recorded text, received ${JSON.stringify(text)}`,
+    );
+  }
+
+  const usage = chunks.filter((chunk) => chunk.kind === "usage").at(-1);
+
+  if (usage?.kind !== "usage") {
+    violations.push("a stream must report usage — R4 and R6 fail without it");
+  } else if (JSON.stringify(usage.usage) !== JSON.stringify(expectedUsage)) {
+    violations.push(
+      `usage must reconcile with the recording, received ${JSON.stringify(usage.usage)}`,
+    );
+  }
+
+  if (secret !== null && secret.length > 0 && JSON.stringify(chunks).includes(secret)) {
+    violations.push("the credential must never appear in what a stream yields (R10)");
+  }
+
+  return violations;
+}
+
+/**
+ * Read a stream to the end.
+ *
+ * @param stream - The stream.
+ * @returns Every chunk.
+ */
+async function drain(stream: AsyncIterable<InvocationChunk>): Promise<InvocationChunk[]> {
+  const chunks: InvocationChunk[] = [];
+
+  for await (const chunk of stream) {
+    chunks.push(chunk);
+  }
+
+  return chunks;
+}
+
 export function conformanceContext(harness: AdapterConformance): ProviderConnectionContext {
   return {
     connectionId: "00000000-0000-4000-8000-000000000216",
@@ -854,5 +945,58 @@ export function describeAdapterConformance(name: string, build: () => AdapterCon
 
       expect(pullStreamViolations(events)).toEqual([]);
     });
+
+    it("supplies invocation recordings exactly when it declares the capability", () => {
+      const harness = build();
+
+      expect(harness.invoke !== null).toBe(supportsInvocation(harness.adapter));
+    });
+
+    it("streams a recorded answer whose text and usage reconcile, with one done last", async () => {
+      const harness = build();
+
+      if (harness.invoke === null) {
+        return;
+      }
+
+      const chunks = await drain(harness.invoke.answer());
+
+      expect(
+        invocationStreamViolations(
+          chunks,
+          harness.invoke.expectedText,
+          harness.invoke.expectedUsage,
+          harness.secret,
+        ),
+      ).toEqual([]);
+    });
+
+    it("parses the same answer split one byte per chunk", async () => {
+      const harness = build();
+
+      if (harness.invoke === null) {
+        return;
+      }
+
+      const whole = await drain(harness.invoke.answer());
+      const split = await drain(harness.invoke.answerSplit());
+
+      expect(split).toEqual(whole);
+    });
+
+    for (const errorClass of PROVIDER_ERROR_CLASSES) {
+      it(`classifies its recorded ${errorClass} invocation failure as ${errorClass}`, async () => {
+        const harness = build();
+
+        if (harness.invoke === null) {
+          return;
+        }
+
+        const failure = drain(harness.invoke.failures[errorClass]());
+
+        await expect(failure).rejects.toBeInstanceOf(ProviderAdapterError);
+        await expect(failure).rejects.toMatchObject({ errorClass });
+      });
+    }
   });
 }

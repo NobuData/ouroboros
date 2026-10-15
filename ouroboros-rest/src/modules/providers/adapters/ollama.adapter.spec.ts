@@ -189,7 +189,7 @@ describe("the Ollama adapter's capabilities", () => {
       discovery: true,
       pull: true,
       entitlements: false,
-      invocation: false,
+      invocation: true,
     });
   });
 

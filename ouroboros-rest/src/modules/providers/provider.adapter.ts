@@ -516,3 +516,106 @@ export interface PullCapableAdapter extends ModelProviderAdapter {
 export function supportsPull(adapter: ModelProviderAdapter): adapter is PullCapableAdapter {
   return adapter.capabilities().pull;
 }
+
+/**
+ * One concrete model call, as the chain executor hands it to an adapter — AF.2
+ * ([#235](https://github.com/NobuData/ouroboros/issues/235)).
+ *
+ * The executor has already chosen the hop; nothing here lets an adapter choose another. The
+ * payload is the worker's, with the hop's routing params merged over it, in the provider's
+ * own vocabulary (`invoke.contract.ts` decision 2). The adapter adds what only it knows — the
+ * model id in the right field and the switches that make the provider stream and report usage
+ * — and passes everything else through unread.
+ */
+export interface InvocationCall {
+  /** The model's own id, as {@link NormalizedModel.id} gave it — the hop's `modelId`. */
+  readonly modelId: string;
+  /** The request body fields, opaque here. An adapter overrides `model` and `stream` only. */
+  readonly payload: Readonly<Record<string, unknown>>;
+  /** Aborts the call: the executor's per-hop deadline, a cap breach, or the caller leaving. */
+  readonly signal: AbortSignal;
+}
+
+/**
+ * What one hop has used so far, as the provider reported it.
+ *
+ * **Cumulative**, not incremental: each {@link InvocationUsageChunk} replaces the last. That is
+ * what every provider format sends — Anthropic restates `output_tokens` on `message_delta`,
+ * OpenAI and Ollama send one total at the end — so a consumer that summed them would count a
+ * hop twice.
+ */
+export interface InvocationUsage {
+  /** Tokens sent, not counting cache reads or writes. */
+  readonly inputTokens: number;
+  /** Tokens received. */
+  readonly outputTokens: number;
+  /** Prompt tokens served from the provider's cache, when it says. */
+  readonly cacheReadTokens: number;
+  /** Prompt tokens written to the provider's cache, when it says. */
+  readonly cacheWriteTokens: number;
+}
+
+/** A fragment of the answer, exactly as the provider sent it. */
+export interface InvocationDeltaChunk {
+  readonly kind: "delta";
+  readonly text: string;
+}
+
+/** The provider's usage report — see {@link InvocationUsage} on why it is cumulative. */
+export interface InvocationUsageChunk {
+  readonly kind: "usage";
+  readonly usage: InvocationUsage;
+}
+
+/** Generation ended normally. The last chunk of a completed stream. */
+export interface InvocationDoneChunk {
+  readonly kind: "done";
+  /** Why, in the provider's own vocabulary — `end_turn`, `stop`, `length`. */
+  readonly finishReason: string;
+}
+
+/** One thing an invocation stream can yield. */
+export type InvocationChunk = InvocationDeltaChunk | InvocationUsageChunk | InvocationDoneChunk;
+
+/**
+ * An adapter that can make a model call — the `invocation` capability AC.1 reserved.
+ *
+ * Only the kinds the provider-terms record clears implement it (DH.4, `invocation.terms.ts`):
+ * `anthropic`, `openai_compatible` and `ollama`. The same sub-interface recipe as
+ * {@link PullCapableAdapter}, for the same reason.
+ */
+export interface InvocationCapableAdapter extends ModelProviderAdapter {
+  /** @returns The flags, with `invocation` narrowed to `true`. */
+  capabilities(): ProviderCapabilities & { readonly invocation: true };
+
+  /**
+   * Make one streamed model call.
+   *
+   * @param connection - The saved connection, opened for this one call. The secret is an
+   *   argument for the length of the call and is never retained, logged or yielded.
+   * @param call - The model, the payload and the signal.
+   * @returns The answer as it arrives: deltas, cumulative usage, and one `done` last. A stream
+   *   that ends without `done` ended early, which the executor treats as `upstream`.
+   * @throws {ProviderAdapterError} Every failure, before or during the stream, classified into
+   *   the five adapter classes; a G8 refusal carries its `ModelRefusal` in `refusal`.
+   *   Never the provider's own error text.
+   */
+  invoke(
+    connection: ProviderConnectionContext,
+    call: InvocationCall,
+  ): AsyncIterable<InvocationChunk>;
+}
+
+/**
+ * Whether an adapter can make model calls — and, for the compiler, that its `invoke` is there.
+ *
+ * The flag, not the method, for the reason {@link supportsPull} gives.
+ *
+ * @param adapter - Any adapter.
+ * @returns `true` when it declares the capability.
+ */
+export function supportsInvocation(
+  adapter: ModelProviderAdapter,
+): adapter is InvocationCapableAdapter {
+  return adapter.capabilities().invocation;
+}

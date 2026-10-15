@@ -339,6 +339,18 @@ export function describeTransportFailure(error: unknown, timeoutMs: number): str
 }
 
 /**
+ * Model-specific refusals that a later hop might not share — gap G8, decided by AF.1
+ * ([`DECISION_INVOCATION_GATEWAY.md`](../../../../docs/DECISION_INVOCATION_GATEWAY.md)).
+ *
+ * Both are facts about the hop's *model*, not about the request, so the executor advances
+ * past them where every other `config` refusal aborts.
+ */
+export const MODEL_REFUSALS = ["context_window_exceeded", "model_not_found"] as const;
+
+/** One of {@link MODEL_REFUSALS}. */
+export type ModelRefusal = (typeof MODEL_REFUSALS)[number];
+
+/**
  * A provider call that failed, as something a `catch` can bind.
  *
  * **Most failures are not this.** {@link import("./provider.adapter").ModelProviderAdapter.validate}
@@ -361,11 +373,14 @@ export class ProviderAdapterError extends Error {
    *   Becomes the error's `message` too, so a log line that only prints one is still useful.
    * @param httpStatus - The status the provider answered with, when there was one. Null for
    *   a transport failure and for a `config` failure found before any request was made.
+   * @param refusal - For an invocation refused on a fact about the model rather than the
+   *   request (gap G8), which one. Null for every other failure.
    */
   constructor(
     readonly errorClass: ProviderErrorClass,
     readonly detail: string,
     readonly httpStatus: number | null = null,
+    readonly refusal: ModelRefusal | null = null,
   ) {
     super(detail);
     // Without this, `instanceof` works but `error.name` reads `Error` — and the name is what

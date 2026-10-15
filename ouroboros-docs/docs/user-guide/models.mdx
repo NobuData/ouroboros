@@ -84,6 +84,33 @@ prints the rule as a sentence. Each rule has a switch to suspend it without losi
 and **Delete** to remove it (**Delete this rule?** asks first). With no rules, routing simply
 follows the matrix.
 
+A rule that **adds a vote** cannot run yet. A model call whose route carries a vote is refused
+with **This route needs a second opinion, which cannot run yet.** rather than run without its
+vote. Turn the rule off to let the route run.
+
+#### What a chain does when a model call fails
+
+When a loop calls a model, it walks the route's chain in order, starting at the hop the work
+asked for, and moves to the next hop only for a failure that another model might not share:
+
+| What happened | What the chain does |
+| --- | --- |
+| The provider failed (a `5xx`) or did not answer in time | Moves to the next hop |
+| The provider kept answering *rate limited* (`429`) | Waits and tries the same hop twice more, then moves on |
+| The provider refused the connection's key | Moves to the next hop; it does not try that key again |
+| The prompt is too long for the hop's model, or the provider does not have the model | Moves to the next hop |
+| The provider's connection is over its [monthly cap](../administration/providers.mdx#spend-and-the-monthly-cap) | Skips that hop and moves on |
+| The provider refused the request itself (any other `4xx`) | Stops — every model would refuse it |
+| The run reached its **Max cost per run** or the spend guard | Stops, naming the cap |
+| The model had already started answering, then failed | Stops — the answer cannot be finished by another model |
+
+When every hop has failed, the run fails. With a **Floor** set it fails with the floor's reason
+— the route never degrades past it — and without one it fails because the chain ran out.
+
+The tokens each hop used are recorded against the provider and model that served them, including
+a hop that failed partway, so a fallback's spend never counts against the primary. A local model's
+tokens are recorded with no price; they pass a cost cap without counting toward it.
+
 ### Simulating routing
 
 **Simulate routing** at the top of the page — or **Simulate this route** in a route card — asks

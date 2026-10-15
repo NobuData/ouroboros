@@ -805,11 +805,12 @@ describe("the model providers & keys page (#1195)", () => {
     expect(declared("cursor.adapter.ts")).toBe("discovery: false, pull: false");
   });
 
-  it("describes model invocation as not available yet, as the internal route answers", () => {
-    expect(source("ouroboros-rest", "src", "modules", "internal", "llm.controller.ts")).toContain(
-      "throw invocationNotImplemented();",
+  it("describes model calls as answered, as the internal route now streams them (#235)", () => {
+    expect(source("ouroboros-rest", "src", "modules", "internal", "invoke.contract.ts")).toContain(
+      "export const INVOCATION_GATEWAY_AVAILABLE: boolean = true;",
     );
-    expect(PROVIDERS).toContain("Calling a model through a connection is not available yet.");
+    expect(PROVIDERS).toContain("Loops call models through these connections");
+    expect(PROVIDERS).not.toContain("not available yet. Calling a model");
   });
 
   it("names the page's controls and dialogs as the UI draws them", () => {
@@ -870,17 +871,15 @@ describe("the model providers & keys page (#1195)", () => {
     );
   });
 
-  it("calls the monthly cap a warning, as the card does and as nothing enforces it", () => {
+  it("says the monthly cap makes model calls skip a provider, as the card and the executor do", () => {
     expect(constant("providers/caps.ts", "CAP_WARNING_ONLY")).toBe(
-      "Warning only — enforcement arrives with invocation.",
+      "At the cap, model calls skip this provider — nothing else stops.",
     );
-    const internal = readdirSync(join(REPO_ROOT, "ouroboros-rest", "src", "modules", "internal"))
-      .filter((name) => name.endsWith(".ts"))
-      .map((name) => source("ouroboros-rest", "src", "modules", "internal", name));
-    expect(internal.some((text) => text.includes("monthly_cap_cents"))).toBe(false);
-    expect(PROVIDERS).toContain(
-      "The cap is a **warning only**: it\ndoes not stop loops.".replace("\n", " "),
-    );
+    // The executor reads the cap off the opened connection and fails that hop over (#235).
+    expect(
+      source("ouroboros-rest", "src", "modules", "provider-connections", "connection.opener.ts"),
+    ).toContain("monthlyCapCents: row.monthly_cap_cents");
+    expect(PROVIDERS).toContain("model calls skip it");
   });
 
   it("describes the managed key pool as reserved, as only the Smart Defaults card reads it", () => {

@@ -4,7 +4,7 @@ import {
   type AdapterConformance,
 } from "../conformance.fixture";
 import { BASE_URL_FIELD, CAPABILITY_NOTE_FIELD } from "../provider.config";
-import { recordFailure, recordResponses } from "./http.recordings.fixture";
+import { recordFailure, recordResponses, invocationRecordings } from "./http.recordings.fixture";
 import { OpenAiCompatibleAdapter } from "./openai-compatible.adapter";
 import {
   OPENAI_COMPATIBLE_CAPABILITY_NOTE,
@@ -13,6 +13,9 @@ import {
   recordedListing,
   recordedRefusal,
   type OpenAiCompatibleFlavour,
+  OPENAI_INVOCATION_STREAM,
+  OPENAI_INVOCATION_TEXT,
+  OPENAI_INVOCATION_USAGE,
 } from "./openai-compatible.recordings.fixture";
 
 /**
@@ -121,6 +124,20 @@ function harnessFor(flavour: OpenAiCompatibleFlavour): AdapterConformance {
     // A served model is already loaded, and this wire format has no route to ask for another.
     // The kit's complementary leg asserts the member is unreachable rather than inapplicable.
     pull: null,
+    // Cleared by the provider-terms record (DH.4), so the invocation suites run (AF.2, #235).
+    invoke: invocationRecordings({
+      invoke: () =>
+        adapter.invoke(conformanceContext(harness), {
+          modelId: "qwen2.5-coder-32b",
+          payload: { messages: [{ role: "user", content: "hi" }] },
+          signal: new AbortController().signal,
+        }),
+      answer: OPENAI_INVOCATION_STREAM,
+      contentType: "text/event-stream",
+      expectedText: OPENAI_INVOCATION_TEXT,
+      expectedUsage: OPENAI_INVOCATION_USAGE,
+      errorBody: '{"error":{"message":"boom","type":"server_error"}}',
+    }),
   };
 
   return harness;

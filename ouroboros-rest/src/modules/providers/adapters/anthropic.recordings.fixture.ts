@@ -240,3 +240,46 @@ export function recordedRefusal(status: number): Response {
     headers: ANTHROPIC_STANDARD_HEADERS,
   });
 }
+
+/**
+ * A recorded Messages stream (AF.2, #235): `ping` included, usage on `message_start` and
+ * restated on `message_delta`, as the API sends it.
+ */
+export const ANTHROPIC_INVOCATION_STREAM = [
+  "event: message_start",
+  'data: {"type":"message_start","message":{"id":"msg_01","type":"message","role":"assistant","model":"claude-sonnet-4-5","content":[],"stop_reason":null,"usage":{"input_tokens":25,"cache_creation_input_tokens":4,"cache_read_input_tokens":12,"output_tokens":1}}}',
+  "",
+  "event: content_block_start",
+  'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}',
+  "",
+  "event: ping",
+  'data: {"type": "ping"}',
+  "",
+  "event: content_block_delta",
+  'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}',
+  "",
+  "event: content_block_delta",
+  'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":", world — ✓"}}',
+  "",
+  "event: content_block_stop",
+  'data: {"type":"content_block_stop","index":0}',
+  "",
+  "event: message_delta",
+  'data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":15}}',
+  "",
+  "event: message_stop",
+  'data: {"type":"message_stop"}',
+  "",
+  "",
+].join("\n");
+
+/** The text {@link ANTHROPIC_INVOCATION_STREAM} carries. */
+export const ANTHROPIC_INVOCATION_TEXT = "Hello, world — ✓";
+
+/** The usage {@link ANTHROPIC_INVOCATION_STREAM} reports. */
+export const ANTHROPIC_INVOCATION_USAGE = Object.freeze({
+  inputTokens: 25,
+  outputTokens: 15,
+  cacheReadTokens: 12,
+  cacheWriteTokens: 4,
+});

@@ -97,7 +97,8 @@ a protected path?** appears in the [Needs-you inbox](../user-guide/inbox.mdx). S
   run before it spends more, and says which cap stopped it.
 - **Monthly cap, per provider** — is stored with the policy but **not enforced yet**. It is
   separate from the monthly cap on a provider's card in
-  [Model providers & keys](./providers.mdx), which also only warns.
+  [Model providers & keys](./providers.mdx#spend-and-the-monthly-cap), which makes model calls
+  skip a provider once it is reached.
 
 Leave a field empty for no cap of that kind.
 
@@ -214,8 +215,9 @@ The [Needs-you inbox](../user-guide/inbox.mdx) is where the rules meet people:
   protects it. Remove it there too.
 - **A loop stopped on cost.** Its run would cost more than the per-run cap. Raise the cap, or
   route the work to a cheaper model.
-- **Spending passed the monthly cap and nothing stopped.** The monthly caps only warn for now.
-  Use the per-run cap to stop spending.
+- **Spending passed the monthly cap and nothing stopped.** The policy's monthly cap is not
+  enforced yet, and a provider card's cap only moves model calls to another provider. Use the
+  per-run cap to stop spending.
 - **An allow-once was granted but the run stopped again.** The run touched another protected
   path, or the exception lapsed before the run used it. Allow the new path, or ask the loop to
   try again.

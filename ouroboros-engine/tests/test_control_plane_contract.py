@@ -42,7 +42,9 @@ from ouroboros_engine.control_plane.contract import (
     RUN_CONTROLS_FETCH_PATH,
     ControlAck,
     DeltaEvent,
+    DoneEvent,
     ErrorEnvelope,
+    HopEvent,
     InvokeRequest,
     Lease,
     LeaseRequest,
@@ -319,6 +321,34 @@ def test_a_delta_names_the_hop_that_produced_it() -> None:
     delta = DeltaEvent.model_validate({"kind": "delta", "hop": 1, "text": "hello"})
 
     assert (delta.hop, delta.text) == (1, "hello")
+
+
+def test_a_hop_event_carries_the_alias_timestamp_and_cap_the_executor_stamps() -> None:
+    # Gap G7 (AF.2, #235): AB.2 aggregates per alias over a window, so the hop says both.
+    hop = HopEvent.model_validate(
+        {
+            "kind": "hop",
+            "hop": 0,
+            "connection": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+            "alias": "coder-max",
+            "at": "2026-10-14T09:00:00.000Z",
+            "outcome": "failed_over",
+            "code": "cost_cap_exceeded",
+            "cap": {"source": "provider", "limitCents": 60000, "spentCents": 60000},
+            "latencyMs": 0,
+        }
+    )
+
+    assert (hop.alias, hop.at) == ("coder-max", "2026-10-14T09:00:00.000Z")
+    assert hop.cap is not None and hop.cap.source == "provider"
+
+
+def test_a_done_event_says_when_unpriced_usage_passed_a_cap_uncounted() -> None:
+    done = DoneEvent.model_validate(
+        {"kind": "done", "hop": 0, "finishReason": "stop", "unpricedNotCounted": True}
+    )
+
+    assert done.unpriced_not_counted is True
 
 
 def test_an_error_envelope_always_has_details() -> None:

@@ -447,3 +447,22 @@ export function recordedSilentPull(): Response {
     { status: 200, headers: { "content-type": "application/x-ndjson" } },
   );
 }
+
+/** A recorded `/api/chat` stream (AF.2, #235): counts on the last line, as Ollama sends them. */
+export const OLLAMA_INVOCATION_STREAM = [
+  '{"model":"qwen2.5-coder:7b","created_at":"2026-10-14T09:00:00Z","message":{"role":"assistant","content":"Hello"},"done":false}',
+  '{"model":"qwen2.5-coder:7b","created_at":"2026-10-14T09:00:00Z","message":{"role":"assistant","content":", world — ✓"},"done":false}',
+  '{"model":"qwen2.5-coder:7b","created_at":"2026-10-14T09:00:01Z","message":{"role":"assistant","content":""},"done_reason":"stop","done":true,"total_duration":812000000,"prompt_eval_count":26,"eval_count":8}',
+  "",
+].join("\n");
+
+/** The text {@link OLLAMA_INVOCATION_STREAM} carries. */
+export const OLLAMA_INVOCATION_TEXT = "Hello, world — ✓";
+
+/** The usage {@link OLLAMA_INVOCATION_STREAM} reports. */
+export const OLLAMA_INVOCATION_USAGE = Object.freeze({
+  inputTokens: 26,
+  outputTokens: 8,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+});

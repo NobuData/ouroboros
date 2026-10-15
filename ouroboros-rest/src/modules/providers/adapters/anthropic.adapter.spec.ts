@@ -110,7 +110,7 @@ describe("the Anthropic adapter's capabilities", () => {
       discovery: true,
       pull: false,
       entitlements: false,
-      invocation: false,
+      invocation: true,
     });
   });
 

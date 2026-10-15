@@ -3,54 +3,133 @@ import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
 
 import { ALLOW_ANONYMOUS } from "../auth/anonymous";
 import { INTERNAL_ONLY } from "./internal.decorators";
-import { INTERNAL_ERRORS } from "./internal.errors";
+import { INTERNAL_ERRORS, invokeTargetInvalid } from "./internal.errors";
 import { INVOKE_ROUTE, LLM_PATH } from "./internal.paths";
-import { INVOCATION_GATEWAY_AVAILABLE } from "./invoke.contract";
-import { LlmController } from "./llm.controller";
+import {
+  INVOCATION_GATEWAY_AVAILABLE,
+  INVOKE_MEDIA_TYPE,
+  type InvokeEvent,
+} from "./invoke.contract";
+import type { InvokeRequestDto } from "./invoke/invoke.dto";
+import type { InvokeService } from "./invoke/invoke.service";
+import { LlmController, type NdjsonResponse } from "./llm.controller";
 
 /**
- * The contract, callable — and refusing.
+ * The route, streaming.
  *
- * There is one behaviour to assert and it is a refusal, which makes this suite look thin. It
- * is not: what is being protected is the *shape* of a surface specified in one ticket and
- * implemented in another, and every assertion here is one that must still hold on the day
- * AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) replaces the method body.
- * The path, the verb, the guard metadata and the authentication are all part of the contract;
- * only the body of `invoke()` is AF.2's to change.
+ * The walk itself is `invoke/invoke.executor.spec.ts`'s; what is asserted here is the shape
+ * of the surface AD.3 specified and AF.2 (#235) implemented — the path, the verb, the guard
+ * metadata, and that everything after `prepare` is NDJSON on a `200`.
  */
 
-describe("what it answers today", () => {
-  it("refuses with 501, naming the issue that will implement it", () => {
-    const controller = new LlmController();
+/** A response that records what was written to it. */
+function recordingResponse(): NdjsonResponse & {
+  readonly lines: string[];
+  readonly headers: Map<string, string>;
+  ended: boolean;
+  statusCode: number;
+  close(): void;
+} {
+  const listeners: (() => void)[] = [];
+  const response = {
+    lines: [] as string[],
+    headers: new Map<string, string>(),
+    ended: false,
+    statusCode: 0,
+    status(code: number) {
+      response.statusCode = code;
+    },
+    setHeader(name: string, value: string) {
+      response.headers.set(name, value);
+    },
+    write(chunk: string) {
+      response.lines.push(chunk);
+    },
+    end() {
+      response.ended = true;
+    },
+    on(_event: "close", listener: () => void) {
+      listeners.push(listener);
+    },
+    close() {
+      for (const listener of listeners) listener();
+    },
+  };
 
-    expect(() => controller.invoke()).toThrow(
-      expect.objectContaining({ code: INTERNAL_ERRORS.invocationNotImplemented }) as Error,
-    );
+  return response;
+}
+
+const BODY = {
+  alias: "reasoning-primary",
+  payload: {},
+  runCtx: { run: "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94" },
+} as InvokeRequestDto;
+
+describe("what it answers", () => {
+  it("streams every event as one NDJSON line on a 200", async () => {
+    const events: InvokeEvent[] = [
+      { kind: "delta", hop: 0, text: "hi" },
+      { kind: "done", hop: 0, finishReason: "stop" },
+    ];
+    const service = {
+      prepare: jest.fn().mockResolvedValue({}),
+      stream: jest.fn(
+        (_prepared: unknown, _signal: AbortSignal, emit: (event: InvokeEvent) => void) => {
+          events.forEach(emit);
+
+          return Promise.resolve();
+        },
+      ),
+    } as unknown as InvokeService;
+    const response = recordingResponse();
+
+    await new LlmController(service).invoke(BODY, response);
+
+    expect(response.statusCode).toBe(HttpStatus.OK);
+    expect(response.headers.get("content-type")).toBe(INVOKE_MEDIA_TYPE);
+    expect(response.lines).toEqual(events.map((event) => `${JSON.stringify(event)}\n`));
+    expect(response.ended).toBe(true);
   });
 
-  it("is reported absent for as long as it refuses", () => {
-    // What Research's page reads (`GET /research/settings` § `gateway`, #633). The flag and
-    // the method body change in one commit — AF.2's — or the page offers a start that fails.
-    expect(() => new LlmController().invoke()).toThrow();
-    expect(INVOCATION_GATEWAY_AVAILABLE).toBe(false);
+  it("refuses before streaming when prepare refuses", async () => {
+    const service = {
+      prepare: jest.fn().mockRejectedValue(invokeTargetInvalid()),
+      stream: jest.fn(),
+    } as unknown as InvokeService;
+    const response = recordingResponse();
+
+    await expect(new LlmController(service).invoke(BODY, response)).rejects.toMatchObject({
+      code: INTERNAL_ERRORS.invokeTargetInvalid,
+    });
+    expect(response.statusCode).toBe(0);
+    expect(response.lines).toEqual([]);
   });
 
-  it("is a 501 rather than a 404, so a caller can tell the path was right", () => {
-    const controller = new LlmController();
+  it("aborts the walk when the worker disconnects", async () => {
+    let seen: AbortSignal | undefined;
+    const response = recordingResponse();
+    const service = {
+      prepare: jest.fn().mockResolvedValue({}),
+      stream: jest.fn(
+        (_prepared: unknown, signal: AbortSignal, emit: (event: InvokeEvent) => void) => {
+          seen = signal;
+          response.close();
+          emit({ kind: "delta", hop: 0, text: "x" });
 
-    try {
-      controller.invoke();
-      throw new Error("the controller was expected to refuse");
-    } catch (error) {
-      expect((error as { getStatus: () => number }).getStatus()).toBe(HttpStatus.NOT_IMPLEMENTED);
-    }
+          return Promise.resolve();
+        },
+      ),
+    } as unknown as InvokeService;
+
+    await new LlmController(service).invoke(BODY, response);
+
+    expect(seen?.aborted).toBe(true);
+    expect(response.ended).toBe(true);
   });
 
-  it("reads no body", () => {
-    // No DTO, deliberately: validation is part of the implementation, and a `422` for a
-    // request the finished surface would accept is worse than no validation at all. The
-    // handler takes no parameters, which is the mechanical form of that decision.
-    expect(LlmController.prototype.invoke).toHaveLength(0);
+  it("is reported available, now that it answers", () => {
+    // What Research's page reads (`GET /research/settings` § `gateway`, #633).
+    expect(INVOCATION_GATEWAY_AVAILABLE).toBe(true);
   });
 });
 
@@ -64,10 +143,9 @@ describe("how the route is declared", () => {
     expect(Reflect.getMetadata(METHOD_METADATA, LlmController.prototype.invoke)).toBe(1);
   });
 
-  it("is marked internal, so the key is required before the 501", () => {
-    // The order matters more here than anywhere else on this surface: an unauthenticated
-    // caller must learn nothing about what this path will one day do, and a `501` reachable
-    // by anybody would be an advertisement.
+  it("is marked internal, so the key is required before anything else", () => {
+    // An unauthenticated caller must learn nothing about this path, and a model call
+    // reachable by anybody would be spend anybody could make.
     expect(Reflect.getMetadata(INTERNAL_ONLY, LlmController)).toBe(true);
   });
 

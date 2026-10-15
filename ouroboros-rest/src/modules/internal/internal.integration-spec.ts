@@ -316,17 +316,18 @@ describe("the internal surface", () => {
   });
 
   describe("the invocation proxy", () => {
-    it("answers 501, naming the issue that implements it", async () => {
+    it("refuses a run it cannot attribute the call to", async () => {
       const response = await api
         .anonymous("post", INTERNAL_INVOKE_PATH)
         .set(INTERNAL_KEY_HEADER, key())
-        .send({ alias: "reasoning-primary", payload: {}, runCtx: { run: "r" } })
-        .expect(501);
+        .send({
+          alias: "reasoning-primary",
+          payload: {},
+          runCtx: { run: "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94" },
+        })
+        .expect(404);
 
-      const envelope = bodyOf<ErrorEnvelope>(response);
-
-      expect(envelope.code).toBe(INTERNAL_ERRORS.invocationNotImplemented);
-      expect(envelope.message).toContain("#235");
+      expect(bodyOf<ErrorEnvelope>(response).code).toBe(INTERNAL_ERRORS.runNotFound);
     });
 
     it("requires the key before it says even that", async () => {

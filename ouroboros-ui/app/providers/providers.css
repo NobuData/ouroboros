@@ -808,7 +808,7 @@
 }
 
 /*
- * The `ⓘ` after a capped line: *warning only — enforcement arrives with invocation*, as its
+ * The `ⓘ` after a capped line: *at the cap, model calls skip this provider*, as its
  * tooltip. Faint, because it qualifies the figure rather than competing with it, and a help
  * cursor so a pointer learns there is something to read. AF.4 (#237) removes it with the
  * sentence.

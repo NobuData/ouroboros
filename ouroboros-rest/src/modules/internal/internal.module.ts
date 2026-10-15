@@ -3,9 +3,15 @@ import { APP_GUARD } from "@nestjs/core";
 
 import { AuditModule } from "../audit/audit.module";
 import { DbModule } from "../db/db.module";
+import { PoliciesModule } from "../policies/policies.module";
+import { PricingModule } from "../pricing/pricing.module";
+import { ConnectionOpenerModule } from "../provider-connections/connection-opener.module";
+import { RoutingModule } from "../routing/routing.module";
 import { CredentialsController } from "./credentials.controller";
 import { InternalKeyGuard } from "./internal.guard";
 import { InternalRepository } from "./internal.repository";
+import { InvokeRepository } from "./invoke/invoke.repository";
+import { InvokeService } from "./invoke/invoke.service";
 import { LeaseAudit } from "./lease.audit";
 import { LeaseService } from "./lease";
 import { LlmController } from "./llm.controller";
@@ -57,13 +63,25 @@ import { LocalProviders } from "./local.providers";
  * route it answers, rather than importing this module from somewhere else.
  */
 @Module({
-  imports: [DbModule, AuditModule],
+  // The chain executor (AF.2, #235): routing resolves the chain, the connection opener holds the
+  // credential for one hop, pricing prices the usage, the org policy's spend guard caps a call
+  // that walks no route.
+  imports: [
+    DbModule,
+    AuditModule,
+    RoutingModule,
+    ConnectionOpenerModule,
+    PricingModule,
+    PoliciesModule,
+  ],
   controllers: [CredentialsController, LlmController],
   providers: [
     LocalProviders,
     InternalRepository,
     LeaseAudit,
     LeaseService,
+    InvokeRepository,
+    InvokeService,
     { provide: APP_GUARD, useClass: InternalKeyGuard },
   ],
 })

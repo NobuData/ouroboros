@@ -95,6 +95,8 @@ function cursorHarness(): AdapterConformance {
     // Nothing pulls a hosted model onto a machine. The kit's complementary leg asserts the
     // member is unreachable rather than that the case does not apply.
     pull: null,
+    // Not cleared by the provider-terms record (DH.4): no invoke, so no recordings.
+    invoke: null,
   };
 
   return harness;

@@ -2,9 +2,9 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest (internal)",
-    "version": "0.41.35",
+    "version": "0.41.36",
     "summary": "What ouroboros-engine may ask the control plane for — and what it is never given.",
-    "description": "The **engine-facing** surface of\n[Ouroboros](https://github.com/NobuData/ouroboros)' communications layer. Two\noperations, one caller, and one idea holding both of them together — roadmap decision\n**P3**, [#224](https://github.com/NobuData/ouroboros/issues/224):\n\n> **A worker never holds a provider credential.**\n\nMockup 07's page subline promises something weaker — *\"keys never leave the control\nplane — workers only ever see short-lived tokens\"* — and this document is where the\nfirst clause is made literal and the second is **improved on**. There is no token. A\nfifteen-minute credential is still a credential: it genuinely reaches the worker,\nrevocation is bounded only by its TTL, and the audit surface widens to every process\nthat ever held one. It is also, for most LLM providers, fiction — almost none support\nderiving short-lived scoped keys, so such a token would in practice be a full API key\nwith a timer bolted on by us.\n\nSo the two operations divide the world:\n\n| Operation | For | Hands over |\n|---|---|---|\n| `POST /internal/llm/invoke` | every **cloud** provider | nothing — the control plane makes the call and streams back the answer |\n| `POST /internal/credentials/lease` | **local** providers only | an address, TTL-bounded and audited |\n\nThe exception is narrow and is not a compromise. An engine worker calling an Ollama\ndaemon on the same box gains nothing from proxying its traffic through this service,\nbecause there is no key on that path to protect — so it is told the address and nothing\nelse, and a lease naming a cloud provider is a `403` by policy, enforced here rather\nthan trusted to the caller.\n\n**What is built and what is specified.** The lease is implemented. The proxy is\n*specified* by this document and implemented by AF.2\n([#235](https://github.com/NobuData/ouroboros/issues/235)); calling it today answers\n`501` with `code: \"invocation_not_implemented\"`, deliberately rather than `404`, so an\nexecutor being written against this contract can tell *the path is right and the other\nhalf is not built yet* from *I have the URL wrong*. The contract exists first because\nAF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)) has to choose an\nexecutor **against** it — a decision recorded afterwards is a description of whatever\ngot built.\n\n**Authentication is the #51 pattern, in the other direction.** Every operation requires\n`X-Ouro-Internal-Key`, carrying `OURO_ENGINE_SHARED_SECRET` — the same header and the\nsame variable `ouroboros-rest` sends when *it* calls the engine\n([#51](https://github.com/NobuData/ouroboros/issues/51)). The comparison is constant\ntime, a missing header takes the same path as a wrong one, and the rejection is one\nconstant body: `401` with `code: \"unauthenticated\"` and nothing else. A session cookie\nis not accepted here, whoever it belongs to.\n\n**These paths are outside `/api`, and unversioned.** `/api` is the browser's boundary;\nthe only caller of these two is deployed alongside this service and upgraded with it, so\na version in the path would be one nobody could ever be on a different side of. That is\nthe same argument `/health/live` and `ouroboros-engine`'s `/healthz` are written under.\n\n**Every error has the shape every other error in this system has** — `{code, message,\ndetails}`, `docs/ARCHITECTURE.md` § 5.3 — so a worker parses one envelope whether it\nwas refused at the boundary or inside a handler.\n\n**The naming convention changes at this boundary, once.** This service writes\n`camelCase` in its contracts and `ouroboros-engine` writes `snake_case` in its own; each\nside translates in exactly one file — `src/modules/engine/engine.contract.ts` here,\n`ouroboros_engine/control_plane/contract.py` there — so no code on either side carries\nthe other's spelling.",
+    "description": "The **engine-facing** surface of\n[Ouroboros](https://github.com/NobuData/ouroboros)' communications layer. Two\noperations, one caller, and one idea holding both of them together — roadmap decision\n**P3**, [#224](https://github.com/NobuData/ouroboros/issues/224):\n\n> **A worker never holds a provider credential.**\n\nMockup 07's page subline promises something weaker — *\"keys never leave the control\nplane — workers only ever see short-lived tokens\"* — and this document is where the\nfirst clause is made literal and the second is **improved on**. There is no token. A\nfifteen-minute credential is still a credential: it genuinely reaches the worker,\nrevocation is bounded only by its TTL, and the audit surface widens to every process\nthat ever held one. It is also, for most LLM providers, fiction — almost none support\nderiving short-lived scoped keys, so such a token would in practice be a full API key\nwith a timer bolted on by us.\n\nSo the two operations divide the world:\n\n| Operation | For | Hands over |\n|---|---|---|\n| `POST /internal/llm/invoke` | every **cloud** provider | nothing — the control plane makes the call and streams back the answer |\n| `POST /internal/credentials/lease` | **local** providers only | an address, TTL-bounded and audited |\n\nThe exception is narrow and is not a compromise. An engine worker calling an Ollama\ndaemon on the same box gains nothing from proxying its traffic through this service,\nbecause there is no key on that path to protect — so it is told the address and nothing\nelse, and a lease naming a cloud provider is a `403` by policy, enforced here rather\nthan trusted to the caller.\n\n**What is built.** The lease and the proxy are both implemented. The proxy was\n*specified* by this document first (AD.3) so that AF.1\n([#234](https://github.com/NobuData/ouroboros/issues/234)) could choose an executor\n**against** it, and AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235))\nimplemented it — a custom chain executor inside this service, with no sidecar.\n\n**Authentication is the #51 pattern, in the other direction.** Every operation requires\n`X-Ouro-Internal-Key`, carrying `OURO_ENGINE_SHARED_SECRET` — the same header and the\nsame variable `ouroboros-rest` sends when *it* calls the engine\n([#51](https://github.com/NobuData/ouroboros/issues/51)). The comparison is constant\ntime, a missing header takes the same path as a wrong one, and the rejection is one\nconstant body: `401` with `code: \"unauthenticated\"` and nothing else. A session cookie\nis not accepted here, whoever it belongs to.\n\n**These paths are outside `/api`, and unversioned.** `/api` is the browser's boundary;\nthe only caller of these two is deployed alongside this service and upgraded with it, so\na version in the path would be one nobody could ever be on a different side of. That is\nthe same argument `/health/live` and `ouroboros-engine`'s `/healthz` are written under.\n\n**Every error has the shape every other error in this system has** — `{code, message,\ndetails}`, `docs/ARCHITECTURE.md` § 5.3 — so a worker parses one envelope whether it\nwas refused at the boundary or inside a handler.\n\n**The naming convention changes at this boundary, once.** This service writes\n`camelCase` in its contracts and `ouroboros-engine` writes `snake_case` in its own; each\nside translates in exactly one file — `src/modules/engine/engine.contract.ts` here,\n`ouroboros_engine/control_plane/contract.py` there — so no code on either side carries\nthe other's spelling.",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -171,8 +171,8 @@
         "tags": [
           "invocation"
         ],
-        "summary": "Ask the control plane to make a model call (specified — AF.2 implements it)",
-        "description": "Make a model call on the worker's behalf and stream the answer back.\n\n**Not implemented.** This operation is specified by AD.3\n([#224](https://github.com/NobuData/ouroboros/issues/224)) and implemented by AF.2\n([#235](https://github.com/NobuData/ouroboros/issues/235)); it answers `501\ninvocation_not_implemented` today. The `200` below is the contract AF.2 is being\nbuilt against, and it is described here rather than after the fact because AF.1\n([#234](https://github.com/NobuData/ouroboros/issues/234)) has to choose between a\ncustom executor and LiteLLM-as-executor *against a written contract*.\n\n**The target is `connection` or `alias`, exactly one.** A connection is a concrete\nprovider connection and means *this provider and no other*. An alias means *whatever\nrouting resolves it to*, which is an ordered chain with a floor and a cap — resolved\nby Z.1 ([#194](https://github.com/NobuData/ouroboros/issues/194)) **on this side** of\nthe boundary, so that a worker cannot send a chain other than the one routing chose.\n\n**`payload` is opaque and passes through.** The adapters own the per-provider shape;\nthis service brokers the call and does not read the prompt.\n\n**The answer is always a stream** — `application/x-ndjson`, one event per line — even\nwhen the provider did not stream. Two response shapes would be two code paths, and\nthe non-streaming one would be the one that quietly stopped emitting usage. NDJSON\nrather than SSE because the reader is a worker process, not a browser: reconnection\nand event ids buy nothing here and cost a framing layer on both sides.\n\n**Every AB.1 ([#207](https://github.com/NobuData/ouroboros/issues/207)) semantic has\na name in this contract** — `floorHopIndex`, `costCapCents`, the `usage` event, the\n`hop` event and the error codes with their per-hop rules. They are hooks: this\ndocument says what they mean, AF.1 decides how they are implemented, AF.2 implements\nthem.",
+        "summary": "Ask the control plane to make a model call",
+        "description": "Make a model call on the worker's behalf and stream the answer back.\n\nSpecified by AD.3 ([#224](https://github.com/NobuData/ouroboros/issues/224)),\nimplemented by AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) as a\nchain executor over the provider adapters (AF.1's decision 4-A).\n\n**Which chain an alias walks.** When `runCtx.stage` names a task kind this workspace\nroutes, and the alias is a kept hop of that route's resolution, the executor walks\nthe resolution from that hop on: failover, floor and cap as routing explained them.\nOtherwise the alias's bound connection is called as a single hop — no fallback, no\nfloor — capped by the org policy's spend guard and `runCtx.costCapCents`.\n\n**Who the call is attributed to.** `runCtx.run` is a run, a Copilot session, a dry\nrun or an investigation id; the workspace is the one that owns it. Every attempted\nhop's usage is stored per hop, attributed to the connection and model that served it.\n\n**Failover.** `provider_unavailable` (5xx, timeouts), `provider_rate_limited` (after a\nbounded back-off on the same hop), `provider_auth_failed`, `context_window_exceeded`\nand `model_not_found` advance to the next hop; a hop whose connection is over its\nmonthly cap fails over with `cost_cap_exceeded`. Every other refusal aborts. A hop\nthat has already streamed text never hands over — its failure aborts with its code.\nExhausting the chain fails with `floor_exhausted` when a floor applies, otherwise\n`chain_exhausted`.\n\n**The target is `connection` or `alias`, exactly one.** A connection is a concrete\nprovider connection and means *this provider and no other*. An alias means *whatever\nrouting resolves it to*, which is an ordered chain with a floor and a cap — resolved\nby Z.1 ([#194](https://github.com/NobuData/ouroboros/issues/194)) **on this side** of\nthe boundary, so that a worker cannot send a chain other than the one routing chose.\n\n**`payload` is opaque and passes through.** The adapters own the per-provider shape;\nthis service brokers the call and does not read the prompt.\n\n**The answer is always a stream** — `application/x-ndjson`, one event per line — even\nwhen the provider did not stream. Two response shapes would be two code paths, and\nthe non-streaming one would be the one that quietly stopped emitting usage. NDJSON\nrather than SSE because the reader is a worker process, not a browser: reconnection\nand event ids buy nothing here and cost a framing layer on both sides.\n\n**Every AB.1 ([#207](https://github.com/NobuData/ouroboros/issues/207)) semantic has\na name in this contract** — `floorHopIndex`, `costCapCents`, the `usage` event, the\n`hop` event and the error codes with their per-hop rules. They are hooks: this\ndocument says what they mean, AF.1 decides how they are implemented, AF.2 implements\nthem.",
         "operationId": "invokeModel",
         "requestBody": {
           "required": true,
@@ -205,7 +205,7 @@
         },
         "responses": {
           "200": {
-            "description": "The stream. One JSON object per line, terminated by a `done` or an `error` event.\n\n**Specified, not yet answered** — see the operation description and the `501`\nbelow.",
+            "description": "The stream. One JSON object per line, terminated by a `done` or an `error` event.\nA failover, a cap and an exhausted chain are events here, not statuses.",
             "content": {
               "application/x-ndjson": {
                 "schema": {
@@ -229,16 +229,33 @@
               }
             }
           },
-          "501": {
-            "description": "`invocation_not_implemented` — the contract is published and AF.2\n([#235](https://github.com/NobuData/ouroboros/issues/235)) is what makes it\nanswer. Deliberately not a `404`, which is what a caller with the wrong path\ngets.",
+          "404": {
+            "description": "`run_not_found` — no run, Copilot session, dry run or investigation has the\n`runCtx.run` id. Also `alias_not_found` and `connection_not_found` for a target the\nrun's workspace does not have.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
                 "example": {
-                  "code": "invocation_not_implemented",
-                  "message": "The invocation proxy is specified and not yet implemented. It lands with AF.2 (issue #235); this route exists so the contract can be built against.",
+                  "code": "run_not_found",
+                  "message": "No run, Copilot session, dry run or investigation has that id. Every invocation is attributed to one.",
+                  "details": {
+                    "run": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A body the validator refuses, or `invoke_target_invalid` (neither or both of\n`connection` and `alias`), `invoke_model_required` (a connection call with no\n`payload.model`) or `alias_unavailable` (a disabled or unbound alias).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "invoke_target_invalid",
+                  "message": "Name exactly one of connection or alias: a connection is this provider, an alias is whatever routing resolves it to.",
                   "details": {}
                 }
               }
@@ -2503,7 +2520,8 @@
               "provider_not_leasable",
               "local_provider_not_configured",
               "run_not_found",
-              "invocation_not_implemented",
+              "invoke_target_invalid",
+              "alias_not_found",
               "validation_failed"
             ]
           },
@@ -2637,12 +2655,14 @@
           },
           "stage": {
             "type": "string",
-            "description": "The workflow stage — `runs.stage_label`. Telemetry rather than policy: AB.2\n([#208](https://github.com/NobuData/ouroboros/issues/208)) is what makes *which\nstage was running* the thing that renders a spike legible."
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "The workflow stage or routed task kind. When it names a task kind this workspace\nroutes, an alias is walked under that route's resolution. Also telemetry: AB.2\n([#208](https://github.com/NobuData/ouroboros/issues/208)) is what makes *which\nstage was running* the thing that renders a spike legible."
           },
           "floorHopIndex": {
             "type": "integer",
             "minimum": 0,
-            "description": "The hop index below which the chain may not degrade — AB.1's floor, and mockup\n06's *\"never silently below the floor you set\"*. Exhausting the chain down to it\nfails the run with `floor_exhausted` rather than using a hop beneath it."
+            "description": "A floor the worker asks for, as a stored hop **position** (`route_hops.position`),\nnever a chain index (G4) — AB.1's floor, and mockup 06's *\"never silently below the\nfloor you set\"*. It may only tighten the resolution's own floor. Exhausting the\nchain down to it fails the run with `floor_exhausted`."
           },
           "costCapCents": {
             "type": "integer",
@@ -2727,16 +2747,51 @@
       "InvokeErrorCode": {
         "type": "string",
         "title": "InvokeErrorCode",
-        "description": "The per-hop error taxonomy — AB.1's rules, named, with the behaviour each one implies.\n#235's first acceptance criterion is that an executor's failover matches *what\nrouting's explanation promised the user*, so the mapping lives in the contract both\nsides read rather than inside whichever module walks the chain.\n\n| Code | What it is | What the executor does |\n|---|---|---|\n| `provider_unavailable` | 5xx or a timeout | advances to the next hop |\n| `provider_rate_limited` | 429 or a provider throttle | backs off, then advances |\n| `provider_auth_failed` | the credential was refused | does **not** retry; marks the provider in error |\n| `request_invalid` | a 4xx that is not auth | aborts — the next hop would refuse it too |\n| `floor_exhausted` | the chain reached its floor | aborts with the floor reason |\n| `cost_cap_exceeded` | the run's cap is spent | aborts, naming the cap |\n| `chain_exhausted` | every hop failed, no floor to stop at | aborts |",
+        "description": "The per-hop error taxonomy — AB.1's rules, named, with the behaviour each one implies.\n#235's first acceptance criterion is that an executor's failover matches *what\nrouting's explanation promised the user*, so the mapping lives in the contract both\nsides read rather than inside whichever module walks the chain.\n\n| Code | What it is | What the executor does |\n|---|---|---|\n| `provider_unavailable` | 5xx or a timeout | advances to the next hop |\n| `provider_rate_limited` | 429 or a provider throttle | backs off, then advances |\n| `provider_auth_failed` | the credential was refused | does **not** retry; **advances** (G3) |\n| `context_window_exceeded` | the prompt is longer than this hop's model takes | advances (G8) |\n| `model_not_found` | this hop's provider does not have the model | advances (G8) |\n| `request_invalid` | a 4xx that is not auth | aborts — the next hop would refuse it too |\n| `floor_exhausted` | the chain reached its floor | aborts with the floor reason |\n| `cost_cap_exceeded` | the run's cap is spent, or a hop's provider's monthly cap | run cap aborts, naming the cap; a provider cap fails that hop over |\n| `chain_exhausted` | every hop failed, no floor to stop at | aborts |\n| `vote_execution_unavailable` | the resolution carries a vote, and votes are deferred to AZ.1 (#371) | refuses before any call (G5) |\n| `resolution_failed` | routing answered `fail_run` | runs nothing; `reason` carries routing's `failure.code` |\n\nA hop that has already streamed text never advances: its failure aborts with its code.",
         "enum": [
           "provider_unavailable",
           "provider_rate_limited",
           "provider_auth_failed",
+          "context_window_exceeded",
+          "model_not_found",
           "request_invalid",
           "floor_exhausted",
           "cost_cap_exceeded",
-          "chain_exhausted"
+          "chain_exhausted",
+          "vote_execution_unavailable",
+          "resolution_failed"
         ]
+      },
+      "InvokeCap": {
+        "type": "object",
+        "title": "InvokeCap",
+        "description": "Which cap stopped a call. `route` and `spend_guard` are routing's\n(`resolution.costCap`), `worker` is a tighter `runCtx.costCapCents`, `provider` is the\nhop's connection's calendar-month cap.",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "limitCents",
+          "spentCents"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "route",
+              "spend_guard",
+              "worker",
+              "provider"
+            ]
+          },
+          "limitCents": {
+            "type": "number",
+            "minimum": 0
+          },
+          "spentCents": {
+            "type": "number",
+            "minimum": 0,
+            "description": "What had been spent against it when it stopped the call."
+          }
+        }
       },
       "InvokeDeltaEvent": {
         "type": "object",
@@ -2802,6 +2857,16 @@
             "type": "integer",
             "minimum": 0
           },
+          "cacheReadTokens": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Prompt tokens served from the provider's cache."
+          },
+          "cacheWriteTokens": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Prompt tokens written to the provider's cache."
+          },
           "costCents": {
             "type": [
               "number",
@@ -2835,6 +2900,18 @@
             "type": "string",
             "format": "uuid"
           },
+          "alias": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The routing alias the hop came from — AB.2's per-alias input (G7)."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the attempt ended, stamped by the executor — AB.2's window input (G7)."
+          },
           "outcome": {
             "type": "string",
             "enum": [
@@ -2845,6 +2922,9 @@
           },
           "code": {
             "$ref": "#/components/schemas/InvokeErrorCode"
+          },
+          "cap": {
+            "$ref": "#/components/schemas/InvokeCap"
           },
           "latencyMs": {
             "type": "integer",
@@ -2878,6 +2958,13 @@
           "message": {
             "type": "string",
             "description": "A sentence for a person. Never a provider's own error text: those are not this\nAPI's contract and have carried tokens before now."
+          },
+          "cap": {
+            "$ref": "#/components/schemas/InvokeCap"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Routing's `failure.code`, when `code` is `resolution_failed`."
           }
         }
       },
@@ -2908,6 +2995,10 @@
               "length",
               "tool_use"
             ]
+          },
+          "unpricedNotCounted": {
+            "type": "boolean",
+            "description": "True when a cap applied and some of the call's usage was unpriced, so it passed\nwithout being counted toward the cap (G6)."
           }
         }
       },

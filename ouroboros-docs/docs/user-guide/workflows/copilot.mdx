@@ -106,13 +106,9 @@ and the code editor — nothing is a special case.*
 
 <Screenshot id="user-guide.workflows.copilot.conversation" />
 
-:::info[Not available yet]
-
-The Copilot replies through the invocation gateway, which is not delivered yet. Until it is,
-the card shows [The copilot needs the invocation gateway](#when-the-copilot-cannot-reply) and
-a message cannot be sent; a conversation already recorded can be read.
-
-:::
+The Copilot replies through the invocation gateway, which calls the model its
+`copilot-workflow` route resolves to — see
+[What a chain does when a model call fails](../models.mdx#what-a-chain-does-when-a-model-call-fails).
 
 ### The head of the card
 
@@ -229,7 +225,7 @@ which, above the messages, and the box is switched off. Messages already in the 
 stay readable.
 
 - **The copilot needs the invocation gateway** — this deployment cannot call a model, and the
-  Copilot cannot exist without one. This is a prerequisite, not an error: the page does not
+  Copilot cannot exist without one. Only a deployment of a REST release before 0.41.36 lacks it. This is a prerequisite, not an error: the page does not
   spin, and nothing fails when you press a button. The notice reports the workspace's current
   provider status — for example *Provider status: 4 connected — 3 active, 1 not yet checked.*,
   or *no provider is connected in this workspace* — and links to
@@ -530,13 +526,8 @@ At the foot of the card:
 Starting a dry run needs the workspace's GitHub token, as described under
 [Starting a dry run](#starting-a-dry-run).
 
-:::info[Not available yet]
-
-A dry run's model stages call a model through the invocation gateway, which is not delivered
-yet — the same gateway the [conversation](#when-the-copilot-cannot-reply) waits for. Until it
-is, the card is for reading dry runs that are already recorded.
-
-:::
+A dry run's model stages call a model through the invocation gateway, the same one the
+[conversation](#when-the-copilot-cannot-reply) replies through, each with its own routing.
 
 ### Watching a dry run
 

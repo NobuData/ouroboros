@@ -1937,7 +1937,7 @@ e2e: parity ✓ · add ✓ · test truth ✓ · reveal/rotate ✓ · pull ✓ ·
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AF.1 | ✅ #234 | 🟢 Done | ouroboros-rest: [AF.1] Invocation gateway ADR | Decide custom-executor vs LiteLLM-under-custom (AB.1 input) | mvp, live-loop, providers, routing, rest | Y | N | M | docs |
-| AF.2 | #235 | 🟡 Open | ouroboros-rest: [AF.2] Chain executor implementation | Execute Z.1 resolutions: per-hop errors, streaming, usage, caps | mvp, live-loop, providers, routing, rest, engine | Y (after AF.1, AD.3) | N | L | ouroboros-rest, ouroboros-engine |
+| AF.2 | ✅ #235 | 🟢 Done | ouroboros-rest: [AF.2] Chain executor implementation | Execute Z.1 resolutions: per-hop errors, streaming, usage, caps | mvp, live-loop, providers, routing, rest, engine | Y (after AF.1, AD.3) | N | L | ouroboros-rest, ouroboros-engine |
 | AF.3 | #236 | 🟡 Open | ouroboros-rest: [AF.3] Cloud adapters & KEK wrappers | OpenAI/Google/Bedrock adapters; KMS + Vault/OpenBao wrappers | v2, providers, rest | N (after AC.1, AD.1) | N | L | ouroboros-rest |
 | AF.4 | #237 | 🟡 Open | ouroboros-rest: [AF.4] Cap enforcement & spend alerts | Hard caps at invocation, threshold alerts, needs-you surfacing | v2, providers, rest, ui | N (after AF.2) | N | M | ouroboros-rest, ouroboros-ui |
 | AF.5 | #238 | 🟡 Open | ouroboros-ui: [AF.5] Ollama pull queue & model management | Pull queue, disk awareness, remove models, schedule refresh | v2, providers, ui | N (after AC.4) | N | M | ouroboros-ui, ouroboros-rest |
@@ -1968,7 +1968,7 @@ e2e: parity ✓ · add ✓ · test truth ✓ · reveal/rotate ✓ · pull ✓ ·
 
 ### Issue AF.2 — ouroboros-rest: [AF.2] Chain executor implementation
 
-> **GitHub issue:** #235 · **Status:** 🟡 Open · **Parent epic:** #215
+> **GitHub issue:** #235 · **Status:** 🟢 Done — streaming bar unmet, [measured](DECISION_INVOCATION_GATEWAY.md#as-measured-against-the-shipped-executor-2026-10-14) · **Parent epic:** #215
 
 
 - **Problem Statement:** The AD.3 proxy contract must become a working

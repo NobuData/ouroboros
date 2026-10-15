@@ -709,7 +709,7 @@ through the REST API, signed in as themselves — a
 
    `Origin` is the UI's public address. The answer is the setting as it now stands, beside
    [whether the deployment has the invocation gateway](#the-invocation-gateway):
-   `{"startRole":"admin","gateway":{"available":false}}`.
+   `{"startRole":"admin","gateway":{"available":true}}`.
 
 The setting is changed for the workspace your session is in. `GET` on the same address reads it
 back, and everyone in the workspace may read it.
@@ -729,7 +729,7 @@ The REST service reports which it is. `GET /api/v1/research/settings` answers
 `gateway.available` beside the starter role, and everyone in the workspace may read it:
 
 ```json
-{ "startRole": "member", "gateway": { "available": false } }
+{ "startRole": "member", "gateway": { "available": true } }
 ```
 
 | `gateway.available` | What the Research page does |
@@ -738,7 +738,12 @@ The REST service reports which it is. `GET /api/v1/research/settings` answers
 | `false` | Says so once, above its cards, and switches **New investigation** and **Start investigation ⟳** off — see [When research cannot run](../user-guide/research.mdx#when-research-cannot-run). |
 
 It is a fact about the build you deployed, not a setting: there is no variable to turn it on.
-In this release the gateway is not built, so every deployment answers `false`.
+The gateway is built into the REST service from 0.41.36, so a current deployment answers `true`;
+one on an earlier release answers `false`. <Since version="0.41.36" module="ouroboros-rest" />
+
+With the gateway, an investigation's model calls follow the routing of their task kinds, like any
+other model call — see
+[What a chain does when a model call fails](../user-guide/models.mdx#what-a-chain-does-when-a-model-call-fails).
 
 What needs no model is unaffected. The [regression watch](#regression-watch) still compares each
 night, opens items and bisects; the tools still report their health; briefs and roadmaps already

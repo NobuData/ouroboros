@@ -86,7 +86,9 @@ import {
   MODEL_ALIAS_TOKENS_MIN,
 } from "../../db/schema";
 import type {
-  ModelProviderAdapter,
+  InvocationCall,
+  InvocationCapableAdapter,
+  InvocationChunk,
   NormalizedModel,
   ProviderCapabilities,
   ProviderConnectionContext,
@@ -113,6 +115,9 @@ import {
 } from "../provider.config";
 import { ProviderAdapterError, classifyHttpStatus } from "../provider.errors";
 import { MODEL_PARAM_DIALECT, copyParamSchema, type ModelParamSchema } from "../provider.params";
+import { openAiBody } from "./invocation.payload";
+import { openInvocation } from "./invocation.stream";
+import { openAiRefusal, parseOpenAiStream } from "./openai.stream";
 
 /**
  * The property the optional API key is submitted under.
@@ -146,6 +151,9 @@ export const OPENAI_VERSION_SEGMENT = "/v1";
 
 /** The listing route, relative to the versioned root. */
 export const OPENAI_MODELS_PATH = "/models";
+
+/** The chat-completions route an invocation posts to, below the version segment. */
+export const OPENAI_CHAT_PATH = "/chat/completions";
 
 /**
  * What every discovered model's {@link NormalizedModel.display} begins with.
@@ -503,7 +511,7 @@ const OPENAI_COMPATIBLE_PARAM_SCHEMA: ModelParamSchema = {
  * safe because nothing about a connection is remembered between calls.
  */
 @Injectable()
-export class OpenAiCompatibleAdapter implements ModelProviderAdapter {
+export class OpenAiCompatibleAdapter implements InvocationCapableAdapter {
   /** V015's `provider_connections.kind` for this provider, and the registry's key. */
   readonly kind = "openai_compatible" as const;
 
@@ -531,8 +539,44 @@ export class OpenAiCompatibleAdapter implements ModelProviderAdapter {
    *
    * @returns All four flags, freshly built and equal on every call.
    */
-  capabilities(): ProviderCapabilities {
-    return { discovery: true, pull: false, entitlements: false, invocation: false };
+  capabilities(): ProviderCapabilities & { readonly invocation: true } {
+    return { discovery: true, pull: false, entitlements: false, invocation: true };
+  }
+
+  /**
+   * Make one streamed model call — AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)).
+   *
+   * Cleared by the provider-terms record (DH.4, `invocation.terms.ts`). The configuration is
+   * checked before any socket opens, as the listing checks it, so a missing field is a
+   * `config` failure rather than a `network` one.
+   *
+   * @param connection - The saved connection, opened for this one call.
+   * @param call - The model, the payload in the common chat shape, and the signal.
+   * @yields Deltas, cumulative usage, and one `done` last.
+   * @throws {ProviderAdapterError} Every failure, classified; see `invocation.stream.ts`.
+   */
+  invoke(
+    connection: ProviderConnectionContext,
+    call: InvocationCall,
+  ): AsyncIterable<InvocationChunk> {
+    return parseOpenAiStream(async () => {
+      const endpoint = listingEndpoint(connection.config, connection.secret);
+
+      if (!endpoint.ok) {
+        throw new ProviderAdapterError("config", endpoint.detail);
+      }
+
+      return openInvocation(
+        {
+          url: `${endpoint.url.slice(0, -OPENAI_MODELS_PATH.length)}${OPENAI_CHAT_PATH}`,
+          host: endpoint.host,
+          headers: { ...requestHeaders(connection.secret), accept: "text/event-stream" },
+          body: openAiBody(call.modelId, call.payload),
+          signal: call.signal,
+        },
+        openAiRefusal,
+      );
+    });
   }
 
   /**

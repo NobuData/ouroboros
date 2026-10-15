@@ -34,8 +34,9 @@ The ⋯ menu holds **Delete provider…**.
 
 :::note[Calling models through a provider]
 
-This version of Ouroboros stores, tests and discovers through these connections, and routing
-resolves to them. Calling a model through a connection is not available yet.
+Loops call models through these connections, along the chains routing resolves to them. Only
+**Anthropic**, **OpenAI-compatible** and **Ollama** connections can answer a model call —
+see [Which connections can run a loop](#which-connections-can-run-a-loop).
 
 :::
 
@@ -143,6 +144,9 @@ are updated from the same check.
 
 A card in **error** stays usable for reading. Fix the key or address, then test it again.
 
+The card's **last used** time is the last time the connection answered a model call for a loop.
+A connection that has never answered one shows **—**.
+
 ## Discovering models
 
 **Models available** lists what the provider says it serves, with its tier where the provider
@@ -186,9 +190,14 @@ engine should use it.
 local provider shows *no metered spend*.
 
 **Monthly cap** sets the amount the meter measures against, such as `$600`. Clear the field for
-no cap. The meter turns to a warning as spend nears the cap. The cap is a **warning only**: it
-does not stop loops. To stop a loop that would spend too much, set **Max cost per run** on its
-[route](../user-guide/models.mdx), or a spend guard in [Policies](./policies.mdx).
+no cap. The meter turns to a warning as spend nears the cap. Once a provider's spend this month
+reaches its cap, model calls skip it: a route moves on to its next hop, and a call that has no
+other hop fails, naming the provider's cap. The cap does not pause loops or stop anything else;
+the **ⓘ** after a capped meter says so: *At the cap, model calls skip this provider — nothing
+else stops.*
+To stop a loop that would spend too much, set **Max cost per run** on its
+[route](../user-guide/models.mdx#what-a-chain-does-when-a-model-call-fails), or a spend guard in
+[Policies](./policies.mdx).
 
 The **Spend** tab beside **Providers & keys** is marked **soon** and is not available yet.
 
@@ -242,8 +251,11 @@ keys that do not exist.
 - ***Too many reveal attempts.*** Reveals are rate-limited. Wait the seconds the message gives.
 - **A provider cannot be deleted.** Routes still resolve through it. Choose **Open routing** and
   repoint them first, or switch the provider off instead.
-- **Spend passed the cap and nothing stopped.** The monthly cap is a warning. Use a per-run cap
-  or a spend guard to stop spending.
+- **Spend passed the cap and the loop kept running.** The monthly cap only makes model calls
+  skip that provider; a route with another hop carries on there. Use a per-run cap or a spend
+  guard to stop spending.
+- **A model call fails, naming a provider's monthly cap.** The provider is over its cap and the
+  call had no other hop to move to. Raise the cap, or add a fallback hop to the route.
 - **An alias shows *no key — connect a provider*.** Its provider has no key stored. Store one
   with **Save** on the provider's card.
 - **The REST service exits at start-up naming `OURO_VAULT_MASTER_KEY`.** The vault cannot open

@@ -192,6 +192,25 @@ export class ProviderConnectionsRepository {
   }
 
   /**
+   * Stamp `last_used_at` — maintained by AF.2 (#235), as V017 reserved it.
+   *
+   * Never moves backwards: two hops finishing out of order leave the later time.
+   *
+   * @param organizationId - The workspace.
+   * @param connectionId - The connection.
+   * @param at - When it served a call.
+   */
+  async touch(organizationId: string, connectionId: string, at: Date): Promise<void> {
+    await this.database.db
+      .updateTable("provider_connections")
+      .set({ last_used_at: at })
+      .where("organization_id", "=", organizationId)
+      .where("id", "=", connectionId)
+      .where((eb) => eb.or([eb("last_used_at", "is", null), eb("last_used_at", "<", at)]))
+      .execute();
+  }
+
+  /**
    * One connection's sealed credential.
    *
    * **The only statement in this module that names `credentials_encrypted`**, and it selects

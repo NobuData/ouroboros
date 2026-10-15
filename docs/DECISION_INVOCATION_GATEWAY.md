@@ -296,6 +296,32 @@ executor's pre-flight calls the gate, the call goes out, and the metered usage s
 all in `ouroboros-rest` and PostgreSQL. LiteLLM's budget tables never exist, so option 2-D's
 backstop does not apply, and EB.3 keeps the shape it was written in.
 
+### As measured against the shipped executor (2026-10-14)
+
+`run.sh real` against `POST /internal/llm/invoke` in `ouroboros-rest` 0.41.36 — one process, a
+seeded PostgreSQL 17, an alias routed through the `implement` resolution to an
+`openai_compatible` connection on the fake provider, 20 s per point. TTFT overhead over `direct`,
+p50 / p95, in ms; tokens a second for `direct` and for REST; REST's CPU as a share of one core:
+
+| Concurrent streams | Overhead | direct tok/s | REST tok/s | REST CPU % |
+|---:|---:|---:|---:|---:|
+| 1 | +9 / +19 | 90 | 90 | 2 |
+| 10 | +5 / +3 | 905 | 899 | 6 |
+| 50 | +66 / +127 | 4,461 | 4,293 | 20 |
+| 100 | +154 / +233 | 8,987 | 8,248 | 33 |
+| 250 | +343 / +579 | 22,001 | 17,942 | 66 |
+
+**The streaming criterion is not met.** At 250 paced streams the shipped executor adds
+**+343 ms at p50**, against the +50 ms bar; the prototype's relay added +1 ms. The relay work per
+token matches the prototype's (about three quarters of a core at 250 streams). The difference is
+the request around it — Nest's routing and pipes, three global middlewares, about six SQL
+statements and the provider `fetch`, roughly 2.8 ms of CPU per call — which the closed-loop load
+lands as one burst of 250 calls every three seconds, queued behind the relay's work. The first
+build measured +578 ms; memoising routing's resolution for one second and a run's owner, writing
+the resolution snapshot beside the walk, reading each connection once and taking the generators
+out of the token path brought it to +343 ms. The rest is follow-up work
+([#1787](https://github.com/NobuData/ouroboros/issues/1787)), not a reason to reopen this decision: 4-B pays the same request cost plus its own hop.
+
 ## What this decision does not cover
 
 - **Hard cap enforcement beyond blocking** is AF.4

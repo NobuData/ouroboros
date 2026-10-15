@@ -61,14 +61,15 @@ function rig(
 }
 
 describe("LoopCapabilitiesService (DG.2, #1300)", () => {
-  it("reports today's main: every stage unavailable", async () => {
+  it("reports a workspace with nothing connected: every stage unavailable", async () => {
     const { service } = rig();
 
     const report = await service.read(WORKSPACE);
 
     expect(report.deploymentEnabled).toBe(false);
+    // The gateway answers since AF.2 (#235); what stops invocation now is the workspace.
     expect(Object.values(report.stages).map((stage) => stage.reason)).toEqual([
-      "not_implemented",
+      "no_invocable_connection",
       "deployment_disabled",
       "execution_unavailable",
       "no_runner",
@@ -155,8 +156,8 @@ describe("LoopCapabilitiesService (DG.2, #1300)", () => {
 
     const report = await service.read(WORKSPACE);
 
-    // The route itself is still the 501: `not_implemented` wins over the connection.
-    expect(report.stages.invocation.reason).toBe("not_implemented");
+    // The gateway answers (AF.2, #235) and a connection is invocable, so nothing stops it.
+    expect(report.stages.invocation.reason).toBeNull();
     expect(report.stages.buildIntegration.reason).toBe("no_source_checkout");
   });
 });

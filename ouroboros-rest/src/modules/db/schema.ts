@@ -2316,6 +2316,9 @@ export interface QueueItemsTable {
   updated_at: Stamped;
 }
 
+/** What a `token_usage` row is attributed to (V139) — the four owners of an invocation. */
+export type TokenUsageSubjectKind = "run" | "copilot_session" | "dry_run" | "investigation";
+
 /**
  * `ouroboros.token_usage` — the append-only token spend ledger (V010,
  * [#66](https://github.com/NobuData/ouroboros/issues/66)).
@@ -2370,6 +2373,28 @@ export interface TokenUsageTable {
    * a local daemon on loopback really does, and it must stay tellable apart from *unmeasured*.
    */
   latency_ms: number | null;
+  /** The provider connection that served this hop (V139, AF.2 #235). Null for ingest rows. */
+  connection_id: string | null;
+  /** The routing alias of the hop that served it. */
+  alias: string | null;
+  /** The hop's index in the resolved chain, or null outside a chain. */
+  hop: number | null;
+  /** The stage or task kind the worker named. */
+  stage: string | null;
+  /** The stage attempt, for the Messages-format facade (R9). */
+  attempt: number | null;
+  /** A vote's own invocation (R5). */
+  is_vote: Generated<boolean>;
+  /** Prompt tokens served from the provider's cache. */
+  cache_read_tokens: Generated<number>;
+  /** Prompt tokens written to the provider's cache. */
+  cache_write_tokens: Generated<number>;
+  /** What the usage is attributed to when it is not only a run. */
+  subject_kind: TokenUsageSubjectKind | null;
+  /** The subject's id; equals `run_id` for a run. */
+  subject_id: string | null;
+  /** The resolution this call executed (gap G1). */
+  resolution_snapshot_id: string | null;
   created_at: Stamped;
 }
 
@@ -8578,6 +8603,17 @@ export const TABLE_COLUMNS = {
     "occurred_at",
     "task_kind",
     "latency_ms",
+    "connection_id",
+    "alias",
+    "hop",
+    "stage",
+    "attempt",
+    "is_vote",
+    "cache_read_tokens",
+    "cache_write_tokens",
+    "subject_kind",
+    "subject_id",
+    "resolution_snapshot_id",
     "created_at",
   ],
   workspace_settings: [

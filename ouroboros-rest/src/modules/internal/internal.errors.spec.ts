@@ -8,7 +8,9 @@ import {
   INTERNAL_ERRORS,
   UNAUTHORIZED_MESSAGE,
   internalUnauthenticated,
-  invocationNotImplemented,
+  invokeModelRequired,
+  invokeRunNotFound,
+  invokeTargetInvalid,
   localProviderNotConfigured,
   providerNotLeasable,
   runNotFound,
@@ -103,25 +105,17 @@ describe("the two absences", () => {
   });
 });
 
-describe("the proxy that is not built yet", () => {
-  it("answers 501, not 404", () => {
-    // The distinction the route exists for: `404` is what a caller with the wrong path gets,
-    // and an executor being written against this contract has to be able to rule that out.
-    expect(invocationNotImplemented().getStatus()).toBe(HttpStatus.NOT_IMPLEMENTED);
+describe("the invocation proxy's refusals", () => {
+  it("are 422s for a request that cannot be a call", () => {
+    expect(invokeTargetInvalid().getStatus()).toBe(HttpStatus.UNPROCESSABLE_ENTITY);
+    expect(invokeModelRequired().getStatus()).toBe(HttpStatus.UNPROCESSABLE_ENTITY);
   });
 
-  it("names the issue that makes it answer", () => {
-    // A pointer rather than a dead end: whoever calls this needs to know where the other
-    // half is, and a `501` with a generic message would send them to read the router.
-    expect(invocationNotImplemented().envelope().message).toContain("#235");
-  });
+  it("shares run_not_found with the lease, with a sentence naming every subject", () => {
+    const error = invokeRunNotFound("4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94");
 
-  it("keeps its message, unlike every other 5xx", () => {
-    // `error.filter.ts` replaces the message of any 5xx that is not a `DomainError` with
-    // INTERNAL_ERROR_MESSAGE, because a status somebody chose and a message somebody wrote
-    // for a client are different things. This one is a `DomainError`, so the sentence above
-    // is what a caller actually reads — which is the whole reason `NotImplementedError`
-    // exists as a subclass.
-    expect(invocationNotImplemented().envelope().message).not.toContain("has been logged");
+    expect(error.getStatus()).toBe(HttpStatus.NOT_FOUND);
+    expect(error.envelope().code).toBe(INTERNAL_ERRORS.runNotFound);
+    expect(error.envelope().message).toContain("Copilot session");
   });
 });

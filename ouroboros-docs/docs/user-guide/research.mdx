@@ -14,8 +14,8 @@ tickets for the loop to pick up.
 
 <Screenshot id="user-guide.research" />
 
-The notice in the picture, and the switched-off **New investigation**, are what a deployment
-without the invocation gateway shows — see [When research cannot run](#when-research-cannot-run).
+A deployment without the invocation gateway shows a notice above the cards and switches
+**New investigation** off — see [When research cannot run](#when-research-cannot-run).
 
 ## The page
 
@@ -1281,8 +1281,8 @@ do, in order.
 2. **Ask a question.** The **Investigations** card reads **Ask your first question**. Press
    **Ask a question** to go to the composer — see
    [Starting an investigation](#starting-an-investigation). The button is switched off, with
-   the reason as its tooltip, whenever **New investigation** is — as it is in the picture above,
-   taken on a deployment [without the invocation gateway](#when-research-cannot-run).
+   the reason as its tooltip, whenever **New investigation** is — for a **Viewer**, for example,
+   or on a deployment [without the invocation gateway](#when-research-cannot-run).
 3. **Capture a baseline.** **Regression watch** reads **No release baseline yet** and offers
    **Capture a baseline** — see [Before the first baseline](#before-the-first-baseline).
 
@@ -1296,8 +1296,8 @@ connected yet. A workspace owner or admin enables them here.*
 ### When research cannot run
 
 Research needs a model to plan an investigation and write its brief. Ouroboros reaches models
-through its **invocation gateway**. On a deployment without it, the page says so once, above the
-cards:
+through its **invocation gateway**, which the REST service has from release 0.41.36. On a
+deployment of an earlier release, the page says so once, above the cards:
 
 > **Research needs the invocation gateway**
 >

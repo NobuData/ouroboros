@@ -391,3 +391,34 @@ export function recordedStreamedOversize(totalBytes = PROVIDER_MAX_RESPONSE_BYTE
     headers: { "content-type": "application/json" },
   });
 }
+
+/**
+ * A recorded chat-completions stream (AF.2, #235), with the usage frame
+ * `stream_options.include_usage` asks for and the `[DONE]` sentinel.
+ */
+export const OPENAI_INVOCATION_STREAM = [
+  'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}',
+  "",
+  'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}',
+  "",
+  'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":", world — ✓"},"finish_reason":null}]}',
+  "",
+  'data: {"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+  "",
+  'data: {"id":"c1","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":31,"completion_tokens":9,"total_tokens":40,"prompt_tokens_details":{"cached_tokens":6}}}',
+  "",
+  "data: [DONE]",
+  "",
+  "",
+].join("\n");
+
+/** The text {@link OPENAI_INVOCATION_STREAM} carries. */
+export const OPENAI_INVOCATION_TEXT = "Hello, world — ✓";
+
+/** The usage {@link OPENAI_INVOCATION_STREAM} reports: cached tokens split out of the prompt. */
+export const OPENAI_INVOCATION_USAGE = Object.freeze({
+  inputTokens: 25,
+  outputTokens: 9,
+  cacheReadTokens: 6,
+  cacheWriteTokens: 0,
+});
