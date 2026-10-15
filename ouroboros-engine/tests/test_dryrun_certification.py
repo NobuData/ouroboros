@@ -63,7 +63,7 @@ from ouroboros_engine.dryrun.contract import (
 from ouroboros_engine.dryrun.describe import describe_harness
 from ouroboros_engine.dryrun.estimates import EstimateUnavailableError, ReplayedStage
 from ouroboros_engine.dryrun.guard import ALLOW_LIST, WORKSPACE_BOUNDARY, GuardAudit
-from ouroboros_engine.dryrun.harness import MAX_CONTEXT_DIFF
+from ouroboros_engine.dryrun.harness import MAX_CONTEXT_DIFF, MAX_EXCERPT
 from ouroboros_engine.dryrun.model import StageCall
 from ouroboros_engine.dryrun.tools import MAX_READ_CHARS, ToolSet, ToolSpec
 from ouroboros_engine.dryrun.workspace import (
@@ -1379,6 +1379,94 @@ def test_the_diff_artifact_is_whole_at_its_bound_and_flagged_one_byte_past(
     assert [(c.path, c.added, c.removed) for c in diff.path_summary] == [
         ("gen/table.c", content.count("\n"), 0)
     ]
+
+
+#: The most items one stage reports, and the most characters of one — ``protocol.py``'s.
+_ITEMS, _ITEM_CHARS = 20, 300
+
+
+def _excerpt_script(kind: str, full: int, last: int) -> dict[str, list[Any]]:
+    """The seeded run, with two stages reporting long lists for one excerpt.
+
+    One stage cannot fill an excerpt — 20 items of 300 characters is 6000 — so the first of
+    the two reports a full list, and the second ``full`` full items and one of ``last``.
+
+    Args:
+        kind: ``plan_excerpt`` (plan steps) or ``review_excerpt`` (review nits).
+        full: How many full items the second stage reports.
+        last: How long its last item is.
+
+    Returns:
+        The script.
+    """
+    second = ["b" * _ITEM_CHARS] * full + ["c" * last]
+    script = happy()
+    if kind == "plan_excerpt":
+        script["analyze"][-1] = result(
+            summary="Mapped.", steps=["a" * _ITEM_CHARS] * _ITEMS
+        )
+        script["plan"] = [result(summary="Planned.", steps=second)]
+    else:
+        script["review-primary"] = [
+            result(
+                verdict="approve",
+                nits=[{"kind": "style", "text": "a" * _ITEM_CHARS}] * _ITEMS,
+            )
+        ]
+        script["review-second"] = [
+            result(
+                verdict="approve", nits=[{"kind": "style", "text": t} for t in second]
+            )
+        ]
+    return script
+
+
+def _excerpt(script: dict[str, list[Any]], kind: str) -> Any:
+    """The excerpt artifact of one run."""
+    return next(a for a in _run(script).done.artifacts if a.kind == kind)
+
+
+def _excerpt_of_size(kind: str, size: int) -> Any:
+    """Run the seeded run with an excerpt whose whole text is exactly ``size`` characters.
+
+    The whole size is what ``original_bytes`` reports — ASCII, so characters and bytes agree —
+    which is what lets the length be dialled in: probe with a one-character last item, then
+    grow it by the difference.
+    """
+    for full in range(_ITEMS):
+        probe = _excerpt(_excerpt_script(kind, full, 1), kind).original_bytes
+        if 0 <= size - probe < _ITEM_CHARS:
+            artifact = _excerpt(_excerpt_script(kind, full, 1 + size - probe), kind)
+            assert artifact.original_bytes == size
+            return artifact
+    raise AssertionError(f"no script gives a {kind} of {size} characters")
+
+
+@pytest.mark.parametrize("kind", ["plan_excerpt", "review_excerpt"])
+@pytest.mark.parametrize("over", [0, 1])
+def test_an_excerpt_is_whole_at_its_bound_and_flagged_one_character_past(
+    kind: str, over: int
+) -> None:
+    """An excerpt says ``truncated`` exactly when it was cut, with its uncut size (#1747)."""
+    artifact = _excerpt_of_size(kind, MAX_EXCERPT + over)
+
+    assert artifact.original_bytes == MAX_EXCERPT + over
+    assert artifact.truncated is bool(over)
+    assert len(artifact.content) == MAX_EXCERPT
+
+
+def test_two_stages_of_twenty_long_steps_are_a_flagged_cut_with_their_whole_size() -> (
+    None
+):
+    """The issue's own case: two stages of 20 steps of 300 characters each."""
+    script = _excerpt_script("plan_excerpt", _ITEMS - 1, _ITEM_CHARS)
+
+    plan = _excerpt(script, "plan_excerpt")
+
+    assert plan.truncated is True
+    assert len(plan.content) == MAX_EXCERPT
+    assert plan.original_bytes > MAX_EXCERPT
+    assert plan.original_bytes > 2 * _ITEMS * _ITEM_CHARS
 
 
 @pytest.mark.parametrize("over", [0, 1])
