@@ -47,12 +47,17 @@ import { DatabaseService } from "../db/db.service";
 import type {
   Database,
   DraftEditor,
+  DraftOperationActor,
   Workflow,
   WorkflowStatus,
   WorkflowVersion,
 } from "../db/schema";
 import type { PageWindow } from "../tenancy/pagination";
 import { asCount, queryOn } from "../tenancy/queries";
+import type { StudioOperation } from "./draft.diff";
+
+/** The actors a studio save is recorded as: the canvas, or the code editor (#1751). */
+export type DraftActor = Extract<DraftOperationActor, "canvas" | "code">;
 
 /** What {@link WorkflowsRepository.create} is given. */
 export interface NewWorkflowInput {
@@ -407,6 +412,77 @@ export class WorkflowsRepository {
       .where("version", "is", null)
       .returningAll()
       .executeTakeFirst();
+  }
+
+  /**
+   * The document a workflow's draft log replays from — `ouroboros.workflow_draft_base()` (V110,
+   * V143): the version in force, or the empty document. Asked of the database rather than
+   * rebuilt here, so a first save is diffed against exactly what `apply_draft_batch()` will
+   * apply it over.
+   *
+   * @param workflowId - The workflow.
+   * @param trx - The save's transaction.
+   * @returns The base document.
+   */
+  async draftBase(workflowId: string, trx: Transaction<Database>): Promise<unknown> {
+    const result = await sql<{ base: unknown }>`
+      select ouroboros.workflow_draft_base(${workflowId}::uuid) as base`.execute(trx);
+
+    return result.rows[0]?.base;
+  }
+
+  /**
+   * Apply a studio save's operations to the draft — `ouroboros.apply_draft_batch()` (#1751), as
+   * the canvas or the code editor. The function records each operation with the actor and the
+   * person, moves `draft_rev` and `provenance_summary`, sets `edited_in`, and creates the draft
+   * from its base when there is none — atomically.
+   *
+   * @param organizationId - The workspace.
+   * @param workflowId - The workflow.
+   * @param actor - `canvas` or `code`.
+   * @param actorUserId - The person who saved, or `null` when no person did (a Build Analyzer
+   *   proposal, #514).
+   * @param operations - The batch, from `diffDraft()`; never empty.
+   * @param trx - The save's transaction, which holds the draft lock the etag was checked under.
+   * @returns The revision the batch produced.
+   */
+  async applyBatch(
+    organizationId: string,
+    workflowId: string,
+    actor: DraftActor,
+    actorUserId: string | null,
+    operations: readonly StudioOperation[],
+    trx: Transaction<Database>,
+  ): Promise<number> {
+    const result = await sql<{ draft_rev: number }>`
+      select draft_rev
+        from ouroboros.apply_draft_batch(
+          ${organizationId}, ${workflowId}::uuid, ${actor}, ${actorUserId},
+          null, null, ${JSON.stringify(operations)}::jsonb)`.execute(trx);
+
+    const [row] = result.rows;
+    if (row === undefined) throw new Error("apply_draft_batch returned no row");
+    return row.draft_rev;
+  }
+
+  /**
+   * Set a draft's proposed change note (#514), leaving its document as it is.
+   *
+   * @param draftId - The draft row's id.
+   * @param changeNote - The note.
+   * @param trx - The save's transaction.
+   */
+  async setChangeNote(
+    draftId: string,
+    changeNote: string,
+    trx: Transaction<Database>,
+  ): Promise<void> {
+    await trx
+      .updateTable("workflow_versions")
+      .set({ change_note: changeNote })
+      .where("id", "=", draftId)
+      .where("version", "is", null)
+      .execute();
   }
 
   /**

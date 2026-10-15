@@ -707,6 +707,183 @@ describe("copilot certification — session flows (#564)", () => {
     });
   });
 
+  describe("a person's edit after the copilot's (#1751)", () => {
+    /** A stage a person adds in the studio. */
+    const LINT_NODE = {
+      id: "lint",
+      type: "infra",
+      title: "Lint",
+      position: { x: 560, y: 320 },
+      config: {},
+    } as const;
+
+    /** The draft as the stage list reads it — what it polls, so the pill clears without a reload. */
+    interface StageListDraft {
+      readonly etag: string;
+      readonly label: string;
+      readonly definition: { readonly nodes: readonly { readonly id: string }[] };
+      readonly provenanceSummary: Record<string, number>;
+      readonly nodeProvenance: readonly { readonly nodeId: string; readonly provenance: string }[];
+    }
+
+    /** The copilot builds trigger → implement, test; answers the draft the studio then opens. */
+    async function copilotBuilt(
+      name: string,
+    ): Promise<{ workflow: StagedWorkflow; draft: StageListDraft }> {
+      const { workflow, session } = await conversationOn(name);
+      stage.engine.script(
+        [
+          toolCall("c1", "set_trigger", { trigger: TRIGGER }),
+          toolCall("c2", "add_stage", { node: IMPLEMENT_NODE }),
+          toolCall("c3", "add_stage", { node: TEST_NODE }),
+          done("tool_use"),
+        ],
+        [delta("Drafted."), done()],
+      );
+      await stage.say(workflow.id, session, "Start a bug loop.");
+
+      return { workflow, draft: await stageList(workflow.id) };
+    }
+
+    /** `GET …/copilot/draft`, as a viewer. */
+    async function stageList(workflowId: string): Promise<StageListDraft> {
+      const read = await stage
+        .as(stage.people.viewer, "get", `/api/v1/workflows/${workflowId}/copilot/draft`)
+        .expect(200);
+
+      return read.body as StageListDraft;
+    }
+
+    /** How many rows the replay probe reports for a workflow. */
+    async function mismatches(workflowId: string): Promise<number> {
+      const row = await stage.one<{ count: string }>(
+        `select count(*) as count from ${SCHEMA_NAME}.workflow_draft_replay_mismatches
+          where workflow_id = $1`,
+        [workflowId],
+      );
+
+      return Number(row?.count ?? 0);
+    }
+
+    it("clears the pill on a stage a person renamed on the canvas, and marks a stage they added as theirs", async () => {
+      const { workflow, draft } = await copilotBuilt("canvas edit");
+      expect(draft.label).toBe("v0.3");
+      expect(draft.nodeProvenance.map((entry) => entry.provenance)).toEqual(["copilot", "copilot"]);
+
+      const renamed = { ...IMPLEMENT_NODE, title: "Implement (renamed on the canvas)" };
+      await stage
+        .as(stage.people.owner, "put", `/api/v1/workflows/${workflow.id}/draft`)
+        .set("If-Match", draft.etag)
+        .send({
+          definition: {
+            dsl_version: "1.0",
+            trigger: TRIGGER,
+            nodes: [renamed, TEST_NODE, LINT_NODE],
+            edges: [],
+          },
+        })
+        .expect(200);
+
+      // The stage list's next poll: the renamed stage and the added one are the person's, the
+      // untouched one is still the copilot's; the revision and the canvas count moved.
+      const after = await stageList(workflow.id);
+      expect(after.nodeProvenance).toEqual([
+        expect.objectContaining({ nodeId: IMPLEMENT_NODE.id, provenance: "human" }),
+        expect.objectContaining({ nodeId: TEST_NODE.id, provenance: "copilot" }),
+        expect.objectContaining({ nodeId: LINT_NODE.id, provenance: "human" }),
+      ]);
+      expect(after.label).toBe("v0.4");
+      expect(after.provenanceSummary).toEqual({ canvas: 1, code: 0, copilot: 3, suggestion: 0 });
+
+      // The log: one canvas batch, by the person who saved, of exactly what changed.
+      expect((await logged(workflow.id)).slice(3)).toEqual([
+        {
+          actor: "canvas",
+          actor_user_id: stage.people.owner.id,
+          session_id: null,
+          draft_rev: 4,
+          seq: 1,
+          op: { kind: "set_stage", params: { node: renamed } },
+        },
+        {
+          actor: "canvas",
+          actor_user_id: stage.people.owner.id,
+          session_id: null,
+          draft_rev: 4,
+          seq: 2,
+          op: { kind: "add_stage", params: { node: LINT_NODE } },
+        },
+      ]);
+      expect(await mismatches(workflow.id)).toBe(0);
+    });
+
+    it("clears the pill on a stage a person retitled in the code view, as a code batch", async () => {
+      const { workflow, draft } = await copilotBuilt("code edit");
+      const file = await stage
+        .as(stage.people.owner, "get", `/api/v1/workflows/${workflow.slug}/code`)
+        .expect(200);
+      const { text, etag } = file.body as { text: string; etag: string };
+      expect(etag).toBe(draft.etag);
+      const retitled = text.replace('title: "Test"', 'title: "Run the tests"');
+      expect(retitled).not.toBe(text);
+
+      await stage
+        .as(stage.people.owner, "put", `/api/v1/workflows/${workflow.slug}/code`)
+        .set("If-Match", etag)
+        .send({ text: retitled })
+        .expect(200);
+
+      const after = await stageList(workflow.id);
+      expect(after.nodeProvenance).toEqual([
+        expect.objectContaining({ nodeId: IMPLEMENT_NODE.id, provenance: "copilot" }),
+        expect.objectContaining({ nodeId: TEST_NODE.id, provenance: "human" }),
+      ]);
+      expect(after.label).toBe("v0.4");
+      expect(after.provenanceSummary).toEqual({ canvas: 0, code: 1, copilot: 3, suggestion: 0 });
+      expect((await logged(workflow.id)).slice(3)).toEqual([
+        expect.objectContaining({
+          actor: "code",
+          actor_user_id: stage.people.owner.id,
+          draft_rev: 4,
+          op: { kind: "set_stage", params: { node: { ...TEST_NODE, title: "Run the tests" } } },
+        }),
+      ]);
+      expect(await mismatches(workflow.id)).toBe(0);
+    });
+
+    it("records nothing for a studio save that changes nothing, and refuses one the log cannot hold", async () => {
+      const { workflow, draft } = await copilotBuilt("no-op and refusal");
+
+      const unchanged = await stage
+        .as(stage.people.owner, "put", `/api/v1/workflows/${workflow.id}/draft`)
+        .set("If-Match", draft.etag)
+        .send({ definition: (await stage.draft(workflow.id)).definition })
+        .expect(200);
+      expect((unchanged.body as { etag: string }).etag).toBe(draft.etag);
+
+      const refused = await stage
+        .as(stage.people.owner, "put", `/api/v1/workflows/${workflow.id}/draft`)
+        .set("If-Match", draft.etag)
+        .send({
+          definition: {
+            dsl_version: "1.0",
+            trigger: TRIGGER,
+            nodes: [IMPLEMENT_NODE, TEST_NODE],
+            edges: [{ from: "implement", to: "ghost", kind: "default" }],
+          },
+        })
+        .expect(422);
+      expect(refused.body).toMatchObject({
+        code: "workflow_draft_inexpressible",
+        details: { problems: [expect.objectContaining({ path: "/edges/0/to" })] },
+      });
+
+      expect((await stageList(workflow.id)).label).toBe("v0.3");
+      expect(await logged(workflow.id)).toHaveLength(3);
+      expect(await mismatches(workflow.id)).toBe(0);
+    });
+  });
+
   describe("etag conflict during a conversation", () => {
     it("does not apply over a studio save made between two turns, and tells the model to re-plan from it", async () => {
       const { workflow, session } = await conversationOn("conflict");

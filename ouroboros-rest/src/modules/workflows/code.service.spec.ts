@@ -558,6 +558,39 @@ describe("saving a file", () => {
     expect(saved.etag).toBe(draftEtag(draft({ definition, edited_in: "code", updated_at: LATER })));
   });
 
+  it("records the save as the person who made it (#1751)", async () => {
+    const { service, lifecycle } = harness();
+
+    await service.save(WORKSPACE, "minimal", draftEtag(draft()), RETITLED, "user-1");
+
+    expect(lifecycle.writeGuarded.mock.calls[0][4]).toBe("user-1");
+  });
+
+  it("answers with the file the stored draft reads as, when the log kept another order (#1751)", async () => {
+    // A save is recorded as draft operations, which keep stages where they were: a file that
+    // reorders them stores the old order, and the next read prints that — so this answer does.
+    const { service, lifecycle } = harness();
+    lifecycle.writeGuarded.mockImplementationOnce(
+      (_workflow: Workflow, _ifMatch: string, definition: unknown) => {
+        const document = definition as { nodes: unknown[] };
+        return Promise.resolve(
+          draft({
+            definition: { ...document, nodes: [...document.nodes].reverse() },
+            edited_in: "code",
+            updated_at: LATER,
+          }),
+        );
+      },
+    );
+
+    const saved = await service.save(WORKSPACE, "minimal", draftEtag(draft()), RETITLED);
+    const stored = (await lifecycle.writeGuarded.mock.results[0].value) as WorkflowVersion;
+
+    expect(saved.text).toBe(projection.projectWorkflowCode("minimal", stored.definition)?.text);
+    expect(saved.text).not.toBe(RETITLED);
+    expect(saved.etag).toBe(draftEtag(stored));
+  });
+
   it("answers with the saved document's findings, which a save does not refuse", async () => {
     const { service } = harness();
     const orphaned = edit(

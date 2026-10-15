@@ -129,21 +129,41 @@ describe("the workflows controller", () => {
     it("hands the draft save the If-Match header verbatim", async () => {
       // Verbatim, because what an `If-Match` may say — quoted, weak, a list, `*` — is
       // `draft.etag.ts`' question and not a controller's.
-      await controller.saveDraft(TENANT, { id: WORKFLOW }, 'W/"token"', { definition: {} });
+      await controller.saveDraft(
+        TENANT,
+        { id: WORKFLOW },
+        'W/"token"',
+        { definition: {} },
+        PRINCIPAL,
+      );
 
-      expect(service.saveDraft).toHaveBeenCalledWith("acme-robotics-id", WORKFLOW, 'W/"token"', {
-        definition: {},
-      });
+      expect(service.saveDraft).toHaveBeenCalledWith(
+        "acme-robotics-id",
+        WORKFLOW,
+        'W/"token"',
+        { definition: {} },
+        "user-1",
+      );
     });
 
     it("hands the draft save an undefined header when there was none", async () => {
       // The service turns that into `workflow_draft_etag_required`; a controller that
       // defaulted it to `*` would have opted every client out of the guard.
-      await controller.saveDraft(TENANT, { id: WORKFLOW }, undefined, { definition: {} });
+      await controller.saveDraft(
+        TENANT,
+        { id: WORKFLOW },
+        undefined,
+        { definition: {} },
+        PRINCIPAL,
+      );
 
-      expect(service.saveDraft).toHaveBeenCalledWith("acme-robotics-id", WORKFLOW, undefined, {
-        definition: {},
-      });
+      expect(service.saveDraft).toHaveBeenCalledWith(
+        "acme-robotics-id",
+        WORKFLOW,
+        undefined,
+        { definition: {} },
+        "user-1",
+      );
     });
 
     it("hands the publish the session's person, for published_by", async () => {
@@ -204,10 +224,22 @@ describe("the workflows controller", () => {
       expect(code.validate).toHaveBeenCalledWith("acme-robotics-id", "standard-fix");
     });
 
-    it("hands a file save the If-Match header verbatim, and the text", async () => {
-      await controller.saveCode(TENANT, { slug: "standard-fix" }, 'W/"token"', { text: "…" });
+    it("hands a file save the If-Match header verbatim, the text, and the person saving", async () => {
+      await controller.saveCode(
+        TENANT,
+        { slug: "standard-fix" },
+        'W/"token"',
+        { text: "…" },
+        PRINCIPAL,
+      );
 
-      expect(code.save).toHaveBeenCalledWith("acme-robotics-id", "standard-fix", 'W/"token"', "…");
+      expect(code.save).toHaveBeenCalledWith(
+        "acme-robotics-id",
+        "standard-fix",
+        'W/"token"',
+        "…",
+        "user-1",
+      );
     });
 
     it("refuses a write to ouroboros.config.ts with 405, having set Allow first", () => {

@@ -13,6 +13,13 @@
 // becoming unreplayable. Compiled as workflow-dsl-drift.mjs and ouroboros-rest's conformance
 // suite compile the DSL: JSON Schema 2020-12, every error, strict mode.
 //
+// **A person's edits are held to the envelope, not to the DSL** (#1751). Canvas and code saves are
+// recorded as operations too (`actor` `canvas` or `code`), and autosave keeps work in progress —
+// a model stage with no route yet is a node the DSL refuses, saved on purpose. A person's draft
+// meets the grammar at publish. So an entry whose `actor` is `canvas` or `code` is checked for a
+// kind of the vocabulary and an object of params (V110's CHECK already holds the rest), and
+// every other entry — the copilot's, a suggestion's, one with no actor — against the DSL.
+//
 // An empty log is green. Until CC.4 (#558) seeds mockup 20's draft, a seeded database stores no
 // operations, and "nothing recorded" is a true answer rather than a misconfiguration.
 //
@@ -24,7 +31,7 @@
 //
 // OPERATIONS.json is what tests/lib/draft-operations.sql prints: a JSON array with one entry per
 // stored operation, `{"workflow": "acme-robotics/security-patch", "base_version": null,
-// "draft_rev": 2, "seq": 1, "op": {...}}`. `--dsl` validates against another copy of the DSL
+// "draft_rev": 2, "seq": 1, "actor": "copilot", "op": {...}}` (`actor` optional). `--dsl` validates against another copy of the DSL
 // schema instead of the committed one, which is how the module's suite proves a tightened DSL
 // turns recorded history red without editing the file everything else reads.
 //
@@ -54,6 +61,19 @@ const OPERATIONS_PATH = join(
 const AJV_HOST = join(REPO_ROOT, "ouroboros-rest", "package.json");
 
 const NAME = "draft-ops-parity";
+
+/** The actors whose operations are a person's edits, held to the envelope only (#1751). */
+const PERSON_ACTORS = new Set(["canvas", "code"]);
+
+/** The operation kinds of the vocabulary — V110's `draft_op_shape_valid()`. */
+const KINDS = new Set([
+  "add_stage",
+  "set_stage",
+  "remove_stage",
+  "add_edge",
+  "remove_edge",
+  "set_trigger",
+]);
 
 /**
  * The header comment above, as the `--help` text.
@@ -147,13 +167,14 @@ function readOperations(value) {
       typeof entry.workflow === "string" &&
       entry.workflow !== "" &&
       (entry.base_version === null || Number.isInteger(entry.base_version)) &&
+      (entry.actor === undefined || typeof entry.actor === "string") &&
       Number.isInteger(entry.draft_rev) &&
       Number.isInteger(entry.seq) &&
       Object.hasOwn(entry, "op");
     if (!shaped) {
       throw new Error(
         `entry ${index} is not {"workflow": string, "base_version": integer or null, ` +
-          `"draft_rev": integer, "seq": integer, "op": ...}`,
+          `"draft_rev": integer, "seq": integer, "actor"?: string, "op": ...}`,
       );
     }
   });
@@ -196,6 +217,25 @@ function label(entry) {
   const kind =
     entry.op && typeof entry.op.kind === "string" ? ` ${entry.op.kind}` : "";
   return `${entry.workflow} v${entry.base_version ?? 0}.${entry.draft_rev} #${entry.seq}${kind}`;
+}
+
+/**
+ * Whether an operation is a well-formed envelope of the vocabulary: `{kind, params}`, the kind
+ * known, the params an object. What a person's edit is held to (#1751).
+ * @param {unknown} op - The operation.
+ * @returns {boolean} Whether it is.
+ */
+function envelopeValid(op) {
+  return (
+    op !== null &&
+    typeof op === "object" &&
+    !Array.isArray(op) &&
+    Object.keys(op).length === 2 &&
+    KINDS.has(op.kind) &&
+    op.params !== null &&
+    typeof op.params === "object" &&
+    !Array.isArray(op.params)
+  );
 }
 
 /**
@@ -250,6 +290,15 @@ function main(argv) {
 
   let invalid = 0;
   for (const entry of operations) {
+    if (PERSON_ACTORS.has(entry.actor)) {
+      if (envelopeValid(entry.op)) {
+        console.log(`  ok    ${label(entry)} (${entry.actor}: envelope)`);
+        continue;
+      }
+      invalid += 1;
+      console.log(`  FAIL  ${label(entry)} (${entry.actor}: not an operation of the vocabulary)`);
+      continue;
+    }
     if (validate(entry.op)) {
       console.log(`  ok    ${label(entry)}`);
       continue;

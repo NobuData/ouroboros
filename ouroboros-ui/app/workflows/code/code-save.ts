@@ -131,7 +131,8 @@ export function failureReason(message: string | null, online: boolean): string {
 
 /**
  * The refusals trying again cannot fix: the reader's role, a workflow that is gone, a file too large to
- * send, a malformed request. Anything else — a service error, an unreadable answer — may pass later.
+ * send, a malformed request, a file holding a change the draft's operation log cannot record (#1751).
+ * Anything else — a service error, an unreadable answer — may pass later.
  */
 const FINAL_REFUSALS: ReadonlySet<string> = new Set([
   "forbidden",
@@ -142,6 +143,7 @@ const FINAL_REFUSALS: ReadonlySet<string> = new Set([
   "payload_too_large",
   "validation_failed",
   "workflow_draft_etag_required",
+  "workflow_draft_inexpressible",
 ]);
 
 /**

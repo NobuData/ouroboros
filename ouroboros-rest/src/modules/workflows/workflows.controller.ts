@@ -256,6 +256,7 @@ export class WorkflowsController {
    * @param ifMatch - The `If-Match` header, verbatim — the draft etag this file was edited from.
    *   Required; see this file's header on why it is read here.
    * @param body - The whole file.
+   * @param principal - The session: the person the save's `code` batch is recorded as (#1751).
    * @returns The file as it reads from the stored draft, with the draft's new etag.
    */
   @Roles(...ADMINISTRATORS)
@@ -265,8 +266,9 @@ export class WorkflowsController {
     @Param() params: WorkflowSlugParams,
     @Headers("if-match") ifMatch: string | undefined,
     @Body() body: SaveWorkflowCodeBody,
+    @Session() principal: Principal,
   ): Promise<WorkflowCode> {
-    return this.code.save(tenant.id, params.slug, ifMatch, body.text);
+    return this.code.save(tenant.id, params.slug, ifMatch, body.text, principal.user.id);
   }
 
   /**
@@ -357,6 +359,7 @@ export class WorkflowsController {
    * @param ifMatch - The `If-Match` header, verbatim — the etag of the draft this write is
    *   based on. Required; see this file's header on why it is read here.
    * @param body - The whole document, as the canvas holds it.
+   * @param principal - The session: the person the save's `canvas` batch is recorded as (#1751).
    * @returns The draft slot after the write, carrying the etag for the next save.
    */
   @Roles(...ADMINISTRATORS)
@@ -366,8 +369,9 @@ export class WorkflowsController {
     @Param() params: WorkflowParams,
     @Headers("if-match") ifMatch: string | undefined,
     @Body() body: SaveDraftBody,
+    @Session() principal: Principal,
   ): Promise<WorkflowDraft> {
-    return this.workflows.saveDraft(tenant.id, params.id, ifMatch, body);
+    return this.workflows.saveDraft(tenant.id, params.id, ifMatch, body, principal.user.id);
   }
 
   /**

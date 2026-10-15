@@ -2,7 +2,9 @@
 -- (#556, CC.2).
 --
 -- Prints one JSON array: `{"workflow": "<org slug>/<workflow slug>", "base_version",
--- "draft_rev", "seq", "op"}` per row of ouroboros.draft_operations, in replay order. It writes
+-- "draft_rev", "seq", "actor", "op"}` per row of ouroboros.draft_operations, in replay order. The
+-- actor is what the check holds an operation to (#1751): a canvas or code edit to the envelope, the
+-- copilot's and a suggestion's to the DSL. It writes
 -- nothing. ci/db pipes it into the parity check against the seeded database:
 --
 --   psql … -f tests/lib/draft-operations.sql > ops.json
@@ -21,16 +23,18 @@ select coalesce(
                                     'base_version', e.base_version,
                                     'draft_rev',    e.draft_rev,
                                     'seq',          e.seq,
+                                    'actor',        e.actor,
                                     'op',           e.op)
                   order by e.workflow, e.base_version nulls first, e.draft_rev, e.seq),
          '[]'::json)
-  from (select org."slug" || '/' || wf.slug as workflow, o.base_version, o.draft_rev, o.seq, o.op
+  from (select org."slug" || '/' || wf.slug as workflow, o.base_version, o.draft_rev, o.seq,
+               o.actor, o.op
           from ouroboros.draft_operations o
           join ouroboros.workflows wf on wf.id = o.workflow_id
           join ouroboros.organization org on org."id" = o.organization_id
         union all
         select org."slug" || '/' || wf.slug || ' suggestion:' || coalesce(s.rule_id, 'llm'),
-               r.base_version, r.draft_rev, x.seq::integer, x.op
+               r.base_version, r.draft_rev, x.seq::integer, 'suggestion', x.op
           from ouroboros.dry_run_suggestions s
           join ouroboros.dry_runs r on r.id = s.dry_run_id
           join ouroboros.workflows wf on wf.id = r.workflow_id

@@ -87,7 +87,7 @@ describe("a failed write", () => {
     expect(isRetryable("internal_error")).toBe(true);
     expect(isRetryable("response_unreadable")).toBe(true);
 
-    for (const code of ["forbidden", "workflow_not_found", "payload_too_large", "validation_failed", "workflow_draft_etag_required"]) {
+    for (const code of ["forbidden", "workflow_not_found", "payload_too_large", "validation_failed", "workflow_draft_etag_required", "workflow_draft_inexpressible"]) {
       expect(isRetryable(code), code).toBe(false);
     }
   });

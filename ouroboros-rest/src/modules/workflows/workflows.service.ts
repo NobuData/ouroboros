@@ -33,6 +33,7 @@ import type { Transaction } from "kysely";
 import type { Database, DraftEditor, Workflow, WorkflowVersion } from "../db/schema";
 import { pageOf, windowOf, type Page, type PageQuery } from "../tenancy/pagination";
 import { DatabaseService } from "../db/db.service";
+import { diffDraft } from "./draft.diff";
 import { draftEtag, ifMatchAdmits } from "./draft.etag";
 import { emptyWorkflowDocument } from "./dsl.schema";
 import { validateWorkflowDocument } from "./dsl.validator";
@@ -53,6 +54,7 @@ import {
   draftAbsent,
   draftConflict,
   draftEtagRequired,
+  draftInexpressible,
   publishConflict,
   slugRequired,
   slugTaken,
@@ -61,7 +63,7 @@ import {
   workflowNotFound,
   workflowSlugNotFound,
 } from "./workflows.errors";
-import { WorkflowsRepository } from "./workflows.repository";
+import { WorkflowsRepository, type DraftActor } from "./workflows.repository";
 import {
   workflowDetail,
   workflowDraft,
@@ -88,6 +90,9 @@ export interface WorkflowRail {
   /** One entry per non-archived workflow, in the rail's order. Empty is the studio's empty state. */
   readonly workflows: readonly WorkflowStats[];
 }
+
+/** The draft-operation actor each editor's save is recorded as (#1751). */
+const DRAFT_ACTORS: Readonly<Record<DraftEditor, DraftActor>> = { visual: "canvas", code: "code" };
 
 /**
  * How many times {@link WorkflowsService.createFromTemplate} re-picks a slug after losing one to
@@ -348,9 +353,11 @@ export class WorkflowsService {
    * @param ifMatch - The `If-Match` header, verbatim. `undefined` when the request carried
    *   none, which is refused rather than tolerated.
    * @param body - The whole document, as the canvas holds it.
+   * @param actorUserId - The person saving, recorded on the batch the save becomes (#1751).
    * @returns The draft slot after the write, carrying the etag for the next save.
    * @throws {NotFoundError} `workflow_not_found`.
    * @throws {BadRequestError} `workflow_draft_etag_required` when there is no `If-Match`.
+   * @throws {InvalidRequestError} `workflow_draft_inexpressible`; see {@link writeGuarded}.
    * @throws {ConflictError} `workflow_draft_conflict` when the draft moved; see
    *   {@link writeGuarded}.
    */
@@ -359,12 +366,15 @@ export class WorkflowsService {
     id: string,
     ifMatch: string | undefined,
     body: SaveDraftBody,
+    actorUserId: string | null = null,
   ): Promise<WorkflowDraft> {
     const workflow = await this.require(organizationId, id);
 
     if (ifMatch === undefined) throw draftEtagRequired();
 
-    return workflowDraft(await this.writeGuarded(workflow, ifMatch, body.definition, "visual"));
+    return workflowDraft(
+      await this.writeGuarded(workflow, ifMatch, body.definition, "visual", actorUserId),
+    );
   }
 
   /**
@@ -379,6 +389,17 @@ export class WorkflowsService {
    * the first one committed, and finds an etag its `If-Match` does not admit, so it is told rather
    * than winning. The row records which editor wrote it, and that is what the loser's `409` names.
    *
+   * **The write is a batch of draft operations** (#1751). The saved document is diffed against
+   * the stored draft — or, for a first save, against the base `apply_draft_batch()` starts from —
+   * into the typed operations the copilot also proposes (`draft.diff.ts`), and applied as one
+   * `canvas` or `code` batch. So a studio edit moves the draft's revision and its per-actor
+   * counts, a stage a person added or changed reads `human`, and the log still replays to the
+   * draft. A save that changes nothing records nothing and writes nothing.
+   *
+   * A first save has no draft row to lock, so the workflow row is locked and the slot read
+   * again before the batch: a draft another request created meanwhile is the conflict the
+   * one-draft index used to raise. (The lock order — draft, then workflow — is the copilot's.)
+   *
    * @param workflow - The workflow, as an org-scoped read returned it. A row rather than an id on
    *   purpose: `workflow_versions` has no `organization_id`, so resolving the workflow through the
    *   tenant *is* this write's tenancy check, and a caller cannot hold a row without having made
@@ -386,18 +407,24 @@ export class WorkflowsService {
    * @param ifMatch - The `If-Match` header, verbatim. A missing one is the caller's to refuse
    *   first, as `workflow_draft_etag_required`, because it is a different mistake from a stale one.
    * @param definition - The whole document to store.
-   * @param editedIn - Which editor is writing.
+   * @param editedIn - Which editor is writing: `visual` is recorded as the `canvas` actor, `code`
+   *   as `code`.
+   * @param actorUserId - The person saving, or `null` when no person is (a Build Analyzer
+   *   proposal).
    * @param changeNote - A proposed change note to set on the draft (#514); `undefined` leaves the
    *   draft's note as it is.
    * @returns The draft row after the write.
+   * @throws {InvalidRequestError} `workflow_draft_inexpressible` when the document holds a change
+   *   the operations cannot record; nothing is written.
    * @throws {ConflictError} `workflow_draft_conflict` when the draft moved — including when
-   *   another request created one between this one's read and its insert.
+   *   another request created one between this one's read and its write.
    */
   async writeGuarded(
     workflow: Workflow,
     ifMatch: string,
     definition: unknown,
     editedIn: DraftEditor,
+    actorUserId: string | null,
     changeNote?: string,
   ): Promise<WorkflowVersion> {
     return this.database.transaction(async (trx) => {
@@ -408,24 +435,46 @@ export class WorkflowsService {
       }
 
       if (existing === undefined) {
-        return this.insertFirstDraft(workflow.id, definition, editedIn, trx, changeNote);
+        await this.workflows.lock(workflow.organization_id, workflow.id, trx);
+        const raced = await this.workflows.draftOf(workflow.id, trx, true);
+
+        if (raced !== undefined) throw draftConflict(ifMatch, conflictingDraft(raced));
       }
 
-      const written = await this.workflows.writeDraft(
-        existing.id,
-        definition,
-        editedIn,
-        trx,
-        changeNote,
-      );
+      const base = existing?.definition ?? (await this.workflows.draftBase(workflow.id, trx));
+      const diff = diffDraft(base, definition);
 
-      // The locked read found a draft and the keyed update found none, which means the row
-      // stopped being a draft between them. Under the lock that cannot happen; the check is
-      // here because an `update` that silently matched nothing would otherwise answer `200`
-      // with the row it did not write.
+      if (!diff.ok) throw draftInexpressible(diff.problems);
+
+      if (diff.operations.length === 0) {
+        // Nothing to record. A first save still opens the slot, on the base it would have
+        // changed — which replays to itself at revision 0.
+        if (existing === undefined) {
+          return this.insertFirstDraft(workflow.id, base, editedIn, trx, changeNote);
+        }
+        if (changeNote === undefined) return existing;
+      } else {
+        await this.workflows.applyBatch(
+          workflow.organization_id,
+          workflow.id,
+          DRAFT_ACTORS[editedIn],
+          actorUserId,
+          diff.operations,
+          trx,
+        );
+      }
+
+      const written = await this.workflows.draftOf(workflow.id, trx);
+
+      // The batch writes the draft under the locks held here, so it is there to read; the check
+      // keeps a silently missing row from answering `200` with nothing.
       if (written === undefined) throw draftConflict(ifMatch, conflictingDraft(existing));
 
-      return written;
+      if (changeNote === undefined) return written;
+
+      await this.workflows.setChangeNote(written.id, changeNote, trx);
+
+      return (await this.workflows.draftOf(workflow.id, trx)) ?? written;
     });
   }
 
@@ -473,7 +522,9 @@ export class WorkflowsService {
    *
    * The document is held to P.2's grammar before anything is written — unlike a person's save,
    * which may be half-finished, a proposal that does not parse would be a draft nobody can open
-   * — and is then written through {@link writeGuarded} with the etag its base was read at.
+   * — and is then written through {@link writeGuarded} with the etag its base was read at. It is
+   * recorded as a `canvas` batch with no person behind it (#1751): the analyzer edits the draft
+   * the way the canvas does, and a person still decides whether to publish.
    *
    * @param organizationId - The workspace.
    * @param workflowId - The workflow, from {@link draftBase}.
@@ -507,7 +558,7 @@ export class WorkflowsService {
     }
 
     return workflowDraft(
-      await this.writeGuarded(workflow, ifMatch, definition, "visual", changeNote),
+      await this.writeGuarded(workflow, ifMatch, definition, "visual", null, changeNote),
     );
   }
 
