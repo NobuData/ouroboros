@@ -140,10 +140,10 @@ describe("the code view's intelligence, against a migrated database", () => {
       const [draft, ...older] = SEEDS.filter((seed) => seed.slug === slug);
 
       for (const version of older.reverse()) {
-        await canvasSave(created.id, version.document);
+        await seedSave(created.id, version.document);
         await as("post", `${WORKFLOWS}/${created.id}/publish`).send({}).expect(200);
       }
-      await canvasSave(created.id, draft.document);
+      await seedSave(created.id, draft.document);
     }
   });
 
@@ -171,6 +171,22 @@ describe("the code view's intelligence, against a migrated database", () => {
       .set("If-Match", detail.draft.etag)
       .send({ definition })
       .expect(200);
+  }
+
+  /**
+   * Store a seed's document as the draft, stages in the seed's own order.
+   *
+   * A save is recorded as draft operations (#1751), which keep a stage where it already is and
+   * append a new one — so a seed saved over the version before it would keep that version's
+   * order, and its file would print in it. Emptying the graph first makes every stage an
+   * addition, in the seed's order, which is the file the goldens record.
+   *
+   * @param id - The workflow.
+   * @param definition - The seed's document.
+   */
+  async function seedSave(id: string, definition: unknown): Promise<void> {
+    await canvasSave(id, { ...(definition as Record<string, unknown>), nodes: [], edges: [] });
+    await canvasSave(id, definition);
   }
 
   /**

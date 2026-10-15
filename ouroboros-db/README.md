@@ -1508,7 +1508,12 @@
 > ([#1744](https://github.com/NobuData/ouroboros/issues/1744)) has the writer read a stored
 > draft over `workflow_blank_document()` — `{"dsl_version": "1.0", "nodes": [], "edges": []}`,
 > the stored draft's own keys taking precedence — so a draft built on a blank workflow's `{}` is a
-> DSL document, the same one ouroboros-rest judged; it backfills the drafts that lacked those keys.
+> DSL document, the same one ouroboros-rest judged; it backfills the drafts that lacked those keys. Since
+> [#1751](https://github.com/NobuData/ouroboros/issues/1751) canvas and code saves arrive as
+> batches too — ouroboros-rest diffs the saved document into these operations and applies them as
+> `canvas` or `code` — so a person's edit moves `draft_rev`, is counted in `provenance_summary` and
+> reads `human`; the parity check holds those two actors' operations to the envelope only, since a
+> person's draft meets the grammar at publish.
 >
 > `V111` ([#557](https://github.com/NobuData/ouroboros/issues/557), CC.3) records **deep dry
 > runs in a domain of their own** (decision **W4**) — mockup 20's dry-run card. `dry_runs` holds

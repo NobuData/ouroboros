@@ -427,4 +427,61 @@ describe("the workflows repository", () => {
       );
     });
   });
+
+  describe("a studio save, as draft operations (#1751)", () => {
+    it("applies the batch through apply_draft_batch() as the editor, by the person, with no session", async () => {
+      database.answers({ rows: [{ draft_rev: 4 }] });
+      const operations = [
+        { kind: "set_stage" as const, params: { node: { id: "test", title: "Run the tests" } } },
+      ];
+
+      const rev = await workflows.applyBatch(
+        WORKSPACE,
+        WORKFLOW,
+        "canvas",
+        "user-1",
+        operations,
+        asTransaction(database),
+      );
+
+      expect(rev).toBe(4);
+      const [call] = database.statements;
+      expect(call.sql).toContain("ouroboros.apply_draft_batch(");
+      expect(call.sql).toMatch(/null, null, \$\d+::jsonb/);
+      expect(call.parameters).toEqual([
+        WORKSPACE,
+        WORKFLOW,
+        "canvas",
+        "user-1",
+        JSON.stringify(operations),
+      ]);
+    });
+
+    it("says so when apply_draft_batch() answers no row, rather than inventing a revision", async () => {
+      database.answers({ rows: [] });
+
+      await expect(
+        workflows.applyBatch(WORKSPACE, WORKFLOW, "code", null, [], asTransaction(database)),
+      ).rejects.toThrow("apply_draft_batch returned no row");
+    });
+
+    it("reads the base a first save is diffed against from workflow_draft_base()", async () => {
+      const base = { dsl_version: "1.0", nodes: [], edges: [] };
+      database.answers({ rows: [{ base }] });
+
+      expect(await workflows.draftBase(WORKFLOW, asTransaction(database))).toEqual(base);
+      expect(database.statements[0].sql).toContain("ouroboros.workflow_draft_base(");
+      expect(database.statements[0].parameters).toEqual([WORKFLOW]);
+    });
+
+    it("sets a proposal's change note on the draft only, leaving its document alone", async () => {
+      await workflows.setChangeNote(DRAFT, "Cites 171.", asTransaction(database));
+
+      const [call] = database.statements;
+      expect(call.sql).toContain('update "ouroboros"."workflow_versions" set "change_note" = $1');
+      expect(call.sql).toContain('"version" is null');
+      expect(call.sql).not.toContain("definition");
+      expect(call.parameters).toEqual(["Cites 171.", DRAFT]);
+    });
+  });
 });

@@ -6986,6 +6986,16 @@ export interface paths {
          *     could use. The grammar is checked once, at publish, when the document is about to
          *     become immutable.
          *
+         *     **A save is recorded as draft operations** (#1751). The document is diffed against the
+         *     stored draft into the operations the copilot also proposes — `add_stage`, `set_stage`,
+         *     `remove_stage`, `add_edge`, `remove_edge`, `set_trigger` — and applied as one `canvas`
+         *     batch by the person saving. So the save moves the draft's revision (`v0.N`) and its
+         *     `canvas` edit count, and a stage it adds or changes reads `human` in the Copilot's
+         *     stage list. A save that changes nothing records nothing and leaves the etag as it was.
+         *     Stages and edges keep their place or are appended, so the stored order can differ from
+         *     the order sent; the `200` carries the document as stored. A change the operations cannot
+         *     express is a `422 workflow_draft_inexpressible`.
+         *
          *     **`owner` or `admin`.**
          */
         put: operations["saveWorkflowDraft"];
@@ -65284,6 +65294,13 @@ export interface operations {
             /**
              * @description `validation_failed` — the id is not a uuid, or `definition` is missing or not a
              *     JSON object.
+             *
+             *     `workflow_draft_inexpressible` — the document holds a change the draft's operation
+             *     log cannot record, and **nothing was written** (#1751): a changed `dsl_version`, a
+             *     removed trigger, a top-level key that is not part of a draft, a stage whose `id` is
+             *     not a slug, a repeated id, an edge naming no stage, or a pair joined twice.
+             *     `details.problems` lists each, as `{path, message}` with `path` a JSON pointer into
+             *     the saved document. The canvas produces none of these.
              */
             422: {
                 headers: {
@@ -66350,8 +66367,11 @@ export interface operations {
              *     for a file that names another workflow. `details.diagnostics` carries the same problems
              *     as the code view's diagnostics stream (`CodeDiagnostic`, W.2), each an `error` with its
              *     `range` and the `hint` as its `note`, so an editor renders a refusal and a read's
-             *     findings alike. (`validation_failed` is the other `422` here: the slug is not a slug, or
-             *     `text` is missing or not a string.)
+             *     findings alike. (`validation_failed` is another `422` here: the slug is not a slug, or
+             *     `text` is missing or not a string. `workflow_draft_inexpressible` is the third: the file
+             *     reads, but holds a change the draft's operation log cannot record — an edge naming no
+             *     stage, a repeated id — and nothing was written; `details.problems` lists each as
+             *     `{path, message}`, as `PUT …/draft` does (#1751).)
              */
             422: {
                 headers: {

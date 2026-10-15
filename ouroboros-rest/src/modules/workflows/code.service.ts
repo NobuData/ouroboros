@@ -33,6 +33,8 @@
  *     because the engine is down. References are checked against the workspace's own suggestions.
  */
 
+import { isDeepStrictEqual } from "node:util";
+
 import { Injectable } from "@nestjs/common";
 
 import type { Organization, Workflow, WorkflowVersion } from "../db/schema";
@@ -221,6 +223,7 @@ export class WorkflowCodeService {
    * @param slug - The workflow.
    * @param ifMatch - The `If-Match` header, verbatim, or `undefined` when there was none.
    * @param text - The whole file.
+   * @param actorUserId - The person saving, recorded on the `code` batch the save becomes (#1751).
    * @returns The file as it now reads from the stored draft — printed canonically, which may differ
    *   from `text` in formatting and key order, never in meaning — with the draft's new etag, and
    *   the stored document's span map and diagnostics.
@@ -229,6 +232,9 @@ export class WorkflowCodeService {
    * @throws {InvalidRequestError} `workflow_code_invalid` with anchored errors, and the same issues
    *   as diagnostics, when the file does not read or names another workflow. Nothing is opened, so
    *   nothing is written.
+   * @throws {InvalidRequestError} `workflow_draft_inexpressible` when the file reads but holds a
+   *   change the draft's operation log cannot record — an edge naming no stage, a repeated id
+   *   (#1751). Nothing is written.
    * @throws {ConflictError} `workflow_draft_conflict` naming the editor whose change the draft
    *   holds, when `If-Match` is stale.
    * @throws {Error} When the parser reads a document the printer cannot give back — a defect in
@@ -239,6 +245,7 @@ export class WorkflowCodeService {
     slug: string,
     ifMatch: string | undefined,
     text: string,
+    actorUserId: string | null = null,
   ): Promise<WorkflowCode> {
     const workflow = await this.require(organizationId, slug);
 
@@ -271,7 +278,33 @@ export class WorkflowCodeService {
 
     // Diagnosed before the write too, so a catalogue that cannot be read leaves the draft as it was.
     const diagnosis = await this.diagnose(organizationId, projected, parsed.document);
-    const written = await this.lifecycle.writeGuarded(workflow, ifMatch, parsed.document, "code");
+    const written = await this.lifecycle.writeGuarded(
+      workflow,
+      ifMatch,
+      parsed.document,
+      "code",
+      actorUserId,
+    );
+
+    // The save is recorded as draft operations (#1751), and the draft they produce keeps its
+    // stages and edges where they were: a file that only reorders them stores the old order. The
+    // answer is the file as the *stored* draft reads, so the next read shows the same text.
+    if (!isDeepStrictEqual(written.definition, parsed.document)) {
+      const stored = projectWorkflowCode(workflow.slug, written.definition);
+
+      if (stored !== undefined) {
+        const reread = await this.diagnose(organizationId, stored, written.definition);
+
+        return workflowCode(workflow, {
+          text: stored.text,
+          spans: stored.spans,
+          diagnostics: reread.diagnostics,
+          etag: draftEtag(written),
+          version: null,
+          readOnly: false,
+        });
+      }
+    }
 
     return workflowCode(workflow, {
       text: projected.text,

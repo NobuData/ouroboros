@@ -15,6 +15,7 @@ import {
   codeUnprojectable,
   conflictingDraft,
   definitionInvalid,
+  draftInexpressible,
   draftAbsent,
   draftConflict,
   draftEtagRequired,
@@ -53,6 +54,7 @@ describe("the codes", () => {
       draftAbsent: "workflow_draft_absent",
       slugRequired: "workflow_slug_required",
       definitionInvalid: "workflow_definition_invalid",
+      draftInexpressible: "workflow_draft_inexpressible",
       publishConflict: "workflow_publish_conflict",
       dryRunIssueNotFound: "workflow_dry_run_issue_not_found",
     });
@@ -261,6 +263,24 @@ describe("the refusals a caller can fix", () => {
     ]).getResponse() as { details: { findings: PublishFinding[] } };
 
     expect(details.findings[0].node).toBe("gate-1");
+  });
+});
+
+describe("a save the draft's operation log cannot record (#1751)", () => {
+  it("is a 422 carrying every problem with its pointer, and says nothing was written", () => {
+    const problems = [
+      { path: "/dsl_version", message: "The DSL version cannot be changed from the editor." },
+      { path: "/edges/2/to", message: 'This edge names "ghost", which is not a stage.' },
+    ];
+
+    const error = draftInexpressible(problems);
+
+    expect(error.getStatus()).toBe(HttpStatus.UNPROCESSABLE_ENTITY);
+    expect(error.getResponse()).toMatchObject({
+      code: "workflow_draft_inexpressible",
+      message: expect.stringContaining("Nothing was written") as unknown,
+      details: { problems },
+    });
   });
 });
 

@@ -163,11 +163,41 @@ run_check --dsl "$work/tightened.json" "$work/history.json"
 check_equals 1 "$status" 'a DSL change that rejects recorded history fails the parity check'
 check_matches "$out" 'no longer validate against the DSL' 'and says history and the DSL have drifted'
 
+printf '\nA person'"'"'s edit is held to the envelope (#1751)\n'
+
+# by_actor FILE ACTOR FIXTURE — one entry of FIXTURE recorded as ACTOR.
+by_actor() {
+  {
+    printf '[{"workflow": "fixture/draft", "base_version": null, "draft_rev": 1, "seq": 1, "actor": "%s", "op": ' "$2"
+    cat "$FIXTURES/$3"
+    printf '}]\n'
+  } >"$1"
+}
+
+by_actor "$work/canvas-half-built.json" canvas invalid/add-stage-llm-without-config.json
+run_check "$work/canvas-half-built.json"
+check_equals 0 "$status" 'a half-built stage the canvas saved passes — autosave keeps work in progress'
+check_matches "$out" 'ok +fixture/draft v0\.1 #1 add_stage \(canvas: envelope\)' 'and is named as held to the envelope'
+
+by_actor "$work/code-half-built.json" code invalid/add-stage-llm-without-config.json
+run_check "$work/code-half-built.json"
+check_equals 0 "$status" 'and so does one saved from the code view'
+
+by_actor "$work/copilot-half-built.json" copilot invalid/add-stage-llm-without-config.json
+run_check "$work/copilot-half-built.json"
+check_equals 1 "$status" 'the same stage proposed by the copilot is held to the DSL, and fails'
+
+by_actor "$work/canvas-guard.json" canvas invalid/set-guard.json
+run_check "$work/canvas-guard.json"
+check_equals 1 "$status" 'a canvas entry outside the vocabulary still fails'
+check_matches "$out" 'not an operation of the vocabulary' 'and says why'
+
 printf '\nThe query and the step\n'
 
 check_exists "$QUERY" 'tests/lib/draft-operations.sql exists'
 check_contains "$QUERY" 'from ouroboros\.draft_operations' 'and reads the stored operations'
 check_contains "$QUERY" "'op', +e\\.op" 'and emits each op'
+check_contains "$QUERY" "'actor', +e\\.actor" 'and its actor, which decides what it is held to (#1751)'
 check_contains "$QUERY" 'jsonb_array_elements\(s\.proposed_ops\)' \
   'and each operation a dry-run suggestion proposes, so Apply is held to the DSL before it runs (#558)'
 check_absent "$QUERY" '^ *(insert|update|delete)' 'and writes nothing'

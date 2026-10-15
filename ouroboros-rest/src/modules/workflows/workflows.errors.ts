@@ -33,6 +33,7 @@ import { isDatabaseFailure } from "../tenancy/constraints";
 import { fromParseIssues } from "./code.diagnostics";
 import type { WorkflowCodeIssue } from "./code.resources";
 import { draftEtag } from "./draft.etag";
+import type { DraftDiffProblem } from "./draft.diff";
 import type { DslDiagnostic } from "./dsl.errors";
 import type { PublishFinding } from "./publish.gate";
 
@@ -60,6 +61,8 @@ export const WORKFLOW_ERRORS = {
   slugRequired: "workflow_slug_required",
   /** The definition did not pass the publish gate. */
   definitionInvalid: "workflow_definition_invalid",
+  /** A saved draft holds a change the draft's operation log cannot record (#1751). */
+  draftInexpressible: "workflow_draft_inexpressible",
   /** Two publishes raced and this one lost the version number. */
   publishConflict: "workflow_publish_conflict",
   /** The issue a dry run was asked about is not this workspace's (S.6, #152). */
@@ -260,6 +263,26 @@ export function definitionInvalid(findings: readonly PublishFinding[]): InvalidR
     WORKFLOW_ERRORS.definitionInvalid,
     "This definition cannot be published yet.",
     { findings },
+  );
+}
+
+/**
+ * `422` — a saved draft holds a change the draft's operation log cannot record (#1751).
+ *
+ * A studio save is recorded as a batch of the typed operations the copilot also proposes
+ * (`draft.diff.ts`), so the draft's revision, its provenance and its replay stay true. What those
+ * operations cannot say — a changed DSL version, a removed trigger, a key that is not part of a
+ * draft, a stage without a slug id, a repeated id, an edge naming no stage — is refused rather
+ * than written around the log. Nothing is written.
+ *
+ * @param problems - Each change that cannot be recorded, with the JSON pointer it is at.
+ * @returns The error to throw.
+ */
+export function draftInexpressible(problems: readonly DraftDiffProblem[]): InvalidRequestError {
+  return new InvalidRequestError(
+    WORKFLOW_ERRORS.draftInexpressible,
+    "This draft holds a change that cannot be saved. Nothing was written.",
+    { problems },
   );
 }
 

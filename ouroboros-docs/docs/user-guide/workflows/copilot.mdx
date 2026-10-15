@@ -311,15 +311,9 @@ A row carries **added by copilot** when the Copilot added that stage. It is the 
 record of who added what, so it does not depend on the conversation still being open. A stage
 added by applying a dry-run suggestion carries **added by suggestion** in the same way.
 
-The mark is meant to clear once a person edits the stage: a stage you have reconfigured is no
-longer the Copilot's.
-
-:::info[Not available yet]
-
-An edit made on the canvas or in the code view does not clear **added by copilot** yet. The
-stage's tags do follow the edit; only the mark stays.
-
-:::
+The mark clears once a person edits the stage on the canvas or in the code view: a stage you
+have reconfigured is no longer the Copilot's. A stage you add yourself never carries a mark.
+The list shows the change on its next read, without a reload.
 
 ### Warning tags
 
@@ -345,7 +339,8 @@ is described under [Unresolved references](#unresolved-references) above.
 The tag beside the title, for example `draft v0.3`, is the draft's revision: the published
 version the draft started from, then the number of batches of changes applied since. A
 workflow that has never been published starts from `v0`. While a reply is arriving the number
-moves with each batch the Copilot applies.
+moves with each batch the Copilot applies. Each save from the canvas or the code view that
+changes the draft counts as one batch too; a save that changes nothing does not.
 
 ### Watching the draft build
 

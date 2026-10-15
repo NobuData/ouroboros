@@ -153,6 +153,9 @@ Dry runs are started from the canvas; the code view has no **Dry run** button.
   asks you to choose: **Reload theirs** opens the draft as it is now and drops your text;
   **Keep mine** holds your text in the tab beside what changed, so you can compare and save it
   over theirs.
+- **"This draft holds a change that cannot be saved. Nothing was written."** The file reads,
+  but a `next` names a stage that does not exist, for example `next: "ghost"`. The draft is
+  unchanged. Fix the name in the file; the same text is not tried again for you.
 - **"Your code is not saved yet — it is kept in this tab and tried again."** The save could
   not reach the service. Ouroboros keeps retrying; your text stays in the tab.
 - **"The engine could not check this file, so it was not validated."** Try **Validate** again

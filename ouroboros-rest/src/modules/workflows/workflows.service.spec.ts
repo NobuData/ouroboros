@@ -31,6 +31,7 @@ const WORKSPACE = "acme-robotics-id";
 const WORKFLOW = "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94";
 const PERSON = "user-1";
 const AT = new Date("2026-09-12T10:00:00.000Z");
+const LATER = new Date("2026-09-12T10:05:00.000Z");
 
 /** A workflow row, with whatever a test changes. */
 function workflow(overrides: Partial<Workflow> = {}): Workflow {
@@ -111,6 +112,9 @@ function harness(overrides: Partial<jest.Mocked<WorkflowsRepository>> = {}): Har
     writeDraft: jest
       .fn()
       .mockImplementation((_id, definition) => Promise.resolve(draft({ definition }))),
+    draftBase: jest.fn().mockResolvedValue({ dsl_version: "1.0", nodes: [], edges: [] }),
+    applyBatch: jest.fn().mockResolvedValue(1),
+    setChangeNote: jest.fn().mockResolvedValue(undefined),
     versions: jest.fn().mockResolvedValue([]),
     countVersions: jest.fn().mockResolvedValue(0),
     versionAt: jest.fn().mockResolvedValue(published()),
@@ -363,23 +367,72 @@ describe("updating", () => {
   });
 });
 
+/** A stage, as the canvas saves one. */
+const STAGE = { id: "test", type: "infra", title: "Test", position: { x: 0, y: 0 }, config: {} };
+
+/** The draft fixture's document with {@link STAGE} added — one `add_stage` away from it. */
+const WITH_STAGE = { dsl_version: "1.0", nodes: [STAGE], edges: [] };
+
 describe("saving a draft", () => {
-  it("writes when the etag is the one the draft has", async () => {
+  it("records the save as a canvas batch, by the person who saved, when the etag is current", async () => {
+    const { service, repository } = harness();
+    const current = draftEtag(draft());
+    repository.draftOf
+      .mockResolvedValueOnce(draft())
+      .mockResolvedValue(draft({ definition: WITH_STAGE, updated_at: LATER }));
+
+    const saved = await service.saveDraft(
+      WORKSPACE,
+      WORKFLOW,
+      current,
+      { definition: WITH_STAGE },
+      PERSON,
+    );
+
+    expect(repository.applyBatch).toHaveBeenCalledWith(
+      WORKSPACE,
+      WORKFLOW,
+      "canvas",
+      PERSON,
+      [{ kind: "add_stage", params: { node: STAGE } }],
+      expect.anything(),
+    );
+    expect(repository.writeDraft).not.toHaveBeenCalled();
+    expect(saved.etag).not.toBe(current);
+  });
+
+  it("records nothing and writes nothing for a save that changes nothing", async () => {
     const { service, repository } = harness();
     const current = draftEtag(draft());
 
     const saved = await service.saveDraft(WORKSPACE, WORKFLOW, current, {
-      definition: { nodes: [1] },
+      definition: { dsl_version: "1.0", nodes: [], edges: [] },
     });
 
-    expect(repository.writeDraft).toHaveBeenCalledWith(
-      draft().id,
-      { nodes: [1] },
-      "visual",
-      expect.anything(),
-      undefined,
-    );
-    expect(saved.etag).not.toBe(current);
+    expect(repository.applyBatch).not.toHaveBeenCalled();
+    expect(repository.writeDraft).not.toHaveBeenCalled();
+    expect(saved.etag).toBe(current);
+  });
+
+  it("refuses a save the operations cannot record with a 422 naming each problem, and writes nothing", async () => {
+    const { service, repository } = harness();
+
+    const failure = await service
+      .saveDraft(WORKSPACE, WORKFLOW, draftEtag(draft()), {
+        definition: { dsl_version: "2.0", nodes: [STAGE, STAGE], edges: [] },
+      })
+      .catch((error: unknown) => error);
+    const envelope = (
+      failure as { getResponse(): { code: string; details: { problems: { path: string }[] } } }
+    ).getResponse();
+
+    expect(envelope.code).toBe("workflow_draft_inexpressible");
+    expect(envelope.details.problems.map((problem) => problem.path)).toEqual([
+      "/dsl_version",
+      "/nodes/1/id",
+    ]);
+    expect(repository.applyBatch).not.toHaveBeenCalled();
+    expect(repository.insertDraft).not.toHaveBeenCalled();
   });
 
   it("names the editor whose change the draft holds, in the message and the details", async () => {
@@ -412,9 +465,11 @@ describe("saving a draft", () => {
     const { service, repository } = harness();
 
     expect(
-      await refusal(service.saveDraft(WORKSPACE, WORKFLOW, "an-older-token", { definition: {} })),
+      await refusal(
+        service.saveDraft(WORKSPACE, WORKFLOW, "an-older-token", { definition: WITH_STAGE }),
+      ),
     ).toBe("workflow_draft_conflict");
-    expect(repository.writeDraft).not.toHaveBeenCalled();
+    expect(repository.applyBatch).not.toHaveBeenCalled();
   });
 
   it("tells the loser what the etag is now, so the studio can reload in one round trip", async () => {
@@ -438,25 +493,58 @@ describe("saving a draft", () => {
     expect(
       await refusal(service.saveDraft(WORKSPACE, WORKFLOW, undefined, { definition: {} })),
     ).toBe("workflow_draft_etag_required");
-    expect(repository.writeDraft).not.toHaveBeenCalled();
+    expect(repository.applyBatch).not.toHaveBeenCalled();
   });
 
-  it("creates the first draft when the slot is empty and the caller said so", async () => {
+  it("creates the first draft by a batch over the base, under the workflow's lock", async () => {
+    const { service, repository } = harness();
+    repository.draftOf
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValue(draft({ definition: WITH_STAGE }));
+
+    await service.saveDraft(WORKSPACE, WORKFLOW, NO_DRAFT, { definition: WITH_STAGE }, PERSON);
+
+    expect(repository.lock).toHaveBeenCalledWith(WORKSPACE, WORKFLOW, expect.anything());
+    expect(repository.draftBase).toHaveBeenCalledWith(WORKFLOW, expect.anything());
+    expect(repository.applyBatch).toHaveBeenCalledWith(
+      WORKSPACE,
+      WORKFLOW,
+      "canvas",
+      PERSON,
+      [{ kind: "add_stage", params: { node: STAGE } }],
+      expect.anything(),
+    );
+    expect(repository.insertDraft).not.toHaveBeenCalled();
+  });
+
+  it("opens the slot on the base when a first save changes nothing — no batch to record", async () => {
     const { service, repository } = harness();
     repository.draftOf.mockResolvedValue(undefined);
 
-    await service.saveDraft(WORKSPACE, WORKFLOW, NO_DRAFT, { definition: { nodes: [] } });
+    await service.saveDraft(WORKSPACE, WORKFLOW, NO_DRAFT, { definition: {} });
 
+    expect(repository.applyBatch).not.toHaveBeenCalled();
     expect(repository.insertDraft).toHaveBeenCalledWith(
       WORKFLOW,
-      { nodes: [] },
+      { dsl_version: "1.0", nodes: [], edges: [] },
       "visual",
       expect.anything(),
       null,
     );
   });
 
-  it("turns the one-draft index into the same 409 when two tabs both create", async () => {
+  it("answers 409 when another request created the draft while this first save waited", async () => {
+    const { service, repository } = harness();
+    repository.draftOf.mockResolvedValueOnce(undefined).mockResolvedValue(draft());
+
+    expect(
+      await refusal(service.saveDraft(WORKSPACE, WORKFLOW, NO_DRAFT, { definition: WITH_STAGE })),
+    ).toBe("workflow_draft_conflict");
+    expect(repository.applyBatch).not.toHaveBeenCalled();
+  });
+
+  it("turns the one-draft index into the same 409 when two tabs both open an unchanged slot", async () => {
     // V029: "where two concurrent start-editing requests collide instead of producing two
     // drafts nobody can choose between".
     const { service, repository } = harness();
@@ -483,50 +571,57 @@ describe("saving a draft", () => {
 
 describe("the guarded write both editors share", () => {
   // Decision C3: one draft, two editors. The code view (U.3, #167) saves through this as well.
-  it("records the editor it is told, on the draft it locked", async () => {
+  it("records the code editor's save as a code batch, on the draft it locked", async () => {
     const { service, repository } = harness();
+    repository.draftOf
+      .mockResolvedValueOnce(draft())
+      .mockResolvedValue(draft({ definition: WITH_STAGE, edited_in: "code" }));
 
     const written = await service.writeGuarded(
       workflow(),
       draftEtag(draft()),
-      { nodes: [2] },
+      WITH_STAGE,
       "code",
+      PERSON,
     );
 
     expect(repository.draftOf).toHaveBeenCalledWith(WORKFLOW, expect.anything(), true);
-    expect(repository.writeDraft).toHaveBeenCalledWith(
-      draft().id,
-      { nodes: [2] },
+    expect(repository.applyBatch).toHaveBeenCalledWith(
+      WORKSPACE,
+      WORKFLOW,
       "code",
+      PERSON,
+      [{ kind: "add_stage", params: { node: STAGE } }],
       expect.anything(),
-      undefined,
     );
-    expect(written.definition).toEqual({ nodes: [2] });
+    expect(written.definition).toEqual(WITH_STAGE);
   });
 
-  it("creates the first draft as the editor that wrote it", async () => {
+  it("records a half-built stage the DSL refuses — autosave keeps work in progress", async () => {
     const { service, repository } = harness();
-    repository.draftOf.mockResolvedValue(undefined);
+    const unrouted = { id: "fix", type: "llm", title: "Fix", position: { x: 0, y: 0 }, config: {} };
 
-    await service.writeGuarded(workflow(), NO_DRAFT, { nodes: [] }, "code");
-
-    expect(repository.insertDraft).toHaveBeenCalledWith(
-      WORKFLOW,
-      { nodes: [] },
-      "code",
-      expect.anything(),
-      null,
+    await service.writeGuarded(
+      workflow(),
+      draftEtag(draft()),
+      { dsl_version: "1.0", nodes: [unrouted], edges: [] },
+      "visual",
+      PERSON,
     );
+
+    expect(repository.applyBatch.mock.calls[0][4]).toEqual([
+      { kind: "add_stage", params: { node: unrouted } },
+    ]);
   });
 
   it("refuses a stale etag inside the transaction, and writes nothing", async () => {
     const state = harness();
 
-    expect(await refusal(state.service.writeGuarded(workflow(), "stale", {}, "code"))).toBe(
+    expect(await refusal(state.service.writeGuarded(workflow(), "stale", {}, "code", PERSON))).toBe(
       "workflow_draft_conflict",
     );
     expect(state.transactions).toBe(1);
-    expect(state.repository.writeDraft).not.toHaveBeenCalled();
+    expect(state.repository.applyBatch).not.toHaveBeenCalled();
     expect(state.repository.insertDraft).not.toHaveBeenCalled();
   });
 });
@@ -711,21 +806,49 @@ describe("a proposed draft (#514)", () => {
     });
   });
 
-  it("writes the document and its note as a draft, guarded by the etag, and never publishes", async () => {
+  it("writes the document as a canvas batch with no person, sets its note, and never publishes", async () => {
     const { service, repository, gate } = harness();
     const document = readFixture("valid/standard-fix.json");
 
     await service.proposeDraft(WORKSPACE, WORKFLOW, draftEtag(draft()), document, "Cites 171.");
 
-    expect(repository.writeDraft).toHaveBeenCalledWith(
-      draft().id,
-      document,
-      "visual",
+    expect(repository.applyBatch).toHaveBeenCalledWith(
+      WORKSPACE,
+      WORKFLOW,
+      "canvas",
+      null,
+      expect.arrayContaining([expect.objectContaining({ kind: "add_stage" })]),
       expect.anything(),
+    );
+    expect(repository.setChangeNote).toHaveBeenCalledWith(
+      draft().id,
       "Cites 171.",
+      expect.anything(),
     );
     expect(repository.publish).not.toHaveBeenCalled();
     expect(gate.check).not.toHaveBeenCalled();
+  });
+
+  it("sets the note even when the proposal changes nothing in the document", async () => {
+    const document = readFixture("valid/standard-fix.json");
+    const { service, repository } = harness({
+      draftOf: jest.fn().mockResolvedValue(draft({ definition: document })),
+    });
+
+    await service.proposeDraft(
+      WORKSPACE,
+      WORKFLOW,
+      draftEtag(draft({ definition: document })),
+      document,
+      "Cites 171.",
+    );
+
+    expect(repository.applyBatch).not.toHaveBeenCalled();
+    expect(repository.setChangeNote).toHaveBeenCalledWith(
+      draft().id,
+      "Cites 171.",
+      expect.anything(),
+    );
   });
 
   it("refuses a document that does not parse, writing nothing", async () => {
@@ -734,7 +857,7 @@ describe("a proposed draft (#514)", () => {
     await expect(
       service.proposeDraft(WORKSPACE, WORKFLOW, draftEtag(draft()), { nodes: [] }, "x"),
     ).rejects.toMatchObject({ code: "workflow_definition_invalid" });
-    expect(repository.writeDraft).not.toHaveBeenCalled();
+    expect(repository.applyBatch).not.toHaveBeenCalled();
   });
 
   it("refuses a stale base with workflow_draft_conflict", async () => {
