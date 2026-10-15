@@ -741,7 +741,15 @@ Described with [`OURO_MANAGED_KEY_POOL`](#ouro_managed_key_pool) above.
 
 **Development default:** `false`
 
-Whether this deployment may execute loops for real: call models, edit code and open pull requests. Off unless declared, so an upgrade never starts executing on its own. With it off, the loop capability report (GET /api/v1/loop/capabilities) says execution is unavailable whatever else is ready. `true` or `false`.
+Whether this deployment may execute loops for real: call models, edit code and open pull requests. Off unless declared, so an upgrade never starts executing on its own. With it off, the loop capability report (GET /api/v1/loop/capabilities) says execution is unavailable whatever else is ready, and the engine's queue claim is refused with deployment_disabled, so no queued item becomes paid work. `true` or `false`.
+
+### `OURO_QUEUE_CLAIM_LEASE_SECONDS`
+
+**Development default:** `300`
+
+How long an engine worker holds a queue item it claimed before the item is claimable again, in seconds. Optional; 300 (five minutes) when unset. Between 30 and 3600.
+
+The window between a claim and the run opened from it: a worker opens the run moments after claiming, and one that died in between gives the item back when this runs out.
 
 ### `OURO_MANAGED_KEY_TRIAL_CENTS`
 

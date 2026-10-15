@@ -47,6 +47,7 @@ import { INTERNAL_ONLY } from "../internal/internal.decorators";
 import {
   INTERNAL_LEASE_PATH,
   INTERNAL_INVOKE_PATH,
+  INTERNAL_QUEUE_CLAIM_PATH,
   INTERNAL_RUNS_PATH,
   INTERNAL_RUN_COMMITS_PATH,
   INTERNAL_RUN_EVENTS_PATH,
@@ -190,6 +191,9 @@ export const INTERNAL_SURFACE: readonly string[] = [
   `PUT ${INTERNAL_RUN_FILES_PATH}`,
   `POST ${INTERNAL_RUN_COMMITS_PATH}`,
   `POST ${INTERNAL_RUN_RESOURCES_PATH}`,
+  // The queue claim (#91), which leases the head of a workspace's queue to the worker that
+  // opens a run from it — a stranger who could reach it could drain any workspace's queue.
+  `POST ${INTERNAL_QUEUE_CLAIM_PATH}`,
   // The control queue's executor half (AP.4, #306, decision R6): claim what is pending for a
   // run, and acknowledge one control with the effect it had. A stranger who could reach these
   // could swallow an abort before the executor ever saw it.

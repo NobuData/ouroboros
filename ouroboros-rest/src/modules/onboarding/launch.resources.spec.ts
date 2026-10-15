@@ -24,6 +24,7 @@ const QUEUED: QueueItemSummary = {
   estMinutes: 15,
   enqueuedAt: "2026-09-30T10:00:00.000Z",
   playbookId: null,
+  claimed: null,
 };
 
 const ONBOARDING = {

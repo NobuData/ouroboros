@@ -139,3 +139,21 @@ def test_usage_is_an_unpriced_spend() -> None:
     assert (spend.tokens_in, spend.tokens_out, spend.latency_ms) == (1200, 80, 900)
     assert spend.cost_cents is None
     assert spend.occurred_at == BASE["ts"]
+
+
+def test_usage_is_attributed_to_its_stage_and_attempt() -> None:
+    # #91: a run's spend reads by stage — the event knows which, and the report now says so.
+    spend = to_spend(
+        Usage(
+            seq=9,
+            provider="anthropic",
+            model="claude-sonnet-5-5",
+            tokens_in=1,
+            tokens_out=1,
+            **BASE,
+        )
+    )
+    assert (spend.stage, spend.attempt) == (BASE["stage_key"], BASE["attempt"])
+    assert (
+        spend.model_dump(by_alias=True, exclude_none=True)["stage"] == BASE["stage_key"]
+    )

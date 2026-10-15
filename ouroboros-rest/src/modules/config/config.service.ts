@@ -591,6 +591,14 @@ export class AppConfigService {
   }
 
   /**
+   * Seconds a claimed queue item is held for the worker that claimed it —
+   * `OURO_QUEUE_CLAIM_LEASE_SECONDS` (#91).
+   */
+  get queueClaimLeaseSeconds(): number {
+    return this.config.getOrThrow<number>("queueClaimLeaseSeconds");
+  }
+
+  /**
    * The managed key pool's trial credit, in cents — `OURO_MANAGED_KEY_TRIAL_CENTS`. `undefined`
    * when unset: the wizard's managed row then names no figure.
    */
@@ -725,6 +733,7 @@ export class AppConfigService {
       onboardingUnlockThreshold: this.onboardingUnlockThreshold,
       managedKeyPool: this.managedKeyPool,
       liveExecutionEnabled: this.liveExecutionEnabled,
+      queueClaimLeaseSeconds: this.queueClaimLeaseSeconds,
       managedKeyTrialCents: this.managedKeyTrialCents,
       hostedRunnerPool: this.hostedRunnerPool,
       dataRegion: this.dataRegion,

@@ -167,7 +167,7 @@ export class DashboardService {
       },
       activeRuns: active.map(runSummary),
       recentRuns: recent.map(runSummary),
-      queueHead: head.map(queueItemSummary),
+      queueHead: head.map((row) => queueItemSummary(row)),
       activity: {
         // Read from the same figures the stat row is rendered from rather than counted
         // again: the subline saying "3 issues in flight" beside a card saying `2` would be

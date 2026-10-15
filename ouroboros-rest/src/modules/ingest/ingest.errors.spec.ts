@@ -4,7 +4,11 @@ import {
   attemptLimitExceeded,
   buildJobNotFound,
   eventsOutOfOrder,
+  claimWorkspaceNotFound,
+  deploymentDisabled,
   idempotencyKeyReused,
+  queueClaimLost,
+  queueItemMismatch,
   repositoryNotFound,
   runNotFound,
   stageNotInPin,
@@ -51,6 +55,10 @@ const REFUSALS = [
   ["events_out_of_order", 409, () => eventsOutOfOrder(22, 20)],
   ["build_job_not_found", 404, () => buildJobNotFound("job")],
   ["idempotency_key_reused", 409, () => idempotencyKeyReused("run.files", "k")],
+  ["deployment_disabled", 409, () => deploymentDisabled()],
+  ["workspace_not_found", 404, () => claimWorkspaceNotFound("acme")],
+  ["queue_claim_lost", 409, () => queueClaimLost("q")],
+  ["queue_item_mismatch", 422, () => queueItemMismatch("q", "issue")],
 ] as const;
 
 describe("the codes", () => {
@@ -121,16 +129,19 @@ describe("the details each refusal carries", () => {
 });
 
 describe("the published contract", () => {
-  /** Every string that appears anywhere under the six ingestion paths. */
+  /** Every string that appears anywhere under the six ingestion paths and the queue claim. */
   function ingestionProse(): string {
     const document = internalDocument();
     // The control queue's two routes (#306) share the `/internal/runs` prefix and are not
-    // ingestion operations, so they are left out rather than counted.
+    // ingestion operations, so they are left out rather than counted. The queue claim (#91) is
+    // the contract's first call, and is in.
     const ingestion = Object.entries(document.paths).filter(
-      ([path]) => path.startsWith("/internal/runs") && !path.includes("/controls/"),
+      ([path]) =>
+        (path.startsWith("/internal/runs") && !path.includes("/controls/")) ||
+        path === "/internal/queue/claim",
     );
 
-    expect(ingestion).toHaveLength(6);
+    expect(ingestion).toHaveLength(7);
 
     return JSON.stringify(ingestion);
   }

@@ -55,7 +55,14 @@
 import { Inject, Injectable, Optional } from "@nestjs/common";
 import type { Transaction } from "kysely";
 
-import type { DataOrigin, Database, Run, RunIngestOperation, RunStage } from "../db/schema";
+import type {
+  DataOrigin,
+  Database,
+  QueueItem,
+  Run,
+  RunIngestOperation,
+  RunStage,
+} from "../db/schema";
 import { ProtectedPathEmitter } from "../guardrails/protected-path.emitter";
 import { GATE_EVIDENCE, type GateEvidenceSink } from "../pull-requests/gates/gate.evidence";
 import { workspaceNotAdmitting } from "../lifecycle/lifecycle.errors";
@@ -89,6 +96,8 @@ import {
   ticketNotFound,
   ticketNotNumbered,
   workflowPinNotFound,
+  queueClaimLost,
+  queueItemMismatch,
   workflowPinUnreadable,
 } from "./ingest.errors";
 import { requestDigest } from "./ingest.idempotency";
@@ -214,6 +223,19 @@ export class IngestService {
         throw workflowPinUnreadable(request.workflow.tag, request.workflow.version);
       }
 
+      // A run opened from a claimed queue item (#91) consumes it: the lease must still be the
+      // caller's, and the item must be this run — checked before anything is written, so a
+      // refusal leaves the item queued and leased as it was.
+      const queued =
+        request.queueItem === undefined
+          ? undefined
+          : await this.heldQueueItem(trx, request.queueItem, {
+              organizationId: ticket.organizationId,
+              repository: request.repository,
+              issueNumber,
+              workflow: request.workflow,
+            });
+
       // A run opened for an issue a playbook queued, under the playbook's pin, is that
       // playbook's launch (BF.6, #415) — `run 9×` counts it.
       const playbookId = await this.runs.queuedPlaybook(trx, {
@@ -247,7 +269,14 @@ export class IngestService {
         // is live, a simulator's is simulated. The database refuses any other pairing.
         origin: originOf(simulated),
         playbook_id: playbookId,
+        queue_item_id: queued?.id ?? null,
       });
+
+      // The item is consumed with the open: one transaction, so the queue never shows an item
+      // a run has already been opened from, nor loses one no run was opened from.
+      if (queued !== undefined) {
+        await this.runs.removeQueueItem(trx, queued);
+      }
 
       // `run.opened` for the webhook pipeline (#487). In this transaction, so a losing replay
       // race that rolls back takes its event with it.
@@ -696,6 +725,8 @@ export class IngestService {
           cost_cents: request.spend.costCents ?? null,
           task_kind: request.spend.taskKind ?? null,
           latency_ms: request.spend.latencyMs ?? null,
+          stage: request.spend.stage ?? null,
+          attempt: request.spend.attempt ?? null,
           ...(request.spend.occurredAt === undefined
             ? {}
             : { occurred_at: new Date(request.spend.occurredAt) }),
@@ -752,6 +783,49 @@ export class IngestService {
     if (!admitsNewWork(state)) {
       throw workspaceNotAdmitting(state);
     }
+  }
+
+  /**
+   * The queue item a run is being opened from, held under the caller's lease and matching the
+   * run (#91).
+   *
+   * @param trx - The open's transaction.
+   * @param lease - The item and the token the claim gave.
+   * @param run - What the run is being opened for.
+   * @returns The item, locked, for the open to remove.
+   * @throws {ConflictError} `409 queue_claim_lost` — the item is gone, its lease ran out, or
+   *   the token is not its lease's.
+   * @throws {InvalidRequestError} `422 queue_item_mismatch` — the item is another workspace's,
+   *   repository's, issue's or pin's.
+   */
+  private async heldQueueItem(
+    trx: Transaction<Database>,
+    lease: { id: string; claimToken: string },
+    run: {
+      organizationId: string;
+      repository: string;
+      issueNumber: number;
+      workflow: { tag: string; version: number };
+    },
+  ): Promise<QueueItem> {
+    const item = await this.runs.lockQueueItem(trx, lease.id);
+
+    if (
+      item === undefined ||
+      item.claim_token !== lease.claimToken ||
+      item.claim_expires_at === null ||
+      item.claim_expires_at.getTime() <= Date.now()
+    ) {
+      throw queueClaimLost(lease.id);
+    }
+
+    const mismatch = queueItemMismatchOf(item, run);
+
+    if (mismatch !== undefined) {
+      throw queueItemMismatch(lease.id, mismatch);
+    }
+
+    return item;
   }
 
   /**
@@ -992,4 +1066,37 @@ export { GUARDRAIL_SCHEDULER };
  */
 export function originOf(simulated: boolean): Exclude<DataOrigin, "seeded"> {
   return simulated ? "simulated" : "live";
+}
+
+/**
+ * The first field in which a queue item is not the run being opened from it, if any (#91).
+ *
+ * An item queued without a pinned version (V032's unpinned rows) is the run's whatever version
+ * the run pins; one queued with a version must be opened under it.
+ *
+ * @param item - The queue item.
+ * @param run - The run being opened.
+ * @returns `workspace`, `repository`, `issue`, `workflow` or `workflow version`, or `undefined`
+ *   when the item is this run.
+ */
+export function queueItemMismatchOf(
+  item: Pick<
+    QueueItem,
+    "organization_id" | "github_repo_id" | "issue_number" | "workflow_tag" | "workflow_version"
+  >,
+  run: {
+    organizationId: string;
+    repository: string;
+    issueNumber: number;
+    workflow: { tag: string; version: number };
+  },
+): string | undefined {
+  if (item.organization_id !== run.organizationId) return "workspace";
+  if (item.github_repo_id !== run.repository) return "repository";
+  if (item.issue_number !== run.issueNumber) return "issue";
+  if (item.workflow_tag !== run.workflow.tag) return "workflow";
+  if (item.workflow_version !== null && item.workflow_version !== run.workflow.version) {
+    return "workflow version";
+  }
+  return undefined;
 }

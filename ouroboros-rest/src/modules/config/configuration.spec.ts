@@ -189,6 +189,7 @@ describe("the development defaults", () => {
       hostedRunnerPool: false,
       // DG.2's (#1300) switch: off unless a deployment declares it.
       liveExecutionEnabled: false,
+      queueClaimLeaseSeconds: 300,
     });
   });
 });
@@ -1364,6 +1365,25 @@ describe("the live-execution switch (DG.2, #1300, decision L10)", () => {
   it.each(["yes", "1", "TRUE", "on"])("rejects %s rather than reading it as off", (value) => {
     expect(failureFor(testEnvironment({ OURO_LIVE_EXECUTION_ENABLED: value }))).toContain(
       "OURO_LIVE_EXECUTION_ENABLED: expected true or false",
+    );
+  });
+});
+
+describe("the queue claim lease (#91)", () => {
+  it("holds a claimed item for five minutes when unset", () => {
+    expect(loadConfiguration(testEnvironment()).queueClaimLeaseSeconds).toBe(300);
+  });
+
+  it("reads a lease inside its bounds", () => {
+    expect(
+      loadConfiguration(testEnvironment({ OURO_QUEUE_CLAIM_LEASE_SECONDS: "45" }))
+        .queueClaimLeaseSeconds,
+    ).toBe(45);
+  });
+
+  it.each(["29", "3601", "five"])("refuses %s", (value) => {
+    expect(failureFor(testEnvironment({ OURO_QUEUE_CLAIM_LEASE_SECONDS: value }))).toContain(
+      "OURO_QUEUE_CLAIM_LEASE_SECONDS",
     );
   });
 });

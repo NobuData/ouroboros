@@ -43,6 +43,7 @@ const LIVE: Run = {
   playbook_id: null,
   events_swept_at: null,
   origin: "live",
+  queue_item_id: null,
 };
 
 /** Its counterpart on the completions card — the same table, the other half of decision F2. */
@@ -72,6 +73,11 @@ const QUEUED: QueueItem = {
   workflow_version: null,
   workflow_pin_reason: null,
   playbook_id: null,
+  claimed_at: null,
+  claim_expires_at: null,
+  claimed_by: null,
+  claim_token: null,
+  claim_key: null,
   position: 12,
   est_minutes: null,
   enqueued_at: new Date("2026-08-13T13:37:41.000Z"),
@@ -148,7 +154,27 @@ describe("a queued issue", () => {
       estMinutes: null,
       enqueuedAt: "2026-08-13T13:37:41.000Z",
       playbookId: null,
+      claimed: null,
     });
+  });
+
+  it("says who holds a claimed item and until when, and nothing once the lease has run out (#91)", () => {
+    const now = new Date("2026-10-15T14:25:00.000Z");
+    const leased = {
+      ...QUEUED,
+      claimed_at: new Date("2026-10-15T14:24:00.000Z"),
+      claim_expires_at: new Date("2026-10-15T14:29:00.000Z"),
+      claimed_by: "engine-worker-a",
+      claim_token: "0b6a1c55-3f2e-4a7d-9c1e-2d8f4b6a9e10",
+      claim_key: "worker-a-claim-1",
+    };
+
+    expect(queueItemSummary(leased, now).claimed).toEqual({
+      by: "engine-worker-a",
+      until: "2026-10-15T14:29:00.000Z",
+    });
+    expect(queueItemSummary(leased, new Date("2026-10-15T14:29:00.000Z")).claimed).toBeNull();
+    expect(queueItemSummary(QUEUED, now).claimed).toBeNull();
   });
 
   it("carries the pin through — the version in force and the reason — without reinterpreting it", () => {

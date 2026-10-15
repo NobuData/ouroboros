@@ -6875,6 +6875,44 @@ prefix is the browser's boundary — CORS-configured, session-authenticated, and
 the document `ouroboros-ui` generates a client from — and the only caller of these two is
 deployed alongside this service and upgraded with it.
 
+### Queue consumption
+
+How a queued issue becomes a run (J.3, [#91](https://github.com/NobuData/ouroboros/issues/91),
+narrowed by its DG.1 amendment). Two calls on the internal surface, so a worker that dies
+between them loses nothing:
+
+```
+engine ── POST /internal/queue/claim {workspace, worker, idempotencyKey}
+            admission: OURO_LIVE_EXECUTION_ENABLED off → 409 deployment_disabled
+                       workspace not active (#489)   → 409 workspace_paused | workspace_pending_delete
+            head: lowest position nobody holds, `for update skip locked`
+              → 200 {id, claimToken, expiresAt, repository, issueNumber, workflow, ticket, …}
+              → 204 nothing claimable
+engine ── POST /internal/runs {…, queueItem: {id, claimToken}}
+            lease still held and the item is this run → open the run, remove the item,
+                                                          close the gap, runs.queue_item_id
+            lease gone → 409 queue_claim_lost   ·   another issue/pin → 422 queue_item_mismatch
+```
+
+- **A lease, not a removal.** A claim leases the item for `OURO_QUEUE_CLAIM_LEASE_SECONDS`
+  (default 300) and leaves it in place — `GET /api/v1/queue` and the dashboard show it as
+  `claimed: {by, until}`. The open removes it in the transaction that inserts the run; a lease
+  that runs out makes the item the head again.
+- **The head is per workspace**, and two workers claiming at once never take the same item:
+  the claim's `select … for update skip locked` skips the row the other has locked.
+- **Idempotent by the lease** (`queue_items.claim_key`, V145). A claim has no run yet, so
+  `run_ingest_receipts` cannot hold its key; a claim replayed with the same key answers the
+  item that key already leases instead of taking another.
+- **Admission is decided in the claim and nowhere else.** The deployment switch (DG.2) and the
+  workspace's pause (#489) today; DI.4 ([#1312](https://github.com/NobuData/ouroboros/issues/1312))
+  adds the dry-run policy, the confirmation and the concurrency ceiling in the same place.
+- **Spend by stage.** A resources report's `spend` may carry `stage` and `attempt`, stored on
+  `token_usage.stage` / `attempt` (V139's columns), so a run's spend reads per stage.
+
+The engine's side is `ouroboros_engine.control_plane.ingest_client.IngestClient`: the builders,
+a transport that retries a dropped connection or a `502`/`503`/`504` with the same keyed request,
+and one idempotency key per submission.
+
 ### Guardrail evaluation
 
 AP.3 ([#305](https://github.com/NobuData/ouroboros/issues/305)), decision **R5**, in

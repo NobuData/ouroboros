@@ -1,6 +1,6 @@
 import type { Transaction } from "kysely";
 
-import type { Database, Run, RunStage } from "../db/schema";
+import type { Database, QueueItem, Run, RunStage } from "../db/schema";
 import { DomainError } from "../errors/error.envelope";
 import { LIFECYCLE_ERRORS } from "../lifecycle/lifecycle.errors";
 import { ACTIVE_STATES, statesOf } from "../lifecycle/lifecycle.fixture";
@@ -94,6 +94,7 @@ function run(over: Partial<Run> = {}): Run {
     playbook_id: null,
     events_swept_at: null,
     origin: "simulated",
+    queue_item_id: null,
     ...over,
   };
 }
@@ -164,6 +165,10 @@ function stubRepository() {
     queuedPlaybook: jest.fn((_w: unknown, _pin: Record<string, unknown>): Promise<string | null> =>
       Promise.resolve(null),
     ),
+    lockQueueItem: jest.fn((_w: unknown, _id: string): Promise<QueueItem | undefined> =>
+      Promise.resolve(undefined),
+    ),
+    removeQueueItem: jest.fn((_w: unknown, _item: QueueItem) => Promise.resolve()),
     setReservation: jest.fn((_w: unknown, _r: string, _j: string | null) => {
       written.reservations += 1;
 
@@ -285,6 +290,117 @@ const OPEN = {
   workflow: { tag: "standard-fix", version: 14 },
   model: "claude-fable-5",
 };
+
+/** The queue item a claim leased for {@link OPEN} (#91). */
+function leasedItem(overrides: Partial<QueueItem> = {}): QueueItem {
+  return {
+    id: "5eed0008-0000-4000-8000-000000000001",
+    organization_id: WORKSPACE,
+    github_repo_id: REPOSITORY,
+    issue_number: 482,
+    issue_title: "Fix flaky CAN-bus telemetry test",
+    effort: "m",
+    workflow_tag: "standard-fix",
+    workflow_version: 14,
+    workflow_pin_reason: null,
+    playbook_id: null,
+    position: 3,
+    est_minutes: 90,
+    enqueued_at: new Date("2026-10-15T09:00:00.000Z"),
+    created_at: new Date("2026-10-15T09:00:00.000Z"),
+    updated_at: new Date("2026-10-15T09:00:00.000Z"),
+    claimed_at: new Date(Date.now() - 60_000),
+    claim_expires_at: new Date(Date.now() + 240_000),
+    claimed_by: "engine-worker-a",
+    claim_token: "0b6a1c55-3f2e-4a7d-9c1e-2d8f4b6a9e10",
+    claim_key: "worker-a-claim-1",
+    ...overrides,
+  };
+}
+
+const LEASE = {
+  id: "5eed0008-0000-4000-8000-000000000001",
+  claimToken: "0b6a1c55-3f2e-4a7d-9c1e-2d8f4b6a9e10",
+};
+
+describe("opening a run from a claimed queue item (#91)", () => {
+  it("consumes the item: the run records it, and it is removed in the open's transaction", async () => {
+    const { repository, spy } = stubRepository();
+    const held = leasedItem();
+    spy.lockQueueItem.mockResolvedValueOnce(held);
+
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(
+      { ...OPEN, queueItem: LEASE },
+      false,
+    );
+
+    expect(spy.lockQueueItem.mock.calls[0][1]).toBe(LEASE.id);
+    expect(spy.insertRun.mock.calls[0][1]).toMatchObject({ queue_item_id: LEASE.id });
+    expect(spy.removeQueueItem.mock.calls[0][1]).toBe(held);
+  });
+
+  it("opens an ordinary run, and removes nothing, without one", async () => {
+    const { repository, spy } = stubRepository();
+
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(OPEN, false);
+
+    expect(spy.insertRun.mock.calls[0][1]).toMatchObject({ queue_item_id: null });
+    expect(spy.lockQueueItem).not.toHaveBeenCalled();
+    expect(spy.removeQueueItem).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["the item is gone", undefined],
+    ["the token is not the lease's", leasedItem({ claim_token: "another-token" })],
+    ["the lease ran out", leasedItem({ claim_expires_at: new Date(Date.now() - 1_000) })],
+  ])("refuses with queue_claim_lost when %s, and opens nothing", async (_why, held) => {
+    const { repository, spy } = stubRepository();
+    spy.lockQueueItem.mockResolvedValueOnce(held);
+
+    await expect(
+      new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(
+        { ...OPEN, queueItem: LEASE },
+        false,
+      ),
+    ).rejects.toMatchObject({ code: "queue_claim_lost" });
+    expect(spy.insertRun).not.toHaveBeenCalled();
+    expect(spy.removeQueueItem).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["workspace", { organization_id: "another-workspace" }],
+    ["repository", { github_repo_id: "5eed0003-0000-4000-8000-000000000099" }],
+    ["issue", { issue_number: 483 }],
+    ["workflow", { workflow_tag: "docs-loop" }],
+    ["workflow version", { workflow_version: 13 }],
+  ] as const)(
+    "refuses an item for another %s with queue_item_mismatch, and opens nothing",
+    async (field, change) => {
+      const { repository, spy } = stubRepository();
+      spy.lockQueueItem.mockResolvedValueOnce(leasedItem(change));
+
+      await expect(
+        new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(
+          { ...OPEN, queueItem: LEASE },
+          false,
+        ),
+      ).rejects.toMatchObject({ code: "queue_item_mismatch", details: { field } });
+      expect(spy.insertRun).not.toHaveBeenCalled();
+    },
+  );
+
+  it("takes an item queued without a pinned version under whatever version the run pins", async () => {
+    const { repository, spy } = stubRepository();
+    spy.lockQueueItem.mockResolvedValueOnce(leasedItem({ workflow_version: null }));
+
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(
+      { ...OPEN, queueItem: LEASE },
+      false,
+    );
+
+    expect(spy.removeQueueItem).toHaveBeenCalled();
+  });
+});
 
 describe("opening a run", () => {
   it("resolves the workspace from the ticket and never from the body", async () => {

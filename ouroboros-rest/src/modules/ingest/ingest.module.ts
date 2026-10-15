@@ -68,15 +68,18 @@ import { IngestController } from "./ingest.controller";
 import { IngestRepository } from "./ingest.repository";
 import { IngestService } from "./ingest.service";
 import { PlanSignOffEmitter } from "./plan-sign-off.emitter";
+import { QueueClaimController } from "./queue-claim.controller";
+import { QueueClaimService } from "./queue-claim.service";
 import { RunNeedsHumanEmitter } from "./run-needs-human.emitter";
 import { SpendApprovalEmitter } from "./spend-approval.emitter";
 
 @Module({
   imports: [DbModule, GuardrailsModule, GatesModule, LifecycleStateModule, DecisionsModule],
-  controllers: [IngestController],
+  controllers: [IngestController, QueueClaimController],
   providers: [
     IngestRepository,
     IngestService,
+    QueueClaimService,
     ProtectedPathEmitter,
     PlanSignOffEmitter,
     RunNeedsHumanEmitter,

@@ -138,4 +138,7 @@ def to_spend(event: Usage) -> TokenSpend:
         tokens_out=event.tokens_out,
         latency_ms=event.latency_ms,
         occurred_at=event.ts,
+        # By stage and attempt (#91): the run's spend reads per stage in `token_usage`.
+        stage=event.stage_key,
+        attempt=event.attempt,
     )

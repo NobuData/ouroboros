@@ -1381,8 +1381,9 @@ is a dead end; the bar turned them into the `href` they were always going to be,
 links back here, at this card's heading, through the one fragment
 [`app/paths.ts`](app/paths.ts) owns. The page head's *⟳ Pull next issue* stays inert with its own
 sentence, `PULL_NEXT_SOON` in [`app/dashboard/view.ts`](app/dashboard/view.ts): pulling takes
-the head of the queue and starts a run, which is the engine's move and arrives with its ingestion
-bridge (#91).
+the head of the queue and starts a run, which is the engine's move. The engine's claim exists
+since #91 (`POST /internal/queue/claim`); nothing executes a claimed run until real execution
+(#160, #315) and its admission (DI.4, #1312) arrive.
 
 The empty state is the card's own until [#86](https://github.com/NobuData/ouroboros/issues/86)
 designs every card's together: a workspace that has caught up with its own queue reads
@@ -1472,8 +1473,8 @@ opinion. Stop the engine and the engine's pill degrades while the database's doe
 - **Both page-head actions are inert**, as are the active-loops card's two, and each says why
   in a tooltip naming the issue it waits for. *Edit workflows* waits for the workflow builder,
   whose route [#49](https://github.com/NobuData/ouroboros/issues/49) still holds; *Pull next
-  issue* waits for the engine's ingestion bridge (#91), which is what pulls the head of the
-  queue into a run — the queue itself is filled from the issues screen since #118 — and a
+  issue* waits for real execution (#160, #315): the engine's claim on the head of the queue
+  exists since #91, and nothing yet executes what it claims — the queue itself is filled from the issues screen since #118 — and a
   control that appeared to pull an issue would be the one dishonest thing on the screen. Linking
   either to a route that cannot yet do what its label offers would break #49's own first
   criterion, *no dead nav links*. `aria-disabled` rather than `disabled`, so the explanation

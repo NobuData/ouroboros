@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.43"
+  version: "0.41.44"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -1791,6 +1791,7 @@ paths:
                     estMinutes: 45
                     enqueuedAt: "2026-08-13T01:37:41.000Z"
                     playbookId: null
+                    claimed: null
                   - id: 5eed000a-0000-4000-8000-000000000496
                     issueNumber: 496
                     issueTitle: "Telemetry: split ingest into a worker pool"
@@ -1802,6 +1803,7 @@ paths:
                     estMinutes: null
                     enqueuedAt: "2026-08-13T13:37:41.000Z"
                     playbookId: null
+                    claimed: null
                 activity:
                   inFlight: 3
                   queued: 12
@@ -2828,6 +2830,7 @@ paths:
                     estMinutes: 45
                     enqueuedAt: "2026-08-13T01:37:41.000Z"
                     playbookId: null
+                    claimed: null
                   - id: 5eed000a-0000-4000-8000-000000000486
                     issueNumber: 486
                     issueTitle: Expose battery health over BLE GATT
@@ -2839,6 +2842,7 @@ paths:
                     estMinutes: 90
                     enqueuedAt: "2026-08-13T02:37:41.000Z"
                     playbookId: null
+                    claimed: null
                 total: 12
                 totalEstMinutes: 580
                 limit: 25
@@ -3386,6 +3390,7 @@ paths:
                     estMinutes: 45
                     enqueuedAt: "2026-09-10T15:41:12.000Z"
                     playbookId: null
+                    claimed: null
                   - id: 7a1c0b90-0000-4000-8000-000000000002
                     issueNumber: 484
                     issueTitle: Motor PID integral windup on wheel stall
@@ -3397,6 +3402,7 @@ paths:
                     estMinutes: 50
                     enqueuedAt: "2026-09-10T15:41:12.000Z"
                     playbookId: null
+                    claimed: null
                   - id: 7a1c0b90-0000-4000-8000-000000000003
                     issueNumber: 491
                     issueTitle: Add CRC32 to config persistence layer
@@ -3408,6 +3414,7 @@ paths:
                     estMinutes: 30
                     enqueuedAt: "2026-09-10T15:41:12.000Z"
                     playbookId: null
+                    claimed: null
                 estMinutes: 125
         "400":
           description: |-
@@ -48810,6 +48817,7 @@ components:
           estMinutes,
           enqueuedAt,
           playbookId,
+          claimed,
         ]
       properties:
         id:
@@ -48868,6 +48876,22 @@ components:
             an issue queued any other way. The run that opens under the same pin inherits it;
             `GET /api/v1/knowledge/playbooks/{playbookId}/context` is the context that run will
             be given.
+        claimed:
+          type: [object, "null"]
+          description: |-
+            The engine worker that has claimed the item and until when (#91), or `null` for an
+            item nobody holds — including one whose lease has run out, which is claimable again.
+            A claimed item keeps its place until the run opened from it removes it.
+          additionalProperties: false
+          required: [by, until]
+          properties:
+            by:
+              type: string
+              description: The worker, as it named itself.
+            until:
+              type: string
+              format: date-time
+              description: When the lease runs out.
 
     LoopsLive:
       type: object

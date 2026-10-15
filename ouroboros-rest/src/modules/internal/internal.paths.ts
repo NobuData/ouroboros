@@ -53,6 +53,18 @@ export const INVOKE_ROUTE = "invoke";
  */
 export const RUNS_PATH = `${INTERNAL_PATH}/runs`;
 
+/**
+ * Controller path of the queue the engine consumes, below the origin root (#91, J.3 narrowed).
+ *
+ * The engine claims a workspace's head item here and then opens the run through
+ * {@link RUNS_PATH} with the item's lease — two calls, so a worker that dies between them
+ * loses nothing: the lease runs out and the item is claimable again.
+ */
+export const QUEUE_PATH = `${INTERNAL_PATH}/queue`;
+
+/** Route segment of a claim, relative to {@link QUEUE_PATH}: `/internal/queue/claim`. */
+export const QUEUE_CLAIM_ROUTE = "claim";
+
 /** Route segment of a run's stage transitions, relative to {@link RUNS_PATH}. */
 export const STAGE_TRANSITIONS_ROUTE = ":id/stage-transitions";
 
@@ -86,6 +98,9 @@ export const INTERNAL_LEASE_PATH = `/${CREDENTIALS_PATH}/${LEASE_ROUTE}`;
 
 /** The proxy, as the engine will call it: `/internal/llm/invoke`. */
 export const INTERNAL_INVOKE_PATH = `/${LLM_PATH}/${INVOKE_ROUTE}`;
+
+/** Claiming the head of a workspace's queue, as the engine calls it: `/internal/queue/claim`. */
+export const INTERNAL_QUEUE_CLAIM_PATH = `/${QUEUE_PATH}/${QUEUE_CLAIM_ROUTE}`;
 
 /** Opening a run, as an executor calls it: `/internal/runs`. */
 export const INTERNAL_RUNS_PATH = `/${RUNS_PATH}`;
@@ -250,6 +265,7 @@ export const CREDENTIAL_AUTHENTICATED_PATHS: readonly string[] = [
 export const INTERNAL_PATHS = [
   INTERNAL_LEASE_PATH,
   INTERNAL_INVOKE_PATH,
+  INTERNAL_QUEUE_CLAIM_PATH,
   INTERNAL_RUNS_PATH,
   INTERNAL_RUN_STAGE_TRANSITIONS_PATH,
   INTERNAL_RUN_EVENTS_PATH,

@@ -975,6 +975,11 @@ export interface RunsTable {
    * `never`.
    */
   origin: ColumnType<DataOrigin, DataOrigin | undefined, never>;
+  /**
+   * The queue item the run was opened from (V145, #91), or null for a run opened without one.
+   * No foreign key: opening the run removes the item.
+   */
+  queue_item_id: ColumnType<string | null, string | null | undefined, never>;
 }
 
 /**
@@ -1185,6 +1190,8 @@ export interface RunsWithStageView {
   events_swept_at: Date | null;
   /** `runs.origin` (V141). */
   origin: DataOrigin;
+  /** `runs.queue_item_id` (V145). */
+  queue_item_id: string | null;
 }
 
 /**
@@ -2342,6 +2349,20 @@ export interface QueueItemsTable {
   enqueued_at: Generated<Date>;
   created_at: Stamped;
   updated_at: Stamped;
+  /**
+   * The lease an engine worker holds on the item (V145, #91) — all five set together, or none.
+   * An item whose lease has run out is claimable again; nothing clears the columns but the next
+   * claim, and opening a run from the item removes it.
+   */
+  claimed_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  /** When the lease runs out. */
+  claim_expires_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  /** The worker holding the lease, as it named itself. */
+  claimed_by: ColumnType<string | null, string | null | undefined, string | null>;
+  /** The lease's secret, which opening a run from the item must present. */
+  claim_token: ColumnType<string | null, string | null | undefined, string | null>;
+  /** The claim's idempotency key — a replay answers this item rather than taking another. */
+  claim_key: ColumnType<string | null, string | null | undefined, string | null>;
 }
 
 /**
@@ -8424,6 +8445,7 @@ export const TABLE_COLUMNS = {
     "playbook_id",
     "events_swept_at",
     "origin",
+    "queue_item_id",
   ],
   run_stages: [
     "id",
@@ -8671,6 +8693,11 @@ export const TABLE_COLUMNS = {
     "workflow_version",
     "workflow_pin_reason",
     "playbook_id",
+    "claimed_at",
+    "claim_expires_at",
+    "claimed_by",
+    "claim_token",
+    "claim_key",
   ],
   token_usage: [
     "id",
@@ -10531,6 +10558,7 @@ export const TABLE_COLUMNS = {
     "playbook_id",
     "events_swept_at",
     "origin",
+    "queue_item_id",
   ],
   run_events_jsonl: ["run_id", "seq", "line"],
   v_run_guardrails_latest: [

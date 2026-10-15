@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.41.43"
+  version: "0.41.44"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -810,6 +810,107 @@ paths:
               schema:
                 $ref: "#/components/schemas/HarnessError"
 
+  /internal/queue/claim:
+    post:
+      tags: [runs]
+      summary: Claim the head of a workspace's queue
+      description: |-
+        Lease the head of a workspace's queue to the calling worker (#91) — the first half of
+        consuming it. The second is `POST /internal/runs` with `queueItem`, which removes the
+        item in the transaction that opens the run.
+
+        **A lease, not a removal.** The item stays queued, shown as held, until the open
+        consumes it or the lease runs out (`OURO_QUEUE_CLAIM_LEASE_SECONDS`, five minutes by
+        default) — so a worker that dies between the claim and the open loses nothing: the item
+        is the head again.
+
+        **The head is per workspace**: the lowest `position` that nobody holds, locked
+        `for update skip locked`, so two workers claiming at once never take the same item —
+        the second takes the next, or nothing.
+
+        **Admission is decided here.** `409 deployment_disabled` while
+        `OURO_LIVE_EXECUTION_ENABLED` is off, and `409 workspace_paused` /
+        `workspace_pending_delete` while the workspace is not active (#489). DI.4 (#1312) adds
+        the dry-run policy, confirmation and concurrency ceiling in the same place.
+
+        **Idempotent by the lease.** A claim replayed with the same `idempotencyKey` answers the
+        item that key already leases rather than taking another, so a lost response never
+        costs a second item. A key whose lease ran out leases the head anew.
+
+        **The workspace is named** — the one place on this surface a worker does: a claim asks
+        *for* work. Everything the item becomes is resolved from rows from here on.
+      operationId: claimQueueItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimQueueItemRequest"
+            example:
+              idempotencyKey: worker-a-claim-7f3e
+              workspace: acme-robotics
+              worker: engine-worker-a
+      responses:
+        "200":
+          description: The item, leased to this worker, with what opening its run needs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueItemClaimed"
+              example:
+                id: 5eed0008-0000-4000-8000-000000000001
+                claimToken: 0b6a1c55-3f2e-4a7d-9c1e-2d8f4b6a9e10
+                expiresAt: 2026-10-15T14:30:00.000Z
+                organizationId: aBcD1234eFgH5678iJkL9012mNoP3456
+                repository: 5eed0003-0000-4000-8000-000000000001
+                issueNumber: 482
+                issueTitle: Fix flaky CAN-bus telemetry test
+                workflow:
+                  tag: standard-fix
+                  version: 14
+                playbookId: null
+                ticket:
+                  source: 8f14e45f-ceea-467a-9f0a-4a1c7c3b2d55
+                  externalKey: "#482"
+        "204":
+          description: Nothing is claimable — the queue is empty, or every item is held.
+        "401":
+          description: |-
+            No `X-Ouro-Internal-Key`, or a value matching neither principal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`workspace_not_found` — no workspace by that id or slug."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: workspace_not_found
+                message: There is no workspace by that id or slug.
+                details:
+                  workspace: acme-robotics
+        "409":
+          description: |-
+            Admission refused, and nothing was claimed: `deployment_disabled` — this deployment
+            does not run live loops — or `workspace_paused` / `workspace_pending_delete`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: deployment_disabled
+                message: "This deployment does not run live loops: OURO_LIVE_EXECUTION_ENABLED is off. Nothing was claimed."
+                details: {}
+        "422":
+          description: "`validation_failed` — a field is missing or the wrong shape."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /internal/runs:
     post:
       tags: [runs]
@@ -832,6 +933,13 @@ paths:
         holding `OURO_ENGINE_SHARED_SECRET` opens real ones. V046 freezes the flag once the
         run has written a transcript, so there is no later moment at which it could be
         corrected — which is why it can never be a claim.
+
+        **Opened from a claimed queue item** (#91): `queueItem` names the item and its lease, as
+        `POST /internal/queue/claim` answered them. The item must still be held under that token
+        (else `409 queue_claim_lost`) and be this run — the ticket's workspace, the repository,
+        the issue and the pin (else `422 queue_item_mismatch`). The same transaction that
+        inserts the run removes the item and closes the gap in the queue, and records it as
+        `runs.queue_item_id`.
 
         `201`, because this is the one operation on the surface that creates a resource with
         an identity.
@@ -910,6 +1018,7 @@ paths:
             `workspace_paused` / `workspace_pending_delete` — the ticket's workspace is not
             `active` (#489): the queue holds, so keep the ticket queued and ask again later. A
             replay of a run already opened still answers with its receipt.
+            `queue_claim_lost` — the `queueItem` is no longer held under that lease: claim again.
           content:
             application/json:
               schema:
@@ -924,6 +1033,8 @@ paths:
           description: |-
             `validation_failed` — a field is missing or the wrong shape, or the body carries
             one this operation does not define. `details` has one entry per field refused.
+            `queue_item_mismatch` — the `queueItem` is another workspace's, repository's,
+            issue's or pin's; nothing was opened and the lease is kept.
           content:
             application/json:
               schema:
@@ -3454,6 +3565,104 @@ components:
           description: The branch the loop works on. Absent until the run has one.
         mergeStrategy:
           $ref: "#/components/schemas/RunMergeStrategy"
+        queueItem:
+          $ref: "#/components/schemas/QueueItemLease"
+
+    QueueItemLease:
+      type: object
+      title: QueueItemLease
+      description: |-
+        The queue item a run is opened from, and the lease token its claim gave (#91). Opening
+        the run removes the item.
+      additionalProperties: false
+      required: [id, claimToken]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "`queue_items.id`, as the claim answered it."
+        claimToken:
+          type: string
+          format: uuid
+          description: The lease's secret, as the claim answered it.
+
+    ClaimQueueItemRequest:
+      type: object
+      title: ClaimQueueItemRequest
+      description: What claiming the head of a workspace's queue takes (#91).
+      additionalProperties: false
+      required: [idempotencyKey, workspace, worker]
+      properties:
+        idempotencyKey:
+          $ref: "#/components/schemas/IdempotencyKey"
+        workspace:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: "`organization.id` or its slug — whose queue to take from."
+        worker:
+          type: string
+          maxLength: 128
+          pattern: "^\\S(.*\\S)?$"
+          description: The worker claiming, as it names itself — `queue_items.claimed_by`.
+
+    QueueItemClaimed:
+      type: object
+      title: QueueItemClaimed
+      description: |-
+        A queue item leased to the calling worker, with what opening its run needs (#91).
+      additionalProperties: false
+      required:
+        [id, claimToken, expiresAt, organizationId, repository, issueNumber, issueTitle,
+         workflow, playbookId, ticket]
+      properties:
+        id:
+          type: string
+          format: uuid
+        claimToken:
+          type: string
+          format: uuid
+          description: The lease's secret — the open's `queueItem.claimToken`.
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the lease runs out and the item is claimable again.
+        organizationId:
+          type: string
+        repository:
+          type: string
+          format: uuid
+          description: "`github_repos.id` — the open's `repository`."
+        issueNumber:
+          type: integer
+        issueTitle:
+          type: string
+        workflow:
+          type: object
+          additionalProperties: false
+          required: [tag, version]
+          properties:
+            tag:
+              type: string
+            version:
+              type: [integer, "null"]
+              description: Null for an item queued without a pinned version.
+        playbookId:
+          type: [string, "null"]
+          format: uuid
+        ticket:
+          type: [object, "null"]
+          description: |-
+            The ticket to open the run for — the open's `ticket` — or null when no source has
+            mirrored the issue yet: the run cannot be opened, so let the lease run out.
+          additionalProperties: false
+          required: [source, externalKey]
+          properties:
+            source:
+              type: string
+              format: uuid
+            externalKey:
+              type: string
 
     RunOpened:
       type: object
@@ -3993,6 +4202,18 @@ components:
         occurredAt:
           type: string
           format: date-time
+        stage:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: |-
+            The stage of the pinned workflow the spend belongs to — its key, `implement` — so a
+            run's spend reads by stage (`token_usage.stage`; #91).
+        attempt:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: Which attempt of that stage (`token_usage.attempt`).
 
     ReportResourcesRequest:
       type: object

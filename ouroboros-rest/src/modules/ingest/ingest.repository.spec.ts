@@ -283,4 +283,71 @@ describe("the ingestion repository", () => {
       expect(database.statements[0].parameters).toEqual([null, RUN]);
     });
   });
+
+  describe("the queue (#91)", () => {
+    const NOW = new Date("2026-10-15T14:25:00.000Z");
+    const ITEM = "5eed0008-0000-4000-8000-000000000001";
+
+    it("claims the lowest-positioned item nobody holds, skipping rows another worker has locked", async () => {
+      await runs.claimableHead(database.service.db, WORKSPACE, NOW);
+
+      const sql = only();
+      expect(sql).toContain('from "ouroboros"."queue_items"');
+      expect(sql).toContain('"claim_expires_at" is null or "claim_expires_at" <= $');
+      expect(sql).toContain('order by "position"');
+      expect(sql).toContain("limit $");
+      expect(sql).toContain("for update skip locked");
+      expect(database.statements[0].parameters).toEqual([WORKSPACE, NOW, 1]);
+    });
+
+    it("finds what a claim key leases within the workspace, locked", async () => {
+      await runs.leasedBy(database.service.db, WORKSPACE, "worker-a-claim-1");
+
+      expect(only()).toContain('"claim_key" = $2');
+      expect(only()).toContain("for update");
+      expect(database.statements[0].parameters).toEqual([WORKSPACE, "worker-a-claim-1"]);
+    });
+
+    it("lets a lease go by clearing all five of its columns", async () => {
+      await runs.releaseLease(database.service.db, ITEM);
+
+      expect(only()).toContain(
+        'set "claimed_at" = $1, "claim_expires_at" = $2, "claimed_by" = $3, "claim_token" = $4, "claim_key" = $5',
+      );
+      expect(database.statements[0].parameters).toEqual([null, null, null, null, null, ITEM]);
+    });
+
+    it("removes a consumed item and closes the gap behind it, in its workspace only", async () => {
+      await runs.removeQueueItem(database.service.db, {
+        id: ITEM,
+        organization_id: WORKSPACE,
+        position: 3,
+      } as never);
+
+      expect(database.statements).toHaveLength(2);
+      expect(database.statements[0].sql).toContain('delete from "ouroboros"."queue_items"');
+      expect(database.statements[0].parameters).toEqual([ITEM]);
+      expect(database.statements[1].sql).toContain('set "position" = "position" - $1');
+      expect(database.statements[1].parameters).toEqual([1, WORKSPACE, 3]);
+    });
+
+    it("resolves a workspace by its id or its slug", async () => {
+      await runs.workspaceId(database.service.db, "acme-robotics");
+
+      expect(only()).toContain('where ("id" = $1 or "slug" = $2)');
+      expect(database.statements[0].parameters).toEqual(["acme-robotics", "acme-robotics", 1]);
+    });
+
+    it("finds the queued issue's GitHub ticket through the repository's owner and name", async () => {
+      await runs.ticketOfQueuedIssue(database.service.db, WORKSPACE, ITEM, 482);
+
+      const sql = only();
+      expect(sql).toContain('"ticket_sources"."kind" = $');
+      expect(sql).toContain('"tickets"."external_id" = $');
+      expect(sql).toContain("->'github'->>'owner'");
+      expect(database.statements[0].parameters).toEqual(
+        expect.arrayContaining([WORKSPACE, "github", "482"]),
+      );
+    });
+  });
 });
