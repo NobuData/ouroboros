@@ -566,7 +566,7 @@ describe("the starter setting", () => {
 
     expect(await service.settings(WORKSPACE)).toEqual({
       startRole: "member",
-      gateway: { available: false },
+      gateway: { available: true },
     });
   });
 
@@ -576,16 +576,16 @@ describe("the starter setting", () => {
 
     expect(await service.updateSettings(WORKSPACE, KEN, { startRole: "admin" })).toEqual({
       startRole: "admin",
-      gateway: { available: false },
+      gateway: { available: true },
     });
     expect(saved).toHaveBeenCalledWith(WORKSPACE, "admin", KEN);
     expect(await service.settings(WORKSPACE)).toEqual({
       startRole: "admin",
-      gateway: { available: false },
+      gateway: { available: true },
     });
     expect(await service.settings("org-other")).toEqual({
       startRole: "member",
-      gateway: { available: false },
+      gateway: { available: true },
     });
   });
 
@@ -596,7 +596,7 @@ describe("the starter setting", () => {
 
     expect(await service.updateSettings(WORKSPACE, KEN, {})).toEqual({
       startRole: "admin",
-      gateway: { available: false },
+      gateway: { available: true },
     });
     expect(saved).not.toHaveBeenCalled();
   });

@@ -28,7 +28,7 @@
 import {
   ForbiddenError,
   NotFoundError,
-  NotImplementedError,
+  InvalidRequestError,
   UnauthenticatedError,
 } from "../errors/error.envelope";
 
@@ -59,7 +59,11 @@ export const INTERNAL_ERRORS = {
   runNotFound: "run_not_found",
 
   /** The proxy is specified and not yet built — AF.2. */
-  invocationNotImplemented: "invocation_not_implemented",
+  invokeTargetInvalid: "invoke_target_invalid",
+  aliasNotFound: "alias_not_found",
+  aliasUnavailable: "alias_unavailable",
+  connectionNotFound: "connection_not_found",
+  invokeModelRequired: "invoke_model_required",
 } as const;
 
 /** One of {@link INTERNAL_ERRORS}' values. */
@@ -134,20 +138,90 @@ export function runNotFound(run: string): NotFoundError {
 }
 
 /**
- * `501` — the proxy is a contract, and AF.2 is what makes it answer.
+ * An invocation that names neither or both of `connection` and `alias`.
  *
- * A `501` rather than a `404`, and the difference is the point of serving this route at all:
- * `404` is what an engine calling the wrong URL would get, and an executor being written
- * against this contract needs to be able to tell *I have the path wrong* from *the path is
- * right and this half is not built yet*. The code and the message name the issue, so the
- * answer is a pointer rather than a dead end.
- *
- * @returns The error to throw.
+ * @returns `422 invoke_target_invalid`.
  */
-export function invocationNotImplemented(): NotImplementedError {
-  return new NotImplementedError(
-    INTERNAL_ERRORS.invocationNotImplemented,
-    "The invocation proxy is specified and not yet implemented. It lands with AF.2 " +
-      "(issue #235); this route exists so the contract can be built against.",
+export function invokeTargetInvalid(): InvalidRequestError {
+  return new InvalidRequestError(
+    INTERNAL_ERRORS.invokeTargetInvalid,
+    "Name exactly one of connection or alias: a connection is this provider, an alias is " +
+      "whatever routing resolves it to.",
+  );
+}
+
+/**
+ * The run an invocation is attributed to does not exist.
+ *
+ * Shares `run_not_found` with the lease, but not its sentence: an invocation may be made for
+ * a run, a Copilot session, a dry run or an investigation.
+ *
+ * @param run - The id the worker sent.
+ * @returns `404 run_not_found`.
+ */
+export function invokeRunNotFound(run: string): NotFoundError {
+  return new NotFoundError(
+    INTERNAL_ERRORS.runNotFound,
+    "No run, Copilot session, dry run or investigation has that id. Every invocation is " +
+      "attributed to one.",
+    { run },
+  );
+}
+
+/**
+ * The alias names nothing in the run's workspace.
+ *
+ * @param alias - The alias the worker sent.
+ * @returns `404 alias_not_found`.
+ */
+export function aliasNotFound(alias: string): NotFoundError {
+  return new NotFoundError(
+    INTERNAL_ERRORS.aliasNotFound,
+    "No such model alias in this workspace.",
+    {
+      alias,
+    },
+  );
+}
+
+/**
+ * The alias exists but cannot be called: disabled, or bound to no connection.
+ *
+ * @param alias - The alias the worker sent.
+ * @returns `422 alias_unavailable`.
+ */
+export function aliasUnavailable(alias: string): InvalidRequestError {
+  return new InvalidRequestError(
+    INTERNAL_ERRORS.aliasUnavailable,
+    "This model alias is disabled or bound to no provider connection.",
+    { alias },
+  );
+}
+
+/**
+ * The connection names nothing in the run's workspace.
+ *
+ * @param connection - The connection id the worker sent.
+ * @returns `404 connection_not_found`.
+ */
+export function invokeConnectionNotFound(connection: string): NotFoundError {
+  return new NotFoundError(
+    INTERNAL_ERRORS.connectionNotFound,
+    "No such provider connection in this workspace.",
+    { connection },
+  );
+}
+
+/**
+ * A call to a named connection with no `payload.model`.
+ *
+ * An alias carries its model; a connection does not, so the payload has to.
+ *
+ * @returns `422 invoke_model_required`.
+ */
+export function invokeModelRequired(): InvalidRequestError {
+  return new InvalidRequestError(
+    INTERNAL_ERRORS.invokeModelRequired,
+    "A call to a named connection must say which model in payload.model.",
   );
 }

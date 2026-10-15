@@ -1,0 +1,10 @@
+{"label":"direct","concurrency":1,"calls":8,"errors":0,"firstError":null,"ttftP50":203.6,"ttftP95":210.8,"ttftP99":210.8,"totalP50":2854.4,"totalP95":2872.7,"tokensPerSecond":90,"gatewayCpuPercent":1}
+{"label":"rest","concurrency":1,"calls":8,"errors":0,"firstError":null,"ttftP50":212.3,"ttftP95":229.7,"ttftP99":229.7,"totalP50":2852.9,"totalP95":2876.1,"tokensPerSecond":90,"gatewayCpuPercent":2}
+{"label":"direct","concurrency":10,"calls":80,"errors":0,"firstError":null,"ttftP50":202.4,"ttftP95":224.7,"ttftP99":227.5,"totalP50":2814.6,"totalP95":2866.5,"tokensPerSecond":905,"gatewayCpuPercent":2}
+{"label":"rest","concurrency":10,"calls":80,"errors":0,"firstError":null,"ttftP50":207.8,"ttftP95":227.7,"ttftP99":230.8,"totalP50":2847.6,"totalP95":2868,"tokensPerSecond":899,"gatewayCpuPercent":6}
+{"label":"direct","concurrency":50,"calls":350,"errors":0,"firstError":null,"ttftP50":202.7,"ttftP95":214.2,"ttftP99":214.5,"totalP50":2872,"totalP95":2884.8,"tokensPerSecond":4461,"gatewayCpuPercent":4}
+{"label":"rest","concurrency":50,"calls":350,"errors":0,"firstError":null,"ttftP50":268.5,"ttftP95":341,"ttftP99":373.5,"totalP50":2965.9,"totalP95":3050.7,"tokensPerSecond":4293,"gatewayCpuPercent":20}
+{"label":"direct","concurrency":100,"calls":800,"errors":0,"firstError":null,"ttftP50":202.5,"ttftP95":218.6,"ttftP99":219,"totalP50":2857.6,"totalP95":2872.8,"tokensPerSecond":8987,"gatewayCpuPercent":7}
+{"label":"rest","concurrency":100,"calls":700,"errors":0,"firstError":null,"ttftP50":356.5,"ttftP95":451.5,"ttftP99":463.2,"totalP50":3092.4,"totalP95":3150.3,"tokensPerSecond":8248,"gatewayCpuPercent":33}
+{"label":"direct","concurrency":250,"calls":1750,"errors":0,"firstError":null,"ttftP50":204,"ttftP95":231.3,"ttftP99":232.2,"totalP50":2891.6,"totalP95":3015.1,"tokensPerSecond":22001,"gatewayCpuPercent":17}
+{"label":"rest","concurrency":250,"calls":1500,"errors":0,"firstError":null,"ttftP50":546.7,"ttftP95":810.5,"ttftP99":848.8,"totalP50":3508.3,"totalP95":3755.2,"tokensPerSecond":17942,"gatewayCpuPercent":66}

@@ -28,6 +28,9 @@ const { values } = parseArgs({
     pids: { type: "string", default: "" },
     label: { type: "string", default: "" },
     model: { type: "string", default: "bench" },
+    // The real endpoint (AF.2, #235): the request body to send and the internal key to send it with.
+    body: { type: "string", default: "" },
+    key: { type: "string", default: "" },
   },
 });
 
@@ -76,7 +79,9 @@ function percentile(sorted, p) {
 async function oneCall() {
   const started = performance.now();
   const body =
-    values.format === "ndjson"
+    values.body !== ""
+      ? JSON.parse(values.body)
+      : values.format === "ndjson"
       ? { payload: { messages: [{ role: "user", content: "hi" }] }, runCtx: { run: "bench" } }
       : {
           model: values.model,
@@ -88,7 +93,11 @@ async function oneCall() {
   try {
     const response = await fetch(values.url, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: "Bearer sk-bench" },
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer sk-bench",
+        ...(values.key === "" ? {} : { "x-ouro-internal-key": values.key }),
+      },
       body: JSON.stringify(body),
     });
 

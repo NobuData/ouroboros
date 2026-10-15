@@ -27,7 +27,7 @@ from the gateway.
 | `relay.mjs` | REST's hot path, reduced: Express 5 (REST's own HTTP stack). It parses every SSE frame, re-emits it as `invoke.contract.ts`'s NDJSON `delta` events as they arrive, counts tokens against a cap, and closes with `usage`, `hop` and `done` |
 | `litellm.config.yaml` | LiteLLM 1.105.1 configured as 4-B requires: one concrete model, no retries, no cooldowns, no fallbacks, no budgets, no database, no outbound price-map fetch |
 | `load.mjs` | The load generator: closed loop, N concurrent streams for S seconds. It records time to first token (TTFT) and total time per call, aggregate tokens per second, and gateway CPU from `/proc` |
-| `run.sh` | Starts everything, runs each path at each concurrency, writes `results/<scenario>.jsonl`, and stops everything |
+| `run.sh` | Starts everything, runs each path at each concurrency, writes `results/<scenario>.jsonl`, and stops everything; `real` measures the shipped executor instead |
 | `results/` | The figures the ADR quotes, as measured |
 
 ## Running it
@@ -39,6 +39,26 @@ cd docs/prototypes/invocation-gateway
 LITELLM_WORKERS=4 ./run.sh     # the same with four LiteLLM workers
 SECONDS_PER_RUN=5 ./run.sh saturation   # a quick look
 ```
+
+### Against the shipped executor (AF.2, #235)
+
+`./run.sh real` is the regression bar the ADR set for AF.2: first-token overhead within +50 ms
+at p50 at 250 paced streams. It starts only the fake provider on 9100 and measures `direct`
+beside the running `POST /internal/llm/invoke` (label `rest`), writing `results/real.jsonl`.
+Start REST first, with an alias whose route reaches an `openai_compatible` connection at
+`http://127.0.0.1:9100/v1`, and that connection marked `active` (the fake provider has no
+`/v1/models`, so a health sweep would mark it in error — set
+`OURO_PROVIDER_HEALTH_INTERVAL_SECONDS=3600`):
+
+```bash
+INVOKE_URL=http://127.0.0.1:4235/internal/llm/invoke \
+INVOKE_KEY="$OURO_ENGINE_SHARED_SECRET" \
+INVOKE_BODY='{"alias":"coder-max","payload":{"messages":[{"role":"user","content":"hi"}]},"runCtx":{"run":"<a run id>","stage":"implement"}}' \
+REST_PID="$(fuser 4235/tcp)" ./run.sh real
+```
+
+`load.mjs` takes `--body` and `--key` for this. The figures measured on 2026-10-14 are in the
+ADR, under *As measured against the shipped executor*.
 
 You need Node 24 and `uv`. The first run downloads LiteLLM through `uvx` at the pinned
 version. Everything binds to loopback: ports 9100 (provider), 9200 (4-A relay),

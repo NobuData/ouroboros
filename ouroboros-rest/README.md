@@ -4275,7 +4275,7 @@ each stage that is not live carries the first reason that holds:
 
 | Stage | Live when | Reasons, in order |
 |---|---|---|
-| `invocation` | the invoke route is built (`INVOCATION_GATEWAY_AVAILABLE`) and the workspace has an enabled, unpaused connection whose adapter is cleared for invocation (`invocation.terms.ts`) | `not_implemented` → `no_invocable_connection` |
+| `invocation` | the invoke route is built (`INVOCATION_GATEWAY_AVAILABLE`, `true` since AF.2) and the workspace has an enabled, unpaused connection whose adapter is cleared for invocation (`invocation.terms.ts`) | `not_implemented` → `no_invocable_connection` |
 | `execution` | `OURO_LIVE_EXECUTION_ENABLED` is on and the engine's `GET /v0/status` reports `task_queue: true` and at least one `executors` kind | `deployment_disabled` → `engine_unavailable` → `no_task_queue` → `no_executor` |
 | `guardrailEnforcement` | execution is — the tool policy runs inside every executor | `execution_unavailable` |
 | `buildIntegration` | one of the workspace's runners is active, online and reports `git: true` (#991) | `no_runner` → `no_source_checkout` |
@@ -6758,14 +6758,33 @@ is a row in `audit_events` since AD.4
 authenticates with a service key rather than as a person, so naming a user would be inventing
 one.
 
-**`POST /internal/llm/invoke` is a contract, not an implementation.** It answers `501
-invocation_not_implemented` naming AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)),
-deliberately rather than `404`, so an executor being written against it can tell *the path is
-right and the other half is not built yet* from *I have the URL wrong*. The request and
-streaming shapes are in [`openapi.internal.yaml`](openapi.internal.yaml) and in
-`invoke.contract.ts`, and `ouroboros-engine/src/ouroboros_engine/control_plane/` mirrors them
-— which is what makes AF.1's ([#234](https://github.com/NobuData/ouroboros/issues/234)) ADR a
-real decision rather than a description of whatever got built.
+**`POST /internal/llm/invoke` is the chain executor** (AF.2,
+[#235](https://github.com/NobuData/ouroboros/issues/235); AF.1's decision 4-A, no sidecar). It
+answered `501` until AF.2, so the contract in [`openapi.internal.yaml`](openapi.internal.yaml) and
+`invoke.contract.ts` — mirrored by `ouroboros-engine/src/ouroboros_engine/control_plane/` — was
+written before the code that honours it.
+
+```
+body ─▶ InvokeService.prepare ─▶ subject (runs → copilot_sessions → dry_runs → investigations)
+                               ─▶ alias + runCtx.stage routed ─▶ resolution (1 s memo) ─▶ chainPlan
+                               ─▶ otherwise                    ─▶ alias binding / connection ─▶ one hop
+     ─▶ invoke.executor.ts     ─▶ per hop: ConnectionOpener.open → adapter.invoke → NDJSON events
+                                  usage row per hop (V139), last_used_at, hop telemetry (R8)
+```
+
+- **Only the cleared adapters invoke** (`invocation.terms.ts`): `anthropic`, `openai_compatible`
+  and `ollama`, one stream parser per wire format in `providers/adapters/*.stream.ts`.
+- **The taxonomy is the contract's**: `provider_unavailable`, `provider_rate_limited` (after a
+  bounded back-off on the same hop), `provider_auth_failed`, `context_window_exceeded` and
+  `model_not_found` advance; a hop over its connection's monthly cap fails over with
+  `cost_cap_exceeded`; everything else aborts. A hop that has already streamed text never hands
+  over. Exhaustion is `floor_exhausted` with the floor's sentence, or `chain_exhausted`.
+- **Caps**: the run's (`resolution.maxCostCents`, lowered by `runCtx.costCapCents`) pre-flight and
+  on every usage frame and delta; unpriced usage passes uncounted (`done.unpricedNotCounted`).
+- **Votes are refused** (`vote_execution_unavailable`) until AZ.1
+  ([#371](https://github.com/NobuData/ouroboros/issues/371)).
+- **Streaming overhead** is measured by `docs/prototypes/invocation-gateway/run.sh real`; the
+  figures are in [`docs/DECISION_INVOCATION_GATEWAY.md`](../docs/DECISION_INVOCATION_GATEWAY.md).
 
 **Authentication is the [#51](https://github.com/NobuData/ouroboros/issues/51) pattern, in
 the other direction.** Every route requires `X-Ouro-Internal-Key` carrying

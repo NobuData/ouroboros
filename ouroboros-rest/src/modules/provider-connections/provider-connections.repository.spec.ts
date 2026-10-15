@@ -75,7 +75,29 @@ describe("the provider connections repository", () => {
         ),
     ],
     ["remove", (repository) => repository.remove(FIXTURE_WORKSPACE, FIXTURE_CONNECTION)],
+    [
+      "touch",
+      (repository) =>
+        repository.touch(
+          FIXTURE_WORKSPACE,
+          FIXTURE_CONNECTION,
+          new Date("2026-10-14T09:00:00.000Z"),
+        ),
+    ],
   ];
+
+  describe("last_used_at", () => {
+    it("is stamped by the executor and never moves backwards (AF.2, #235)", async () => {
+      const at = new Date("2026-10-14T09:00:00.000Z");
+
+      await connections.touch(FIXTURE_WORKSPACE, FIXTURE_CONNECTION, at);
+
+      const [statement] = database.statements;
+      expect(statement.sql).toMatch(/update .*"provider_connections" set "last_used_at" = \$1/);
+      expect(statement.sql).toContain('"last_used_at" is null or "last_used_at" < $');
+      expect(statement.parameters).toContain(at);
+    });
+  });
 
   describe("scoping", () => {
     it.each(everyStatement)("carries the workspace into %s, by parameter", async (_name, issue) => {

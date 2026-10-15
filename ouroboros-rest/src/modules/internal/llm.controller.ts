@@ -1,54 +1,99 @@
 /**
- * `POST /internal/llm/invoke` — the contract, callable, and honest about not being built.
+ * `POST /internal/llm/invoke` — the chain executor's surface.
  *
- * AD.3 ([#224](https://github.com/NobuData/ouroboros/issues/224)) specifies this surface;
- * AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) implements it. The shapes
- * are in `invoke.contract.ts` and in `openapi.internal.yaml`; what is here is the route that
- * makes the contract something an executor can be *written against* rather than merely read.
+ * AD.3 ([#224](https://github.com/NobuData/ouroboros/issues/224)) specified it and answered
+ * `501` until AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) replaced that
+ * method body with the executor, as the contract promised: nothing about the path, the guard,
+ * the document or the engine's client changed.
  *
- * **Why serve it at all, rather than only document it.** Three reasons, and the third is the
- * one that decided it:
+ * ```
+ * body ─▶ ValidationPipe (422) ─▶ InvokeService.prepare (404 / 422) ─▶ 200 application/x-ndjson
+ *                                                                       one InvokeEvent per line
+ * ```
  *
- *   1. A `404` is what a caller with the path wrong gets. An engine developer building
- *      against this contract needs to be able to tell that from *the path is right and the
- *      other half is not built yet*, and only a `501` says the second thing.
- *   2. The specification suite holds the document and the router to each other in both
- *      directions. A path that were documented and not served would need an exemption, and
- *      an exemption is a hole that outlives the reason for it.
- *   3. When AF.2 lands, it replaces a method body. Nothing about the path, the guard, the
- *      document or the engine's client changes — which is what makes this a contract rather
- *      than a plan.
- *
- * **It reads no body.** No DTO, deliberately: validation is part of the implementation, and
- * a `422` for a request the finished surface would accept is worse than no validation at
- * all. The request's shape is published in the internal document and mirrored by the
- * engine's client, and it is AF.2 that makes this service enforce it.
+ * Everything that can be refused as an HTTP status is refused before the first byte; from the
+ * `200` on, every outcome — a failover, a cap, an exhausted chain — is an event in the stream
+ * (`invoke.contract.ts` decision 3). A caller that disconnects aborts the walk: the hop in
+ * flight is cancelled and its usage so far is still stored.
  */
 
-import { Controller, Post, VERSION_NEUTRAL } from "@nestjs/common";
+import { Body, Controller, HttpCode, HttpStatus, Post, Res, VERSION_NEUTRAL } from "@nestjs/common";
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 
 import { InternalOnly } from "./internal.decorators";
-import { invocationNotImplemented } from "./internal.errors";
 import { INVOKE_ROUTE, LLM_PATH } from "./internal.paths";
+import { INVOKE_MEDIA_TYPE, type InvokeEvent } from "./invoke.contract";
+import { InvokeRequestDto } from "./invoke/invoke.dto";
+import { InvokeService } from "./invoke/invoke.service";
+
+/** What the controller needs of the response it streams to. */
+export interface NdjsonResponse {
+  /** Set the status. */
+  status(code: number): unknown;
+  /** Set a header. */
+  setHeader(name: string, value: string): unknown;
+  /** Send the headers now, so the worker sees the stream open before the first event. */
+  flushHeaders?(): unknown;
+  /** Write one chunk. */
+  write(chunk: string): unknown;
+  /** End the stream. */
+  end(): unknown;
+  /** The connection closed — the worker left, or the stream ended. */
+  on(event: "close", listener: () => void): unknown;
+}
+
+/**
+ * One event as one NDJSON line.
+ *
+ * @param event - The event.
+ * @returns Its JSON and a newline.
+ */
+export function ndjsonLine(event: InvokeEvent): string {
+  return `${JSON.stringify(event)}\n`;
+}
 
 @InternalOnly()
 @AllowAnonymous()
 @Controller({ path: LLM_PATH, version: VERSION_NEUTRAL })
 export class LlmController {
+  constructor(private readonly invocations: InvokeService) {}
+
   /**
-   * Refuse an invocation, naming what will answer it.
+   * Make a model call on a worker's behalf and stream the answer.
    *
    * Authenticated first, like every route on this surface: a caller without the internal key
-   * is told `401` and learns nothing about what this path will one day do. The `501` is for
-   * the caller that got everything right.
+   * is told `401` and learns nothing more.
    *
-   * @returns Never. The signature says `never` rather than a response type so that AF.2
-   *   changes it to the streamed answer and the compiler finds every caller.
-   * @throws {NotImplementedError} `501 invocation_not_implemented`, always.
+   * @param body - The request.
+   * @param response - Written directly, as `application/x-ndjson`.
+   * @returns When the stream has ended.
+   * @throws {InvalidRequestError} `422` for a body the pipe refuses, `invoke_target_invalid`,
+   *   `invoke_model_required` or `alias_unavailable` — before any byte is streamed.
+   * @throws {NotFoundError} `404 run_not_found`, `alias_not_found` or `connection_not_found`.
    */
   @Post(INVOKE_ROUTE)
-  invoke(): never {
-    throw invocationNotImplemented();
+  @HttpCode(HttpStatus.OK)
+  async invoke(@Body() body: InvokeRequestDto, @Res() response: NdjsonResponse): Promise<void> {
+    const prepared = await this.invocations.prepare(body);
+    const gone = new AbortController();
+
+    response.on("close", () => {
+      gone.abort();
+    });
+    response.status(HttpStatus.OK);
+    response.setHeader("content-type", INVOKE_MEDIA_TYPE);
+    response.setHeader("cache-control", "no-cache, no-transform");
+    response.setHeader("x-accel-buffering", "no");
+    response.flushHeaders?.();
+
+    try {
+      // Written as each event happens. Not backpressured, as the AF.1 prototype was not: a
+      // worker reads its stream promptly, and what one answer can buffer is that answer.
+      await this.invocations.stream(prepared, gone.signal, (event) => {
+        response.write(ndjsonLine(event));
+      });
+    } finally {
+      response.end();
+    }
   }
 }

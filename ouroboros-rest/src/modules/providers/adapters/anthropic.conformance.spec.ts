@@ -10,8 +10,11 @@ import {
   ANTHROPIC_SECRET,
   recordedListing,
   recordedRefusal,
+  ANTHROPIC_INVOCATION_STREAM,
+  ANTHROPIC_INVOCATION_TEXT,
+  ANTHROPIC_INVOCATION_USAGE,
 } from "./anthropic.recordings.fixture";
-import { recordFailure, recordResponses } from "./http.recordings.fixture";
+import { recordFailure, recordResponses, invocationRecordings } from "./http.recordings.fixture";
 
 /**
  * AC.2's first acceptance criterion: **the conformance kit is green** for the Anthropic
@@ -105,6 +108,20 @@ function anthropicHarness(): AdapterConformance {
     // Nothing pulls a hosted model onto a machine. The kit's complementary leg asserts the
     // member is unreachable rather than that the case does not apply.
     pull: null,
+    // Cleared by the provider-terms record (DH.4), so the invocation suites run (AF.2, #235).
+    invoke: invocationRecordings({
+      invoke: () =>
+        adapter.invoke(conformanceContext(harness), {
+          modelId: "claude-sonnet-4-5",
+          payload: { messages: [{ role: "user", content: "hi" }] },
+          signal: new AbortController().signal,
+        }),
+      answer: ANTHROPIC_INVOCATION_STREAM,
+      contentType: "text/event-stream",
+      expectedText: ANTHROPIC_INVOCATION_TEXT,
+      expectedUsage: ANTHROPIC_INVOCATION_USAGE,
+      errorBody: '{"type":"error","error":{"type":"api_error","message":"boom"}}',
+    }),
   };
 
   return harness;

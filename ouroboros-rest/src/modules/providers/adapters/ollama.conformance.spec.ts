@@ -16,8 +16,11 @@ import {
   recordedRefusal,
   recordedTags,
   recordedVersion,
+  OLLAMA_INVOCATION_STREAM,
+  OLLAMA_INVOCATION_TEXT,
+  OLLAMA_INVOCATION_USAGE,
 } from "./ollama.recordings.fixture";
-import { recordFailure, recordResponses } from "./http.recordings.fixture";
+import { recordFailure, recordResponses, invocationRecordings } from "./http.recordings.fixture";
 
 /**
  * AC.4's first acceptance criterion: **the conformance kit is green, including the streamed-pull
@@ -151,6 +154,20 @@ function harnessFor(flavour: PullFlavour): AdapterConformance {
 
       return adapter.pullModel(conformanceContext(harness), OLLAMA_PULLED_MODEL);
     },
+    // Cleared by the provider-terms record (DH.4), so the invocation suites run (AF.2, #235).
+    invoke: invocationRecordings({
+      invoke: () =>
+        adapter.invoke(conformanceContext(harness), {
+          modelId: "qwen2.5-coder:7b",
+          payload: { messages: [{ role: "user", content: "hi" }] },
+          signal: new AbortController().signal,
+        }),
+      answer: OLLAMA_INVOCATION_STREAM,
+      contentType: "application/x-ndjson",
+      expectedText: OLLAMA_INVOCATION_TEXT,
+      expectedUsage: OLLAMA_INVOCATION_USAGE,
+      errorBody: '{"error":"boom"}',
+    }),
   };
 
   return harness;

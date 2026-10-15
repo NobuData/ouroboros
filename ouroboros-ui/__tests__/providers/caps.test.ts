@@ -97,7 +97,7 @@ describe("the copy — decision P7", () => {
   it("is the ticket's sentence, word for word, and names what removes it", () => {
     // AF.4 (#237) deletes the constant; until then the sentence is the difference between a
     // feature that warns and a feature that pretends to enforce.
-    expect(CAP_WARNING_ONLY).toBe("Warning only — enforcement arrives with invocation.");
+    expect(CAP_WARNING_ONLY).toBe("At the cap, model calls skip this provider — nothing else stops.");
   });
 
   it("explains the read-only field the way every other control on the card does", () => {

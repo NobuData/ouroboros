@@ -586,9 +586,9 @@ investigation, answers `202`, and runs `loop-v1` in the background. `ouroboros_e
   `regression_forensics@1`, `roadmap_improvements@1`). Words and shapes only: the loop has no
   code path per kind, which `tests/test_investigation_loop.py` asserts.
 - `model.py` — one model call through `ouroboros-rest`'s invocation gateway
-  (`/internal/llm/invoke`) on the alias the request names. Until that gateway is implemented
-  (AF.2, [#235](https://github.com/NobuData/ouroboros/issues/235)) every investigation ends as
-  `failed: synthesis_failure`.
+  (`/internal/llm/invoke`) on the alias the request names — AF.2's chain executor
+  ([#235](https://github.com/NobuData/ouroboros/issues/235)). Against a REST release before
+  0.41.36, which answers `501`, every investigation ends as `failed: synthesis_failure`.
 - `control.py` — the control plane's `/internal/research/*` routes: start, tool operation,
   checkpoint, brief, finish.
 - `runner.py` — daemon threads, at most four investigations at once (`503
@@ -673,8 +673,8 @@ the guard audit is not empty.
 
 **What it does not do.** Loop edges are not walked and `max_retries` is not exercised: a dry run
 makes one pass. An infrastructure stage is a *test* when its id or title has the word `test`,
-otherwise a *build* — the DSL does not say. Until AF.2 (#235) lands the gateway answers `501`
-and the first model stage fails as `gateway_unavailable`.
+otherwise a *build* — the DSL does not say. Against a REST release before AF.2 (#235, 0.41.36)
+the gateway answers `501` and the first model stage fails as `gateway_unavailable`.
 
 `tests/test_dryrun_guards.py` is the guard suite: every forbidden capability is asserted absent
 by name, the overlay is asserted never to reach the reader or the cache, the package is asserted
@@ -696,9 +696,10 @@ result. It is what the roadmap pipeline's `create-roadmap` and `create-issues` r
 | **Validated, re-asked once, never repaired** | An answer outside the contract is returned to the model with what was wrong; a second miss is `422 skill_output_invalid`. An `issue_bodies` answer that skips or invents an item is refused. |
 | **Attributed and capped** | Calls go through the invocation gateway with `run` as the attribution and what is left of `cost_cap_cents` as the cap. |
 
-Until the gateway exists (AF.2, [#235](https://github.com/NobuData/ouroboros/issues/235)) a run
-answers `502 skill_model_failed` with `details.reason: gateway_unavailable`; the suites run on a
-scripted model (`tests/skills_fakes.py`).
+Against a REST release without the gateway (before AF.2,
+[#235](https://github.com/NobuData/ouroboros/issues/235)) a run answers `502 skill_model_failed`
+with `details.reason: gateway_unavailable`; the suites run on a scripted model
+(`tests/skills_fakes.py`).
 
 ## The simulated-run driver (development only)
 
@@ -1102,9 +1103,9 @@ provider — an Ollama daemon on the same box — is reached directly, so a leas
 URL and there is no field in it a credential could arrive in. A lease naming a cloud provider
 is a `403` by policy, enforced on the control plane's side rather than trusted to this one.
 
-**It opens no socket, and that is a decision rather than an omission.** There is no executor
-yet — AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) is what walks a resolved
-chain, and the workers that would take a lease are
+**It opens no socket, and that is a decision rather than an omission.** The executor is the
+control plane's — AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) walks a
+resolved chain inside `ouroboros-rest` — and the workers that would take a lease are
 [#123](https://github.com/NobuData/ouroboros/issues/123) and
 [#160](https://github.com/NobuData/ouroboros/issues/160). Adding an HTTP library to this
 service's runtime dependencies for a caller that does not exist would be shipping a

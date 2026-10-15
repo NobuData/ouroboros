@@ -78,7 +78,9 @@ import {
 } from "../../db/schema";
 import { ANTHROPIC_DEFAULT_BASE_URL, ANTHROPIC_VERSION } from "../../provider-health/checks";
 import type {
-  ModelProviderAdapter,
+  InvocationCall,
+  InvocationCapableAdapter,
+  InvocationChunk,
   NormalizedModel,
   ProviderCapabilities,
   ProviderConnectionContext,
@@ -98,6 +100,9 @@ import {
   describeHttpRefusal,
   describeTransportFailure,
 } from "../provider.errors";
+import { anthropicRefusal, parseAnthropicStream } from "./anthropic.stream";
+import { anthropicBody } from "./invocation.payload";
+import { openInvocation } from "./invocation.stream";
 
 /**
  * The property the API key is submitted under.
@@ -123,6 +128,9 @@ export const ANTHROPIC_API_KEY_TITLE = "API key";
  * having a slow moment would be this service's impatience rendered as a provider's fault.
  */
 export const ANTHROPIC_TIMEOUT_MS = 10_000;
+
+/** The Messages route an invocation posts to. */
+export const ANTHROPIC_MESSAGES_PATH = "/v1/messages";
 
 /**
  * How many models one listing page asks for.
@@ -506,7 +514,7 @@ export function missingConfiguration(
  * only safe because nothing about a connection is remembered between calls.
  */
 @Injectable()
-export class AnthropicAdapter implements ModelProviderAdapter {
+export class AnthropicAdapter implements InvocationCapableAdapter {
   /** V015's `provider_connections.kind` for this provider, and the registry's key. */
   readonly kind = "anthropic" as const;
 
@@ -538,8 +546,44 @@ export class AnthropicAdapter implements ModelProviderAdapter {
    *
    * @returns All four flags, freshly built and equal on every call.
    */
-  capabilities(): ProviderCapabilities {
-    return { discovery: true, pull: false, entitlements: false, invocation: false };
+  capabilities(): ProviderCapabilities & { readonly invocation: true } {
+    return { discovery: true, pull: false, entitlements: false, invocation: true };
+  }
+
+  /**
+   * Make one streamed model call — AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)).
+   *
+   * Cleared by the provider-terms record (DH.4, `invocation.terms.ts`). The configuration is
+   * checked before any socket opens, as {@link validate} checks it, so a missing field is a
+   * `config` failure rather than a `network` one.
+   *
+   * @param connection - The saved connection, opened for this one call.
+   * @param call - The model, the payload in the common chat shape, and the signal.
+   * @yields Deltas, cumulative usage, and one `done` last.
+   * @throws {ProviderAdapterError} Every failure, classified; see `invocation.stream.ts`.
+   */
+  invoke(
+    connection: ProviderConnectionContext,
+    call: InvocationCall,
+  ): AsyncIterable<InvocationChunk> {
+    return parseAnthropicStream(async () => {
+      const missing = missingConfiguration(connection.config, connection.secret);
+
+      if (missing.length > 0 || connection.secret === null) {
+        throw new ProviderAdapterError("config", `${missing.join(", ")} required`);
+      }
+
+      return openInvocation(
+        {
+          url: `${ANTHROPIC_DEFAULT_BASE_URL}${ANTHROPIC_MESSAGES_PATH}`,
+          host: new URL(ANTHROPIC_DEFAULT_BASE_URL).host,
+          headers: { ...requestHeaders(connection.secret), accept: "text/event-stream" },
+          body: anthropicBody(call.modelId, call.payload),
+          signal: call.signal,
+        },
+        anthropicRefusal,
+      );
+    });
   }
 
   /**

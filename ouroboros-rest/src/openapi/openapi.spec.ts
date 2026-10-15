@@ -28,7 +28,8 @@ import { INSTALLER_PATHS, isInstallerPath } from "../modules/farm/installer/inst
 import { PROBE_PATHS } from "../modules/health/health.paths";
 import {
   INTERNAL_ERRORS,
-  invocationNotImplemented,
+  invokeRunNotFound,
+  invokeTargetInvalid,
   localProviderNotConfigured,
   providerNotLeasable,
   runNotFound,
@@ -734,9 +735,13 @@ describe("the internal specification", () => {
     expect(missing?.code).toBe(INTERNAL_ERRORS.localProviderNotConfigured);
     expect(missing?.message).toBe(localProviderNotConfigured("ollama").envelope().message);
 
-    const unimplemented = examples.get(`POST ${INTERNAL_INVOKE_PATH} 501`);
-    expect(unimplemented?.code).toBe(INTERNAL_ERRORS.invocationNotImplemented);
-    expect(unimplemented?.message).toBe(invocationNotImplemented().envelope().message);
+    const unattributed = examples.get(`POST ${INTERNAL_INVOKE_PATH} 404`);
+    expect(unattributed?.code).toBe(INTERNAL_ERRORS.runNotFound);
+    expect(unattributed?.message).toBe(invokeRunNotFound("r").envelope().message);
+
+    const untargeted = examples.get(`POST ${INTERNAL_INVOKE_PATH} 422`);
+    expect(untargeted?.code).toBe(INTERNAL_ERRORS.invokeTargetInvalid);
+    expect(untargeted?.message).toBe(invokeTargetInvalid().envelope().message);
   });
 
   it("documents the second `404` the lease can answer", () => {
@@ -793,9 +798,8 @@ describe("the internal document and the running application", () => {
 
   it("promises no internal route the application does not serve", () => {
     // The half that matters most for a contract written before its implementation: the
-    // proxy is *specified* here and implemented by AF.2, and this is what keeps "specified"
-    // from quietly meaning "described but unreachable". It answers `501` today, which is a
-    // route, so it is in the router — and when AF.2 replaces that body nothing here moves.
+    // proxy was *specified* here before AF.2 implemented it, and this is what kept
+    // "specified" from quietly meaning "described but unreachable".
     const code = servedInternally();
 
     for (const operation of operations(internalDocument()).keys()) {
@@ -821,7 +825,7 @@ describe("the internal document and the running application", () => {
     async (key) => {
       // Past the guard, and the two answers differ for the right reasons: the lease is a
       // `422` on the empty body this sends, because the validation pipe runs after the
-      // guard, and the proxy is the `501` it publishes. Both are documented, which is the
+      // guard, and so is the proxy's. Both are documented, which is the
       // assertion — a route that answered something the document does not describe would be
       // one whose contract had drifted from it.
       const [method, path] = key.split(" ");

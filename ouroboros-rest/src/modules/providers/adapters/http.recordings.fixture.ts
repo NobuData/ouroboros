@@ -22,6 +22,9 @@
  * `tsconfig.build.json`, and not counted as application code by `jest.config.mjs`.
  */
 
+import type { InvocationConformance } from "../conformance.fixture";
+import type { InvocationChunk, InvocationUsage } from "../provider.adapter";
+
 /**
  * Serve these responses to the next `fetch` calls, in order.
  *
@@ -131,4 +134,103 @@ export function recordedRequest(
     typeof target === "string" ? target : target instanceof URL ? target.href : target.url;
 
   return { url, init: init ?? {} };
+}
+
+/**
+ * A recorded streamed response — AF.2's invocation recordings (#235).
+ *
+ * @param text - The whole recorded body.
+ * @param options - `split` delivers it one byte per chunk, so every frame is cut somewhere.
+ * @returns A response whose body streams the text.
+ */
+export function streamedResponse(
+  text: string,
+  options: {
+    readonly split?: boolean;
+    readonly status?: number;
+    readonly contentType?: string;
+  } = {},
+): Response {
+  const bytes = new TextEncoder().encode(text);
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (options.split === true) {
+        for (const byte of bytes) {
+          controller.enqueue(new Uint8Array([byte]));
+        }
+      } else {
+        controller.enqueue(bytes);
+      }
+
+      controller.close();
+    },
+  });
+
+  return new Response(body, {
+    status: options.status ?? 200,
+    headers: { "content-type": options.contentType ?? "text/event-stream" },
+  });
+}
+
+/** What {@link invocationRecordings} needs to know about one adapter. */
+export interface InvocationRecordingSpec {
+  /** Make the call: `adapter.invoke(context, call)`. */
+  readonly invoke: () => AsyncIterable<InvocationChunk>;
+  /** The recorded streamed answer. */
+  readonly answer: string;
+  /** Its media type. */
+  readonly contentType: string;
+  /** The text it carries. */
+  readonly expectedText: string;
+  /** The usage it reports. */
+  readonly expectedUsage: InvocationUsage;
+  /** A provider error body, for the refusals. */
+  readonly errorBody: string;
+}
+
+/**
+ * The conformance kit's invocation recordings for one adapter.
+ *
+ * Each refusal is the status its class is classified from (`classifyHttpStatus`), and the
+ * `network` one is a refused socket — the same five the validation suites record.
+ *
+ * @param spec - The adapter's recordings.
+ * @returns The kit's `invoke` member.
+ */
+export function invocationRecordings(spec: InvocationRecordingSpec): InvocationConformance {
+  const refused = (status: number) => (): AsyncIterable<InvocationChunk> => {
+    recordResponses(
+      new Response(spec.errorBody, { status, headers: { "content-type": "application/json" } }),
+    );
+
+    return spec.invoke();
+  };
+
+  return {
+    answer: () => {
+      recordResponses(streamedResponse(spec.answer, { contentType: spec.contentType }));
+
+      return spec.invoke();
+    },
+    answerSplit: () => {
+      recordResponses(
+        streamedResponse(spec.answer, { split: true, contentType: spec.contentType }),
+      );
+
+      return spec.invoke();
+    },
+    expectedText: spec.expectedText,
+    expectedUsage: spec.expectedUsage,
+    failures: {
+      auth: refused(401),
+      upstream: refused(503),
+      rate_limit: refused(429),
+      config: refused(400),
+      network: () => {
+        recordFailure();
+
+        return spec.invoke();
+      },
+    },
+  };
 }

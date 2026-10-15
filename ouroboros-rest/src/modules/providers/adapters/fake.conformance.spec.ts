@@ -69,6 +69,8 @@ function harnessFor(options: FakeAdapterOptions, pulling: boolean): AdapterConfo
             "qwen3-coder:32b",
           )
       : null,
+    // The fake registers as `custom`, which the provider-terms record never clears.
+    invoke: null,
   };
 
   return harness;

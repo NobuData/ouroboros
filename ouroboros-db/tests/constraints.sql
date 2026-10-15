@@ -44091,6 +44091,83 @@ select pg_temp.must_hold(
 
 delete from ouroboros.organization where "id" in ('org-v138', 'org-v138b');
 
+-- ===========================================================================
+-- V139 — token_usage: per-hop attribution for the chain executor (AF.2, #235).
+-- ===========================================================================
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v139', 'Hop Attribution', 'hop-attribution-v139', now());
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a1390000-0000-0000-0000-00000000000a', 'org-v139', 'hops-v139', true);
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a139f000-0000-0000-0000-00000000000a', 'a1390000-0000-0000-0000-00000000000a', 'helios-firmware', true, 'main');
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq)
+  values
+    ('a1390000-0000-0000-0000-000000000001', 'org-v139', 'a139f000-0000-0000-0000-00000000000a',
+     235, 'Chain executor', 'standard-fix', 'claude-fable-5', 'building',
+     'Build', 4, 8, '2026-10-14T09:00:00Z', 1);
+insert into ouroboros.provider_connections (id, organization_id, kind, display_name, base_url) values
+  ('a1390000-0000-0000-0000-0000000000c1', 'org-v139', 'openai_compatible', 'vLLM', 'http://10.0.4.20:8000/v1');
+
+-- A run's hop row: run_id and the run subject agree, and every attribution column is stored.
+insert into ouroboros.token_usage
+    (organization_id, run_id, provider, model, tokens_in, tokens_out, cost_cents, connection_id,
+     alias, hop, stage, is_vote, cache_read_tokens, subject_kind, subject_id)
+  values
+    ('org-v139', 'a1390000-0000-0000-0000-000000000001', 'openai_compatible', 'qwen', 31, 9, null,
+     'a1390000-0000-0000-0000-0000000000c1', 'coder-fallback', 1, 'implement', false, 6,
+     'run', 'a1390000-0000-0000-0000-000000000001');
+select pg_temp.must_hold(
+  (select hop = 1 and alias = 'coder-fallback' and cache_read_tokens = 6 and cache_write_tokens = 0
+          and cost_cents is null and is_vote = false
+     from ouroboros.token_usage where organization_id = 'org-v139'),
+  'a hop row keeps its attribution, an unpriced cost as null and cache writes defaulted to 0');
+
+-- A non-run subject: no run_id, attributed by kind and id.
+insert into ouroboros.token_usage
+    (organization_id, run_id, provider, model, tokens_in, tokens_out, subject_kind, subject_id)
+  values ('org-v139', null, 'anthropic', 'claude', 10, 2, 'copilot_session',
+          'a1390000-0000-0000-0000-0000000000d1');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.token_usage (organization_id, provider, model, tokens_in, tokens_out, subject_kind)
+    values ('org-v139', 'anthropic', 'claude', 1, 1, 'dry_run')$$,
+  'a subject kind needs its id', 'token_usage_subject_pair');
+select pg_temp.must_reject(
+  $$insert into ouroboros.token_usage (organization_id, provider, model, tokens_in, tokens_out, subject_kind, subject_id)
+    values ('org-v139', 'anthropic', 'claude', 1, 1, 'workflow', 'a1390000-0000-0000-0000-0000000000d2')$$,
+  'only the four subject kinds', 'token_usage_subject_kind');
+select pg_temp.must_reject(
+  $$insert into ouroboros.token_usage (organization_id, run_id, provider, model, tokens_in, tokens_out, subject_kind, subject_id)
+    values ('org-v139', 'a1390000-0000-0000-0000-000000000001', 'anthropic', 'claude', 1, 1, 'run',
+            'a1390000-0000-0000-0000-0000000000d3')$$,
+  'a run subject must be the row''s own run', 'token_usage_run_subject');
+select pg_temp.must_reject(
+  $$insert into ouroboros.token_usage (organization_id, provider, model, tokens_in, tokens_out, hop)
+    values ('org-v139', 'anthropic', 'claude', 1, 1, -1)$$,
+  'a hop index is not negative', 'token_usage_hop_nonnegative');
+select pg_temp.must_reject(
+  $$insert into ouroboros.token_usage (organization_id, provider, model, tokens_in, tokens_out, cache_read_tokens)
+    values ('org-v139', 'anthropic', 'claude', 1, 1, -5)$$,
+  'cache counts are not negative', 'token_usage_cache_tokens_nonnegative');
+
+-- Deleting the connection keeps the spend and forgets only the pointer.
+delete from ouroboros.provider_connections where id = 'a1390000-0000-0000-0000-0000000000c1';
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.token_usage
+    where organization_id = 'org-v139' and alias = 'coder-fallback' and connection_id is null),
+  'removing a connection keeps its hops'' usage rows');
+
+-- Deleting the run sets run_id null under V010, and the run subject still names it.
+delete from ouroboros.runs where id = 'a1390000-0000-0000-0000-000000000001';
+select pg_temp.must_hold(
+  (select run_id is null and subject_kind = 'run' and subject_id = 'a1390000-0000-0000-0000-000000000001'
+     from ouroboros.token_usage where organization_id = 'org-v139' and alias = 'coder-fallback'),
+  'a deleted run leaves its usage attributed by subject');
+
+delete from ouroboros.organization where "id" = 'org-v139';
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

@@ -7,6 +7,12 @@
 # figures.
 #
 # Usage: [LITELLM_WORKERS=4] [SECONDS_PER_RUN=20] ./run.sh [paced|saturation|all]   (default: all)
+#        INVOKE_URL=… INVOKE_KEY=… INVOKE_BODY=… [REST_PID=…] ./run.sh real
+#
+# `real` is AF.2's (#235) regression bar: it starts only the fake provider and measures
+# `direct` against the shipped `POST /internal/llm/invoke` (label `rest`), which must already
+# be running with an alias bound to an openai_compatible connection at http://127.0.0.1:9100/v1.
+# INVOKE_BODY is the request body; REST_PID, when given, is the process whose CPU is read.
 #
 # LITELLM_WORKERS is passed to the proxy's --num_workers; the relays stay single-process,
 # as one `ouroboros-rest` instance is.
@@ -121,4 +127,23 @@ fi
 # is how many tokens a second each gateway can relay, and what CPU that costs.
 if [[ "$SCENARIO" == "saturation" || "$SCENARIO" == "all" ]]; then
   run_scenario "saturation-w$LITELLM_WORKERS" 0 0 2000 1 10 50
+fi
+
+# Real: the shipped executor (AF.2, #235) against the same paced provider. The criterion is
+# first-token overhead within +50 ms at p50 at 250 paced streams, over `direct`.
+if [[ "$SCENARIO" == "real" ]]; then
+  : "${INVOKE_URL:?set INVOKE_URL to the running REST /internal/llm/invoke URL}"
+  : "${INVOKE_KEY:?set INVOKE_KEY to its OURO_ENGINE_SHARED_SECRET}"
+  : "${INVOKE_BODY:?set INVOKE_BODY to the request body}"
+  out="$RESULTS/real.jsonl"
+  : >"$out"
+  start_upstream 200 10 256
+
+  for concurrency in 1 10 50 100 250; do
+    node load.mjs --label direct --format sse --concurrency "$concurrency" --seconds "$SECONDS_PER_RUN" \
+      --url http://127.0.0.1:9100/v1/chat/completions --pids "$UPSTREAM_PID" >>"$out"
+    node load.mjs --label rest --format ndjson --concurrency "$concurrency" --seconds "$SECONDS_PER_RUN" \
+      --url "$INVOKE_URL" --key "$INVOKE_KEY" --body "$INVOKE_BODY" --pids "${REST_PID:-}" >>"$out"
+    tail -n 2 "$out"
+  done
 fi

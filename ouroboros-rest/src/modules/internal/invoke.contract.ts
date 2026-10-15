@@ -66,14 +66,13 @@
  * Whether this build answers `POST /internal/llm/invoke` — the one fact a surface that needs a
  * model asks before it offers to start one.
  *
- * `false` while the route is the `501` in `llm.controller.ts`; AF.2
- * ([#235](https://github.com/NobuData/ouroboros/issues/235)) sets it `true` in the commit that
- * replaces that method's body. Research reports it to its page
+ * `true` since AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) replaced the
+ * route's `501` with the chain executor (`invoke/`). Research reports it to its page
  * (`GET /research/settings` § `gateway`, [#633](https://github.com/NobuData/ouroboros/issues/633))
  * so the page can say plainly that a brief cannot be synthesised, rather than offer a button
  * that fails.
  */
-export const INVOCATION_GATEWAY_AVAILABLE: boolean = false;
+export const INVOCATION_GATEWAY_AVAILABLE: boolean = true;
 
 /** The media type the answer is streamed as — one JSON object per line. */
 export const INVOKE_MEDIA_TYPE = "application/x-ndjson";
@@ -132,7 +131,11 @@ export interface RunContext {
    */
   readonly stage?: string;
   /**
-   * The hop index below which the chain may not degrade — AB.1's floor.
+   * A floor the worker asks for, as a stored hop **position** (`route_hops.position`) — AB.1's
+   * floor. Despite the name it is compared with a hop's position, never its chain index
+   * (gap G4): a rule that prepends a hop must not move a floor.
+   *
+   * It may only tighten the resolution's own floor, never loosen it.
    *
    * *"Never silently below the floor you set"* is mockup 06's promise, and the failure it
    * forbids is a chain that quietly finishes on a cheaper model. Exhausting the chain down
@@ -187,8 +190,15 @@ export const INVOKE_ERROR_CODES = {
   providerUnavailable: "provider_unavailable",
   /** 429 or a provider's own throttle. **Backs off, then advances.** */
   providerRateLimited: "provider_rate_limited",
-  /** The credential was refused. **Does not retry** — the provider is marked in error. */
+  /**
+   * The credential was refused. **Does not retry; advances** to the next hop (gap G3, decided
+   * by AF.1): the next hop is normally another connection with its own credential.
+   */
   providerAuthFailed: "provider_auth_failed",
+  /** The prompt is longer than this hop's model takes. **Advances** (gap G8). */
+  contextWindowExceeded: "context_window_exceeded",
+  /** This hop's provider does not have the model. **Advances** (gap G8). */
+  modelNotFound: "model_not_found",
   /** The provider refused the payload — a 4xx that is not auth. **Aborts**; the next hop would refuse it too. */
   requestInvalid: "request_invalid",
   /** The chain reached its floor. **Aborts with the floor reason**, never degrades past it. */
@@ -197,6 +207,16 @@ export const INVOKE_ERROR_CODES = {
   costCapExceeded: "cost_cap_exceeded",
   /** Every hop failed and there was no floor to stop at. **Aborts.** */
   chainExhausted: "chain_exhausted",
+  /**
+   * The resolution carries a vote and vote execution is deferred to AZ.1 (#371). **Refuses
+   * before any call** (gap G5): a vote is never silently dropped.
+   */
+  voteExecutionUnavailable: "vote_execution_unavailable",
+  /**
+   * Routing answered `fail_run` — the run may not proceed. **Runs nothing**; the event's
+   * `reason` carries the resolution's own `failure.code`.
+   */
+  resolutionFailed: "resolution_failed",
 } as const;
 
 /** One of {@link INVOKE_ERROR_CODES}' values. */
@@ -232,6 +252,10 @@ export interface InvokeUsageEvent {
   readonly inputTokens: number;
   /** Tokens received. */
   readonly outputTokens: number;
+  /** Prompt tokens served from the provider's cache. */
+  readonly cacheReadTokens?: number;
+  /** Prompt tokens written to the provider's cache. */
+  readonly cacheWriteTokens?: number;
   /**
    * What it cost, in cents, or `null` when nothing prices it.
    *
@@ -255,6 +279,12 @@ export interface InvokeHopEvent {
   readonly hop: number;
   /** The provider connection attempted. */
   readonly connection: string;
+  /** The routing alias the hop came from — AB.2's per-alias input (gap G7). */
+  readonly alias?: string | null;
+  /** When the attempt ended, ISO 8601, stamped by the executor — AB.2's window input (G7). */
+  readonly at?: string;
+  /** The cap that ended the hop, when `code` is `cost_cap_exceeded`. */
+  readonly cap?: InvokeCap;
   /** How it ended. */
   readonly outcome: "ok" | "failed_over" | "aborted";
   /** Why, when it was not `ok`. */
@@ -272,6 +302,24 @@ export interface InvokeErrorEvent {
   readonly code: InvokeErrorCode;
   /** A sentence for a person. Never a provider's own error text; see `error.envelope.ts`. */
   readonly message: string;
+  /** The cap that stopped the call, when `code` is `cost_cap_exceeded`. */
+  readonly cap?: InvokeCap;
+  /** Routing's `failure.code`, when `code` is `resolution_failed`. */
+  readonly reason?: string;
+}
+
+/**
+ * Which cap stopped a call — *"a designed error naming the cap"*.
+ *
+ * `route` and `spend_guard` are routing's (`resolution.costCap`), `worker` is a tighter
+ * `runCtx.costCapCents`, `provider` is the hop's connection's monthly cap (decision P7).
+ */
+export interface InvokeCap {
+  readonly source: "route" | "spend_guard" | "worker" | "provider";
+  /** The limit, in cents. */
+  readonly limitCents: number;
+  /** What had been spent against it when it stopped the call, in cents. */
+  readonly spentCents: number;
 }
 
 /** The invocation completed. Terminal: no further events follow. */
@@ -281,6 +329,11 @@ export interface InvokeDoneEvent {
   readonly hop: number;
   /** Why generation stopped, in the provider's own vocabulary. */
   readonly finishReason: string;
+  /**
+   * True when a cap applied and some of this call's usage was unpriced, so it passed without
+   * being counted toward the cap (gap G6) — the spend view's *unpriced spend not counted*.
+   */
+  readonly unpricedNotCounted?: boolean;
 }
 
 /** One line of the answer. */

@@ -122,11 +122,12 @@ export function capText(cents: number | null): string {
 /**
  * The sentence decision P7 owes every cap: the meter's tooltip, and the field's description.
  *
- * **Removed by AF.4 ([#237](https://github.com/NobuData/ouroboros/issues/237))**, when the
- * spend gate makes it false. Until then it is the difference between a feature that warns
- * and a feature that pretends to enforce.
+ * Since AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) the chain executor
+ * skips a provider whose month has reached its cap, and does nothing more; AF.4
+ * ([#237](https://github.com/NobuData/ouroboros/issues/237)) is where enforcement beyond that
+ * lands. The sentence says exactly that much, so the card neither undersells nor pretends.
  */
-export const CAP_WARNING_ONLY = "Warning only — enforcement arrives with invocation.";
+export const CAP_WARNING_ONLY = "At the cap, model calls skip this provider — nothing else stops.";
 
 /** What the field says to a role that may not change it. */
 export const CAP_READ_ONLY = "Changing the cap is for workspace owners and admins.";
