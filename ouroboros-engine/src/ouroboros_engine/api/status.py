@@ -33,11 +33,15 @@ class ServiceStatus(BaseModel):
             ``GET /`` reports, so there is one source for "which build is this".
         uptime_seconds: Seconds since this process built its application. Small and
             shrinking across calls means something is restarting the container.
+        executors: The stage-executor kinds this process has registered (#160), sorted.
+            Empty means it claims and executes nothing; ``ouroboros-rest``'s admission
+            (#1312) reads it when a claim does not declare its own.
     """
 
     service: str = Field(examples=["ouroboros-engine"])
     version: str = Field(examples=["0.2.0"])
     uptime_seconds: float = Field(ge=0, examples=[1234.567])
+    executors: list[str] = Field(examples=[["native"]])
 
 
 @router.get(
@@ -61,4 +65,5 @@ async def read_status(request: Request) -> ServiceStatus:
         service="ouroboros-engine",
         version=__version__,
         uptime_seconds=round(uptime, 3),
+        executors=request.app.state.executors.kinds(),
     )

@@ -77,6 +77,12 @@ export function runRow(over: Partial<Run> = {}): Run {
     events_swept_at: null,
     origin: "live",
     queue_item_id: null,
+    exec_epoch: 0,
+    exec_worker: null,
+    exec_heartbeat_at: null,
+    exec_base_commit: null,
+    exec_checkpoint: null,
+    exec_checkpoint_at: null,
     ...over,
   };
 }

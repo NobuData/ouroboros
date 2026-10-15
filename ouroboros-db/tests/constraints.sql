@@ -16377,7 +16377,9 @@ insert into ouroboros.run_ingest_receipts
          ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.commits',
           'cover-commits', repeat('5', 64), '{}'::jsonb),
          ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.resources',
-          'cover-resources', repeat('6', 64), '{}'::jsonb);
+          'cover-resources', repeat('6', 64), '{}'::jsonb),
+         ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.finish',
+          'cover-finish', repeat('7', 64), '{}'::jsonb);
 
 select pg_temp.must_hold(
   pg_temp.vocabulary('ouroboros.run_ingest_receipts', 'run_ingest_receipts_operation')
@@ -44610,6 +44612,134 @@ select pg_temp.must_hold(
   'the effective view''s default for the live-run ceiling is the column''s');
 
 delete from ouroboros.organization where "id" = 'org-v146';
+
+-- ===========================================================================
+-- V147 — run execution: the epoch fence, the heartbeat and the checkpoint (#160).
+-- ===========================================================================
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v147', 'Run Execution', 'run-execution-v147', now());
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a1470000-0000-0000-0000-00000000000a', 'org-v147', 'execution-v147', true);
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a147f000-0000-0000-0000-00000000000a', 'a1470000-0000-0000-0000-00000000000a', 'helios-firmware', true, 'main');
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq, simulated)
+  values
+    ('a1470000-0000-0000-0000-000000000001', 'org-v147', 'a147f000-0000-0000-0000-00000000000a',
+     1, 'Live', 'standard-fix', 'claude-fable-5', 'coding', 'Code', 1, 4, now(), 1, false),
+    ('a1470000-0000-0000-0000-000000000002', 'org-v147', 'a147f000-0000-0000-0000-00000000000a',
+     2, 'Simulated', 'standard-fix', 'claude-fable-5', 'coding', 'Code', 1, 4, now(), 2, true);
+
+select pg_temp.must_hold(
+  (select exec_epoch = 0 and exec_worker is null and exec_heartbeat_at is null
+          and exec_base_commit is null and exec_checkpoint is null and exec_checkpoint_at is null
+     from ouroboros.runs where id = 'a1470000-0000-0000-0000-000000000001'),
+  'a run opens never started: epoch 0 and no execution state');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set exec_epoch = 1, exec_worker = 'w', exec_heartbeat_at = now()
+     where id = 'a1470000-0000-0000-0000-000000000002'$$,
+  'a simulated run is never executed', 'runs_exec_live_only');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set exec_epoch = 1 where id = 'a1470000-0000-0000-0000-000000000001'$$,
+  'a start names its worker and its heartbeat with the epoch', 'runs_exec_started_whole');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set exec_epoch = 1, exec_worker = ' padded', exec_heartbeat_at = now()
+     where id = 'a1470000-0000-0000-0000-000000000001'$$,
+  'a worker names itself the way a queue claim does', 'runs_exec_worker_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq, exec_epoch)
+    values ('a1470000-0000-0000-0000-000000000003', 'org-v147', 'a147f000-0000-0000-0000-00000000000a',
+            3, 'x', 'standard-fix', 'm', 'coding', 'Code', 1, 4, now(), 3, -1)$$,
+  'an epoch is never negative', 'runs_exec_epoch_nonnegative');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set exec_base_commit = repeat('a', 40)
+     where id = 'a1470000-0000-0000-0000-000000000001'$$,
+  'a base commit belongs to a started execution', 'runs_exec_state_needs_start');
+
+-- A heartbeat is not the run being heard from: it leaves updated_at alone.
+alter table ouroboros.runs disable trigger runs_touch_updated_at;
+update ouroboros.runs set updated_at = now() - interval '1 hour'
+ where id = 'a1470000-0000-0000-0000-000000000001';
+alter table ouroboros.runs enable trigger runs_touch_updated_at;
+
+update ouroboros.runs set exec_epoch = 1, exec_worker = 'worker-a', exec_heartbeat_at = now()
+ where id = 'a1470000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select updated_at = now() from ouroboros.runs where id = 'a1470000-0000-0000-0000-000000000001'),
+  'a start touches updated_at');
+
+alter table ouroboros.runs disable trigger runs_touch_updated_at;
+update ouroboros.runs set updated_at = now() - interval '1 hour'
+ where id = 'a1470000-0000-0000-0000-000000000001';
+alter table ouroboros.runs enable trigger runs_touch_updated_at;
+update ouroboros.runs set exec_heartbeat_at = now() + interval '1 second'
+ where id = 'a1470000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select updated_at = now() - interval '1 hour'
+     from ouroboros.runs where id = 'a1470000-0000-0000-0000-000000000001'),
+  'a heartbeat alone does not touch updated_at — the dashboard''s freshness signal and ETag');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set exec_base_commit = 'abc123'
+     where id = 'a1470000-0000-0000-0000-000000000001'$$,
+  'a base commit is forty lower-case hex digits', 'runs_exec_base_commit_shape');
+
+update ouroboros.runs set exec_base_commit = repeat('a', 40)
+ where id = 'a1470000-0000-0000-0000-000000000001';
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set exec_base_commit = repeat('b', 40)
+     where id = 'a1470000-0000-0000-0000-000000000001'$$,
+  'a base commit is set once', 'runs_exec_base_commit_immutable');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set exec_base_commit = null
+     where id = 'a1470000-0000-0000-0000-000000000001'$$,
+  'and cannot be cleared', 'runs_exec_base_commit_immutable');
+
+update ouroboros.runs set exec_epoch = 2 where id = 'a1470000-0000-0000-0000-000000000001';
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set exec_epoch = 1 where id = 'a1470000-0000-0000-0000-000000000001'$$,
+  'an epoch never goes back — a fenced worker cannot rewind the fence', 'runs_exec_epoch_monotonic');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set exec_checkpoint = '{"position": "code"}'::jsonb
+     where id = 'a1470000-0000-0000-0000-000000000001'$$,
+  'a checkpoint carries the time it was written', 'runs_exec_checkpoint_stamped');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set exec_checkpoint = '["code"]'::jsonb, exec_checkpoint_at = now()
+     where id = 'a1470000-0000-0000-0000-000000000001'$$,
+  'a checkpoint is a JSON object', 'runs_exec_checkpoint_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs
+       set exec_checkpoint = jsonb_build_object('blob', repeat('x', 65536)), exec_checkpoint_at = now()
+     where id = 'a1470000-0000-0000-0000-000000000001'$$,
+  'a checkpoint is at most 64 KiB', 'runs_exec_checkpoint_shape');
+
+update ouroboros.runs
+   set exec_checkpoint = '{"position": "code", "attempts": {"code": 1}}'::jsonb,
+       exec_checkpoint_at = now()
+ where id = 'a1470000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select exec_epoch = 2 and exec_base_commit = repeat('a', 40)
+          and exec_checkpoint ->> 'position' = 'code'
+     from ouroboros.runs_with_stage where id = 'a1470000-0000-0000-0000-000000000001'),
+  'runs_with_stage carries the execution state');
+
+delete from ouroboros.organization where "id" = 'org-v147';
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

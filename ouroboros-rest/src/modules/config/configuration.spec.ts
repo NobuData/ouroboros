@@ -193,6 +193,8 @@ describe("the development defaults", () => {
       liveRunCeilingMax: 4,
       liveRunWallClockMinutes: 120,
       liveRunNoProgressMinutes: 15,
+      runSupervisorTickSeconds: 5,
+      runHeartbeatStaleSeconds: 30,
     });
   });
 });
@@ -1422,6 +1424,37 @@ describe("the live-run limits (DI.4, #1312)", () => {
     ["OURO_LIVE_RUN_NO_PROGRESS_MINUTES", "1"],
     ["OURO_LIVE_RUN_NO_PROGRESS_MINUTES", "361"],
     ["OURO_LIVE_RUN_NO_PROGRESS_MINUTES", "soon"],
+  ])("refuses %s=%s", (name, value) => {
+    expect(failureFor(testEnvironment({ [name]: value }))).toContain(name);
+  });
+});
+
+describe("the run supervisor's cadence (#160)", () => {
+  it("defaults to a five-second tick and a thirty-second heartbeat staleness", () => {
+    const configuration = loadConfiguration(testEnvironment());
+
+    expect(configuration.runSupervisorTickSeconds).toBe(5);
+    expect(configuration.runHeartbeatStaleSeconds).toBe(30);
+  });
+
+  it("reads both inside their bounds", () => {
+    const configuration = loadConfiguration(
+      testEnvironment({
+        OURO_RUN_SUPERVISOR_TICK_SECONDS: "300",
+        OURO_RUN_HEARTBEAT_STALE_SECONDS: "10",
+      }),
+    );
+
+    expect(configuration.runSupervisorTickSeconds).toBe(300);
+    expect(configuration.runHeartbeatStaleSeconds).toBe(10);
+  });
+
+  it.each([
+    ["OURO_RUN_SUPERVISOR_TICK_SECONDS", "0"],
+    ["OURO_RUN_SUPERVISOR_TICK_SECONDS", "301"],
+    ["OURO_RUN_HEARTBEAT_STALE_SECONDS", "9"],
+    ["OURO_RUN_HEARTBEAT_STALE_SECONDS", "3601"],
+    ["OURO_RUN_HEARTBEAT_STALE_SECONDS", "soon"],
   ])("refuses %s=%s", (name, value) => {
     expect(failureFor(testEnvironment({ [name]: value }))).toContain(name);
   });

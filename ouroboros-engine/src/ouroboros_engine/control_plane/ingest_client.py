@@ -28,8 +28,10 @@ requests without sending anything. This joins the three things an executor needs
 to re-send it — after the transport gave up, or the process restarted — send the *same* body,
 so the control plane answers the first delivery's result rather than recording it twice.
 
-Nothing in the application calls this yet: real execution (#160, #315) is its caller, as
-``ouroboros_engine.execution.ingest`` already says of the reports it maps.
+**Executing a run** (#160) adds four calls — :meth:`IngestClient.start`,
+:meth:`~IngestClient.heartbeat`, :meth:`~IngestClient.checkpoint` and
+:meth:`~IngestClient.finish` — and :mod:`ouroboros_engine.execution.interpreter` is their
+caller: it starts a run for an epoch and carries that epoch on every report.
 """
 
 from __future__ import annotations
@@ -37,6 +39,16 @@ from __future__ import annotations
 from uuid import uuid4
 
 from ouroboros_engine.control_plane.client import ControlPlaneClient
+from ouroboros_engine.control_plane.execution import (
+    CheckpointRequest,
+    CheckpointSaved,
+    FinishRunRequest,
+    HeartbeatAccepted,
+    HeartbeatRequest,
+    RunFinished,
+    RunStarted,
+    StartRunRequest,
+)
 from ouroboros_engine.control_plane.ingest import (
     ChangeSet,
     ClaimQueueItemRequest,
@@ -136,7 +148,9 @@ class IngestClient:
         """
         return self._keys.key(operation)
 
-    def claim(self, workspace: str, worker: str) -> QueueItemClaimed | None:
+    def claim(
+        self, workspace: str, worker: str, executors: list[str] | None = None
+    ) -> QueueItemClaimed | None:
         """Lease the head of a workspace's queue.
 
         Keyed here, once, and the transport retries the keyed request — so a claim whose
@@ -145,12 +159,19 @@ class IngestClient:
         Args:
             workspace: ``organization.id`` or its slug.
             worker: This worker's name.
+            executors: The executor kinds this worker has registered (#1312), or ``None``
+                to let the control plane ask the engine's status.
 
         Returns:
             The item and its lease, or ``None`` when nothing is claimable.
         """
-        body = ClaimQueueItemRequest(
-            idempotency_key=self.key("claim"), workspace=workspace, worker=worker
+        body = ClaimQueueItemRequest.model_validate(
+            {
+                "idempotency_key": self.key("claim"),
+                "workspace": workspace,
+                "worker": worker,
+                "executors": executors,
+            }
         )
         answer = self._transport.send(self._client.claim_queue_item_request(body))
         return self._client.read_claim(answer.status, answer.body)
@@ -231,3 +252,57 @@ class IngestClient:
         """
         answer = self._transport.send(self._client.report_resources_request(run, body))
         return self._client.read_resources_reported(answer.status, answer.body)
+
+    def start(self, run: str, worker: str) -> RunStarted:
+        """Take a run for execution: its epoch is incremented and the brief answered (#160).
+
+        Args:
+            run: The run.
+            worker: This worker's name.
+
+        Returns:
+            The epoch this worker now holds and everything executing the run needs.
+        """
+        body = StartRunRequest(worker=worker)
+        answer = self._transport.send(self._client.start_run_request(run, body))
+        return self._client.read_run_started(answer.status, answer.body)
+
+    def heartbeat(self, run: str, epoch: int) -> HeartbeatAccepted:
+        """Say this worker still holds a run.
+
+        Args:
+            run: The run.
+            epoch: The epoch held.
+
+        Returns:
+            When the heartbeat was recorded.
+        """
+        body = HeartbeatRequest(epoch=epoch)
+        answer = self._transport.send(self._client.heartbeat_request(run, body))
+        return self._client.read_heartbeat(answer.status, answer.body)
+
+    def checkpoint(self, run: str, body: CheckpointRequest) -> CheckpointSaved:
+        """Store the interpreter's state, and the base commit once.
+
+        Args:
+            run: The run.
+            body: The epoch, the state and the base commit.
+
+        Returns:
+            When it was stored.
+        """
+        answer = self._transport.send(self._client.checkpoint_request(run, body))
+        return self._client.read_checkpoint(answer.status, answer.body)
+
+    def finish(self, run: str, body: FinishRunRequest) -> RunFinished:
+        """End a run.
+
+        Args:
+            run: The run.
+            body: The outcome, keyed.
+
+        Returns:
+            The run's status afterwards.
+        """
+        answer = self._transport.send(self._client.finish_run_request(run, body))
+        return self._client.read_run_finished(answer.status, answer.body)

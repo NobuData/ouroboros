@@ -1,4 +1,4 @@
-import { pinnedTaskKinds } from "./admission.pin";
+import { firstModelStage, pinnedTaskKinds } from "./admission.pin";
 
 /** A model stage routed one of the two ways. */
 function llm(id: string, routing: Record<string, unknown>) {
@@ -72,5 +72,41 @@ describe("the task kinds a pinned workflow inherits", () => {
     ],
   ])("answers undefined for %s", (_label, definition) => {
     expect(pinnedTaskKinds(definition)).toBeUndefined();
+  });
+});
+
+describe("where a pinned workflow's first model stage takes its model from (#160)", () => {
+  it("is the first model stage's pinned alias", () => {
+    expect(
+      firstModelStage(
+        document([
+          TRIGGER,
+          llm("plan", { pinned_model: { alias: "planner-pro" } }),
+          llm("implement", { inherit_task: "implement" }),
+        ]),
+      ),
+    ).toEqual({ alias: "planner-pro" });
+  });
+
+  it("is the route the first model stage inherits", () => {
+    expect(
+      firstModelStage(
+        document([
+          llm("implement", { inherit_task: "implement" }),
+          llm("review", { pinned_model: { alias: "reviewer" } }),
+        ]),
+      ),
+    ).toEqual({ task: "implement" });
+  });
+
+  it("is nothing for a workflow with no model stage, or no workflow at all", () => {
+    expect(firstModelStage(document([TRIGGER]))).toBeUndefined();
+    expect(firstModelStage({ not: "a workflow" })).toBeUndefined();
+  });
+
+  it("is nothing when the first model stage's config does not read", () => {
+    const broken = { ...llm("implement", { inherit_task: "implement" }), config: { mode: "?" } };
+
+    expect(firstModelStage(document([broken]))).toBeUndefined();
   });
 });

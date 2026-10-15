@@ -72,16 +72,25 @@ describe("the ingestion module", () => {
     // `GuardrailsModule` is the other import, and it brings no connection of its own;
     // `GatesModule` brings the gate engine's sink (#358), which a judged change-set notifies;
     // `LifecycleStateModule` the workspace state a paused workspace's runs and stages hold on (#489);
-    // `DecisionsModule` the Needs-You registry the run plane's emitters file into (#461).
-    const imports = Reflect.getMetadata("imports", IngestModule) as { name?: string }[];
+    // `DecisionsModule` the Needs-You registry the run plane's emitters file into (#461);
+    // `EngineModule`, `CodeModule` and `ScheduleModule` the execution bridge's (#160): the engine
+    // the supervisor resubmits to, the repository ref a start hands out, and the supervisor's timer.
+    const imports = Reflect.getMetadata("imports", IngestModule) as {
+      name?: string;
+      module?: { name: string };
+    }[];
 
-    expect(imports.map((imported) => imported.name)).toEqual([
+    // `ScheduleModule.forRoot()` is a dynamic module: its class is under `module`.
+    expect(imports.map((imported) => imported.module?.name ?? imported.name)).toEqual([
       "DbModule",
       "GuardrailsModule",
       "GatesModule",
       "LifecycleStateModule",
       "DecisionsModule",
       "AdmissionModule",
+      "EngineModule",
+      "CodeModule",
+      "ScheduleModule",
     ]);
   });
 });

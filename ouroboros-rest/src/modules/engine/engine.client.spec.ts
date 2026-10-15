@@ -90,6 +90,7 @@ describe("a call the engine answers", () => {
       service: "ouroboros-engine",
       version: ENGINE_STATUS_BODY.version,
       uptimeSeconds: ENGINE_STATUS_BODY.uptime_seconds,
+      executors: [],
     });
   });
 

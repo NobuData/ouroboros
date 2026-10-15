@@ -204,6 +204,31 @@ export class GuardrailService implements GuardrailScheduler {
   }
 
   /**
+   * The protected-path globs a run's executor must not write — the same union the
+   * `allowed_paths` check judges a change-set against (BQ.2,
+   * [#481](https://github.com/NobuData/ouroboros/issues/481)): the repository's own rows
+   * (`protected_path_policies`) and the published org policy's `protected_paths` globs.
+   *
+   * The start of an execution (#160) hands these to the engine, so a stage is denied the write
+   * up front rather than failed by the guardrail afterwards — and the two cannot disagree,
+   * because they are one read.
+   *
+   * @param writer - The caller's connection or transaction.
+   * @param run - The run's policy row.
+   * @returns The globs, de-duplicated and sorted; empty when nothing is protected.
+   */
+  async effectiveProtectedPaths(writer: GuardrailWriter, run: RunPolicyRow): Promise<string[]> {
+    const repositoryGlobs = await this.repository.protectedPaths(writer, run);
+    const orgGlobs =
+      this.policies === undefined
+        ? undefined
+        : await this.policies.resolve(run.organizationId, "protected_paths");
+    const policyGlobs = orgGlobs?.value.globs ?? [];
+
+    return [...new Set([...repositoryGlobs, ...policyGlobs])].sort();
+  }
+
+  /**
    * Everything the checks judge a change-set against, read through the caller's writer.
    *
    * @param writer - The transaction.

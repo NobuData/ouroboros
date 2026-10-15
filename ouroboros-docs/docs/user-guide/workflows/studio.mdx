@@ -115,8 +115,11 @@ For a **model stage**:
   workspace routes that kind of task to (see [Models](../models.mdx)), and shows which one
   that is; **Pin model** fixes a model alias for this stage.
 - **Limits** — **Max retries** and **Token budget** (shorthand works: `400k`, `1.5m`).
-- **Permissions** — **May push fixup commits** and **May touch CI config**. These are
-  declared now but not yet enforced when a run executes.
+- **Permissions** — **May push fixup commits** and **May touch CI config**. They are
+  enforced when a run executes, at every tool call the stage makes. A stage without
+  **May touch CI config** cannot write CI configuration — `.github/workflows/`, for example:
+  the write is refused and the stage fails. A stage without **May push fixup commits**
+  cannot push one.
 
 A **build or test** stage takes a **Runner pool** and a **Command**; a **decision or gate**
 takes its **Kind** and the condition it tests; a **terminal** takes its **Action** and, for
@@ -208,6 +211,9 @@ one to go to its stage. Only owners and admins can publish.
   after you publish use the new version; issues already queued or running keep the version
   they were queued with. The [run console](../runs/console.mdx) shows the pin, for example
   **standard-fix v14**.
+- A run executes exactly the version it is pinned to. Editing the workflow and publishing a
+  new version while the run is going does not change it, and neither does an engine restart
+  part-way through.
 - A workflow that has never been published runs nothing.
 - Versions count up from v1 and are never edited. There is no version history or roll-back
   in the Studio yet: to go back, change the draft and publish it as a new version.

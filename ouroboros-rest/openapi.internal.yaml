@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.41.45"
+  version: "0.41.46"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -1159,6 +1159,8 @@ paths:
                   run: 5eed0009-0000-4000-8000-000000000999
         "409":
           description: |-
+            `fenced` — the report carried an `epoch` another start superseded
+            (`details.current_epoch`); stop. Otherwise:
             `stage_transition_invalid` — the machine forbids the move — `attempt_limit_exceeded`,
             `stage_not_in_pin`, `stage_return_not_a_retry`, or `idempotency_key_reused`.
             `workspace_paused` / `workspace_pending_delete` — a stage may not *start* (move to
@@ -1277,6 +1279,8 @@ paths:
                   run: 5eed0009-0000-4000-8000-000000000999
         "409":
           description: |-
+            `fenced` — the report carried an `epoch` another start superseded
+            (`details.current_epoch`); stop. Otherwise:
             `events_out_of_order` — this batch does not continue the accepted order — or
             `idempotency_key_reused`.
           content:
@@ -1397,7 +1401,7 @@ paths:
                 details:
                   run: 5eed0009-0000-4000-8000-000000000999
         "409":
-          description: "`idempotency_key_reused` — that key has already answered a different report."
+          description: "`fenced` — a superseded `epoch` (`details.current_epoch`) — or `idempotency_key_reused` — that key has already answered a different report."
           content:
             application/json:
               schema:
@@ -1490,7 +1494,7 @@ paths:
                 details:
                   run: 5eed0009-0000-4000-8000-000000000999
         "409":
-          description: "`idempotency_key_reused`."
+          description: "`fenced` — a superseded `epoch` (`details.current_epoch`) — or `idempotency_key_reused`."
           content:
             application/json:
               schema:
@@ -1596,7 +1600,7 @@ paths:
                 details:
                   buildJob: 5eed0008-0000-4000-8000-000000000999
         "409":
-          description: "`idempotency_key_reused`."
+          description: "`fenced` — a superseded `epoch` (`details.current_epoch`) — or `idempotency_key_reused`."
           content:
             application/json:
               schema:
@@ -1777,6 +1781,379 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /internal/runs/{id}/start:
+    post:
+      tags: [runs]
+      summary: Start (or restart) executing a run under a new epoch
+      description: |-
+        The engine takes a run to execute it (#160, ADR decision A). In one transaction, under
+        the run's lock, the run's `exec_epoch` is raised by one, `exec_worker` and
+        `exec_heartbeat_at` are set, and `branch_name` becomes `ouro/run-<id>-<issue>` when the
+        run has none. The answer is everything the interpreter needs: the epoch, the pinned
+        workflow document as stored, the repository and a `ref` to fetch it with (the
+        workspace's GitHub token opened for this call, never stored), the workspace's effective
+        protected-path globs, the ticket's body, labels and size, and — for a restart — the base
+        commit and checkpoint to resume from.
+
+        **Every later write carries the epoch.** Heartbeats, checkpoints, the finish and the six
+        AP.1 reports refuse a superseded one with `409 fenced`, so a second start fences the
+        first worker out of the run even if it was only slow.
+
+        Only live runs execute (`409 run_simulated`), and only while `coding` or `building`
+        (`409 run_not_executable`). A refused start takes no epoch.
+
+        Spelled in snake_case: these four execution routes are the contract the engine's
+        interpreter was built against field for field.
+      operationId: startRunExecution
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunStartRequest"
+            example:
+              worker: engine-worker-a
+      responses:
+        "200":
+          description: The epoch this start took, and the run's execution context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunStarted"
+              example:
+                run_id: 5eed0009-0000-4000-8000-000000000482
+                epoch: 3
+                organization_id: acme-robotics-id
+                issue_number: 482
+                issue_title: Fix flaky CAN-bus telemetry test
+                issue_body: The CAN-bus telemetry test fails about one run in twenty.
+                labels: [flaky, telemetry]
+                effort: m
+                model: coder-max
+                branch_name: ouro/run-5eed0009-0000-4000-8000-000000000482-482
+                workflow:
+                  tag: docs-loop
+                  version: 1
+                  document: {}
+                repository:
+                  id: 5eed0003-0000-4000-8000-000000000001
+                  slug: acme-robotics/helios-firmware
+                  default_branch: main
+                  ref:
+                    workspace: acme-robotics-id
+                    slug: acme-robotics/helios-firmware
+                    remote: https://github.com/acme-robotics/helios-firmware.git
+                    token: null
+                protected_paths: [".github/workflows/**", "boot/**"]
+                base_commit: null
+                checkpoint: null
+                status: coding
+        "401":
+          description: No `X-Ouro-Internal-Key`, or a value matching neither principal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: unauthenticated
+                message: Unauthorized.
+                details: {}
+        "404":
+          description: |-
+            `run_not_found`; `workflow_pin_not_found` when the run's pinned version is gone;
+            `repository_not_found` when its repository left the workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: run_not_found
+                message: No such run. A report is made against the run it is about.
+                details:
+                  run: 5eed0009-0000-4000-8000-000000000999
+        "409":
+          description: |-
+            `run_simulated` — only live runs execute; a simulated or seeded run is never
+            started — or `run_not_executable` — the run is not `coding` or `building`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: run_simulated
+                message: Only live runs execute; this run is simulated or seeded. Nothing was started.
+                details:
+                  run: 5eed0009-0000-4000-8000-000000000482
+                  origin: simulated
+        "422":
+          description: "`validation_failed` — `id` is not a uuid, or a field is missing or the wrong shape."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: validation_failed
+                message: The request body is not valid.
+                details:
+                  epoch: ["epoch must not be less than 1"]
+
+  /internal/runs/{id}/heartbeat:
+    post:
+      tags: [runs]
+      summary: The worker holding the epoch is still executing the run
+      description: |-
+        Sent every few seconds while a run executes (#160). Moves `exec_heartbeat_at` and
+        nothing else — not `updated_at`, which is the dashboard's freshness signal and the
+        live-run no-progress limit's measure. The run supervisor resubmits a run whose heartbeat
+        is older than `OURO_RUN_HEARTBEAT_STALE_SECONDS`.
+
+        `409 fenced` (another start took the run) and `409 run_not_executable` (it finished, or a
+        person cancelled it) both mean *stop*: abort the executor and make no more writes.
+      operationId: heartbeatRunExecution
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunHeartbeatRequest"
+            example:
+              epoch: 3
+      responses:
+        "200":
+          description: The epoch, and when the heartbeat was stamped by the database's clock.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunHeartbeat"
+              example:
+                epoch: 3
+                heartbeat_at: "2026-10-15T14:25:05.000Z"
+        "401":
+          description: No `X-Ouro-Internal-Key`, or a value matching neither principal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: unauthenticated
+                message: Unauthorized.
+                details: {}
+        "404":
+          description: "`run_not_found`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: run_not_found
+                message: No such run. A report is made against the run it is about.
+                details:
+                  run: 5eed0009-0000-4000-8000-000000000999
+        "409":
+          description: "`fenced` — `details.current_epoch` is the epoch that superseded yours — or `run_not_executable`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: fenced
+                message: Another worker has started this run since; this write carried a superseded epoch. Stop.
+                details:
+                  current_epoch: 4
+        "422":
+          description: "`validation_failed` — `id` is not a uuid, or a field is missing or the wrong shape."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: validation_failed
+                message: The request body is not valid.
+                details:
+                  epoch: ["epoch must not be less than 1"]
+
+  /internal/runs/{id}/checkpoint:
+    put:
+      tags: [runs]
+      summary: Save the interpreter's resume state
+      description: |-
+        Replaces the run's `exec_checkpoint` with `state` — an opaque JSON object of at most
+        64 KiB as PostgreSQL renders it — and refreshes the heartbeat (#160). The first
+        checkpoint names `base_commit`, the commit the run's working tree was cut from; it is set
+        once, and naming another later is `409 base_commit_mismatch`, so a resumed run never
+        rebases silently.
+      operationId: checkpointRunExecution
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunCheckpointRequest"
+            example:
+              epoch: 3
+              base_commit: a41c9e2b7d0f4c6e8a1b3d5f7092c4e6b8d0f1a3
+              state:
+                position: implement
+                attempts:
+                  implement: 1
+                loop_rounds: {}
+                seq: 4
+                executor_checkpoint: null
+                stage_key: implement
+                attempt: 1
+      responses:
+        "200":
+          description: When the checkpoint was written, by the database's clock.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunCheckpointSaved"
+              example:
+                checkpoint_at: "2026-10-15T14:25:07.000Z"
+        "401":
+          description: No `X-Ouro-Internal-Key`, or a value matching neither principal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: unauthenticated
+                message: Unauthorized.
+                details: {}
+        "404":
+          description: "`run_not_found`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: run_not_found
+                message: No such run. A report is made against the run it is about.
+                details:
+                  run: 5eed0009-0000-4000-8000-000000000999
+        "409":
+          description: "`fenced`, `run_not_executable`, or `base_commit_mismatch` — the run's base commit is already another commit."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: base_commit_mismatch
+                message: This run's base commit is already set to another commit. Nothing was saved.
+                details:
+                  current: a41c9e2b7d0f4c6e8a1b3d5f7092c4e6b8d0f1a3
+                  offered: 0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c
+        "422":
+          description: "`validation_failed` — `id` is not a uuid, or a field is missing or the wrong shape."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: validation_failed
+                message: The request body is not valid.
+                details:
+                  epoch: ["epoch must not be less than 1"]
+
+  /internal/runs/{id}/finish:
+    post:
+      tags: [runs]
+      summary: End the run through one of the workflow's terminals
+      description: |-
+        Where a run's interpreter ends it (#160):
+
+        | outcome         | `runs.status` | also                                                    |
+        | --------------- | ------------- | ------------------------------------------------------- |
+        | `review`        | `review`      | still in flight; the pull-request stage is DI.2/DI.3's |
+        | `needs_human`   | `needs_human` | files the run's inbox card (`run_needs_human`)          |
+        | `failed`        | `failed`      |                                                         |
+        | `back_to_queue` | `failed`      | the issue is queued again at the tail, **unconfirmed**  |
+
+        The reason is written to the run's transcript as a `system` line. A requeue answers the
+        new item's id, or `null` when the issue is already queued (that item keeps its place).
+
+        Idempotent on `idempotency_key`: a replay answers what the first delivery was told, even
+        once the run has finished. The fence is checked before the replay, so a worker that lost
+        the run is never told it finished it.
+      operationId: finishRunExecution
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunFinishRequest"
+            example:
+              epoch: 3
+              idempotency_key: run-482-finish-3
+              outcome: back_to_queue
+              reason: The workflow sent the ticket back to the queue.
+              stage_key: triage
+      responses:
+        "200":
+          description: The run's new status, and the queue item a `back_to_queue` finish wrote.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunFinished"
+              example:
+                run_id: 5eed0009-0000-4000-8000-000000000482
+                status: failed
+                requeued_queue_item_id: 5eed0008-0000-4000-8000-000000000488
+        "401":
+          description: No `X-Ouro-Internal-Key`, or a value matching neither principal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: unauthenticated
+                message: Unauthorized.
+                details: {}
+        "404":
+          description: "`run_not_found`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: run_not_found
+                message: No such run. A report is made against the run it is about.
+                details:
+                  run: 5eed0009-0000-4000-8000-000000000999
+        "409":
+          description: |-
+            `fenced`, `run_not_executable` — the run already finished under another key, or is in
+            review — or `idempotency_key_reused`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: run_not_executable
+                message: This run is no longer coding or building, so nothing may execute it. Stop.
+                details:
+                  run: 5eed0009-0000-4000-8000-000000000482
+                  status: failed
+        "422":
+          description: "`validation_failed` — `id` is not a uuid, or a field is missing or the wrong shape."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: validation_failed
+                message: The request body is not valid.
+                details:
+                  epoch: ["epoch must not be less than 1"]
 
   /internal/research/tools/{slug}/{op}:
     post:
@@ -3689,6 +4066,12 @@ components:
               format: uuid
             externalKey:
               type: string
+        model:
+          type: string
+          description: |-
+            The model the run opened from this item will record — the open's `model` (#160).
+            Always present since #160: the pinned workflow's first model stage's alias, else the
+            first kept hop of the route it inherits (else of `implement`'s), else `unrouted`.
 
     RunOpened:
       type: object
@@ -3798,6 +4181,8 @@ components:
       properties:
         idempotencyKey:
           $ref: "#/components/schemas/IdempotencyKey"
+        epoch:
+          $ref: "#/components/schemas/ExecEpoch"
         stageKey:
           type: string
           maxLength: 64
@@ -3946,6 +4331,8 @@ components:
       properties:
         idempotencyKey:
           $ref: "#/components/schemas/IdempotencyKey"
+        epoch:
+          $ref: "#/components/schemas/ExecEpoch"
         events:
           type: array
           minItems: 1
@@ -4073,6 +4460,8 @@ components:
       properties:
         idempotencyKey:
           $ref: "#/components/schemas/IdempotencyKey"
+        epoch:
+          $ref: "#/components/schemas/ExecEpoch"
         files:
           type: array
           maxItems: 2000
@@ -4156,6 +4545,8 @@ components:
       properties:
         idempotencyKey:
           $ref: "#/components/schemas/IdempotencyKey"
+        epoch:
+          $ref: "#/components/schemas/ExecEpoch"
         commits:
           type: array
           minItems: 1
@@ -4252,6 +4643,8 @@ components:
       properties:
         idempotencyKey:
           $ref: "#/components/schemas/IdempotencyKey"
+        epoch:
+          $ref: "#/components/schemas/ExecEpoch"
         spend:
           $ref: "#/components/schemas/TokenSpend"
         reservedBuildJob:
@@ -4285,6 +4678,227 @@ components:
         reservedBuildJobId:
           type: [string, "null"]
           format: uuid
+
+    ExecEpoch:
+      type: integer
+      minimum: 1
+      maximum: 2147483647
+      description: |-
+        The execution epoch the writer holds — `runs.exec_epoch`, as `POST
+        /internal/runs/{id}/start` answered it (#160). A write whose epoch is not the run's
+        current one is refused `409 fenced` (`details.current_epoch`). Optional on the AP.1
+        reports: absent, nothing is fenced, so the simulator and earlier callers are unchanged.
+
+    RunStartRequest:
+      type: object
+      title: RunStartRequest
+      additionalProperties: false
+      required: [worker]
+      properties:
+        worker:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: "^\\S(.*\\S)?$"
+          description: The worker starting the run, as it names itself — the shape of the queue claim's `worker`.
+
+    RunStarted:
+      type: object
+      title: RunStarted
+      description: The epoch a start took, and everything executing the run needs (#160).
+      additionalProperties: false
+      required:
+        [run_id, epoch, organization_id, issue_number, issue_title, issue_body, labels, effort,
+         model, branch_name, workflow, repository, protected_paths, base_commit, checkpoint,
+         status]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        epoch:
+          type: integer
+          minimum: 1
+          description: The epoch this start took. Every later write carries it.
+        organization_id:
+          type: string
+        issue_number:
+          type: integer
+        issue_title:
+          type: string
+        issue_body:
+          type: [string, "null"]
+          description: The canonical ticket's body, or null when it has none or no source mirrored the issue.
+        labels:
+          type: array
+          items:
+            type: string
+          description: The canonical ticket's labels; empty when it has none. Judged by `labels` decision predicates.
+        effort:
+          type: [string, "null"]
+          enum: [xs, s, m, l, xl, null]
+          description: |-
+            The issue's current size estimate — its latest estimate's effort, the chip the backlog
+            and queue show — or null when it was never sized. Judged by `effort` decision predicates.
+        model:
+          type: string
+          description: "`runs.model`, as the run was opened with it."
+        branch_name:
+          type: string
+          description: "`ouro/run-<id>-<issue>` unless the run was opened with a branch of its own."
+        workflow:
+          type: object
+          additionalProperties: false
+          required: [tag, version, document]
+          properties:
+            tag:
+              type: string
+            version:
+              type: integer
+              minimum: 1
+            document:
+              type: object
+              description: The pinned version's DSL document, exactly as stored.
+        repository:
+          type: object
+          additionalProperties: false
+          required: [id, slug, default_branch, ref]
+          properties:
+            id:
+              type: string
+              format: uuid
+            slug:
+              type: string
+              description: "`owner/name`."
+            default_branch:
+              type: [string, "null"]
+            ref:
+              type: object
+              description: |-
+                How the engine fetches the repository for this call. `token` is the workspace's
+                GitHub token opened for this answer alone — never stored by either service — or
+                null for a workspace without one (public repositories are read anonymously).
+              additionalProperties: false
+              required: [workspace, slug, remote, token]
+              properties:
+                workspace:
+                  type: string
+                slug:
+                  type: string
+                remote:
+                  type: string
+                  format: uri
+                token:
+                  type: [string, "null"]
+        protected_paths:
+          type: array
+          items:
+            type: string
+          description: |-
+            The workspace's effective protected-path globs — the repository's own rows and the
+            published org policy's, the union the `allowed_paths` guardrail judges. Empty when
+            nothing is protected.
+        base_commit:
+          type: [string, "null"]
+          pattern: "^[0-9a-f]{40}$"
+          description: The base commit a previous checkpoint named, or null before the first.
+        checkpoint:
+          type: [object, "null"]
+          description: The last saved interpreter state, or null before the first checkpoint.
+        status:
+          type: string
+          enum: [coding, building]
+
+    RunHeartbeatRequest:
+      type: object
+      title: RunHeartbeatRequest
+      additionalProperties: false
+      required: [epoch]
+      properties:
+        epoch:
+          $ref: "#/components/schemas/ExecEpoch"
+
+    RunHeartbeat:
+      type: object
+      title: RunHeartbeat
+      additionalProperties: false
+      required: [epoch, heartbeat_at]
+      properties:
+        epoch:
+          type: integer
+        heartbeat_at:
+          type: string
+          format: date-time
+
+    RunCheckpointRequest:
+      type: object
+      title: RunCheckpointRequest
+      additionalProperties: false
+      required: [epoch, state]
+      properties:
+        epoch:
+          $ref: "#/components/schemas/ExecEpoch"
+        base_commit:
+          type: string
+          pattern: "^[0-9a-f]{40}$"
+          description: The commit the run's working tree was cut from. Set once; another later is `409 base_commit_mismatch`.
+        state:
+          type: object
+          description: The interpreter's opaque resume state — at most 64 KiB as PostgreSQL's `jsonb` text renders it.
+
+    RunCheckpointSaved:
+      type: object
+      title: RunCheckpointSaved
+      additionalProperties: false
+      required: [checkpoint_at]
+      properties:
+        checkpoint_at:
+          type: string
+          format: date-time
+
+    RunFinishRequest:
+      type: object
+      title: RunFinishRequest
+      additionalProperties: false
+      required: [epoch, idempotency_key, outcome, reason]
+      properties:
+        epoch:
+          $ref: "#/components/schemas/ExecEpoch"
+        idempotency_key:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: "^\\S(.*\\S)?$"
+          description: The caller's name for this finish; a replay answers what the first delivery was told.
+        outcome:
+          type: string
+          enum: [review, needs_human, failed, back_to_queue]
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Why — written to the transcript, and onto the inbox card for `needs_human`.
+        stage_key:
+          type: string
+          maxLength: 64
+          pattern: "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+          description: The DSL node the run ended at.
+
+    RunFinished:
+      type: object
+      title: RunFinished
+      additionalProperties: false
+      required: [run_id, status, requeued_queue_item_id]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [review, needs_human, failed]
+        requeued_queue_item_id:
+          type: [string, "null"]
+          format: uuid
+          description: The item a `back_to_queue` finish queued; null otherwise, or when the issue was already queued.
 
     ControlsFetched:
       type: object

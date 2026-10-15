@@ -72,6 +72,20 @@ from ouroboros_engine.control_plane.contract import (
     LeaseRequest,
     RunContext,
 )
+from ouroboros_engine.control_plane.execution import (
+    RUN_CHECKPOINT_PATH,
+    RUN_FINISH_PATH,
+    RUN_HEARTBEAT_PATH,
+    RUN_START_PATH,
+    CheckpointRequest,
+    CheckpointSaved,
+    FinishRunRequest,
+    HeartbeatAccepted,
+    HeartbeatRequest,
+    RunFinished,
+    RunStarted,
+    StartRunRequest,
+)
 from ouroboros_engine.control_plane.ingest import (
     QUEUE_CLAIM_PATH,
     RUN_COMMITS_PATH,
@@ -643,6 +657,129 @@ class ControlPlaneClient:
             ControlPlaneError: On any status but ``200``.
         """
         return _read(status, body, ResourcesReported)
+
+    # --- run execution (#160) ---------------------------------------------------------------
+    #
+    # The four routes a worker holds a live run through. Every body but `start`'s carries the
+    # epoch `start` answered, and a stale one is refused `409 fenced`.
+
+    def start_run_request(self, run: str, body: StartRunRequest) -> ControlPlaneRequest:
+        """Build the request that takes a run for execution, incrementing its epoch.
+
+        Args:
+            run: The run.
+            body: The worker starting it.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", RUN_START_PATH.format(id=run), body)
+
+    def read_run_started(self, status: int, body: dict[str, Any]) -> RunStarted:
+        """Read the answer to a start.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            The epoch and everything executing the run needs.
+
+        Raises:
+            ControlPlaneError: On any status but ``200`` — ``run_not_found``,
+                ``run_simulated``, ``run_not_executable``.
+        """
+        return _read(status, body, RunStarted)
+
+    def heartbeat_request(
+        self, run: str, body: HeartbeatRequest
+    ) -> ControlPlaneRequest:
+        """Build a heartbeat.
+
+        Args:
+            run: The run.
+            body: The epoch held.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", RUN_HEARTBEAT_PATH.format(id=run), body)
+
+    def read_heartbeat(self, status: int, body: dict[str, Any]) -> HeartbeatAccepted:
+        """Read the answer to a heartbeat.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            The epoch and when the heartbeat was recorded.
+
+        Raises:
+            ControlPlaneError: On any status but ``200`` — ``fenced`` (``details`` carries
+                ``current_epoch``) or ``run_not_executable``.
+        """
+        return _read(status, body, HeartbeatAccepted)
+
+    def checkpoint_request(
+        self, run: str, body: CheckpointRequest
+    ) -> ControlPlaneRequest:
+        """Build the request that stores the interpreter's state.
+
+        Args:
+            run: The run.
+            body: The epoch, the state, and the base commit once.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("PUT", RUN_CHECKPOINT_PATH.format(id=run), body)
+
+    def read_checkpoint(self, status: int, body: dict[str, Any]) -> CheckpointSaved:
+        """Read the answer to a checkpoint.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            When it was stored.
+
+        Raises:
+            ControlPlaneError: On any status but ``200`` — ``fenced``,
+                ``base_commit_mismatch``, ``run_not_executable``.
+        """
+        return _read(status, body, CheckpointSaved)
+
+    def finish_run_request(
+        self, run: str, body: FinishRunRequest
+    ) -> ControlPlaneRequest:
+        """Build the request that ends a run.
+
+        Args:
+            run: The run.
+            body: The outcome, keyed.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", RUN_FINISH_PATH.format(id=run), body)
+
+    def read_run_finished(self, status: int, body: dict[str, Any]) -> RunFinished:
+        """Read the answer to a finish.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            The run's status, and the requeued item for ``back_to_queue``.
+
+        Raises:
+            ControlPlaneError: On any status but ``200`` — ``fenced``,
+                ``run_not_executable``.
+        """
+        return _read(status, body, RunFinished)
 
     def _write(self, method: str, path: str, body: BaseModel) -> ControlPlaneRequest:
         """Build one ingestion request.

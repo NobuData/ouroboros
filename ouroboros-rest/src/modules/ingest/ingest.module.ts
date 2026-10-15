@@ -57,6 +57,7 @@
  */
 
 import { Module } from "@nestjs/common";
+import { ScheduleModule } from "@nestjs/schedule";
 
 import { AdmissionModule } from "../admission/admission.module";
 import { LifecycleStateModule } from "../lifecycle/lifecycle-state.module";
@@ -64,14 +65,20 @@ import { DbModule } from "../db/db.module";
 import { DecisionsModule } from "../decisions/decisions.module";
 import { GuardrailsModule } from "../guardrails/guardrails.module";
 import { ProtectedPathEmitter } from "../guardrails/protected-path.emitter";
+import { EngineModule } from "../engine/engine.module";
 import { GatesModule } from "../pull-requests/gates/gates.module";
+import { CodeModule } from "../research/code/code.module";
 import { IngestController } from "./ingest.controller";
 import { IngestRepository } from "./ingest.repository";
 import { IngestService } from "./ingest.service";
 import { PlanSignOffEmitter } from "./plan-sign-off.emitter";
 import { QueueClaimController } from "./queue-claim.controller";
 import { QueueClaimService } from "./queue-claim.service";
+import { RunExecutionController } from "./run-execution.controller";
+import { RunExecutionRepository } from "./run-execution.repository";
+import { RunExecutionService } from "./run-execution.service";
 import { RunNeedsHumanEmitter } from "./run-needs-human.emitter";
+import { RunSupervisor } from "./run-supervisor";
 import { SpendApprovalEmitter } from "./spend-approval.emitter";
 
 @Module({
@@ -83,8 +90,13 @@ import { SpendApprovalEmitter } from "./spend-approval.emitter";
     DecisionsModule,
     // The claim's live-run admission (DI.4, #1312).
     AdmissionModule,
+    // The execution bridge (#160): the engine the supervisor resubmits runs to, the repository
+    // ref a start hands out (its token opened per call), and the supervisor's timer.
+    EngineModule,
+    CodeModule,
+    ScheduleModule.forRoot(),
   ],
-  controllers: [IngestController, QueueClaimController],
+  controllers: [IngestController, QueueClaimController, RunExecutionController],
   providers: [
     IngestRepository,
     IngestService,
@@ -93,6 +105,9 @@ import { SpendApprovalEmitter } from "./spend-approval.emitter";
     PlanSignOffEmitter,
     RunNeedsHumanEmitter,
     SpendApprovalEmitter,
+    RunExecutionRepository,
+    RunExecutionService,
+    RunSupervisor,
   ],
 })
 export class IngestModule {}

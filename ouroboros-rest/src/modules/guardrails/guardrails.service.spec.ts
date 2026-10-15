@@ -282,6 +282,34 @@ describe("GuardrailService", () => {
 
       expect(outcome.failures).not.toContain("allowed_paths");
     });
+    describe("the effective protected paths an execution starts with (#160)", () => {
+      it("is the union of the repository's rows and the published policy's globs, sorted", async () => {
+        const { repository, spy } = stubRepository({ protectedPaths: ["keys/**", "boot/**"] });
+
+        await expect(
+          new GuardrailService(
+            repository,
+            orgPolicy(["ota/**", "keys/**"]),
+          ).effectiveProtectedPaths(writer, POLICY),
+        ).resolves.toEqual(["boot/**", "keys/**", "ota/**"]);
+        expect(spy.protectedPaths.mock.calls[0][1]).toBe(POLICY);
+      });
+
+      it("is the repository's rows alone without a policy resolver, and empty when nothing is protected", async () => {
+        const rows = stubRepository({ protectedPaths: ["boot/**"] });
+        const none = stubRepository();
+
+        await expect(
+          new GuardrailService(rows.repository).effectiveProtectedPaths(writer, POLICY),
+        ).resolves.toEqual(["boot/**"]);
+        await expect(
+          new GuardrailService(none.repository, orgPolicy([], false)).effectiveProtectedPaths(
+            writer,
+            POLICY,
+          ),
+        ).resolves.toEqual([]);
+      });
+    });
   });
 
   describe("allow-once grants (#459)", () => {

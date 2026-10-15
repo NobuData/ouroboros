@@ -41,7 +41,9 @@ flowchart LR
    **Loop #*N*** — the moment it is picked up. The run follows the workflow's **stages**
    in order (analyze, plan, implement, build, test, self-review, …), and each stage that
    needs a model is routed to the one your [model routing](./models.mdx) assigns to that
-   kind of work.
+   kind of work. The run executes the workflow version that was published when the issue
+   was queued, and later edits do not change it. Each stage may only do what its
+   permissions allow; a refused action fails the stage.
 4. **Build and test on the farm.** The change is built and tested on your **build farm**:
    **runners** you enroll on your own hardware, grouped into **pools**. A failing build or
    test sends the loop back to an earlier stage to try again, up to the workflow's limit.

@@ -58,14 +58,15 @@ export class QueueClaimService {
    * @param queue - The statements — the queue's, beside the ingest contract's own.
    * @param config - The live-execution switch and the lease length.
    * @param states - Whether a workspace is taking new work (#489).
-   * @param admission - The live-run admission decision (DI.4, #1312).
+   * @param admission - The live-run admission decision (DI.4, #1312), and the model a claimed
+   *   item's run will record (#160).
    */
   constructor(
     private readonly queue: IngestRepository,
     private readonly config: AppConfigService,
     private readonly states: WorkspaceStateReader,
     @Inject(AdmissionService)
-    private readonly admission: Pick<AdmissionService, "executorCount" | "admitNext">,
+    private readonly admission: Pick<AdmissionService, "executorCount" | "admitNext" | "modelFor">,
   ) {}
 
   /**
@@ -141,7 +142,8 @@ export class QueueClaimService {
   }
 
   /**
-   * A leased item as the claim answers it, with the ticket to open its run for.
+   * A leased item as the claim answers it, with the ticket to open its run for and the model the
+   * run will record (`AdmissionService.modelFor` is the rule).
    *
    * @param writer - The claim's transaction.
    * @param item - The item, leased.
@@ -154,6 +156,16 @@ export class QueueClaimService {
       item.github_repo_id,
       item.issue_number,
     );
+    const pinned =
+      item.workflow_version === null
+        ? undefined
+        : await this.queue.pinnedDefinition(
+            writer,
+            item.organization_id,
+            item.workflow_tag,
+            item.workflow_version,
+          );
+    const model = await this.admission.modelFor(item.organization_id, pinned?.definition);
 
     return {
       id: item.id,
@@ -167,6 +179,7 @@ export class QueueClaimService {
       workflow: { tag: item.workflow_tag, version: item.workflow_version },
       playbookId: item.playbook_id,
       ticket: ticket ?? null,
+      model,
     };
   }
 }

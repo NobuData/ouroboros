@@ -2,6 +2,10 @@ import { internalDocument } from "../../openapi/specification";
 import {
   INGEST_ERRORS,
   attemptLimitExceeded,
+  baseCommitMismatch,
+  fenced,
+  runNotExecutable,
+  runSimulated,
   buildJobNotFound,
   eventsOutOfOrder,
   claimWorkspaceNotFound,
@@ -63,6 +67,10 @@ const REFUSALS = [
   ["queue_item_mismatch", 422, () => queueItemMismatch("q", "issue")],
   ["no_executor", 409, () => noExecutor()],
   ["concurrency_ceiling", 409, () => concurrencyCeiling(1, 1)],
+  ["run_simulated", 409, () => runSimulated("run", "simulated")],
+  ["run_not_executable", 409, () => runNotExecutable("run", "failed")],
+  ["fenced", 409, () => fenced(3)],
+  ["base_commit_mismatch", 409, () => baseCommitMismatch("a".repeat(40), "b".repeat(40))],
 ] as const;
 
 describe("the codes", () => {
@@ -122,6 +130,10 @@ describe("the details each refusal carries", () => {
     });
   });
 
+  it("tells a fenced worker the epoch that superseded it, in the execution contract's spelling", () => {
+    expect(fenced(4).envelope().details).toEqual({ current_epoch: 4 });
+  });
+
   it("never returns the stored response when a key was reused", () => {
     // It belongs to whatever request first used the key, and may describe rows this caller
     // has not been shown.
@@ -145,7 +157,8 @@ describe("the published contract", () => {
         path === "/internal/queue/claim",
     );
 
-    expect(ingestion).toHaveLength(7);
+    // Seven since #91, and four more since #160's execution bridge.
+    expect(ingestion).toHaveLength(11);
 
     return JSON.stringify(ingestion);
   }

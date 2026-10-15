@@ -151,6 +151,8 @@ export const ENGINE_STATUS_BODY = {
   service: "ouroboros-engine",
   version: "0.3.0",
   uptime_seconds: 1234.567,
+  // Required by the engine's `ServiceStatus` since #160: the registered stage-executor kinds.
+  executors: [],
 };
 
 /**

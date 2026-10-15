@@ -31,11 +31,19 @@ import {
   INTERNAL_RUN_FILES_PATH,
   INTERNAL_RUN_RESOURCES_PATH,
   INTERNAL_RUN_STAGE_TRANSITIONS_PATH,
+  INTERNAL_RUN_CHECKPOINT_PATH,
+  INTERNAL_RUN_FINISH_PATH,
+  INTERNAL_RUN_HEARTBEAT_PATH,
+  INTERNAL_RUN_START_PATH,
   INVOKE_ROUTE,
   LEASE_ROUTE,
   LLM_PATH,
   RESOURCES_ROUTE,
   RUNS_PATH,
+  RUN_CHECKPOINT_ROUTE,
+  RUN_FINISH_ROUTE,
+  RUN_HEARTBEAT_ROUTE,
+  RUN_START_ROUTE,
   STAGE_TRANSITIONS_ROUTE,
   isInternalPath,
 } from "./internal.paths";
@@ -74,6 +82,17 @@ describe("the internal paths", () => {
     expect(INTERNAL_RUN_CONTROL_ACK_PATH).toBe("/internal/runs/:id/controls/:controlId/ack");
     expect(`/${RUNS_PATH}/${CONTROLS_FETCH_ROUTE}`).toBe(INTERNAL_RUN_CONTROLS_FETCH_PATH);
     expect(`/${RUNS_PATH}/${CONTROL_ACK_ROUTE}`).toBe(INTERNAL_RUN_CONTROL_ACK_PATH);
+  });
+
+  it("are the four #160's execution bridge specifies, composed from its controller's segments", () => {
+    expect(INTERNAL_RUN_START_PATH).toBe("/internal/runs/:id/start");
+    expect(INTERNAL_RUN_HEARTBEAT_PATH).toBe("/internal/runs/:id/heartbeat");
+    expect(INTERNAL_RUN_CHECKPOINT_PATH).toBe("/internal/runs/:id/checkpoint");
+    expect(INTERNAL_RUN_FINISH_PATH).toBe("/internal/runs/:id/finish");
+    expect(`/${RUNS_PATH}/${RUN_START_ROUTE}`).toBe(INTERNAL_RUN_START_PATH);
+    expect(`/${RUNS_PATH}/${RUN_HEARTBEAT_ROUTE}`).toBe(INTERNAL_RUN_HEARTBEAT_PATH);
+    expect(`/${RUNS_PATH}/${RUN_CHECKPOINT_ROUTE}`).toBe(INTERNAL_RUN_CHECKPOINT_PATH);
+    expect(`/${RUNS_PATH}/${RUN_FINISH_ROUTE}`).toBe(INTERNAL_RUN_FINISH_PATH);
   });
 
   it("compose the ingestion routes from the segments its controller declares", () => {
@@ -119,6 +138,10 @@ describe("the internal paths", () => {
         INTERNAL_RUN_RESOURCES_PATH,
         INTERNAL_RUN_CONTROLS_FETCH_PATH,
         INTERNAL_RUN_CONTROL_ACK_PATH,
+        INTERNAL_RUN_START_PATH,
+        INTERNAL_RUN_HEARTBEAT_PATH,
+        INTERNAL_RUN_CHECKPOINT_PATH,
+        INTERNAL_RUN_FINISH_PATH,
         INTERNAL_RESEARCH_TOOL_PATH,
         INTERNAL_INVESTIGATION_START_PATH,
         INTERNAL_INVESTIGATION_CHECKPOINT_PATH,
