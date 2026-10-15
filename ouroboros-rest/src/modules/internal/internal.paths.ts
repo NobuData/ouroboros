@@ -183,6 +183,56 @@ export const REGRESSION_WATCH_RELEASES_ROUTE = "releases";
 /** Announce a release: `/internal/research/regression-watch/releases`. */
 export const INTERNAL_REGRESSION_WATCH_RELEASES_PATH = `/${REGRESSION_WATCH_PATH}/${REGRESSION_WATCH_RELEASES_ROUTE}`;
 
+/** Base path of the harness facade and its credentials (DH.2, #1303). */
+export const HARNESS_PATH = `${INTERNAL_PATH}/harness`;
+
+/** Base path of the run-scoped credentials, relative to the router root. */
+export const HARNESS_CREDENTIALS_PATH = `${HARNESS_PATH}/credentials`;
+
+/** Route segment of one credential, relative to {@link HARNESS_CREDENTIALS_PATH}. */
+export const HARNESS_CREDENTIAL_ROUTE = ":id";
+
+/** Route segment of a credential's session-end reconciliation. */
+export const HARNESS_RECONCILE_ROUTE = ":id/reconcile";
+
+/**
+ * Base path of the Anthropic Messages-format facade — what a harness's `ANTHROPIC_BASE_URL`
+ * names, so the SDK's own `/v1/messages` lands under it.
+ */
+export const HARNESS_ANTHROPIC_PATH = `${HARNESS_PATH}/anthropic`;
+
+/** The Messages route, relative to {@link HARNESS_ANTHROPIC_PATH}. */
+export const HARNESS_MESSAGES_ROUTE = "v1/messages";
+
+/** The token-counting route, relative to {@link HARNESS_ANTHROPIC_PATH}. */
+export const HARNESS_COUNT_TOKENS_ROUTE = "v1/messages/count_tokens";
+
+/** `POST /internal/harness/credentials` — mint a run-scoped credential. */
+export const INTERNAL_HARNESS_CREDENTIALS_PATH = `/${HARNESS_CREDENTIALS_PATH}`;
+
+/** `DELETE /internal/harness/credentials/:id` — revoke one. */
+export const INTERNAL_HARNESS_CREDENTIAL_PATH = `/${HARNESS_CREDENTIALS_PATH}/${HARNESS_CREDENTIAL_ROUTE}`;
+
+/** `POST /internal/harness/credentials/:id/reconcile` — compare the harness's totals. */
+export const INTERNAL_HARNESS_RECONCILE_PATH = `/${HARNESS_CREDENTIALS_PATH}/${HARNESS_RECONCILE_ROUTE}`;
+
+/** `POST /internal/harness/anthropic/v1/messages` — the facade. */
+export const INTERNAL_HARNESS_MESSAGES_PATH = `/${HARNESS_ANTHROPIC_PATH}/${HARNESS_MESSAGES_ROUTE}`;
+
+/** `POST /internal/harness/anthropic/v1/messages/count_tokens`. */
+export const INTERNAL_HARNESS_COUNT_TOKENS_PATH = `/${HARNESS_ANTHROPIC_PATH}/${HARNESS_COUNT_TOKENS_ROUTE}`;
+
+/**
+ * The internal paths a run-scoped harness credential authenticates instead of
+ * `X-Ouro-Internal-Key` (DH.2, #1303): a harness can present one secret, its
+ * `ANTHROPIC_API_KEY`. The only exception to the key on this surface, named so the specs that
+ * hold every other route to the key name it too.
+ */
+export const CREDENTIAL_AUTHENTICATED_PATHS: readonly string[] = [
+  INTERNAL_HARNESS_MESSAGES_PATH,
+  INTERNAL_HARNESS_COUNT_TOKENS_PATH,
+];
+
 /**
  * Every internal path.
  *
@@ -215,6 +265,11 @@ export const INTERNAL_PATHS = [
   INTERNAL_INVESTIGATION_FINISH_PATH,
   INTERNAL_DRY_RUN_REPLAY_ESTIMATES_PATH,
   INTERNAL_REGRESSION_WATCH_RELEASES_PATH,
+  INTERNAL_HARNESS_CREDENTIALS_PATH,
+  INTERNAL_HARNESS_CREDENTIAL_PATH,
+  INTERNAL_HARNESS_RECONCILE_PATH,
+  INTERNAL_HARNESS_MESSAGES_PATH,
+  INTERNAL_HARNESS_COUNT_TOKENS_PATH,
 ] as const;
 
 /**

@@ -1,5 +1,8 @@
 import { Test } from "@nestjs/testing";
 import { APP_GUARD, DiscoveryService, MetadataScanner, Reflector } from "@nestjs/core";
+import { HarnessCredentialsController } from "./harness/harness.credentials.controller";
+import { HarnessFacadeController } from "./harness/harness.facade.controller";
+import { CREDENTIAL_AUTHENTICATED_PATHS } from "./internal.paths";
 
 import { ConfigurationModule } from "../config/config.module";
 import { testConfiguration } from "../config/configuration.fixture";
@@ -65,10 +68,15 @@ describe("the internal module", () => {
     expect(exports ?? []).toEqual([]);
   });
 
-  it("declares exactly the two controllers the ticket specifies", () => {
+  it("declares exactly the controllers AD.3, AF.2 and DH.2 specify", () => {
     const controllers = Reflect.getMetadata("controllers", InternalModule) as unknown[];
 
-    expect(controllers).toEqual([CredentialsController, LlmController]);
+    expect(controllers).toEqual([
+      CredentialsController,
+      LlmController,
+      HarnessCredentialsController,
+      HarnessFacadeController,
+    ]);
   });
 });
 
@@ -85,7 +93,11 @@ describe("the surface, as the running application sees it", () => {
         .filter((route) => route.path.startsWith("/internal") && !route.internal)
         .map((route) => route.signature);
 
-      expect(unguarded).toEqual([]);
+      // The one exception, by name: the harness facade, which its run-scoped credential
+      // authenticates (DH.2, #1303). Anything else unguarded under /internal fails.
+      expect(unguarded.toSorted()).toEqual(
+        CREDENTIAL_AUTHENTICATED_PATHS.map((path) => `POST ${path}`).toSorted(),
+      );
     } finally {
       await app.close();
     }

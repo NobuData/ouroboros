@@ -2316,6 +2316,30 @@ export interface QueueItemsTable {
   updated_at: Stamped;
 }
 
+/**
+ * A run-scoped credential a stage harness presents to the Anthropic Messages facade (V140,
+ * DH.2 [#1303](https://github.com/NobuData/ouroboros/issues/1303)).
+ *
+ * The token is never stored — only its sha-256 — and every column but `revoked_at` and the
+ * reconciliation pair is fixed at minting.
+ */
+export interface HarnessCredentialsTable {
+  id: Generated<string>;
+  organization_id: string;
+  run_id: string;
+  stage: string;
+  alias: string;
+  attempt: Generated<number>;
+  /** sha-256 of the token, 32 bytes. */
+  token_hash: Buffer;
+  created_at: Stamped;
+  expires_at: Date;
+  revoked_at: Date | null;
+  /** The harness's per-model totals beside the recorded usage, with the differences. */
+  reconciliation: Record<string, unknown> | null;
+  reconciled_at: Date | null;
+}
+
 /** What a `token_usage` row is attributed to (V139) — the four owners of an invocation. */
 export type TokenUsageSubjectKind = "run" | "copilot_session" | "dry_run" | "investigation";
 
@@ -2395,6 +2419,8 @@ export interface TokenUsageTable {
   subject_id: string | null;
   /** The resolution this call executed (gap G1). */
   resolution_snapshot_id: string | null;
+  /** The harness credential whose facade call this row records (V140, DH.2 #1303). */
+  harness_credential_id: string | null;
   created_at: Stamped;
 }
 
@@ -8096,6 +8122,7 @@ export interface Database {
   route_revisions: RouteRevisionsTable;
   alias_revisions: AliasRevisionsTable;
   resolution_snapshots: ResolutionSnapshotsTable;
+  harness_credentials: HarnessCredentialsTable;
   audit_events: AuditEventsTable;
   workflows: WorkflowsTable;
   workflow_versions: WorkflowVersionsTable;
@@ -8614,6 +8641,7 @@ export const TABLE_COLUMNS = {
     "subject_kind",
     "subject_id",
     "resolution_snapshot_id",
+    "harness_credential_id",
     "created_at",
   ],
   workspace_settings: [
@@ -8746,6 +8774,20 @@ export const TABLE_COLUMNS = {
     "action",
     "diff",
     "created_at",
+  ],
+  harness_credentials: [
+    "id",
+    "organization_id",
+    "run_id",
+    "stage",
+    "alias",
+    "attempt",
+    "token_hash",
+    "created_at",
+    "expires_at",
+    "revoked_at",
+    "reconciliation",
+    "reconciled_at",
   ],
   resolution_snapshots: [
     "id",

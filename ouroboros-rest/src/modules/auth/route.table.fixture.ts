@@ -63,6 +63,10 @@ import {
   INTERNAL_INVESTIGATION_START_PATH,
   INTERNAL_RESEARCH_TOOL_PATH,
   isInternalPath,
+  CREDENTIAL_AUTHENTICATED_PATHS,
+  INTERNAL_HARNESS_CREDENTIALS_PATH,
+  INTERNAL_HARNESS_CREDENTIAL_PATH,
+  INTERNAL_HARNESS_RECONCILE_PATH,
 } from "../internal/internal.paths";
 import { ALLOW_ANONYMOUS } from "./anonymous";
 
@@ -152,6 +156,11 @@ export const SHIPPED_PUBLIC_SURFACE: readonly string[] = [
   `POST ${API_BASE_PATH}/slack/interactivity`,
   `GET ${API_BASE_PATH}/slack/link/:token`,
   `POST ${API_BASE_PATH}/slack/link/:token`,
+  // The harness facade (DH.2, #1303). Called by a stage harness, which holds no session and no
+  // internal key — only a run-scoped credential (`ouro_hrn_…`) as its `ANTHROPIC_API_KEY`. Each
+  // call is admitted only on a live credential for that alias, and refused `401` in the Messages
+  // API's error shape otherwise (`harness.credentials.service.ts`). Internal-network only.
+  ...CREDENTIAL_AUTHENTICATED_PATHS.map((path) => `POST ${path}`),
 ].sort();
 
 /**
@@ -205,6 +214,11 @@ export const INTERNAL_SURFACE: readonly string[] = [
   // repository captures baselines. A stranger who could reach it could pin a workspace's
   // baselines to a release that never happened — and a baseline is never re-measured.
   `POST ${INTERNAL_REGRESSION_WATCH_RELEASES_PATH}`,
+  // The harness credentials (DH.2, #1303): mint one for a stage, revoke it, reconcile its usage.
+  // A stranger who could mint one could spend a workspace's model budget on any of its aliases.
+  `POST ${INTERNAL_HARNESS_CREDENTIALS_PATH}`,
+  `DELETE ${INTERNAL_HARNESS_CREDENTIAL_PATH}`,
+  `POST ${INTERNAL_HARNESS_RECONCILE_PATH}`,
 ].sort();
 
 /** One route, as the enumeration sees it. */

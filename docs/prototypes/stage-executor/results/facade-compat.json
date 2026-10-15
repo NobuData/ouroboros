@@ -1,0 +1,93 @@
+{
+  "mode": "recorded",
+  "checks": {
+    "session_completed": true,
+    "used_read_and_write": true,
+    "canary_absent": true,
+    "usage_reconciles": true,
+    "revoked_refused": true,
+    "upstream_saw_provider_key": true
+  },
+  "credential": {
+    "id": "d12df941-a754-4f56-aff4-a95f049c48e8",
+    "run": "5eed0009-0000-4000-8000-000000000476",
+    "stage": "implement",
+    "alias": "coder-max",
+    "expiresAt": "2026-10-15T04:04:15.709Z"
+  },
+  "session": {
+    "wall_clock_ms": 582,
+    "subtype": "success",
+    "num_turns": 3,
+    "usage": {
+      "input_tokens": 7242,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 90,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 0,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "",
+      "iterations": [],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "model_usage": {
+      "coder-max": {
+        "inputTokens": 7242,
+        "outputTokens": 90,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 0.03846,
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 0,
+        "canonicalModel": "coder-max",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    }
+  },
+  "canary_leaks": [],
+  "reconciliation": {
+    "matches": true,
+    "models": [
+      {
+        "model": "coder-max",
+        "recorded": {
+          "inputTokens": 7242,
+          "outputTokens": 90,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 0
+        },
+        "reported": {
+          "inputTokens": 7242,
+          "outputTokens": 90,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 0
+        },
+        "difference": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 0
+        },
+        "matches": true,
+        "calls": 3
+      }
+    ],
+    "id": "d12df941-a754-4f56-aff4-a95f049c48e8",
+    "reconciledAt": "2026-10-15T02:04:16.297Z"
+  },
+  "upstream_requests": 3
+}

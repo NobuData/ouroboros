@@ -103,6 +103,29 @@ DRY_RUN_REPLAY_ESTIMATES_PATH = "/internal/dry-runs/{id}/replay-estimates"
 #: mirrors every internal path; nothing in the engine calls it — a CI step that tags a release does.
 REGRESSION_WATCH_RELEASES_PATH = "/internal/research/regression-watch/releases"
 
+#: The run-scoped harness credential routes (DH.2, #1303): mint one per stage attempt, revoke it
+#: when the stage ends, and reconcile the harness's own usage totals at session end. Behind
+#: ``X-Ouro-Internal-Key``. The token minting answers is the harness's ``ANTHROPIC_API_KEY``.
+HARNESS_CREDENTIALS_PATH = "/internal/harness/credentials"
+HARNESS_CREDENTIAL_PATH = "/internal/harness/credentials/{id}"
+HARNESS_RECONCILE_PATH = "/internal/harness/credentials/{id}/reconcile"
+
+#: The Anthropic Messages-format facade a stage harness calls (DH.2, #1303) — its
+#: ``ANTHROPIC_BASE_URL`` is :data:`HARNESS_ANTHROPIC_BASE_PATH`, so the SDK's own ``/v1/messages``
+#: lands on :data:`HARNESS_MESSAGES_PATH`. Authenticated by the credential, not the internal key.
+HARNESS_ANTHROPIC_BASE_PATH = "/internal/harness/anthropic"
+HARNESS_MESSAGES_PATH = "/internal/harness/anthropic/v1/messages"
+HARNESS_COUNT_TOKENS_PATH = "/internal/harness/anthropic/v1/messages/count_tokens"
+
+#: Every harness path the internal document publishes.
+HARNESS_PATHS: tuple[str, ...] = (
+    HARNESS_CREDENTIALS_PATH,
+    HARNESS_CREDENTIAL_PATH,
+    HARNESS_RECONCILE_PATH,
+    HARNESS_MESSAGES_PATH,
+    HARNESS_COUNT_TOKENS_PATH,
+)
+
 #: The four controls a person can send a run, and what an executor must do with each:
 #:
 #: ``pause``

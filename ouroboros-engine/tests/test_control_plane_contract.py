@@ -26,6 +26,7 @@ from ouroboros_engine.control_plane.contract import (
     CONTROL_KINDS,
     DRY_RUN_REPLAY_ESTIMATES_PATH,
     EVENT_MODELS,
+    HARNESS_PATHS,
     INTERNAL_KEY_HEADER,
     INVOKE_ERROR_CODES,
     INVOKE_MEDIA_TYPE,
@@ -99,6 +100,7 @@ def test_every_path_the_document_describes_is_one_this_package_mirrors() -> None
         | set(RESEARCH_INVESTIGATION_PATHS)
         | {DRY_RUN_REPLAY_ESTIMATES_PATH}
         | {REGRESSION_WATCH_RELEASES_PATH}
+        | set(HARNESS_PATHS)
     )
 
 

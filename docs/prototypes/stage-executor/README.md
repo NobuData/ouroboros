@@ -19,6 +19,8 @@ the kit's `check_stream`.
 | `stub_facade.py` | `POST /v1/messages`, streamed as the Messages API frames it, replaying a script turn by turn. It logs every request: tools offered, headers, and whether a credential was presented (its value is never logged) |
 | `prototype.py` | The harness under L5. It sets `tools` to the five file tools, uses `setting_sources=[]` and an isolated `CLAUDE_CONFIG_DIR`, and runs one hook into the engine's policy. It runs the scenarios below and writes `results/` |
 | `run.sh` | Runs `prototype.py` in the engine's environment, with `claude-agent-sdk==0.2.167` overlaid for this run only. The lockfile is not touched |
+| `facade_compat.py`, `facade_compat.sh` | DH.2's (#1303) compatibility run: the same pinned SDK through `ouroboros-rest`'s **real** Messages facade, with a canary provider key — see [The facade compatibility run](#the-facade-compatibility-run) |
+| `anthropic-redirect.mjs` | A Node preload for that run's recorded mode: it sends REST's calls to `api.anthropic.com` to the stub instead. Test-only |
 | `results/` | The figures the ADR quotes, as measured. `<scenario>.json` uses the SDK's default permission mode and `<scenario>.dontAsk.json` uses `permission_mode="dontAsk"` |
 
 ## Scenarios
@@ -45,6 +47,45 @@ docs/prototypes/stage-executor/run.sh halt                         # one scenari
 A scenario takes about 0.4 s. Almost all of that is the CLI's start-up, because the stub
 answers immediately. `hook-timeout` takes about 1.4 s. The results in `results/` were
 recorded on 2026-10-14 with SDK 0.2.167 and bundled CLI 2.1.300.
+
+## The facade compatibility run
+
+DH.2 ([#1303](https://github.com/NobuData/ouroboros/issues/1303)) builds the real facade. This run
+puts the harness version above through it. Re-run it whenever DH.3 moves the pinned SDK.
+
+1. **The stack.** Seed a throwaway database. Start REST with the preload and
+   `OURO_TEST_ANTHROPIC_REDIRECT`, so its Anthropic calls reach the stub:
+
+   ```bash
+   OURO_TEST_ANTHROPIC_REDIRECT=http://127.0.0.1:9410 \
+   NODE_OPTIONS="--import $PWD/docs/prototypes/stage-executor/anthropic-redirect.mjs" \
+   OURO_PROVIDER_HEALTH_INTERVAL_SECONDS=3600 TEST=true PORT=4303 node dist/main
+   ```
+
+2. **The canary.** Sign in as a seeded owner and add an Anthropic provider whose API key is a
+   canary such as `sk-ant-api03-CANARY…` (`POST /api/v1/providers`). The add validates the key
+   with `GET /v1/models`, so answer that from 9410 for the moment it takes. Then bind the alias
+   to the new connection (`model_aliases.provider_connection_id`).
+
+3. **The run.**
+
+   ```bash
+   OURO_ENGINE_SHARED_SECRET=… docs/prototypes/stage-executor/facade_compat.sh \
+     --rest http://127.0.0.1:4303 --run <a live run> --alias coder-max --stage implement \
+     --canary <the canary key>
+   ```
+
+   It mints a credential, then runs a Read → Write → done session through the facade. It
+   reconciles the SDK's `modelUsage` against REST's usage rows, revokes the credential and checks
+   the revoked one is refused. It also scans every descendant process's environment and
+   arguments, plus the harness's stderr, config directory and working tree, for the canary. It
+   writes `results/facade-compat.json` and exits non-zero on any failed check.
+
+`--real` drops the stub: start REST without the preload, store a real key, and pass it as
+`--canary`. That is a manual check, never CI.
+
+Recorded on 2026-10-14 with SDK 0.2.167: 3 turns and 3 upstream calls, all six checks passed.
+The SDK's own totals (7,242 in, 90 out) equal the sum of the three usage rows.
 
 ## What it does not show
 

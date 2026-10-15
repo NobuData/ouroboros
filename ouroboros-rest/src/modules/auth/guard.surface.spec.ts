@@ -9,6 +9,7 @@ import { testConfiguration } from "../config/configuration.fixture";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { HEALTH_PATH, LIVE_ROUTE } from "../health/health.paths";
 import { INTERNAL_KEY_HEADER } from "../engine/engine.contract";
+import { CREDENTIAL_AUTHENTICATED_PATHS } from "../internal/internal.paths";
 import { INTERNAL_LEASE_PATH } from "../internal/internal.paths";
 import { AUTH_ERRORS } from "./auth.errors";
 import {
@@ -121,7 +122,14 @@ describe("the guard's decision for every route in the table", () => {
       .filter((route) => route.path.startsWith("/internal"))
       .map((route) => route.signature);
 
-    expect(byPath.toSorted()).toEqual([...INTERNAL_SURFACE]);
+    // Plus the harness facade, by name: under /internal, guarded by its credential rather than
+    // the key (DH.2, #1303) — and therefore on the public list above, not this one.
+    expect(byPath.toSorted()).toEqual(
+      [
+        ...INTERNAL_SURFACE,
+        ...CREDENTIAL_AUTHENTICATED_PATHS.map((path) => `POST ${path}`),
+      ].toSorted(),
+    );
   });
 });
 

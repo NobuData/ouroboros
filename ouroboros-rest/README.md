@@ -6786,6 +6786,19 @@ body ─▶ InvokeService.prepare ─▶ subject (runs → copilot_sessions → 
 - **Streaming overhead** is measured by `docs/prototypes/invocation-gateway/run.sh real`; the
   figures are in [`docs/DECISION_INVOCATION_GATEWAY.md`](../docs/DECISION_INVOCATION_GATEWAY.md).
 
+**`POST /internal/harness/anthropic/v1/messages` is the harness facade** (DH.2,
+[#1303](https://github.com/NobuData/ouroboros/issues/1303)), the Anthropic Messages format over
+the same plan, usage path and caps. A stage harness reaches it as its `ANTHROPIC_BASE_URL` with a
+run-scoped credential (`ouro_hrn_…`) as its `ANTHROPIC_API_KEY`.
+
+- `POST /internal/harness/credentials` mints the credential: one run, stage, alias and attempt,
+  for two hours. `DELETE …/{id}` revokes it, and `POST …/{id}/reconcile` compares the SDK's
+  `modelUsage` with the rows it wrote.
+- The facade relays the provider's bytes untouched, skips non-Anthropic hops with an
+  explanation, and checks the cap before every call.
+- It is the one `/internal` route not behind the key (`CREDENTIAL_AUTHENTICATED_PATHS`). See
+  `docs/SECURITY_MODEL.md` § 4.7.
+
 **Authentication is the [#51](https://github.com/NobuData/ouroboros/issues/51) pattern, in
 the other direction.** Every route requires `X-Ouro-Internal-Key` carrying
 `OURO_ENGINE_SHARED_SECRET` — the same header and the same variable this service sends when

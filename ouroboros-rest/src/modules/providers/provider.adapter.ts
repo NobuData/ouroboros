@@ -105,6 +105,7 @@ import {
   CARD_SEPARATOR,
   PROVIDER_ERROR_RETRYABLE,
   pillFor,
+  type ModelRefusal,
   type ProviderErrorClass,
   type ProviderStatusPill,
 } from "./provider.errors";
@@ -618,4 +619,88 @@ export function supportsInvocation(
   adapter: ModelProviderAdapter,
 ): adapter is InvocationCapableAdapter {
   return adapter.capabilities().invocation;
+}
+
+/** The two Messages-format routes the harness facade relays (DH.2, #1303). */
+export type MessagesRelayPath = "/v1/messages" | "/v1/messages/count_tokens";
+
+/**
+ * One harness request, relayed as it came — DH.2
+ * ([#1303](https://github.com/NobuData/ouroboros/issues/1303)).
+ *
+ * The body is the harness's own, an open list of fields, with only `model` replaced by the
+ * hop's model id. `anthropic-version` and `anthropic-beta` are forwarded unchanged, as the
+ * vendor's gateway guide requires of a gateway.
+ */
+export interface MessagesRelayRequest {
+  readonly path: MessagesRelayPath;
+  readonly body: Readonly<Record<string, unknown>>;
+  /** Only the forwarded headers — `anthropic-version`, `anthropic-beta`. Never a credential. */
+  readonly headers: Readonly<Record<string, string>>;
+  readonly signal: AbortSignal;
+}
+
+/**
+ * What a relayed request answered, as the facade needs it.
+ *
+ * The bytes are the provider's, untouched; what the adapter adds is what only it can read off
+ * them — the class of a refusal and the usage of a success — so the facade stays free of any
+ * provider's wire format.
+ */
+export interface RelayedMessages {
+  readonly status: number;
+  /** The response's `content-type`. */
+  readonly contentType: string;
+  /** The provider's request id, when it sent one — the harness logs it. */
+  readonly requestId: string | null;
+  /**
+   * For a non-2xx: its class, its G8 refusal if it is one, read from the body. Null for a
+   * success. The body itself is in {@link body}, unmodified.
+   */
+  readonly failure: {
+    readonly errorClass: ProviderErrorClass;
+    readonly refusal: ModelRefusal | null;
+  } | null;
+  /** The body, chunk by chunk as it arrives. Read it once. */
+  readonly body: AsyncIterable<Uint8Array>;
+  /** The usage the provider reported, once {@link body} has been read; null if none. */
+  usage(): InvocationUsage | null;
+}
+
+/**
+ * An adapter that speaks the Anthropic Messages wire format natively, so a harness's request
+ * can be relayed to it byte for byte rather than translated.
+ *
+ * Only `anthropic` does. The facade skips every other hop, with an explanation.
+ */
+export interface MessagesRelayAdapter extends InvocationCapableAdapter {
+  /**
+   * Send one Messages-format request and hand back the provider's answer, untouched.
+   *
+   * @param connection - The saved connection, opened for this one call.
+   * @param request - The harness's request, with `model` already the hop's.
+   * @returns The answer, whatever its status: the facade relays a success byte for byte and
+   *   an error body unmodified.
+   * @throws {ProviderAdapterError} `config` for a connection with no key, `network` when
+   *   nothing answered.
+   */
+  relayMessages(
+    connection: ProviderConnectionContext,
+    request: MessagesRelayRequest,
+  ): Promise<RelayedMessages>;
+}
+
+/**
+ * Whether an adapter relays the Messages format.
+ *
+ * @param adapter - Any adapter.
+ * @returns `true` for one that invokes and has `relayMessages`.
+ */
+export function supportsMessagesRelay(
+  adapter: ModelProviderAdapter,
+): adapter is MessagesRelayAdapter {
+  return (
+    supportsInvocation(adapter) &&
+    typeof (adapter as Partial<MessagesRelayAdapter>).relayMessages === "function"
+  );
 }

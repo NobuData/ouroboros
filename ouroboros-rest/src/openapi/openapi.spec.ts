@@ -36,6 +36,7 @@ import {
 } from "../modules/internal/internal.errors";
 import {
   INTERNAL_INVOKE_PATH,
+  CREDENTIAL_AUTHENTICATED_PATHS,
   INTERNAL_LEASE_PATH,
   INTERNAL_PATHS,
   isInternalPath,
@@ -697,8 +698,14 @@ describe("the internal specification", () => {
     // endpoint reachable by anything that can route a packet to the port.
     expect(internalDocument().security).toEqual([{ ouroInternalKey: [] }]);
 
-    for (const [, operation] of operations(internalDocument())) {
-      expect(operation.security).toBeUndefined();
+    for (const [key, operation] of operations(internalDocument())) {
+      // The one exception, by name: the harness facade, authenticated by its run-scoped
+      // credential rather than the key (DH.2, #1303). It is still authenticated.
+      if (CREDENTIAL_AUTHENTICATED_PATHS.some((path) => key === `POST ${path}`)) {
+        expect(operation.security).toEqual([{ harnessCredential: [] }]);
+      } else {
+        expect(operation.security).toBeUndefined();
+      }
     }
   });
 
@@ -836,7 +843,8 @@ describe("the internal document and the running application", () => {
         .set(INTERNAL_KEY_HEADER, testConfiguration().engineSharedSecret)
         .send({});
 
-      expect(response.status).not.toBe(401);
+      // The key buys nothing on the harness facade: only its credential does.
+      expect(response.status === 401).toBe(CREDENTIAL_AUTHENTICATED_PATHS.includes(path));
       expect(documented).toContain(String(response.status));
     },
   );

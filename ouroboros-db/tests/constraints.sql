@@ -44168,6 +44168,87 @@ select pg_temp.must_hold(
 
 delete from ouroboros.organization where "id" = 'org-v139';
 
+-- ===========================================================================
+-- V140 — harness_credentials: run-scoped credentials for the harness facade (DH.2, #1303).
+-- ===========================================================================
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v140', 'Harness Facade', 'harness-facade-v140', now()),
+  ('org-v140b', 'Elsewhere', 'elsewhere-v140', now());
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a1400000-0000-0000-0000-00000000000a', 'org-v140', 'facade-v140', true);
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a140f000-0000-0000-0000-00000000000a', 'a1400000-0000-0000-0000-00000000000a', 'helios-firmware', true, 'main');
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq)
+  values
+    ('a1400000-0000-0000-0000-000000000001', 'org-v140', 'a140f000-0000-0000-0000-00000000000a',
+     1303, 'Harness facade', 'standard-fix', 'claude-fable-5', 'building',
+     'Build', 4, 8, '2026-10-14T09:00:00Z', 1);
+
+insert into ouroboros.harness_credentials
+    (id, organization_id, run_id, stage, alias, attempt, token_hash, expires_at)
+  values
+    ('a1400000-0000-0000-0000-0000000000c1', 'org-v140', 'a1400000-0000-0000-0000-000000000001',
+     'implement', 'coder-max', 2, sha256('ouro_hrn_v140'), now() + interval '2 hours');
+select pg_temp.must_hold(
+  (select attempt = 2 and revoked_at is null and reconciliation is null
+     from ouroboros.harness_credentials where id = 'a1400000-0000-0000-0000-0000000000c1'),
+  'a minted credential keeps its binding, unrevoked and unreconciled');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.harness_credentials (organization_id, run_id, stage, alias, token_hash, expires_at)
+    values ('org-v140b', 'a1400000-0000-0000-0000-000000000001', 'implement', 'coder-max',
+            sha256('other'), now() + interval '1 hour')$$,
+  'a credential cannot bind another workspace''s run', 'harness_credentials_run_in_workspace');
+select pg_temp.must_reject(
+  $$insert into ouroboros.harness_credentials (organization_id, run_id, stage, alias, token_hash, expires_at)
+    values ('org-v140', 'a1400000-0000-0000-0000-000000000001', 'implement', 'coder-max',
+            '\x00'::bytea, now() + interval '1 hour')$$,
+  'the stored hash is a full sha-256', 'harness_credentials_hash_length');
+select pg_temp.must_reject(
+  $$insert into ouroboros.harness_credentials (organization_id, run_id, stage, alias, token_hash, expires_at)
+    values ('org-v140', 'a1400000-0000-0000-0000-000000000001', 'implement', 'coder-max',
+            sha256('dup'), now() - interval '1 minute')$$,
+  'a credential expires after it is created', 'harness_credentials_expires_after_created');
+select pg_temp.must_reject(
+  $$insert into ouroboros.harness_credentials (organization_id, run_id, stage, alias, attempt, token_hash, expires_at)
+    values ('org-v140', 'a1400000-0000-0000-0000-000000000001', 'implement', 'coder-max', 0,
+            sha256('zero'), now() + interval '1 hour')$$,
+  'an attempt is 1-based', 'harness_credentials_attempt_positive');
+select pg_temp.must_reject(
+  $$insert into ouroboros.harness_credentials (organization_id, run_id, stage, alias, token_hash, expires_at)
+    values ('org-v140', 'a1400000-0000-0000-0000-000000000001', 'implement', 'coder-max',
+            sha256('ouro_hrn_v140'), now() + interval '1 hour')$$,
+  'one token hashes to one credential', 'harness_credentials_token_hash_key');
+select pg_temp.must_reject(
+  $$update ouroboros.harness_credentials set reconciliation = '{}'::jsonb
+     where id = 'a1400000-0000-0000-0000-0000000000c1'$$,
+  'a reconciliation carries its time', 'harness_credentials_reconciled_pair');
+
+-- A facade call's usage row names the credential, and outlives it.
+insert into ouroboros.token_usage
+    (organization_id, run_id, provider, model, tokens_in, tokens_out, attempt, stage,
+     subject_kind, subject_id, harness_credential_id)
+  values ('org-v140', 'a1400000-0000-0000-0000-000000000001', 'anthropic', 'claude-sonnet-4-5', 25, 15, 2,
+          'implement', 'run', 'a1400000-0000-0000-0000-000000000001', 'a1400000-0000-0000-0000-0000000000c1');
+delete from ouroboros.harness_credentials where id = 'a1400000-0000-0000-0000-0000000000c1';
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.token_usage
+    where organization_id = 'org-v140' and harness_credential_id is null and attempt = 2),
+  'deleting a credential keeps its calls'' usage');
+
+-- A credential outlives no run.
+insert into ouroboros.harness_credentials (organization_id, run_id, stage, alias, token_hash, expires_at)
+  values ('org-v140', 'a1400000-0000-0000-0000-000000000001', 'implement', 'coder-max',
+          sha256('cascade'), now() + interval '1 hour');
+delete from ouroboros.runs where id = 'a1400000-0000-0000-0000-000000000001';
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.harness_credentials where organization_id = 'org-v140'),
+  'a run''s credentials go with it');
+
+delete from ouroboros.organization where "id" in ('org-v140', 'org-v140b');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

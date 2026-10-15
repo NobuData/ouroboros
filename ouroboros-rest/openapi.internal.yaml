@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.41.36"
+  version: "0.41.37"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -139,6 +139,21 @@ tags:
       per-run cost cap, and usage capture attributed to the hop that actually served the
       request. Each of those is a field or an event kind below, named here so that an
       executor which ignored one can be found to have ignored it.
+
+  - name: harness
+    description: |-
+      **The Anthropic Messages-format facade a stage harness calls (DH.2,
+      [#1303](https://github.com/NobuData/ouroboros/issues/1303)).**
+
+      A harness (the Claude Agent SDK) makes its own model calls. It is pointed at
+      `/internal/harness/anthropic` as its `ANTHROPIC_BASE_URL` and holds a **run-scoped
+      credential** as its `ANTHROPIC_API_KEY` — minted per run, stage and alias, two hours at
+      most, revoked when the stage ends. The facade resolves the alias, keeps only
+      Anthropic-format hops, checks the run's cap before every call, and relays the provider's
+      answer byte for byte. The provider key never reaches the engine.
+
+      The credential routes sit behind `X-Ouro-Internal-Key` like the rest of this surface; the
+      two Messages routes authenticate by the credential alone.
 
   - name: runs
     description: |-
@@ -459,6 +474,340 @@ paths:
                 code: invoke_target_invalid
                 message: "Name exactly one of connection or alias: a connection is this provider, an alias is whatever routing resolves it to."
                 details: {}
+
+  /internal/harness/credentials:
+    post:
+      tags: [harness]
+      summary: Mint a run-scoped credential for a stage harness
+      description: |-
+        Mint the one secret a stage harness holds: bound to one live run, one stage, one routing
+        alias and one attempt, for two hours at most. **The token is in this answer and nowhere
+        else** — only its sha-256 is stored. Revoke it with `DELETE` when the stage ends.
+      operationId: mintHarnessCredential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HarnessCredentialRequest"
+            example:
+              run: 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+              stage: implement
+              alias: coder-max
+              attempt: 1
+      responses:
+        "201":
+          description: The credential, with its token — shown this once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HarnessCredential"
+              example:
+                id: 7b1f3c2a-9d4e-4f6a-8b2c-1e5d7a9c3f40
+                token: ouro_hrn_Q2hhaW4tZXhlY3V0b3ItZmFjYWRlLXRva2VuLWV4YW1
+                run: 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                stage: implement
+                alias: coder-max
+                attempt: 1
+                expiresAt: "2026-10-14T11:00:00.000Z"
+        "401":
+          description: |-
+            No `X-Ouro-Internal-Key`, or the wrong one. Checked before anything else.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: unauthenticated
+                message: Unauthorized.
+                details: {}
+        "404":
+          description: "`run_not_found` — no run has that id."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "A body the validator refuses, or `run_finished` for a run that has ended."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /internal/harness/credentials/{id}:
+    delete:
+      tags: [harness]
+      summary: Revoke a run-scoped credential
+      description: |-
+        Revoke a credential when its stage ends. A revoked credential is refused at once; a second
+        revoke keeps the first time.
+      operationId: revokeHarnessCredential
+      parameters:
+        - $ref: "#/components/parameters/HarnessCredentialId"
+      responses:
+        "204":
+          description: Revoked.
+        "401":
+          description: |-
+            No `X-Ouro-Internal-Key`, or the wrong one. Checked before anything else.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: unauthenticated
+                message: Unauthorized.
+                details: {}
+        "404":
+          description: "`credential_not_found`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: An id that is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /internal/harness/credentials/{id}/reconcile:
+    post:
+      tags: [harness]
+      summary: Reconcile the harness's own usage totals with what the facade recorded
+      description: |-
+        At session end the harness reports its per-model totals — the Claude Agent SDK's
+        `modelUsage`, in its own field names. The facade compares them with the usage rows this
+        credential's calls wrote, model by model, and answers each recorded, reported and
+        difference. **A difference is surfaced, never averaged away**: `matches` is true only when
+        every model agrees. The comparison is stored on the credential.
+      operationId: reconcileHarnessCredential
+      parameters:
+        - $ref: "#/components/parameters/HarnessCredentialId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HarnessReconcileRequest"
+            example:
+              models:
+                coder-max:
+                  inputTokens: 8577
+                  outputTokens: 141
+                  cacheReadInputTokens: 0
+                  cacheCreationInputTokens: 0
+      responses:
+        "200":
+          description: The comparison.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HarnessReconciliation"
+        "401":
+          description: |-
+            No `X-Ouro-Internal-Key`, or the wrong one. Checked before anything else.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: unauthenticated
+                message: Unauthorized.
+                details: {}
+        "404":
+          description: "`credential_not_found`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: A body the validator refuses, or an id that is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /internal/harness/anthropic/v1/messages:
+    post:
+      tags: [harness]
+      summary: The Anthropic Messages API, as a harness calls it
+      description: |-
+        `POST /v1/messages` in the Anthropic Messages format, authenticated by the run-scoped
+        credential in `x-api-key` (or `Authorization: Bearer`) — **not** by
+        `X-Ouro-Internal-Key`. `model` must be the credential's alias.
+
+        - The alias is resolved as `/internal/llm/invoke` resolves it, under the credential's
+          stage. Hops that are not Anthropic-format are skipped and named in
+          `x-ouroboros-skipped-hops`; a chain with none left is `400 no_anthropic_hop`.
+        - The run's cost cap is checked **before every call**; a breach is
+          `400 cost_cap_exceeded`, naming the cap, and the stage halts.
+        - A hop that answers `5xx`, `429`, an auth refusal or a model-specific refusal before any
+          byte is relayed hands over to the next. When every hop fails, the last provider's error
+          is returned **unmodified**.
+        - A success is relayed **byte for byte**, server-sent events and `ping` frames
+          included, as they arrive. `anthropic-version` and `anthropic-beta` are forwarded
+          unchanged and every other request field passes through.
+        - One usage row per call, attributed to run, stage, attempt, provider, model and
+          credential.
+      operationId: harnessMessages
+      security:
+        - harnessCredential: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              required: [model]
+              properties:
+                model:
+                  type: string
+                  description: The credential's routing alias.
+            example:
+              model: coder-max
+              max_tokens: 1024
+              stream: true
+              messages:
+                - role: user
+                  content: Read README.md and summarise it.
+      responses:
+        "200":
+          description: The provider's answer, relayed byte for byte.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          description: |-
+            A facade refusal, in the Messages API's error shape, with the rule in `ouroboros.code`
+            — or the last provider's own error, relayed unmodified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HarnessError"
+        "401":
+          description: |-
+            No run-scoped credential, or one that is unknown, expired, revoked, bound to another
+            run, or whose run has finished — `authentication_error`, the rule in `ouroboros.code`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HarnessError"
+              example:
+                type: error
+                error:
+                  type: authentication_error
+                  message: Present a run-scoped credential minted by the control plane.
+                ouroboros:
+                  code: credential_invalid
+        "403":
+          description: |-
+            A facade refusal, in the Messages API's error shape, with the rule in `ouroboros.code`
+            — or the last provider's own error, relayed unmodified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HarnessError"
+        "404":
+          description: |-
+            A facade refusal, in the Messages API's error shape, with the rule in `ouroboros.code`
+            — or the last provider's own error, relayed unmodified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HarnessError"
+        "502":
+          description: |-
+            A facade refusal, in the Messages API's error shape, with the rule in `ouroboros.code`
+            — or the last provider's own error, relayed unmodified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HarnessError"
+
+  /internal/harness/anthropic/v1/messages/count_tokens:
+    post:
+      tags: [harness]
+      summary: Count tokens, as a harness calls it
+      description: |-
+        `POST /v1/messages/count_tokens`, authenticated and resolved as the Messages route is and
+        relayed to the first Anthropic-format hop. Not metered and not capped: counting spends
+        nothing.
+      operationId: harnessCountTokens
+      security:
+        - harnessCredential: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              required: [model]
+              properties:
+                model:
+                  type: string
+      responses:
+        "200":
+          description: The provider's count, relayed.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          description: |-
+            A facade refusal, in the Messages API's error shape, with the rule in `ouroboros.code`
+            — or the last provider's own error, relayed unmodified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HarnessError"
+        "401":
+          description: |-
+            No run-scoped credential, or one that is unknown, expired, revoked, bound to another
+            run, or whose run has finished — `authentication_error`, the rule in `ouroboros.code`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HarnessError"
+              example:
+                type: error
+                error:
+                  type: authentication_error
+                  message: Present a run-scoped credential minted by the control plane.
+                ouroboros:
+                  code: credential_invalid
+        "403":
+          description: |-
+            A facade refusal, in the Messages API's error shape, with the rule in `ouroboros.code`
+            — or the last provider's own error, relayed unmodified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HarnessError"
+        "404":
+          description: |-
+            A facade refusal, in the Messages API's error shape, with the rule in `ouroboros.code`
+            — or the last provider's own error, relayed unmodified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HarnessError"
+        "502":
+          description: |-
+            A facade refusal, in the Messages API's error shape, with the rule in `ouroboros.code`
+            — or the last provider's own error, relayed unmodified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HarnessError"
 
   /internal/runs:
     post:
@@ -2252,6 +2601,14 @@ paths:
 
 components:
   parameters:
+    HarnessCredentialId:
+      name: id
+      in: path
+      required: true
+      description: "`harness_credentials.id`, as minting answered it."
+      schema:
+        type: string
+        format: uuid
     RunId:
       name: id
       in: path
@@ -2268,6 +2625,14 @@ components:
       example: 5eed0009-0000-4000-8000-000000000482
 
   securitySchemes:
+    harnessCredential:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: |-
+        A run-scoped harness credential (`ouro_hrn_…`), minted by
+        `POST /internal/harness/credentials` — the harness's `ANTHROPIC_API_KEY`.
+        `Authorization: Bearer` carries it too.
     ouroInternalKey:
       type: apiKey
       in: header
@@ -2284,6 +2649,189 @@ components:
         an operator can actually find.
 
   schemas:
+    HarnessCredentialRequest:
+      type: object
+      title: HarnessCredentialRequest
+      additionalProperties: false
+      required: [run, stage, alias]
+      properties:
+        run:
+          type: string
+          format: uuid
+          description: "`runs.id` — a live run."
+        stage:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The stage or routed task kind the alias is walked under.
+        alias:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: The only routing alias the credential may call.
+        attempt:
+          type: integer
+          minimum: 1
+          description: The stage attempt, 1-based. Defaults to 1.
+
+    HarnessCredential:
+      type: object
+      title: HarnessCredential
+      additionalProperties: false
+      required: [id, token, run, stage, alias, attempt, expiresAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        token:
+          type: string
+          pattern: "^ouro_hrn_[A-Za-z0-9_-]{43}$"
+          description: The harness's `ANTHROPIC_API_KEY`. Shown here once and never stored.
+        run:
+          type: string
+          format: uuid
+        stage:
+          type: string
+        alias:
+          type: string
+        attempt:
+          type: integer
+          minimum: 1
+        expiresAt:
+          type: string
+          format: date-time
+          description: Two hours after minting.
+
+    HarnessReconcileRequest:
+      type: object
+      title: HarnessReconcileRequest
+      required: [models]
+      properties:
+        models:
+          type: object
+          description: The SDK's `modelUsage`, keyed as it keys it — an alias or a model id.
+          additionalProperties:
+            type: object
+            required: [inputTokens, outputTokens]
+            additionalProperties: true
+            properties:
+              inputTokens:
+                type: integer
+                minimum: 0
+              outputTokens:
+                type: integer
+                minimum: 0
+              cacheReadInputTokens:
+                type: integer
+                minimum: 0
+              cacheCreationInputTokens:
+                type: integer
+                minimum: 0
+
+    HarnessUsageTotals:
+      type: object
+      title: HarnessUsageTotals
+      additionalProperties: false
+      required: [inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens]
+      properties:
+        inputTokens:
+          type: integer
+        outputTokens:
+          type: integer
+        cacheReadTokens:
+          type: integer
+        cacheWriteTokens:
+          type: integer
+
+    HarnessReconciliation:
+      type: object
+      title: HarnessReconciliation
+      additionalProperties: false
+      required: [id, matches, models, reconciledAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The credential's id.
+        matches:
+          type: boolean
+          description: True only when every model agrees.
+        reconciledAt:
+          type: string
+          format: date-time
+        models:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [model, recorded, reported, difference, matches, calls]
+            properties:
+              model:
+                type: string
+              recorded:
+                $ref: "#/components/schemas/HarnessUsageTotals"
+              reported:
+                oneOf:
+                  - $ref: "#/components/schemas/HarnessUsageTotals"
+                  - type: "null"
+                description: Null for a model the facade recorded and the harness did not report.
+              difference:
+                $ref: "#/components/schemas/HarnessUsageTotals"
+              matches:
+                type: boolean
+              calls:
+                type: integer
+                minimum: 0
+
+    HarnessError:
+      type: object
+      title: HarnessError
+      description: |-
+        An error in the Messages API's own shape. A facade refusal adds `ouroboros`, naming the
+        rule; a provider's error relayed unmodified has whatever the provider sent.
+      required: [type, error]
+      additionalProperties: true
+      properties:
+        type:
+          const: error
+        error:
+          type: object
+          required: [type, message]
+          additionalProperties: true
+          properties:
+            type:
+              type: string
+            message:
+              type: string
+        ouroboros:
+          type: object
+          required: [code]
+          additionalProperties: false
+          properties:
+            code:
+              type: string
+              enum:
+                - credential_invalid
+                - credential_expired
+                - credential_revoked
+                - credential_run_mismatch
+                - run_finished
+                - alias_mismatch
+                - alias_unavailable
+                - no_anthropic_hop
+                - cost_cap_exceeded
+                - resolution_failed
+                - vote_execution_unavailable
+                - provider_unavailable
+            cap:
+              $ref: "#/components/schemas/InvokeCap"
+            reason:
+              type: string
+            skipped:
+              type: array
+              items:
+                type: string
+
     Error:
       type: object
       title: Error
