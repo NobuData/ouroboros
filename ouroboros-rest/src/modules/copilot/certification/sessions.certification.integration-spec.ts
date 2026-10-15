@@ -36,7 +36,7 @@ import { validateWorkflowDocument } from "../../workflows/dsl.validator";
 import type { Person } from "../../../testing/harness.fixture";
 import { COPILOT_ERRORS } from "../copilot.errors";
 import { MAX_BOUNCES, MAX_TURNS, SESSION_CLOSED_MID_REPLY } from "../copilot.exchange";
-import { EMPTY_DRAFT, asDraftDocument, checkOperation } from "../copilot.operations";
+import { asDraftDocument, checkOperation } from "../copilot.operations";
 import type { CopilotConversationResource } from "../copilot.resources";
 import { COPILOT_TASK_KIND, COPILOT_UNROUTED } from "../copilot.service";
 import type { CopilotStreamEvent } from "../copilot.stream";
@@ -326,15 +326,11 @@ describe("copilot certification — session flows (#564)", () => {
     it("builds a golden document by operations into a stored draft that validates clean", async () => {
       // The unit parity suite proves this over `applyOperation`; here the same operations go
       // through the route and `apply_draft_batch()`, so it is the *stored* document that is held
-      // to the validator. The workflow is created on the base document a first edit builds on
-      // (`EMPTY_DRAFT`), named explicitly rather than left to the blank canvas.
+      // to the validator. The workflow is created with a name only, on the blank canvas: the
+      // operations alone make the document (#1744).
       const target = asDraftDocument(readFixture("valid/standard-fix.json"));
       serial += 1;
-      const created = await stage
-        .as(stage.people.owner, "post", "/api/v1/workflows")
-        .send({ name: `Sessions cert ${String(serial)} round trip`, definition: EMPTY_DRAFT })
-        .expect(201);
-      const workflow = created.body as StagedWorkflow;
+      const workflow = await stage.workflow(`Sessions cert ${String(serial)} round trip`);
       const session = await stage.session(workflow.id);
       const calls = [
         toolCall("t", "set_trigger", { trigger: target.trigger }),

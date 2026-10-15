@@ -107,8 +107,8 @@ export interface CopilotStage {
   as(person: Person, method: Method, path: string): request.Test;
   /**
    * Create a workflow the way the rail's dialog does: a name and nothing else. It has no version,
-   * and its draft is the service's blank canvas — `{}`, which carries no `dsl_version`, so a
-   * draft built on it by operations alone cannot be published or dry-run (#1744).
+   * and its draft is the service's blank canvas — the empty DSL document, so a draft built on it
+   * by operations alone can be published and dry-run (#1744).
    */
   workflow(name: string): Promise<StagedWorkflow>;
   /** Start a conversation about a workflow; answers the session's id. */

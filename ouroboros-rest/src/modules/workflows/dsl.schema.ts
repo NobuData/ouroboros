@@ -34,6 +34,22 @@ import { z } from "zod";
 /** The `dsl_version` values this build implements — the 1.x minors `v1.json` lists. */
 export const SUPPORTED_DSL_VERSIONS = ["1.0"] as const;
 
+/**
+ * The empty document — DSL v1 with no trigger, no stages and no edges.
+ *
+ * `ouroboros.workflow_blank_document()` (V143): the base a workflow never published replays
+ * from, and the keys a stored draft is read over before an operation applies to it (#1744).
+ *
+ * @returns A fresh copy, so no caller can change the next one's.
+ */
+export function emptyWorkflowDocument(): {
+  dsl_version: (typeof SUPPORTED_DSL_VERSIONS)[0];
+  nodes: unknown[];
+  edges: unknown[];
+} {
+  return { dsl_version: SUPPORTED_DSL_VERSIONS[0], nodes: [], edges: [] };
+}
+
 /** How much work a ticket is, in the vocabulary `issue_estimates.effort` stores. */
 export const EffortSchema = z.enum(["xs", "s", "m", "l", "xl"]);
 /** How much work a ticket is. */

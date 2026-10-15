@@ -203,8 +203,22 @@ describe("creating", () => {
     expect(repository.create).toHaveBeenCalledWith(WORKSPACE, {
       slug: "standard-fix",
       name: "Standard Fix",
-      definition: {},
+      definition: { dsl_version: "1.0", nodes: [], edges: [] },
     });
+  });
+
+  it("opens a workflow created with a name only on the empty DSL document (#1744)", async () => {
+    const { service, repository } = harness();
+    repository.create.mockResolvedValue({ workflow: workflow(), draft: draft() });
+
+    await service.create(WORKSPACE, { name: "First" });
+    await service.create(WORKSPACE, { name: "Second" });
+
+    const [first, second] = repository.create.mock.calls.map(([, row]) => row.definition);
+    // `dsl_version` is what a draft built on it by operations alone needs to publish.
+    expect(first).toEqual({ dsl_version: "1.0", nodes: [], edges: [] });
+    // A fresh document each time: one workflow's draft is never another's.
+    expect(first).not.toBe(second);
   });
 
   it("uses the slug the caller sent, verbatim", async () => {

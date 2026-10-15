@@ -79,6 +79,109 @@ describe("the operation vocabulary", () => {
     });
     expect(asDraftDocument(DRAFT)).toEqual(DRAFT);
   });
+
+  describe("reads a stored draft as apply_draft_batch() does — over the empty document (#1744)", () => {
+    it("reads a blank {} as the empty document, dsl_version included", () => {
+      expect(asDraftDocument({})).toEqual({ dsl_version: "1.0", nodes: [], edges: [] });
+    });
+
+    it("keeps what the stored draft carries, even a dsl_version the validator refuses", () => {
+      // No in-memory default the stored row lacks: the database keeps "2.0", so REST judges "2.0".
+      expect(asDraftDocument({ dsl_version: "2.0", note: "kept" })).toEqual({
+        dsl_version: "2.0",
+        note: "kept",
+        nodes: [],
+        edges: [],
+      });
+      expect(asDraftDocument({ dsl_version: 1 }).dsl_version).toBe(1);
+    });
+
+    it("does not let one read change the empty document another reads", () => {
+      const read = asDraftDocument({});
+      (read.nodes as unknown[]).push(TEST_NODE);
+
+      expect(EMPTY_DRAFT.nodes).toEqual([]);
+      expect(asDraftDocument({}).nodes).toEqual([]);
+    });
+  });
+});
+
+describe("building on a blank workflow's draft (#1744)", () => {
+  const START = {
+    id: "start",
+    type: "trigger" as const,
+    title: "Queued",
+    position: { x: 0, y: 200 },
+    config: {},
+  };
+  const DONE = {
+    id: "done",
+    type: "term" as const,
+    title: "Needs review",
+    position: { x: 600, y: 200 },
+    config: { action: "needs_review", options: {} },
+  };
+
+  /** Fold proposals over a stored draft as the exchange does, each one required to apply. */
+  function build(stored: unknown, proposals: { kind: string; params: Record<string, unknown> }[]) {
+    let document: unknown = stored;
+    let last: ReturnType<typeof checkOperation> | undefined;
+    for (const proposal of proposals) {
+      last = checkOperation(document, proposal);
+      if (!last.ok) throw new Error(last.message);
+      document = last.document;
+    }
+    if (last === undefined || !last.ok) throw new Error("nothing applied");
+    return last;
+  }
+
+  it("tells the model a trigger stage is missing after the issue's four operations", () => {
+    const check = build({}, [
+      { kind: "set_trigger", params: { trigger: TRIGGER } },
+      { kind: "add_stage", params: { node: TEST_NODE } },
+      { kind: "add_stage", params: { node: DONE } },
+      { kind: "add_edge", params: { edge: { from: "test", to: "done", kind: "default" } } },
+    ]);
+
+    expect(check.document.dsl_version).toBe("1.0");
+    expect(check.documentValid).toBe(false);
+    expect(check.documentErrors.map((error) => error.code)).toContain("document.no_trigger");
+  });
+
+  it("validates once a stage of type trigger is added through add_stage", () => {
+    const check = build({}, [
+      { kind: "set_trigger", params: { trigger: TRIGGER } },
+      { kind: "add_stage", params: { node: START } },
+      { kind: "add_stage", params: { node: TEST_NODE } },
+      { kind: "add_stage", params: { node: DONE } },
+      { kind: "add_edge", params: { edge: { from: "start", to: "test", kind: "default" } } },
+      { kind: "add_edge", params: { edge: { from: "test", to: "done", kind: "default" } } },
+    ]);
+
+    expect(check.documentErrors).toEqual([]);
+    expect(check.documentValid).toBe(true);
+    expect(check.document).toEqual({
+      dsl_version: "1.0",
+      trigger: TRIGGER,
+      nodes: [START, TEST_NODE, DONE],
+      edges: [
+        { from: "start", to: "test", kind: "default" },
+        { from: "test", to: "done", kind: "default" },
+      ],
+    });
+  });
+
+  it("does not validate a draft whose stored dsl_version the database keeps unsupported", () => {
+    const check = build({ dsl_version: "9.9", nodes: [], edges: [] }, [
+      { kind: "set_trigger", params: { trigger: TRIGGER } },
+      { kind: "add_stage", params: { node: START } },
+      { kind: "add_stage", params: { node: DONE } },
+      { kind: "add_edge", params: { edge: { from: "start", to: "done", kind: "default" } } },
+    ]);
+
+    expect(check.documentValid).toBe(false);
+    expect(check.documentErrors.some((error) => error.path === "/dsl_version")).toBe(true);
+  });
 });
 
 describe("checking an operation", () => {

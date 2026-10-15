@@ -3058,8 +3058,10 @@ Four decisions hold that together, and each is a failure mode rather than a pref
   autosaves a millisecond apart are then separated by PostgreSQL rather than by luck: the second
   blocks, re-reads what the first committed, and is told.
 
-**The draft is not validated.** `{}` is the blank canvas and a half-built graph is what autosave
-exists to keep; the grammar is checked once, at publish. An autosave that refused work in
+**The draft is not validated.** The blank canvas — `{"dsl_version": "1.0", "nodes": [], "edges": []}`,
+what **+ New workflow** stores when no definition is sent, and the document the copilot's operations
+build on (#1744) — and a half-built graph are what autosave exists to keep; the grammar is checked
+once, at publish. An autosave that refused work in
 progress would be an autosave nobody could use.
 
 ### Publishing: two validators, and nothing written unless both are green

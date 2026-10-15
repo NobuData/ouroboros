@@ -52,6 +52,8 @@ import {
   ran,
   suggestionsOf,
   watchedTables,
+  type DraftEdge,
+  type DraftNode,
   type TableState,
   type WatchedTable,
 } from "./dry-run-plane.fixture";
@@ -830,6 +832,35 @@ describe("copilot certification — the guard audit, the overlay and dry-run iso
         },
         sent: sentOf(cap - 1),
       });
+    });
+  });
+
+  describe("the blank path (#1744)", () => {
+    it("dry-runs a draft the copilot built by operations alone on a workflow created with a name only", async () => {
+      serial += 1;
+      const blank = await stage.workflow(`Cert dry runs ${String(serial)} blank`);
+      const session = await stage.session(blank.id);
+      const document = chain(IMPLEMENT_NODE, modelStage("cve-check", 560)) as {
+        readonly trigger: Record<string, unknown>;
+        readonly nodes: readonly DraftNode[];
+        readonly edges: readonly DraftEdge[];
+      };
+      const calls = [
+        ["set_trigger", { trigger: document.trigger }] as const,
+        ...document.nodes.map((node) => ["add_stage", { node }] as const),
+        ...document.edges.map((edge) => ["add_edge", { edge }] as const),
+      ];
+
+      expect(await called(stage, blank.id, session, ...calls)).toEqual(calls.map(() => "applied"));
+      // The stored draft is the document itself — `dsl_version` included — not `{}` grown by
+      // the operations.
+      expect((await stage.draft(blank.id)).definition).toEqual(document);
+
+      stage.engine.scriptRun(reportedComplete([]));
+      const run = await ran(stage, blank.id, session);
+
+      // Past the pre-check, which refused a blank workflow's draft at `/dsl_version` before.
+      expect(run).toMatchObject({ status: "complete", failureReason: null });
     });
   });
 

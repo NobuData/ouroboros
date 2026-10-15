@@ -44381,6 +44381,74 @@ select pg_temp.must_reject(
 
 delete from ouroboros.organization where "id" = 'org-v141';
 
+-- ===========================================================================
+-- V143 — a draft built on a blank workflow is a DSL document (#1744).
+-- ===========================================================================
+-- The issue's own reproduction: a workflow whose draft is the old blank canvas `{}`, then the
+-- copilot's set_trigger, two add_stage and an add_edge. The stored draft must come out a DSL
+-- document — the one ouroboros-rest judged — and equal its log's replay.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v143', 'Blank Drafts', 'blank-drafts-v143', now());
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a1430000-0000-0000-0000-000000000101', 'org-v143', 'blank',   'Blank'),
+  ('a1430000-0000-0000-0000-000000000102', 'org-v143', 'carried', 'Carried');
+insert into ouroboros.workflow_versions (workflow_id, version, definition) values
+  ('a1430000-0000-0000-0000-000000000101', null, '{}'),
+  ('a1430000-0000-0000-0000-000000000102', null, '{"dsl_version": "1.1", "nodes": [], "edges": [], "note": "kept"}');
+
+select pg_temp.must_hold(
+  ouroboros.workflow_blank_document() = '{"dsl_version": "1.0", "nodes": [], "edges": []}'::jsonb
+  and ouroboros.workflow_draft_base('a1430000-0000-0000-0000-000000000101')
+      = ouroboros.workflow_blank_document(),
+  'a workflow never published replays from the blank document');
+
+select pg_temp.must_hold(
+  (select draft_rev = 1 from ouroboros.apply_draft_batch(
+     'org-v143', 'a1430000-0000-0000-0000-000000000101', 'copilot', null, null, null,
+     '[{"kind": "set_trigger", "params": {"trigger": {"event": "ticket_queued", "conditions": {}}}},
+       {"kind": "add_stage", "params": {"node": {"id": "start", "type": "trigger", "title": "Queued",
+                                                 "position": {"x": 0, "y": 0}, "config": {}}}},
+       {"kind": "add_stage", "params": {"node": {"id": "done", "type": "term", "title": "Needs review",
+                                                 "position": {"x": 240, "y": 0},
+                                                 "config": {"action": "needs_review", "options": {}}}}},
+       {"kind": "add_edge", "params": {"edge": {"from": "start", "to": "done", "kind": "default"}}}]')),
+  'a batch applies over a blank {} draft');
+
+select pg_temp.must_hold(
+  (select v.definition = '{"dsl_version": "1.0",
+                           "trigger": {"event": "ticket_queued", "conditions": {}},
+                           "nodes": [{"id": "start", "type": "trigger", "title": "Queued",
+                                      "position": {"x": 0, "y": 0}, "config": {}},
+                                     {"id": "done", "type": "term", "title": "Needs review",
+                                      "position": {"x": 240, "y": 0},
+                                      "config": {"action": "needs_review", "options": {}}}],
+                           "edges": [{"from": "start", "to": "done", "kind": "default"}]}'::jsonb
+     from ouroboros.workflow_versions v
+    where v.workflow_id = 'a1430000-0000-0000-0000-000000000101' and v.version is null),
+  'a draft built on a blank {} carries dsl_version, nodes and edges — the document REST judged');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.workflow_draft_replay_mismatches
+               where organization_id = 'org-v143'),
+  'a log built on a blank {} replays to the stored draft');
+
+select pg_temp.must_hold(
+  (select draft_rev = 1 from ouroboros.apply_draft_batch(
+     'org-v143', 'a1430000-0000-0000-0000-000000000102', 'canvas', null, null, null,
+     '[{"kind": "add_stage", "params": {"node": {"id": "start", "type": "trigger", "title": "Queued",
+                                                 "position": {"x": 0, "y": 0}, "config": {}}}}]')),
+  'a batch applies over a draft that carries its own keys');
+
+-- A statement cannot see its own writes, so the draft is read by the next one.
+select pg_temp.must_hold(
+  (select v.definition ->> 'dsl_version' = '1.1' and v.definition ->> 'note' = 'kept'
+              and jsonb_array_length(v.definition -> 'nodes') = 1
+         from ouroboros.workflow_versions v
+        where v.workflow_id = 'a1430000-0000-0000-0000-000000000102' and v.version is null),
+  'what a stored draft carries takes precedence over the blank document''s keys');
+
+delete from ouroboros.organization where "id" = 'org-v143';
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

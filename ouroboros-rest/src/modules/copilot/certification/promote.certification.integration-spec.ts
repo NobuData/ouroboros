@@ -65,9 +65,6 @@ import {
 /** The cap the conversation sets — `$5/run`, mockup 20's. */
 const CAP_CENTS = 500;
 
-/** The document a draft's operation log replays from — `workflow_draft_base()`'s (V110). */
-const EMPTY_DOCUMENT = { dsl_version: "1.0", nodes: [], edges: [] };
-
 /** The trigger node every draft here starts from. */
 const START = {
   id: "start",
@@ -174,22 +171,14 @@ describe("copilot certification — the promote gate (#564)", () => {
     `/api/v1/workflows/${workflowId}/copilot/${tail}`;
 
   /**
-   * A workflow nobody else in this suite touches, created on the empty **document** rather than
-   * on the blank canvas.
-   *
-   * `POST /workflows` with no definition stores the draft `{}`; operations applied over that
-   * keep it without a `dsl_version`, and no operation in the vocabulary can add one — so the
-   * publish gate would refuse every draft here for a reason none of these tests is about.
+   * A workflow nobody else in this suite touches, created as **+ New workflow** creates one: a
+   * name and nothing else. Every draft this suite publishes is built on that blank canvas by
+   * the copilot's operations alone (#1744).
    */
   async function fresh(about: string): Promise<StagedWorkflow> {
     serial += 1;
 
-    const created = await stage
-      .as(stage.people.owner, "post", "/api/v1/workflows")
-      .send({ name: `Promote ${String(serial)} ${about}`, definition: EMPTY_DOCUMENT })
-      .expect(201);
-
-    return created.body as StagedWorkflow;
+    return stage.workflow(`Promote ${String(serial)} ${about}`);
   }
 
   /**
