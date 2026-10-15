@@ -1,3 +1,5 @@
+import { Logger } from "@nestjs/common";
+
 import type { AuditService } from "../audit/audit.service";
 import type { AuthRequest } from "../auth/http";
 import type { Principal } from "../auth/principal";
@@ -21,6 +23,10 @@ const REQUEST = { headers: {} } as AuthRequest;
 
 /** Everything one service touches, with the doubles exposed for assertions. */
 function harness(stepUp: "session" | "password" | null = "session") {
+  const controls = {
+    pauseLiveRuns: jest.fn(() => Promise.resolve(0)),
+    resumeLiveRuns: jest.fn(() => Promise.resolve(0)),
+  };
   const store = new FakeLifecycleStore();
   const audit = { record: jest.fn(() => Promise.resolve("event-id")) };
   const github = { clear: jest.fn(() => Promise.resolve({})) };
@@ -36,9 +42,10 @@ function harness(stepUp: "session" | "password" | null = "session") {
     github as unknown as GithubCredentialsService,
     steps as unknown as StepUpService,
     auth,
+    controls,
   );
 
-  return { store, audit, github, steps, auth, service };
+  return { store, audit, github, steps, auth, controls, service };
 }
 
 /** The code a rejected promise carries. */
@@ -120,6 +127,47 @@ describe("resuming", () => {
     expect(await codeOf(service.resume(WORKSPACE, "user-admin"))).toBe(
       LIFECYCLE_ERRORS.stateConflict,
     );
+  });
+});
+
+describe("reaching the live runs already executing (DI.4, #1312)", () => {
+  it("asks the workspace's live runs to pause when it pauses", async () => {
+    const { controls, service } = harness();
+
+    await service.pause(WORKSPACE, "user-admin", { confirm: true });
+
+    expect(controls.pauseLiveRuns).toHaveBeenCalledWith(WORKSPACE);
+    expect(controls.resumeLiveRuns).not.toHaveBeenCalled();
+  });
+
+  it("resumes the runs the pause paused when it resumes", async () => {
+    const { store, controls, service } = harness();
+    store.seed(WORKSPACE, "paused");
+
+    await service.resume(WORKSPACE, "user-admin");
+
+    expect(controls.resumeLiveRuns).toHaveBeenCalledWith(WORKSPACE);
+    expect(controls.pauseLiveRuns).not.toHaveBeenCalled();
+  });
+
+  it("reaches nothing when a move leaves the state where it was", async () => {
+    const { store, controls, service } = harness();
+    store.seed(WORKSPACE, "paused");
+
+    await service.disconnect(WORKSPACE, "user-admin", { confirm: true });
+
+    expect(controls.pauseLiveRuns).not.toHaveBeenCalled();
+    expect(controls.resumeLiveRuns).not.toHaveBeenCalled();
+  });
+
+  it("keeps the pause when its runs could not all be reached", async () => {
+    const { controls, service } = harness();
+    controls.pauseLiveRuns.mockRejectedValue(new Error("connection refused"));
+    jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+
+    const answer = await service.pause(WORKSPACE, "user-admin", { confirm: true });
+
+    expect(answer.state).toBe("paused");
   });
 });
 

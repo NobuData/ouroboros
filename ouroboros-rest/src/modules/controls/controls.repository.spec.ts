@@ -238,6 +238,69 @@ describe("the controls repository", () => {
     });
   });
 
+  describe("live runs (DI.4, #1312)", () => {
+    it("writes a transcript entry in the system's name", async () => {
+      database.answers({ rows: [{ seq: 12 }] });
+
+      await repository.appendSystemEntry(database.service.db, RUN, "Aborted.", { reason: "x" });
+
+      expect(only().sql).toContain('insert into "ouroboros"."run_events"');
+      expect(only().parameters).toContain("system");
+    });
+
+    it("finds a workspace's live runs still executing, and no other workspace's", async () => {
+      database.answers({ rows: [{ id: RUN }] });
+
+      await expect(repository.liveActiveRuns(ORG)).resolves.toEqual([RUN]);
+
+      expect(only().sql).toContain('"organization_id" = $1');
+      expect(only().sql).toContain('"origin" = $2');
+      expect(only().sql).toContain('"finished_at" is null');
+      expect(only().parameters).toEqual([ORG, "live", "coding", "building", "review"]);
+    });
+
+    it("finds the runs whose last effective pause or resume was a pause nobody asked for", async () => {
+      database.answers({ rows: [{ id: RUN }] });
+
+      await expect(repository.systemPausedRuns(ORG)).resolves.toEqual([RUN]);
+
+      const { sql, parameters } = only();
+      expect(sql).toContain("c.kind = 'pause' and c.requested_by is null");
+      expect(sql).toContain("c.state not in ('rejected', 'expired')");
+      expect(sql).toContain('"ouroboros".run_controls c');
+      expect(parameters).toEqual([ORG, "live"]);
+    });
+
+    it("finds live runs past either limit, every workspace's, naming the wall clock first", async () => {
+      const startedBefore = new Date("2026-10-15T12:00:00.000Z");
+      const quietSince = new Date("2026-10-15T13:45:00.000Z");
+      database.answers({
+        rows: [
+          {
+            id: "run-long",
+            organization_id: ORG,
+            started_at: new Date("2026-10-15T11:00:00.000Z"),
+            updated_at: new Date("2026-10-15T11:30:00.000Z"),
+          },
+          {
+            id: "run-quiet",
+            organization_id: ORG,
+            started_at: new Date("2026-10-15T13:00:00.000Z"),
+            updated_at: new Date("2026-10-15T13:30:00.000Z"),
+          },
+        ],
+      });
+
+      await expect(repository.overdueLiveRuns(startedBefore, quietSince)).resolves.toEqual([
+        { id: "run-long", organizationId: ORG, limit: "wall_clock" },
+        { id: "run-quiet", organizationId: ORG, limit: "no_progress" },
+      ]);
+
+      expect(only().sql).toContain('("started_at" < $');
+      expect(only().sql).toContain('"updated_at" < $');
+    });
+  });
+
   it("runs work in a transaction", async () => {
     await expect(repository.transaction(() => Promise.resolve(42))).resolves.toBe(42);
   });

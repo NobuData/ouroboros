@@ -29,7 +29,7 @@ import {
 import { LoopRepository } from "./loop.repository";
 
 /** The connection kinds whose adapter may serve invocation (DH.4). Static: terms are code. */
-const INVOCABLE_KINDS = PROVIDER_CONNECTION_KINDS.filter(invocationCleared);
+export const INVOCABLE_KINDS = PROVIDER_CONNECTION_KINDS.filter(invocationCleared);
 
 /** What an engine that did not answer reports. */
 const ENGINE_UNREACHABLE: LoopFacts["engine"] = {

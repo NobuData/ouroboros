@@ -1,3 +1,4 @@
+import { queueItemSummary } from "../dashboard/resources";
 import { ISSUE_ESTIMATE_EFFORTS, QUEUE_EFFORTS, type QueueItem } from "../db/schema";
 import {
   MAX_QUEUE_EST_MINUTES,
@@ -5,6 +6,7 @@ import {
   queueEffort,
   queueEstMinutes,
   queuedSelection,
+  type QueuedSelection,
 } from "./queue.resources";
 
 /**
@@ -37,6 +39,8 @@ function item(overrides: Partial<QueueItem> = {}): QueueItem {
     claimed_by: null,
     claim_token: null,
     claim_key: null,
+    confirmed_at: null,
+    confirmed_by: null,
     position: 4,
     est_minutes: 45,
     enqueued_at: new Date("2026-09-10T15:41:12.000Z"),
@@ -88,11 +92,25 @@ describe("the estimate a queue row carries", () => {
   });
 });
 
+/**
+ * A queue write's answer, its rows summarized with no waiting reason — the reason is the
+ * admission service's, exercised in `admission.service.spec.ts`.
+ *
+ * @param rows - The appended rows.
+ * @returns The selection.
+ */
+function selected(rows: readonly QueueItem[]): QueuedSelection {
+  return queuedSelection(
+    rows,
+    rows.map((row) => queueItemSummary(row, null)),
+  );
+}
+
 describe("what a queue write answers with", () => {
   it("publishes the created rows in the queue's own shape", () => {
     // The same mapper `GET /api/v1/queue` and the dashboard card use, which is what makes the
     // cross-roadmap criterion structural rather than a coincidence two mappers agree on today.
-    expect(queuedSelection([item()])).toEqual({
+    expect(selected([item()])).toEqual({
       items: [
         {
           id: "b0b0b0b0-0000-4000-8000-000000000001",
@@ -107,6 +125,8 @@ describe("what a queue write answers with", () => {
           enqueuedAt: "2026-09-10T15:41:12.000Z",
           playbookId: null,
           claimed: null,
+          confirmedAt: null,
+          waiting: null,
         },
       ],
       estMinutes: 45,
@@ -115,7 +135,7 @@ describe("what a queue write answers with", () => {
 
   it("combines the estimates into the number the action bar renders", () => {
     // Mockup 03's three selected rows, as the seed sizes them: 45 + 50 + 30.
-    const selection = queuedSelection([
+    const selection = selected([
       item({ issue_number: 485, est_minutes: 45, position: 1 }),
       item({ issue_number: 484, est_minutes: 50, position: 2 }),
       item({ issue_number: 491, est_minutes: 30, position: 3 }),
@@ -126,7 +146,7 @@ describe("what a queue write answers with", () => {
   });
 
   it("keeps the rows in the order they were appended", () => {
-    const selection = queuedSelection([
+    const selection = selected([
       item({ issue_number: 485, position: 1 }),
       item({ issue_number: 484, position: 2 }),
     ]);
@@ -137,13 +157,13 @@ describe("what a queue write answers with", () => {
   it("skips an item with no estimate rather than counting it as zero", () => {
     // So `items.length` may speak for more issues than `estMinutes` does — the honest shape of
     // a queue holding something nobody could size, and the same sentence the stat row is.
-    const selection = queuedSelection([item({ est_minutes: 45 }), item({ est_minutes: null })]);
+    const selection = selected([item({ est_minutes: 45 }), item({ est_minutes: null })]);
 
     expect(selection.items).toHaveLength(2);
     expect(selection.estMinutes).toBe(45);
   });
 
   it("answers zero minutes for rows that carry no estimate at all", () => {
-    expect(queuedSelection([item({ est_minutes: null })]).estMinutes).toBe(0);
+    expect(selected([item({ est_minutes: null })]).estMinutes).toBe(0);
   });
 });

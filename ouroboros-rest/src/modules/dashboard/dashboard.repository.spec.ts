@@ -74,7 +74,7 @@ describe("the dashboard repository", () => {
       await dashboard.version(WORKSPACE);
 
       const [statement] = database.statements;
-      expect(statement.parameters.filter((value) => value === WORKSPACE)).toHaveLength(7);
+      expect(statement.parameters.filter((value) => value === WORKSPACE)).toHaveLength(9);
     });
   });
 

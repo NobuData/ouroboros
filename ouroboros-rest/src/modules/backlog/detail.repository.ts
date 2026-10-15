@@ -61,6 +61,7 @@ import {
   type EstimateRisk,
   type EstimateTraceDocument,
   type GithubIssueState,
+  type QueueItem,
   type SizingStatus,
 } from "../db/schema";
 
@@ -113,6 +114,29 @@ export class BacklogDetailRepository {
    *   belongs to `DatabaseService`.
    */
   constructor(private readonly database: DatabaseService) {}
+
+  /**
+   * The queue's row for one issue, matched on repository and number as the `queued` pill is
+   * (DI.4, #1312) — what the panel's waiting reason and its *Confirm for live run* act on.
+   *
+   * @param organizationId - The workspace.
+   * @param githubRepoId - `github_repos.id`.
+   * @param issueNumber - GitHub's number.
+   * @returns The row, or `undefined` when the issue is not queued.
+   */
+  async queueItem(
+    organizationId: string,
+    githubRepoId: string,
+    issueNumber: number,
+  ): Promise<QueueItem | undefined> {
+    return this.database.db
+      .selectFrom("queue_items")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where("github_repo_id", "=", githubRepoId)
+      .where("issue_number", "=", issueNumber)
+      .executeTakeFirst();
+  }
 
   /**
    * One issue of this workspace, with everything the panel's head and excerpt need.

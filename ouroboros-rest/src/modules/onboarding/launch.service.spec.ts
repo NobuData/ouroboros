@@ -88,6 +88,8 @@ class FakeLoop {
       claimed_by: null,
       claim_token: null,
       claim_key: null,
+      confirmed_at: null,
+      confirmed_by: null,
       position: this.items.size + 1,
       est_minutes: 15,
       enqueued_at: new Date("2026-09-30T10:00:00.000Z"),
@@ -131,6 +133,9 @@ describe("the first-run launcher", () => {
   let loop: FakeLoop;
   let policies: FakePolicies;
   let queueSelection: jest.Mock;
+  /** The queue's summaries, with no waiting reason — admission is not this suite's. */
+  const summaries = (_org: string, rows: readonly QueueItem[]) =>
+    Promise.resolve(rows.map((row) => queueItemSummary(row, null)));
   let launcher: FirstRunLauncherService;
 
   beforeEach(() => {
@@ -140,12 +145,12 @@ describe("the first-run launcher", () => {
     queueSelection = jest.fn((_org: string, body: QueueSelectionBody) => {
       const row = loop.enqueue(488, body.workflow ?? "docs-loop");
 
-      return Promise.resolve({ items: [queueItemSummary(row)], estMinutes: 15 });
+      return Promise.resolve({ items: [queueItemSummary(row, null)], estMinutes: 15 });
     });
     launcher = new FirstRunLauncherService(
       new OnboardingService(wizard.asRepository(), policies),
       loop.asRepository(),
-      { queueSelection },
+      { queueSelection, summaries },
       policies,
     );
   });
@@ -177,7 +182,7 @@ describe("the first-run launcher", () => {
       const held = loop.items.get(488);
 
       expect(held).toBeDefined();
-      expect(receipt.queue).toEqual(queueItemSummary(held as QueueItem));
+      expect(receipt.queue).toEqual(queueItemSummary(held as QueueItem, null));
     });
 
     it("links the dashboard and its queue card, and no console while there is no run", async () => {
@@ -391,7 +396,7 @@ describe("the first-run launcher", () => {
       const guarded = new FirstRunLauncherService(
         hollow,
         loop.asRepository(),
-        { queueSelection },
+        { queueSelection, summaries },
         policies,
       );
 

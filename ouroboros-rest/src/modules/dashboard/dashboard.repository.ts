@@ -104,6 +104,13 @@ export interface DashboardVersion {
   readonly interventionEvents: string | null;
   /** The rollup bookkeeping — moves whenever a family refreshes `metric_daily`. */
   readonly metricRollups: string | null;
+  /**
+   * The workspace's lifecycle — a pause or a resume changes why every queued item waits
+   * (DI.4, #1312).
+   */
+  readonly workspaceLifecycle: string | null;
+  /** The dry-run policy and its published version — a flip changes `policy_not_dry_run` (#1312). */
+  readonly orgPolicies: string | null;
 }
 
 @Injectable()
@@ -117,7 +124,7 @@ export class DashboardRepository {
   /**
    * What the workspace's dashboard is made of, cheaply enough to ask on every poll.
    *
-   * Seven aggregate subqueries over indexed, org-scoped predicates, and no row is returned
+   * Nine aggregate subqueries over indexed, org-scoped predicates, and no row is returned
    * from any of them — this is the statement a `304` costs, and the whole reason the tag is
    * derived from a version source rather than from the rendered payload.
    *
@@ -184,6 +191,16 @@ export class DashboardRepository {
           .select(fingerprint.as("v"))
           .where("organization_id", "=", organizationId)
           .as("metricRollups"),
+        eb
+          .selectFrom("workspace_lifecycle")
+          .select(sql<string>`max(state || ' ' || changed_at::text)`.as("v"))
+          .where("organization_id", "=", organizationId)
+          .as("workspaceLifecycle"),
+        eb
+          .selectFrom("org_policies")
+          .select(fingerprint.as("v"))
+          .where("organization_id", "=", organizationId)
+          .as("orgPolicies"),
       ])
       .executeTakeFirstOrThrow();
   }

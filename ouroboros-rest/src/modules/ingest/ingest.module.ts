@@ -58,6 +58,7 @@
 
 import { Module } from "@nestjs/common";
 
+import { AdmissionModule } from "../admission/admission.module";
 import { LifecycleStateModule } from "../lifecycle/lifecycle-state.module";
 import { DbModule } from "../db/db.module";
 import { DecisionsModule } from "../decisions/decisions.module";
@@ -74,7 +75,15 @@ import { RunNeedsHumanEmitter } from "./run-needs-human.emitter";
 import { SpendApprovalEmitter } from "./spend-approval.emitter";
 
 @Module({
-  imports: [DbModule, GuardrailsModule, GatesModule, LifecycleStateModule, DecisionsModule],
+  imports: [
+    DbModule,
+    GuardrailsModule,
+    GatesModule,
+    LifecycleStateModule,
+    DecisionsModule,
+    // The claim's live-run admission (DI.4, #1312).
+    AdmissionModule,
+  ],
   controllers: [IngestController, QueueClaimController],
   providers: [
     IngestRepository,

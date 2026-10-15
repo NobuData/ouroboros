@@ -99,6 +99,12 @@ export const INGEST_ERRORS = {
   /** The deployment does not run live loops, so nothing is claimable (DG.2; #91). */
   deploymentDisabled: "deployment_disabled",
 
+  /** The engine has registered no stage executor, so nothing is claimable (DI.4, #1312). */
+  noExecutor: "no_executor",
+
+  /** The workspace already runs as many live runs as its ceiling allows (DI.4, #1312). */
+  concurrencyCeiling: "concurrency_ceiling",
+
   /** The workspace a claim names does not exist (#91). */
   workspaceNotFound: "workspace_not_found",
 
@@ -424,8 +430,8 @@ export function idempotencyKeyReused(
  *
  * The first of the admission refusals the claim makes before a queued item becomes paid work;
  * DI.4 ([#1312](https://github.com/NobuData/ouroboros/issues/1312)) adds the rest in the same
- * place. Refused rather than answered `204`: an empty queue and a switched-off deployment are
- * different things to an operator reading the worker's log.
+ * place (`admission/admission.ts`). Refused rather than answered `204`: an empty queue and a
+ * switched-off deployment are different things to an operator reading the worker's log.
  *
  * @returns The error to throw.
  */
@@ -433,6 +439,36 @@ export function deploymentDisabled(): ConflictError {
   return new ConflictError(
     INGEST_ERRORS.deploymentDisabled,
     "This deployment does not run live loops: OURO_LIVE_EXECUTION_ENABLED is off. Nothing was claimed.",
+  );
+}
+
+/**
+ * `409` — the engine has registered no stage executor, so nothing it claimed could run (DI.4,
+ * [#1312](https://github.com/NobuData/ouroboros/issues/1312)).
+ *
+ * @returns The error to throw.
+ */
+export function noExecutor(): ConflictError {
+  return new ConflictError(
+    INGEST_ERRORS.noExecutor,
+    "The engine has registered no stage executor, so no queued item can run. Nothing was claimed.",
+  );
+}
+
+/**
+ * `409` — the workspace already runs as many live runs as its ceiling allows (DI.4,
+ * [#1312](https://github.com/NobuData/ouroboros/issues/1312)). Held under a per-workspace lock,
+ * so two workers racing for the last slot get one item and one of these.
+ *
+ * @param taken - Live runs executing plus items leased and not yet opened.
+ * @param ceiling - The ceiling the claim enforces.
+ * @returns The error to throw.
+ */
+export function concurrencyCeiling(taken: number, ceiling: number): ConflictError {
+  return new ConflictError(
+    INGEST_ERRORS.concurrencyCeiling,
+    `This workspace already runs ${taken} of its ${ceiling} live-run slots. Nothing was claimed.`,
+    { taken, ceiling },
   );
 }
 

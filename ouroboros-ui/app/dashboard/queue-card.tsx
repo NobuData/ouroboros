@@ -1,5 +1,7 @@
 import type { Dashboard } from "@/app/api/dashboard";
 import { DASHBOARD_QUEUE_HASH, ISSUES_PATH } from "@/app/paths";
+import { WaitingChip, WaitingNotice } from "@/app/queue/waiting";
+import { sharedWaiting } from "@/app/queue/waiting-copy";
 import { Button, Card, CardHead, EffortChip, EmptyState, Tag } from "@/app/ui";
 
 import { type QueuedIssue, type Reading, moreQueued, queueRows } from "./view";
@@ -33,6 +35,14 @@ import { type QueuedIssue, type Reading, moreQueued, queueRows } from "./view";
  * toast links back here, at this card's heading ({@link DASHBOARD_QUEUE_HASH}), so the round
  * trip is two links that name each other.
  *
+ * ### Nothing waits silently
+ *
+ * Each row says why it is not starting a live run
+ * ([#1312](https://github.com/NobuData/ouroboros/issues/1312)) — the same reason the engine's
+ * claim acts on. A workspace reason every row shares (live execution off, a paused workspace)
+ * is said **once**, above the list, rather than five times; an item's own reason is a chip on
+ * its row.
+ *
  * @param props.aggregate The dashboard aggregate, or why it could not be read.
  * @returns The card.
  */
@@ -41,6 +51,7 @@ export function QueueCard({ aggregate }: Readonly<{ aggregate: Reading<Dashboard
   // The count is the workspace's whole queue and the rows are its head, so the footer is the
   // difference between two figures that are separately true rather than a flag on the slice.
   const more = aggregate.ok ? moreQueued(aggregate.value.stats.queued.count, rows.length) : 0;
+  const shared = sharedWaiting(rows.map((row) => row.waiting));
 
   return (
     <Card as="section" fill className="dash-col--5" aria-labelledby={TITLE_ID}>
@@ -58,9 +69,10 @@ export function QueueCard({ aggregate }: Readonly<{ aggregate: Reading<Dashboard
         <EmptyState fill {...emptyPanel(aggregate)} />
       ) : (
         <>
+          {shared !== null && <WaitingNotice compact waiting={shared} />}
           <ul className="dash-queue" aria-label={LIST_LABEL}>
             {rows.map((item) => (
-              <QueueRow key={item.id} item={item} />
+              <QueueRow key={item.id} item={item} showWaiting={shared === null} />
             ))}
           </ul>
           {more > 0 && (
@@ -80,9 +92,10 @@ export function QueueCard({ aggregate }: Readonly<{ aggregate: Reading<Dashboard
  * One queued issue: what it is, then how big it is and what will run it.
  *
  * @param props.item The row, already decided in `app/dashboard/view.ts`.
+ * @param props.showWaiting Whether the row says why it waits — not when the card already has.
  * @returns The row.
  */
-function QueueRow({ item }: Readonly<{ item: QueuedIssue }>) {
+function QueueRow({ item, showWaiting }: Readonly<{ item: QueuedIssue; showWaiting: boolean }>) {
   return (
     <li className="dash-queue__row">
       <span className="dash-queue__issue">
@@ -105,6 +118,7 @@ function QueueRow({ item }: Readonly<{ item: QueuedIssue }>) {
         */}
         <EffortChip effort={item.effort} />
         <Tag>{item.workflowTag}</Tag>
+        {showWaiting && item.waiting !== null && <WaitingChip waiting={item.waiting} />}
       </span>
     </li>
   );

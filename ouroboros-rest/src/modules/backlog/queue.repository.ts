@@ -115,6 +115,13 @@ export interface QueueAppendRow {
    * the row. Absent or `null` for an ordinary queue write.
    */
   readonly playbookId?: string | null;
+  /**
+   * Who confirmed the item for a live run as it was queued (DI.4,
+   * [#1312](https://github.com/NobuData/ouroboros/issues/1312)) — set only when the deployment
+   * runs live loops and the person queueing holds `can_approve_loops`. Absent or `null`, the
+   * item waits as `needs_confirmation`.
+   */
+  readonly confirmedBy?: string | null;
 }
 
 @Injectable()
@@ -238,6 +245,8 @@ export class BacklogQueueRepository {
                 position: from + index,
                 est_minutes: row.estMinutes,
                 playbook_id: row.playbookId ?? null,
+                confirmed_by: row.confirmedBy ?? null,
+                confirmed_at: (row.confirmedBy ?? null) === null ? null : new Date(),
               })),
             )
             .returningAll()

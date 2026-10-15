@@ -93,6 +93,7 @@
 
 import { Module } from "@nestjs/common";
 
+import { AdmissionModule } from "../admission/admission.module";
 import { BacklogSyncModule } from "../backlog-sync/backlog-sync.module";
 import { DbModule } from "../db/db.module";
 import { GithubModule } from "../github/github.module";
@@ -112,7 +113,8 @@ import { SyncTriggerService } from "./sync-trigger.service";
 import { TicketLookupRepository } from "./ticket.lookup.repository";
 
 @Module({
-  imports: [BacklogSyncModule, DbModule, GithubModule, WorkflowsModule],
+  // `AdmissionModule` (DI.4, #1312): who confirms an enqueue, and why each queued item waits.
+  imports: [AdmissionModule, BacklogSyncModule, DbModule, GithubModule, WorkflowsModule],
   // `BacklogController` first, and that is a rule: see this file's header on `GET
   // /backlog/{id}` being the first bare-parameter path under this prefix.
   controllers: [

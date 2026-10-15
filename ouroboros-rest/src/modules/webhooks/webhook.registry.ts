@@ -284,6 +284,11 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
     // A ticket source was removed, with everything mirrored through it.
     adds: ["audit.ticket_source.removed"],
   },
+  {
+    version: 17,
+    // DI.4 (#1312): a queued issue was confirmed for a live run; the live-run ceiling changed.
+    adds: ["audit.queue_item.confirmed", "audit.workspace.live_ceiling_changed"],
+  },
 ];
 
 /** The newest registry version — what a new endpoint subscribes under. */

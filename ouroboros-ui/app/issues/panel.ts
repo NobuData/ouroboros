@@ -364,6 +364,22 @@ export const REESTIMATE_ONE_NOT_FOUND = "This issue is not in this workspace any
 /** What a refused press says when the service gave no sentence of its own. */
 export const REESTIMATE_ONE_FAILED = "The issue could not be re-estimated.";
 
+/** The panel's confirmation button ([#1312](https://github.com/NobuData/ouroboros/issues/1312)). */
+export const CONFIRM_LIVE_LABEL = "Confirm for live run";
+
+/** What a confirmation that took says. */
+export const CONFIRM_LIVE_DONE = "Confirmed — it starts when nothing else holds it.";
+
+/** What a press without loop approval says. */
+export const CONFIRM_LIVE_ROLE_REASON =
+  "Only a member with loop approval can confirm a live run. A workspace administrator can grant it.";
+
+/** What a press on an item that has left the queue says. */
+export const CONFIRM_LIVE_NOT_FOUND = "This issue is not queued any more — it may have started.";
+
+/** What a refused confirmation says when the service gave no sentence of its own. */
+export const CONFIRM_LIVE_FAILED = "The issue could not be confirmed.";
+
 /**
  * What a **Re-estimate** press that took says, from what the service answered.
  *

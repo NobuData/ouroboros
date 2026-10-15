@@ -2363,6 +2363,14 @@ export interface QueueItemsTable {
   claim_token: ColumnType<string | null, string | null | undefined, string | null>;
   /** The claim's idempotency key — a replay answers this item rather than taking another. */
   claim_key: ColumnType<string | null, string | null | undefined, string | null>;
+  /**
+   * When a member holding `can_approve_loops` made the item claimable by a live run (V146,
+   * [#1312](https://github.com/NobuData/ouroboros/issues/1312)) — null until then, and on every
+   * row queued before V146: the claim skips it with `needs_confirmation`.
+   */
+  confirmed_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  /** Who confirmed it, or null once that user is deleted (the time is kept). */
+  confirmed_by: ColumnType<string | null, string | null | undefined, string | null>;
 }
 
 /**
@@ -2532,6 +2540,11 @@ export interface WorkspaceSettingsTable {
    * [#562](https://github.com/NobuData/ouroboros/issues/562)) — default 1000, 1 to 100000.
    */
   dry_run_cap_cents: Generated<number>;
+  /**
+   * How many live runs may execute at once in the workspace (V146,
+   * [#1312](https://github.com/NobuData/ouroboros/issues/1312)) — default 1, 1 to 100.
+   */
+  live_run_ceiling: Generated<number>;
   /** Who last changed a setting here, or null. `on delete set null`, never cascade. */
   updated_by: string | null;
   created_at: Stamped;
@@ -5015,6 +5028,8 @@ export interface WorkspaceSettingsEffectiveView {
   research_start_role: ResearchStartRole;
   /** The most one deep dry run may spend, in cents — 1000 unless set (V126). */
   dry_run_cap_cents: number;
+  /** How many live runs may execute at once — 1 unless set (V146). */
+  live_run_ceiling: number;
 }
 
 /**
@@ -8698,6 +8713,8 @@ export const TABLE_COLUMNS = {
     "claimed_by",
     "claim_token",
     "claim_key",
+    "confirmed_at",
+    "confirmed_by",
   ],
   token_usage: [
     "id",
@@ -8737,6 +8754,7 @@ export const TABLE_COLUMNS = {
     "action_token_ttl_minutes",
     "research_start_role",
     "dry_run_cap_cents",
+    "live_run_ceiling",
   ],
   tenant_keys: [
     "organization_id",
@@ -10497,6 +10515,7 @@ export const TABLE_COLUMNS = {
     "action_token_ttl_minutes",
     "research_start_role",
     "dry_run_cap_cents",
+    "live_run_ceiling",
   ],
   alias_references: [
     "organization_id",

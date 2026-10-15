@@ -20,6 +20,10 @@ import {
 } from "@/app/issues/table";
 
 import {
+  CONFIRM_LIVE_DONE,
+  CONFIRM_LIVE_FAILED,
+  CONFIRM_LIVE_NOT_FOUND,
+  CONFIRM_LIVE_ROLE_REASON,
   REESTIMATE_ONE_BUSY,
   REESTIMATE_ONE_FAILED,
   REESTIMATE_ONE_NOT_FOUND,
@@ -53,6 +57,9 @@ const sync = vi.fn();
 /** What the single re-estimate answers, per case. */
 const estimate = vi.fn();
 
+/** What the confirmation answers, per case. */
+const confirm = vi.fn();
+
 vi.mock("@/app/api/backlog", async () => {
   const actual = await vi.importActual<typeof import("@/app/api/backlog")>("@/app/api/backlog");
 
@@ -66,6 +73,7 @@ vi.mock("@/app/api/backlog", async () => {
       estimateAll: () => estimateAll(),
       queue: (selection: unknown) => queue(selection),
       sync: () => sync(),
+      confirm: (id: unknown) => confirm(id),
     },
   };
 });
@@ -76,15 +84,15 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("next/navigation", () => ({ redirect: () => {} }));
 
-const { queueSelected, queueUnder, reestimateAll, reestimateIssue, syncBacklog } = await import(
-  "@/app/issues/head-actions"
-);
+const { confirmForLive, queueSelected, queueUnder, reestimateAll, reestimateIssue, syncBacklog } =
+  await import("@/app/issues/head-actions");
 
 beforeEach(() => {
   estimateAll.mockReset().mockResolvedValue(fanout());
   queue.mockReset().mockResolvedValue(queuedSelection());
   sync.mockReset().mockResolvedValue(syncStatus());
   estimate.mockReset().mockResolvedValue(estimationAccepted());
+  confirm.mockReset().mockResolvedValue({});
 });
 
 describe("reestimateIssue (#119)", () => {
@@ -425,5 +433,42 @@ describe("queueUnder (#118)", () => {
     queue.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
 
     await expect(queueUnder(SELECTED_TRIO, null)).rejects.toThrow("NEXT_REDIRECT /login");
+  });
+});
+
+describe("confirmForLive (#1312)", () => {
+  const ITEM = "7a1c0b90-0000-4000-8000-000000000485";
+
+  it("confirms the one item by its id, and says it starts when nothing else holds it", async () => {
+    expect(await confirmForLive(ITEM)).toEqual({ ok: true, message: CONFIRM_LIVE_DONE });
+    expect(confirm).toHaveBeenCalledExactlyOnceWith(ITEM);
+  });
+
+  it("sends nothing for a forged id that is not a non-empty string", async () => {
+    for (const forged of ["", 485, null, [ITEM]]) {
+      expect(await confirmForLive(forged as unknown as string)).toEqual({ ok: false, reason: CONFIRM_LIVE_FAILED });
+    }
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [403, "capability_required"],
+    [403, "forbidden"],
+  ])("answers a %s %s with the sentence about loop approval", async (status, code) => {
+    confirm.mockRejectedValue(new ApiError(status, code, "Refused."));
+
+    expect(await confirmForLive(ITEM)).toEqual({ ok: false, reason: CONFIRM_LIVE_ROLE_REASON });
+  });
+
+  it("says the item has left the queue on a 404", async () => {
+    confirm.mockRejectedValue(new ApiError(404, "queue_item_not_found", "Gone."));
+
+    expect(await confirmForLive(ITEM)).toEqual({ ok: false, reason: CONFIRM_LIVE_NOT_FOUND });
+  });
+
+  it("passes any other refusal's own sentence through", async () => {
+    confirm.mockRejectedValue(new ApiError(500, "internal", "The service is down."));
+
+    expect(await confirmForLive(ITEM)).toEqual({ ok: false, reason: "The service is down." });
   });
 });

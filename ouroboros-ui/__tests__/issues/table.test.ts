@@ -20,6 +20,7 @@ import {
   syncOutcome,
   syncTooSoon,
   syncedLabel,
+  sharedQueueWaiting,
   tableRows,
 } from "@/app/issues/table";
 
@@ -393,5 +394,50 @@ describe("the unsized placeholders", () => {
   it("are the mockup's word for the effort and the design system's dash for the rest", () => {
     expect(SIZING).toBe("sizing…");
     expect(UNESTIMATED).toBe("—");
+  });
+});
+
+describe("why a queued row waits (#1312)", () => {
+  it("carries the listing's reason for a queued row", () => {
+    const waiting = { reason: "needs_confirmation", scope: "item" } as const;
+    const [row] = tableRows([{ ...SEEDED_ROWS[0]!, queued: true, queueWaiting: waiting }]);
+
+    expect(row!.waiting).toEqual(waiting);
+  });
+
+  it("says nothing for a row the queue does not hold, whatever the listing carried", () => {
+    const [row] = tableRows([
+      { ...SEEDED_ROWS[0]!, queued: false, queueWaiting: { reason: "deployment_disabled", scope: "workspace" } },
+    ]);
+
+    expect(row!.waiting).toBeNull();
+  });
+});
+
+describe("sharedQueueWaiting (#1312)", () => {
+  const off = { reason: "deployment_disabled", scope: "workspace" } as const;
+
+  it("is the workspace reason every queued row on the page shares, ignoring rows not queued", () => {
+    const rows = tableRows([
+      { ...SEEDED_ROWS[0]!, queued: true, queueWaiting: off },
+      { ...SEEDED_ROWS[1]!, queued: true, queueWaiting: off },
+      { ...SEEDED_ROWS[2]!, queued: false, queueWaiting: null },
+    ]);
+
+    expect(sharedQueueWaiting(rows)).toEqual(off);
+  });
+
+  it("is nothing when a queued row waits for its own reason, or the page holds no queued row", () => {
+    const own = { reason: "needs_confirmation", scope: "item" } as const;
+
+    expect(
+      sharedQueueWaiting(
+        tableRows([
+          { ...SEEDED_ROWS[0]!, queued: true, queueWaiting: off },
+          { ...SEEDED_ROWS[1]!, queued: true, queueWaiting: own },
+        ]),
+      ),
+    ).toBeNull();
+    expect(sharedQueueWaiting(tableRows([{ ...SEEDED_ROWS[0]!, queued: false }]))).toBeNull();
   });
 });

@@ -33,7 +33,7 @@
 import { Inject, Injectable, Optional } from "@nestjs/common";
 
 import { AppConfigService } from "../config/config.service";
-import type { OrganizationRole, RunControl } from "../db/schema";
+import type { OrganizationRole, RunControl, RunControlKind } from "../db/schema";
 import {
   FACT_SOURCE_OBSERVER,
   type FactSourceObserver,
@@ -78,6 +78,20 @@ export interface Requester {
   /** The roles their membership in this workspace carries. */
   readonly roles: readonly OrganizationRole[];
 }
+
+/** Why the system queued a control (DI.4, #1312). Stable: the console keys copy on it. */
+export type SystemControlReason =
+  "wall_clock_limit" | "no_progress_limit" | "workspace_paused" | "workspace_resumed";
+
+/** The transcript sentence each reason writes. */
+export const SYSTEM_CONTROL_SENTENCES: Readonly<Record<SystemControlReason, string>> = {
+  wall_clock_limit:
+    "Aborted: the run passed the deployment's wall-clock limit for a live run. Its branch is kept.",
+  no_progress_limit:
+    "Aborted: the run reported no progress within the deployment's no-progress limit. Its branch is kept.",
+  workspace_paused: "Pausing at the next safe boundary: the workspace was paused.",
+  workspace_resumed: "Resuming: the workspace was resumed.",
+};
 
 @Injectable()
 export class ControlsService {
@@ -128,6 +142,138 @@ export class ControlsService {
     }
 
     return control;
+  }
+
+  // --- controls nobody asked for (DI.4, #1312) -----------------------------------------------
+
+  /**
+   * Queue a control in the system's name — a live-run limit's abort, or a workspace pause
+   * reaching its running runs (DI.4, [#1312](https://github.com/NobuData/ouroboros/issues/1312)).
+   *
+   * No role and no typed confirmation: no person is asking, and the limit or the lifecycle move
+   * that caused it is its own authority. Everything else is {@link submit}'s: the run is locked,
+   * an elapsed control is expired first, a pause or abort already outstanding is answered rather
+   * than duplicated, and the audit trigger records the request — with no actor. A transcript
+   * entry in the system's name says why, so the console never shows a control from nowhere.
+   *
+   * An abort keeps the run's branch, as every abort does.
+   *
+   * @param organizationId - The run's workspace.
+   * @param runId - The run.
+   * @param kind - `pause`, `resume` or `abort`.
+   * @param reason - Why.
+   * @returns The control and whether this call queued it (`false` when one of the same kind was
+   *   already outstanding), or `undefined` when the run is gone or has already finished.
+   */
+  async submitSystem(
+    organizationId: string,
+    runId: string,
+    kind: Exclude<RunControlKind, "steer">,
+    reason: SystemControlReason,
+  ): Promise<{ readonly control: RunControlResource; readonly queued: boolean } | undefined> {
+    return this.controls.transaction(async (trx) => {
+      const run = await this.controls.lockRun(trx, runId, organizationId);
+
+      if (run === undefined || run.finished_at !== null) {
+        return undefined;
+      }
+
+      await this.controls.sweep(trx, runId);
+
+      if (isDeduplicated(kind)) {
+        const outstanding = await this.controls.findOutstanding(trx, runId, kind);
+
+        if (outstanding !== undefined) {
+          return { control: runControlResource(outstanding), queued: false };
+        }
+      }
+
+      const queued = await this.controls.insertPending(trx, {
+        runId,
+        kind,
+        payload: null,
+        remember: false,
+        retryStage: false,
+        requestedBy: null,
+        ttlSeconds: ttlSeconds(kind, {
+          control: this.config.runControlTtlSeconds,
+          steer: this.config.runSteerTtlSeconds,
+        }),
+      });
+
+      await this.controls.appendSystemEntry(trx, runId, SYSTEM_CONTROL_SENTENCES[reason], {
+        controlId: queued.id,
+        kind,
+        reason,
+      });
+
+      return { control: runControlResource(queued), queued: true };
+    });
+  }
+
+  /**
+   * Abort every live run past a limit — the limits sweeper's cycle (DI.4, #1312). A run that
+   * has run longer than `OURO_LIVE_RUN_WALL_CLOCK_MINUTES`, or reported nothing for
+   * `OURO_LIVE_RUN_NO_PROGRESS_MINUTES`, is aborted through the queue like any other abort —
+   * the engine cleans up and the branch is kept. The cost cap is the chain executor's (#235).
+   *
+   * @param now - The instant the limits are measured against.
+   * @returns How many aborts were queued (an abort already outstanding is not counted again).
+   */
+  async enforceLiveLimits(now: Date = new Date()): Promise<number> {
+    const minute = 60_000;
+    const overdue = await this.controls.overdueLiveRuns(
+      new Date(now.getTime() - this.config.liveRunWallClockMinutes * minute),
+      new Date(now.getTime() - this.config.liveRunNoProgressMinutes * minute),
+    );
+
+    let queued = 0;
+
+    for (const run of overdue) {
+      const reason = run.limit === "wall_clock" ? "wall_clock_limit" : "no_progress_limit";
+      const submitted = await this.submitSystem(run.organizationId, run.id, "abort", reason);
+
+      if (submitted?.queued === true) {
+        queued += 1;
+      }
+    }
+
+    return queued;
+  }
+
+  /**
+   * A workspace pause, reaching its running live runs: each is asked to pause at its next safe
+   * boundary (DI.4, #1312). New claims stop at once by admission; this is the half that reaches
+   * what already started.
+   *
+   * @param organizationId - The workspace just paused.
+   * @returns How many runs were asked.
+   */
+  async pauseLiveRuns(organizationId: string): Promise<number> {
+    const runs = await this.controls.liveActiveRuns(organizationId);
+
+    for (const runId of runs) {
+      await this.submitSystem(organizationId, runId, "pause", "workspace_paused");
+    }
+
+    return runs.length;
+  }
+
+  /**
+   * A workspace resume: resume the live runs its pause paused. A run a person paused stays
+   * paused — only a pause nobody asked for is undone.
+   *
+   * @param organizationId - The workspace just resumed.
+   * @returns How many runs were asked.
+   */
+  async resumeLiveRuns(organizationId: string): Promise<number> {
+    const runs = await this.controls.systemPausedRuns(organizationId);
+
+    for (const runId of runs) {
+      await this.submitSystem(organizationId, runId, "resume", "workspace_resumed");
+    }
+
+    return runs.length;
   }
 
   // --- the correction round (#332) --------------------------------------------------------

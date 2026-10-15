@@ -176,6 +176,41 @@ Choose **Deselect N issues** to drop the refused issues from the selection and q
 rest. In the detail panel, **Queue for loop** is greyed out for an issue that cannot be
 queued; hover over it to read why.
 
+## Why a queued issue is waiting
+
+A queued issue becomes a **live run** only when several conditions hold. If one does not,
+the issue waits, and Ouroboros shows why:
+
+- A reason that holds the whole workspace, such as live execution being off, appears once
+  above the table, with a link to where it is fixed.
+- A reason that holds one issue appears beside its **queued** pill. Hover over it to read
+  the full sentence.
+- Open an issue to see its reason in the detail panel.
+
+On the dashboard, **Up next in queue** shows the same reasons in the same way.
+
+<Screenshot id="user-guide.issues.waiting-reason" />
+
+| What you see | Why | What to do |
+| --- | --- | --- |
+| **Live runs off** | This deployment does not run live loops (`OURO_LIVE_EXECUTION_ENABLED` is off) | An administrator turns it on — see [Live execution](../administration/live-execution.mdx) |
+| **Workspace paused** | The workspace is paused | An owner or admin resumes it under <UiPath path="Settings > Danger zone" /> |
+| **Pending deletion** | The workspace is being deleted | An owner restores it |
+| **No executor** | The engine has no stage executor registered | An administrator checks the engine — see [Operations](../administration/operations.mdx) |
+| **Repository off** | The issue's repository is not enabled | Enable it under <UiPath path="Settings > Repositories" /> |
+| **Not in dry-run** | The repository is not in dry-run. Live runs open draft pull requests only | Turn dry-run on under <UiPath path="Settings > Policies" /> |
+| **No published workflow** | The issue is pinned to no published workflow version | Publish the workflow in the [Workflow Studio](./workflows/studio.mdx), then queue the issue again |
+| **No model to call** | A route the workflow uses has no provider connection that may be invoked | Add or fix a connection under <UiPath path="Models > Providers & keys" /> |
+| **Needs confirmation** | Nobody with loop approval has confirmed the issue for a live run | Choose **Confirm for live run** |
+| **Waiting for a slot** | The workspace is running as many live runs as its ceiling allows | Wait: it starts when one finishes |
+
+**Confirm for live run.** A live run is started only by a person who can approve loops.
+When live execution is on and such a person queues an issue, it is confirmed as it is
+queued. Anything else waits until someone confirms it. That includes issues queued by
+another member, by a playbook or by Get Started, and anything queued before live execution
+was turned on. Open the issue and choose **Confirm for live run**. If you do not hold
+**Can approve loops**, the button tells you so; a workspace administrator can grant it.
+
 ## What can go wrong
 
 - **The table is empty with "Connect GitHub to watch your backlog".** The workspace has no

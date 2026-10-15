@@ -19,5 +19,7 @@ import { LoopCapabilitiesService } from "./loop.service";
   imports: [DbModule, EngineModule, PoliciesModule],
   controllers: [LoopCapabilitiesController],
   providers: [LoopRepository, LoopCapabilitiesService],
+  // The connection check live-run admission shares (DI.4, #1312).
+  exports: [LoopRepository],
 })
 export class LoopModule {}

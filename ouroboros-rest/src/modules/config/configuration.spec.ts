@@ -190,6 +190,9 @@ describe("the development defaults", () => {
       // DG.2's (#1300) switch: off unless a deployment declares it.
       liveExecutionEnabled: false,
       queueClaimLeaseSeconds: 300,
+      liveRunCeilingMax: 4,
+      liveRunWallClockMinutes: 120,
+      liveRunNoProgressMinutes: 15,
     });
   });
 });
@@ -1385,6 +1388,42 @@ describe("the queue claim lease (#91)", () => {
     expect(failureFor(testEnvironment({ OURO_QUEUE_CLAIM_LEASE_SECONDS: value }))).toContain(
       "OURO_QUEUE_CLAIM_LEASE_SECONDS",
     );
+  });
+});
+
+describe("the live-run limits (DI.4, #1312)", () => {
+  it("defaults to a maximum ceiling of four, two hours and fifteen minutes", () => {
+    const configuration = loadConfiguration(testEnvironment());
+
+    expect(configuration.liveRunCeilingMax).toBe(4);
+    expect(configuration.liveRunWallClockMinutes).toBe(120);
+    expect(configuration.liveRunNoProgressMinutes).toBe(15);
+  });
+
+  it("reads limits inside their bounds", () => {
+    const configuration = loadConfiguration(
+      testEnvironment({
+        OURO_LIVE_RUN_CEILING_MAX: "10",
+        OURO_LIVE_RUN_WALL_CLOCK_MINUTES: "30",
+        OURO_LIVE_RUN_NO_PROGRESS_MINUTES: "5",
+      }),
+    );
+
+    expect(configuration.liveRunCeilingMax).toBe(10);
+    expect(configuration.liveRunWallClockMinutes).toBe(30);
+    expect(configuration.liveRunNoProgressMinutes).toBe(5);
+  });
+
+  it.each([
+    ["OURO_LIVE_RUN_CEILING_MAX", "0"],
+    ["OURO_LIVE_RUN_CEILING_MAX", "101"],
+    ["OURO_LIVE_RUN_WALL_CLOCK_MINUTES", "4"],
+    ["OURO_LIVE_RUN_WALL_CLOCK_MINUTES", "1441"],
+    ["OURO_LIVE_RUN_NO_PROGRESS_MINUTES", "1"],
+    ["OURO_LIVE_RUN_NO_PROGRESS_MINUTES", "361"],
+    ["OURO_LIVE_RUN_NO_PROGRESS_MINUTES", "soon"],
+  ])("refuses %s=%s", (name, value) => {
+    expect(failureFor(testEnvironment({ [name]: value }))).toContain(name);
   });
 });
 

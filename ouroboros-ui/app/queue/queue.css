@@ -1,0 +1,45 @@
+/*
+ * Why a queued issue is waiting (DI.4, #1312) — the dashboard's queue card and the issues
+ * screen. The warning hue, as the loop capability notice uses it: something someone can fix,
+ * and the link says where. Tokens only, so both themes and every font scale follow.
+ */
+.queue-waiting {
+  margin: 0 0 var(--sp-6);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* Inside a card or a panel: tighter. */
+.queue-waiting--compact {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-5);
+  font-size: var(--t-xs);
+}
+
+.queue-waiting__sentence {
+  font-weight: 600;
+  color: var(--warn);
+}
+
+.queue-waiting__fix {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.queue-waiting__fix:hover,
+.queue-waiting__fix:focus-visible {
+  text-decoration: underline;
+}
+
+/* The chip and its spoken sentence, kept on one line beside the row's other marks. */
+.queue-waiting-chip {
+  display: inline-flex;
+  align-items: center;
+}

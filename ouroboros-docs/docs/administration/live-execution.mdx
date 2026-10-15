@@ -1,0 +1,107 @@
+---
+title: "Live execution — admission, confirmation & limits"
+sidebar_label: "Live execution"
+sidebar_position: 16
+description: "What must be true before a queued issue becomes a live run, who may start one, and the limits that stop it."
+---
+
+A **live run** calls models, edits code on a branch and opens a draft pull request. It costs
+money. This page covers the gate every queued issue passes before the engine may start one,
+who may start one, and the limits that stop one.
+
+## The admission check
+
+The engine asks for work by claiming the next item in a workspace's queue. Ouroboros decides
+the claim in one place, every time, against this list:
+
+| Holds the whole workspace | Holds one issue |
+| --- | --- |
+| The deployment's switch, `OURO_LIVE_EXECUTION_ENABLED`, is on. | Its repository is enabled. |
+| The workspace is not paused or pending deletion. | Its repository is in **dry-run** — see [Policies § Dry-run](./policies.mdx#dry-run). |
+| The engine has at least one stage executor registered. | Its workflow version is published. |
+| Fewer live runs are going than the workspace's **ceiling**. | Every route its workflow uses reaches a provider connection that may be invoked. |
+| | Someone with loop approval has **confirmed** it. |
+
+If a workspace-wide condition fails, nothing in the queue starts. If one issue's condition
+fails, the engine skips that issue and takes the next one that passes. The skipped issue
+keeps its place in the queue.
+
+Nothing waits silently. Wherever a queued issue is shown, on the dashboard's **Up next in
+queue** card and on the **Issues** screen, it shows the reason it is waiting. Workspace-wide
+reasons appear once, above the queue. See [Issues § Why a queued issue is
+waiting](../user-guide/issues.mdx#why-a-queued-issue-is-waiting) for each reason and its fix.
+
+## Who may start a live run
+
+A live run is started only by a person who holds **Can approve loops** (see
+[Roles & capabilities](./roles.mdx)). Nothing picks work up on its own:
+
+- When live execution is on and a person who can approve loops queues an issue, it is
+  **confirmed** as it is queued.
+- Anything else waits as **Needs confirmation** until such a person confirms it with
+  **Confirm for live run** in the issue's detail panel. This covers an issue queued by a
+  member without the capability, by a playbook, by a chat command or by Get Started. It
+  also covers every issue queued before live execution was turned on, including issues
+  queued long ago to try out the product.
+
+Each confirmation is recorded in the audit log as `queue_item.confirmed`.
+
+## Limits
+
+### The concurrency ceiling
+
+A workspace runs **one** live run at a time unless an owner or admin raises its ceiling.
+Issues beyond the ceiling wait as **Waiting for a slot**. An issue the engine has claimed
+but not yet started also takes a slot. Two engine workers claiming at the same moment cannot
+both take the last slot.
+
+The ceiling can never be higher than the deployment's maximum,
+<EnvVar name="OURO_LIVE_RUN_CEILING_MAX" /> (4 unless set). Read and set it through the API.
+Changing it is recorded as `workspace.live_ceiling_changed`.
+
+```bash
+# Read the ceiling, the deployment's maximum and the run limits.
+curl -H "Cookie: $SESSION" https://ouroboros.example.com/api/v1/settings/live-execution
+
+# Raise the ceiling to 2 (owner or admin).
+curl -X PATCH -H "Cookie: $SESSION" -H "Content-Type: application/json" \
+  -d '{"ceiling": 2}' https://ouroboros.example.com/api/v1/settings/live-execution
+```
+
+A ceiling above the deployment's maximum is refused with `live_ceiling_above_max`.
+
+### Run limits
+
+Ouroboros checks every minute for live runs that have passed a limit, and aborts them:
+
+| Limit | Variable | Default |
+| --- | --- | --- |
+| **Wall clock** — how long a live run may go on | <EnvVar name="OURO_LIVE_RUN_WALL_CLOCK_MINUTES" /> | 120 minutes |
+| **No progress** — how long a live run may go without reporting anything | <EnvVar name="OURO_LIVE_RUN_NO_PROGRESS_MINUTES" /> | 15 minutes |
+
+The abort goes through the run's control queue like any other abort. The engine cleans up,
+**the branch is kept**, and the run console says which limit stopped the run. The cap on
+what a run may spend is set separately, by the route and the policy's spend guard — see
+[Policies & guardrails](./policies.mdx).
+
+## Pausing
+
+Pausing the workspace (<UiPath path="Settings > Danger zone" />) has two effects:
+
+- **New claims stop at once.** Every queued issue shows **Workspace paused**.
+- **Running live runs pause at their next safe boundary.** Each one is sent a pause
+  control. The current step finishes and nothing new starts.
+
+Resuming the workspace resumes the runs the pause stopped. A run that a person paused stays
+paused.
+
+## Configuration
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| <EnvVar name="OURO_LIVE_EXECUTION_ENABLED" /> | `false` | The deployment's switch. Off, no claim succeeds, whatever the queue holds. |
+| <EnvVar name="OURO_LIVE_RUN_CEILING_MAX" /> | `4` | The highest ceiling any workspace may set (1–100). |
+| <EnvVar name="OURO_LIVE_RUN_WALL_CLOCK_MINUTES" /> | `120` | The wall-clock limit (5–1440). |
+| <EnvVar name="OURO_LIVE_RUN_NO_PROGRESS_MINUTES" /> | `15` | The no-progress limit (2–360). |
+
+The [Configuration reference](./configuration/index.mdx) lists every variable.

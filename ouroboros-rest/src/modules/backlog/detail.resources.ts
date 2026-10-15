@@ -65,6 +65,7 @@ import type {
   EstimateRisk,
   EstimateTraceDocument,
 } from "../db/schema";
+import type { QueueWaiting } from "../admission/admission";
 import type { BacklogRow } from "./listing.resources";
 import type { IssueDetailRow, IssueEstimateRow } from "./detail.repository";
 
@@ -75,6 +76,11 @@ import type { IssueDetailRow, IssueEstimateRow } from "./detail.repository";
  * table does not — see this file's header on why it is an extension rather than a restatement.
  */
 export interface BacklogIssueDetail extends Omit<BacklogRow, "estimate"> {
+  /**
+   * The queue item holding this issue, or `null` when it is not queued — what
+   * `POST /api/v1/queue/{id}/confirm` names (DI.4, [#1312](https://github.com/NobuData/ouroboros/issues/1312)).
+   */
+  readonly queueItemId: string | null;
   /**
    * GitHub's description, **raw and in full** — the `.panel-body-excerpt`.
    *
@@ -262,11 +268,12 @@ export interface IssueDetail {
 export function issueDetail(
   row: IssueDetailRow,
   versions: readonly IssueEstimateRow[],
+  queue: DetailQueue = NOT_QUEUED,
 ): IssueDetail {
   const inForce = latest(versions);
 
   return {
-    issue: detailIssue(row),
+    issue: detailIssue(row, queue),
     estimate: inForce === undefined ? null : estimateDetail(inForce),
     history: versions.map(estimateVersion),
   };
@@ -292,13 +299,24 @@ function latest(versions: readonly IssueEstimateRow[]): IssueEstimateRow | undef
   );
 }
 
+/** The issue's place in the run queue, as the panel shows it (DI.4, #1312). */
+export interface DetailQueue {
+  /** `queue_items.id`, or `null` when the issue is not queued. */
+  readonly itemId: string | null;
+  /** Why it is waiting, or `null`. */
+  readonly waiting: QueueWaiting | null;
+}
+
+/** An issue the queue does not hold. */
+export const NOT_QUEUED: DetailQueue = { itemId: null, waiting: null };
+
 /**
  * The issue half, JSON-safe.
  *
  * @param row - The joined issue and its repository.
  * @returns The panel's head, tags and excerpt.
  */
-function detailIssue(row: IssueDetailRow): BacklogIssueDetail {
+function detailIssue(row: IssueDetailRow, queue: DetailQueue): BacklogIssueDetail {
   return {
     id: row.id,
     number: row.number,
@@ -307,6 +325,8 @@ function detailIssue(row: IssueDetailRow): BacklogIssueDetail {
     state: row.state,
     sizingStatus: row.sizingStatus,
     queued: row.queued,
+    queueWaiting: queue.waiting,
+    queueItemId: queue.itemId,
     githubRepoId: row.githubRepoId,
     repository: row.repository,
     body: row.body,

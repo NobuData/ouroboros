@@ -1,3 +1,4 @@
+import { admissionStub } from "../admission/admission.fixture";
 import { queueItemSummary } from "../dashboard/resources";
 import type { QueueItem } from "../db/schema";
 import type { QueueRepository } from "./queue.repository";
@@ -28,6 +29,8 @@ function row(over: Partial<QueueItem> = {}): QueueItem {
     claimed_by: null,
     claim_token: null,
     claim_key: null,
+    confirmed_at: null,
+    confirmed_by: null,
     position: 1,
     est_minutes: 45,
     enqueued_at: new Date("2026-08-13T01:37:41.000Z"),
@@ -47,7 +50,7 @@ describe("the queue service", () => {
       totals: jest.fn().mockResolvedValue({ count: 0, estMinutes: 0 }),
     } as unknown as jest.Mocked<QueueRepository>;
 
-    service = new QueueService(repository);
+    service = new QueueService(repository, admissionStub());
   });
 
   it("assembles the #31 page from the rows and the totals", async () => {
@@ -73,8 +76,21 @@ describe("the queue service", () => {
 
     const page = await service.list("acme-robotics-id", {});
 
-    expect(page.items[0]).toEqual(queueItemSummary(stored));
+    expect(page.items[0]).toEqual(queueItemSummary(stored, null));
     expect(page.items[0].estMinutes).toBeNull();
+  });
+
+  it("says why each item is waiting, from admission (#1312)", async () => {
+    service = new QueueService(
+      repository,
+      admissionStub({ waiting: { reason: "needs_confirmation", scope: "item" } }),
+    );
+    repository.list.mockResolvedValue([row()]);
+    repository.totals.mockResolvedValue({ count: 1, estMinutes: 45 });
+
+    const page = await service.list("acme-robotics-id", {});
+
+    expect(page.items[0].waiting).toEqual({ reason: "needs_confirmation", scope: "item" });
   });
 
   it("resolves the window before the repository sees it", async () => {

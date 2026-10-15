@@ -937,35 +937,6 @@ export class IngestRepository {
   }
 
   /**
-   * The head of a workspace's queue that nobody holds, locked — **`for update skip locked`**, so
-   * two workers claiming at once never take the same item: the second skips the row the first
-   * has locked and takes the next, or nothing.
-   *
-   * @param writer - The transaction.
-   * @param organizationId - The workspace.
-   * @param now - The instant a lease is measured against.
-   * @returns The lowest-positioned item whose lease is absent or has run out, or `undefined`.
-   */
-  async claimableHead(
-    writer: Writer,
-    organizationId: string,
-    now: Date,
-  ): Promise<QueueItem | undefined> {
-    return writer
-      .selectFrom("queue_items")
-      .selectAll()
-      .where("organization_id", "=", organizationId)
-      .where((where) =>
-        where.or([where("claim_expires_at", "is", null), where("claim_expires_at", "<=", now)]),
-      )
-      .orderBy("position")
-      .limit(1)
-      .forUpdate()
-      .skipLocked()
-      .executeTakeFirst();
-  }
-
-  /**
    * Lease an item to a worker.
    *
    * @param writer - The transaction that locked it.

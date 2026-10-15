@@ -303,6 +303,9 @@
  */
 .issues-table__status {
   display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
 }
 
 @media (prefers-reduced-motion: no-preference) {

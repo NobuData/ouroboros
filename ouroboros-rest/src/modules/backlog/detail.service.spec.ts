@@ -1,3 +1,4 @@
+import { admissionStub } from "../admission/admission.fixture";
 import { NotFoundError } from "../errors/error.envelope";
 import { ESTIMATION_ERRORS } from "../estimation/estimation.errors";
 import type {
@@ -77,7 +78,7 @@ describe("the backlog detail service", () => {
       estimates: jest.fn().mockResolvedValue([ESTIMATE]),
     } as unknown as jest.Mocked<BacklogDetailRepository>;
 
-    service = new BacklogDetailService(repository);
+    service = new BacklogDetailService(repository, admissionStub());
   });
 
   it("hands both statements the workspace and the id, and nothing else", () => {

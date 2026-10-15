@@ -64,6 +64,7 @@ import {
   SCHEMA_NAME,
   type EstimateEffort,
   type GithubIssueState,
+  type QueueItem,
   type SizingStatus,
 } from "../db/schema";
 import type { PageWindow } from "../tenancy/pagination";
@@ -284,12 +285,13 @@ export class BacklogListingRepository {
    * @param organizationId - The workspace, from the tenant context.
    * @param repoId - The repository, or `undefined` for the whole workspace. The same narrowing
    *   the rows get, so a filtered listing does not read a queue it cannot draw.
-   * @returns One key per queued issue. Empty for a workspace that has queued nothing.
+   * @returns Every queued row — whole, since DI.4 (#1312) explains why each is waiting from the
+   *   row's own pin and confirmation. Empty for a workspace that has queued nothing.
    */
-  async queuedIssues(organizationId: string, repoId?: string): Promise<QueuedIssueKey[]> {
+  async queuedIssues(organizationId: string, repoId?: string): Promise<QueueItem[]> {
     let query = this.database.db
       .selectFrom("queue_items")
-      .select(["github_repo_id as githubRepoId", "issue_number as number"])
+      .selectAll()
       .where("organization_id", "=", organizationId);
 
     if (repoId !== undefined) {

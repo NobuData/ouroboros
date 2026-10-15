@@ -919,3 +919,44 @@ describe("both palettes", () => {
     expect(maskIds(light!)).toBe(maskIds(dark!));
   });
 });
+
+describe("why a queued row waits (#1312)", () => {
+  it("draws the reason beside the queued pill, with the sentence for a screen reader", async () => {
+    const waiting = { reason: "needs_confirmation", scope: "item" } as const;
+    await mounted({
+      listing: paged({ items: [{ ...SEEDED_ROWS[0]!, queued: true, queueWaiting: waiting }], total: 1 }),
+    });
+
+    const [only] = rows();
+    expect(within(only!).getByText("queued")).toBeInTheDocument();
+    expect(within(only!).getByText("Needs confirmation")).toHaveAttribute(
+      "title",
+      "Nobody with loop approval has confirmed it for a live run yet.",
+    );
+  });
+
+  it("draws nothing beside a queued row that would start now", async () => {
+    await mounted({
+      listing: paged({ items: [{ ...SEEDED_ROWS[0]!, queued: true, queueWaiting: null }], total: 1 }),
+    });
+
+    expect(within(rows()[0]!).queryByText("Needs confirmation")).toBeNull();
+  });
+
+  it("says a workspace reason every queued row shares once, above the table, and not per row", async () => {
+    const off = { reason: "deployment_disabled", scope: "workspace" } as const;
+    await mounted({
+      listing: paged({
+        items: [
+          { ...SEEDED_ROWS[0]!, queued: true, queueWaiting: off },
+          { ...SEEDED_ROWS[1]!, queued: true, queueWaiting: off },
+        ],
+        total: 2,
+      }),
+    });
+
+    expect(screen.getAllByRole("note")).toHaveLength(1);
+    expect(screen.getByRole("note")).toHaveAttribute("data-reason", "deployment_disabled");
+    expect(screen.queryByText("Live runs off")).toBeNull();
+  });
+});

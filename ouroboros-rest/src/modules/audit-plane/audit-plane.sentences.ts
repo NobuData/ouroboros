@@ -228,6 +228,18 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
     const name = text(f, "displayName");
     return name === undefined ? "removed a ticket source" : `removed the ticket source ${name}`;
   },
+  "queue_item.confirmed": (f) => {
+    const issue = f.issueNumber;
+    return typeof issue === "number"
+      ? `confirmed #${issue} for a live run`
+      : "confirmed a queued issue for a live run";
+  },
+  "workspace.live_ceiling_changed": (f) => {
+    const after = f.after;
+    return typeof after === "number"
+      ? `set the live-run ceiling to ${after}`
+      : "changed the live-run ceiling";
+  },
 };
 
 /**

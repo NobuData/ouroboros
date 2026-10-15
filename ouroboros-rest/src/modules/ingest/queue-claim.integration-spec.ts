@@ -50,9 +50,109 @@ describe("consuming the queue (#91)", () => {
       .send(body);
   }
 
-  /** A claim of `workspace`'s head by `worker`, under `key`. */
+  /**
+   * A claim of `workspace`'s next admissible item by `worker`, under `key` — declaring one
+   * registered executor, as a worker that can run anything does (#1312).
+   */
   function claim(workspace: string, key: string, worker = "engine-worker-a") {
-    return post(CLAIM, { idempotencyKey: key, workspace, worker });
+    return post(CLAIM, { idempotencyKey: key, workspace, worker, executors: ["native"] });
+  }
+
+  /**
+   * Make the bench's workspace pass live-run admission (DI.4, #1312): the dry-run policy on, and
+   * a connection cleared for invocation behind routes for the two task kinds the bench workflow's
+   * model stages inherit (`implement`, `split`). Items still need confirming.
+   *
+   * @param workspaceId - The bench's workspace.
+   */
+  async function admissible(workspaceId: string): Promise<void> {
+    const client = await api.sql.connect();
+
+    try {
+      await client.query("begin");
+      await client.query(
+        `insert into ${SCHEMA_NAME}.org_policies (organization_id, dry_run) values ($1, true)
+         on conflict (organization_id) do update set dry_run = true`,
+        [workspaceId],
+      );
+      const { rows: connections } = await client.query<{ id: string }>(
+        `insert into ${SCHEMA_NAME}.provider_connections
+           (organization_id, kind, display_name, base_url, status)
+         values ($1, 'ollama', 'Local Ollama', 'http://localhost:11434', 'unknown')
+         returning id`,
+        [workspaceId],
+      );
+      const { rows: aliases } = await client.query<{ id: string }>(
+        `insert into ${SCHEMA_NAME}.model_aliases
+           (organization_id, alias, provider_connection_id, model_id, enabled)
+         values ($1, 'local-coder', $2, 'qwen2.5-coder:32b', true)
+         returning id`,
+        [workspaceId, connections[0].id],
+      );
+
+      for (const [order, kind] of ["implement", "split"].entries()) {
+        const { rows: kinds } = await client.query<{ id: string }>(
+          `insert into ${SCHEMA_NAME}.task_kinds (organization_id, name, description, sort_order)
+           values ($1, $2, $3, $4) returning id`,
+          [workspaceId, kind, `Everything ${kind} needs`, order + 1],
+        );
+        const { rows: routes } = await client.query<{ id: string }>(
+          `insert into ${SCHEMA_NAME}.routes
+             (organization_id, task_kind_id, tag, max_cost_cents_per_run)
+           values ($1, $2, $3, 250) returning id`,
+          [workspaceId, kinds[0].id, `${kind}-local`],
+        );
+        await client.query(
+          `insert into ${SCHEMA_NAME}.route_hops
+             (organization_id, route_id, position, model_alias_id, note)
+           values ($1, $2, 1, $3, null)`,
+          [workspaceId, routes[0].id, aliases[0].id],
+        );
+      }
+
+      await client.query("commit");
+    } catch (failure) {
+      await client.query("rollback");
+      throw failure;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Queue one more issue behind the head, confirmed unless told otherwise.
+   *
+   * @param seeded - The bench.
+   * @param number - Its issue number.
+   * @param position - Its place.
+   * @param confirmed - Whether a member has confirmed it for a live run.
+   * @returns Its id.
+   */
+  async function enqueue(
+    seeded: IngestBench,
+    number: number,
+    position: number,
+    confirmed = true,
+  ): Promise<string> {
+    const { rows } = await api.sql.query<{ id: string }>(
+      `insert into ${SCHEMA_NAME}.queue_items
+         (organization_id, github_repo_id, issue_number, issue_title, effort, workflow_tag,
+          workflow_version, workflow_pin_reason, position, est_minutes, confirmed_at)
+       values ($1, $2, $3, 'Another queued issue', 's', $4, $5, 'explicit', $6, 30,
+               case when $7 then now() end)
+       returning id`,
+      [
+        seeded.workspace.id,
+        seeded.workspace.repoId,
+        number,
+        WORKFLOW_TAG,
+        WORKFLOW_VERSION,
+        position,
+        confirmed,
+      ],
+    );
+
+    return rows[0].id;
   }
 
   /**
@@ -78,11 +178,13 @@ describe("consuming the queue (#91)", () => {
     const { rows } = await api.sql.query<{ id: string }>(
       `insert into ${SCHEMA_NAME}.queue_items
          (organization_id, github_repo_id, issue_number, issue_title, effort, workflow_tag,
-          workflow_version, workflow_pin_reason, position, est_minutes)
-       values ($1, $2, 482, 'Fix flaky CAN-bus telemetry test', 'm', $3, $4, 'explicit', 1, 90)
+          workflow_version, workflow_pin_reason, position, est_minutes, confirmed_at)
+       values ($1, $2, 482, 'Fix flaky CAN-bus telemetry test', 'm', $3, $4, 'explicit', 1, 90,
+               now())
        returning id`,
       [seeded.workspace.id, seeded.workspace.repoId, WORKFLOW_TAG, WORKFLOW_VERSION],
     );
+    await admissible(seeded.workspace.id);
 
     return { owner, seeded, item: rows[0].id };
   }
@@ -114,7 +216,8 @@ describe("consuming the queue (#91)", () => {
         claim(seeded.workspace.slug, "worker-b-claim-1", "engine-worker-b"),
       ]);
 
-      expect(answers.map((answer) => answer.status).toSorted()).toEqual([200, 204]);
+      // One slot (the default ceiling): the loser finds it taken by the winner's lease.
+      expect(answers.map((answer) => answer.status).toSorted()).toEqual([200, 409]);
       const winner = answers.find((answer) => answer.status === 200);
       const claimed = bodyOf<QueueItemClaimedResource>(winner!);
       expect(claimed).toMatchObject({
@@ -189,6 +292,103 @@ describe("consuming the queue (#91)", () => {
 
       expect(refusal.code).toBe("workspace_paused");
       expect((await row(item))?.claimed_by).toBeNull();
+    });
+
+    it("holds the ceiling under concurrent claims: two workers, two items, one slot (#1312)", async () => {
+      const { seeded } = await queued();
+      await enqueue(seeded, 483, 2);
+
+      const answers = await Promise.all([
+        claim(seeded.workspace.slug, "worker-a-claim-1", "engine-worker-a"),
+        claim(seeded.workspace.slug, "worker-b-claim-1", "engine-worker-b"),
+      ]);
+
+      expect(answers.map((answer) => answer.status).toSorted()).toEqual([200, 409]);
+      const refused = answers.find((answer) => answer.status === 409);
+      expect(bodyOf<ErrorEnvelope>(refused!)).toMatchObject({
+        code: INGEST_ERRORS.concurrencyCeiling,
+        details: { taken: 1, ceiling: 1 },
+      });
+    });
+
+    it("gives two workers an item each under a ceiling of two (#1312)", async () => {
+      const { seeded } = await queued();
+      await enqueue(seeded, 483, 2);
+      await api.sql.query(
+        `insert into ${SCHEMA_NAME}.workspace_settings (organization_id, live_run_ceiling)
+         values ($1, 2)`,
+        [seeded.workspace.id],
+      );
+
+      const answers = await Promise.all([
+        claim(seeded.workspace.slug, "worker-a-claim-1", "engine-worker-a"),
+        claim(seeded.workspace.slug, "worker-b-claim-1", "engine-worker-b"),
+      ]);
+
+      expect(answers.map((answer) => answer.status)).toEqual([200, 200]);
+      const ids = answers.map((answer) => bodyOf<QueueItemClaimedResource>(answer).id);
+      expect(new Set(ids).size).toBe(2);
+    });
+
+    it("skips an item nobody confirmed and takes the confirmed one behind it (#1312)", async () => {
+      const { seeded, item } = await queued();
+      await api.sql.query(
+        `update ${SCHEMA_NAME}.queue_items set confirmed_at = null where id = $1`,
+        [item],
+      );
+      const behind = await enqueue(seeded, 483, 2);
+
+      const claimed = bodyOf<QueueItemClaimedResource>(
+        await claim(seeded.workspace.slug, "worker-a-claim-1").expect(200),
+      );
+
+      expect(claimed.id).toBe(behind);
+      expect((await row(item))?.claimed_by).toBeNull();
+    });
+
+    it("claims nothing from a repository whose policy is not dry-run (#1312)", async () => {
+      const { seeded } = await queued();
+      await api.sql.query(
+        `update ${SCHEMA_NAME}.org_policies set dry_run = false where organization_id = $1`,
+        [seeded.workspace.id],
+      );
+
+      await claim(seeded.workspace.slug, "worker-a-claim-1").expect(204);
+    });
+
+    it("refuses a worker that registered no executor (#1312)", async () => {
+      const { seeded } = await queued();
+
+      const refusal = bodyOf<ErrorEnvelope>(
+        await post(CLAIM, {
+          idempotencyKey: "k",
+          workspace: seeded.workspace.slug,
+          worker: "engine-worker-a",
+          executors: [],
+        }).expect(409),
+      );
+
+      expect(refusal.code).toBe(INGEST_ERRORS.noExecutor);
+    });
+
+    it("says why the queue is waiting where the queue is read (#1312)", async () => {
+      // The read model asks the engine for its executors (a claim takes the worker's word);
+      // the harness runs no engine, so the workspace reason outranks the item's own.
+      const { owner, seeded, item } = await queued();
+
+      const page = bodyOf<{ items: { id: string; waiting: unknown }[] }>(
+        await api
+          .as(owner)("get", "/api/v1/queue")
+          .set("X-Ouro-Tenant", seeded.workspace.slug)
+          .expect(200),
+      );
+
+      expect(page.items).toEqual([
+        expect.objectContaining({
+          id: item,
+          waiting: { reason: "no_executor", scope: "workspace" },
+        }),
+      ]);
     });
 
     it("refuses a workspace that does not exist", async () => {

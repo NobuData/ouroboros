@@ -105,6 +105,7 @@ function seededRow(
     state: "open",
     sizingStatus,
     queued,
+    queueWaiting: null,
     githubRepoId: HELIOS.id,
     repository: `${HELIOS.login}/${HELIOS.name}`,
     estimate,
@@ -382,6 +383,8 @@ export function queuedSelection(count = SELECTED_TRIO.length, estMinutes = 45 * 
       enqueuedAt: "2026-09-10T15:41:12.000Z",
       playbookId: null,
       claimed: null,
+      confirmedAt: null,
+      waiting: null,
     })),
     estMinutes,
   };
@@ -451,6 +454,7 @@ export function issueOf(row: BacklogRow, over: Partial<BacklogIssueDetail> = {})
 
   return {
     ...issue,
+    queueItemId: null,
     body: SEEDED_BODY,
     authorLogin: "field-support",
     ghCreatedAt: SEEDED_OPENED_AT,

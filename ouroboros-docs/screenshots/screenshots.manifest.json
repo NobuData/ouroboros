@@ -192,10 +192,10 @@
       "ready": "tr.ou-table__row:has-text('#484') .issues-table__effort",
       "clip": "page",
       "caption": "Issue intake: every open issue, sized before you ask, with its suggested workflow and model.",
-      "alt": "The Issues screen for Acme Robotics headed 9 open issues, 7 already sized, with Re-estimate all and Queue 0 selected buttons, a filter bar of repository, label chips, state, sort and search, and the backlog table showing each issue's effort chip and confidence, suggested workflow and routed model, beside an empty Issue detail panel.",
-      "capturedAt": "2026-10-14T03:01:16.857Z",
-      "uiVersion": "0.163.1",
-      "seedRef": "69c4cbcffc1fcc5c4b9189cde2fcf4d694181687"
+      "alt": "The Issues screen for Acme Robotics headed 9 open issues, 7 already sized, with Re-estimate all and Queue 0 selected buttons, a filter bar of repository, label chips, state, sort and search, and the backlog table showing each issue's effort chip and confidence, suggested workflow and routed model, beside an empty Issue detail panel. Above the table, a warning says live execution is off for this deployment.",
+      "capturedAt": "2026-10-15T21:12:40.014Z",
+      "uiVersion": "0.169.5",
+      "seedRef": "dafe18ef42843e60fa92fd9ca610a83d80607303"
     },
     {
       "id": "user-guide.issues.estimate",
@@ -239,10 +239,22 @@
         }
       ],
       "caption": "Three issues ticked: the selection bar totals their estimate and queues them under a workflow.",
-      "alt": "The backlog with #484, #489 and #487 ticked and, along the bottom, the selection bar reading 3 issues selected, est. 3h 40m combined autonomous work, with an Assign workflow menu button and a Queue → suggested button.",
-      "capturedAt": "2026-10-14T03:01:22.276Z",
-      "uiVersion": "0.163.1",
-      "seedRef": "69c4cbcffc1fcc5c4b9189cde2fcf4d694181687"
+      "alt": "The backlog with #484, #489 and #487 ticked and, along the bottom, the selection bar reading 3 issues selected, est. 3h 40m combined autonomous work, with an Assign workflow menu button and a Queue → suggested button. Above the table, a warning says live execution is off for this deployment.",
+      "capturedAt": "2026-10-15T21:12:45.549Z",
+      "uiVersion": "0.169.5",
+      "seedRef": "dafe18ef42843e60fa92fd9ca610a83d80607303"
+    },
+    {
+      "id": "user-guide.issues.waiting-reason",
+      "route": "/issues",
+      "workspace": "acme-robotics",
+      "ready": "section .queue-waiting",
+      "clip": "page",
+      "caption": "Why the queue is waiting: a reason every queued issue shares, said once above the backlog.",
+      "alt": "The Issues screen for Acme Robotics with, above the backlog table, a warning reading Live execution is off for this deployment — nothing in the queue starts until it is on, with a How to enable link, and the backlog rows below it.",
+      "capturedAt": "2026-10-15T21:12:26.680Z",
+      "uiVersion": "0.169.5",
+      "seedRef": "dafe18ef42843e60fa92fd9ca610a83d80607303"
     },
     {
       "id": "user-guide.planning",
@@ -1237,10 +1249,10 @@
       "ready": ".dash-queue",
       "clip": ".dash-col--5:has(.dash-queue)",
       "caption": "The queue: issues waiting for a loop, in the order they will be picked.",
-      "alt": "Up next in queue, with Manage queue: #485 Watchdog reset on I²C bus lockup (M, standard-fix), #486 Expose battery health over BLE GATT (L, feature-loop), #488 Typo sweep in operator manual (XS, docs-loop), #490 Migrate build to Zephyr 4.2 (XL, deps-refresh) and #491 Add CRC to config persistence layer (S, standard-fix), then +7 queued.",
-      "capturedAt": "2026-10-09T01:23:03.050Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "2631a297583496a87a0ddace271b0fb29777909f"
+      "alt": "Up next in queue, with Manage queue: #485 Watchdog reset on I²C bus lockup (M, standard-fix), #486 Expose battery health over BLE GATT (L, feature-loop), #488 Typo sweep in operator manual (XS, docs-loop), #490 Migrate build to Zephyr 4.2 (XL, deps-refresh) and #491 Add CRC to config persistence layer (S, standard-fix), then +7 queued. Above the rows, a warning says live execution is off for this deployment, with a How to enable link.",
+      "capturedAt": "2026-10-15T21:12:59.705Z",
+      "uiVersion": "0.169.5",
+      "seedRef": "dafe18ef42843e60fa92fd9ca610a83d80607303"
     },
     {
       "id": "user-guide.dashboard.empty",

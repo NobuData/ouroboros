@@ -382,6 +382,43 @@ export const MIN_QUEUE_CLAIM_LEASE_SECONDS = 30;
 export const MAX_QUEUE_CLAIM_LEASE_SECONDS = 3600;
 
 /**
+ * The most live runs any workspace may set its ceiling to, when `OURO_LIVE_RUN_CEILING_MAX` is
+ * not set — four (DI.4, #1312). A workspace's own ceiling defaults to one (decision L10) and
+ * may be raised up to this.
+ */
+export const DEFAULT_LIVE_RUN_CEILING_MAX = 4;
+
+/** The deployment maximum is at least one — a ceiling of zero is the switch's job, not this. */
+export const MIN_LIVE_RUN_CEILING_MAX = 1;
+
+/** The deployment maximum is at most one hundred — V146's own bound on a workspace ceiling. */
+export const MAX_LIVE_RUN_CEILING_MAX = 100;
+
+/**
+ * How long a live run may execute before it is aborted, when `OURO_LIVE_RUN_WALL_CLOCK_MINUTES`
+ * is not set — two hours (DI.4, #1312).
+ */
+export const DEFAULT_LIVE_RUN_WALL_CLOCK_MINUTES = 120;
+
+/** Shortest wall-clock limit an operator may set — five minutes. */
+export const MIN_LIVE_RUN_WALL_CLOCK_MINUTES = 5;
+
+/** Longest wall-clock limit an operator may set — a day. */
+export const MAX_LIVE_RUN_WALL_CLOCK_MINUTES = 1440;
+
+/**
+ * How long a live run may go without an event before it is aborted, when
+ * `OURO_LIVE_RUN_NO_PROGRESS_MINUTES` is not set — fifteen minutes (DI.4, #1312).
+ */
+export const DEFAULT_LIVE_RUN_NO_PROGRESS_MINUTES = 15;
+
+/** Shortest no-progress limit an operator may set — two minutes. */
+export const MIN_LIVE_RUN_NO_PROGRESS_MINUTES = 2;
+
+/** Longest no-progress limit an operator may set — six hours. */
+export const MAX_LIVE_RUN_NO_PROGRESS_MINUTES = 360;
+
+/**
  * Shortest staleness an operator may set — sixty seconds.
  *
  * A floor rather than a preference: an estimate legitimately takes two engine attempts of five
@@ -1392,6 +1429,23 @@ export interface Configuration {
    */
   readonly queueClaimLeaseSeconds: number;
   /**
+   * The most live runs a workspace may set its ceiling to (DI.4,
+   * [#1312](https://github.com/NobuData/ouroboros/issues/1312)). From
+   * `OURO_LIVE_RUN_CEILING_MAX`, {@link DEFAULT_LIVE_RUN_CEILING_MAX} when unset. A workspace's
+   * own ceiling (`workspace_settings.live_run_ceiling`, default 1) is clamped to it at claim.
+   */
+  readonly liveRunCeilingMax: number;
+  /**
+   * Minutes a live run may execute before it is aborted through the control queue (DI.4). From
+   * `OURO_LIVE_RUN_WALL_CLOCK_MINUTES`, {@link DEFAULT_LIVE_RUN_WALL_CLOCK_MINUTES} when unset.
+   */
+  readonly liveRunWallClockMinutes: number;
+  /**
+   * Minutes a live run may go without an event before it is aborted (DI.4). From
+   * `OURO_LIVE_RUN_NO_PROGRESS_MINUTES`, {@link DEFAULT_LIVE_RUN_NO_PROGRESS_MINUTES} when unset.
+   */
+  readonly liveRunNoProgressMinutes: number;
+  /**
    * The trial credit the managed key pool gives a new workspace, in cents. From
    * `OURO_MANAGED_KEY_TRIAL_CENTS`; `undefined` when unset, and the managed row then names no
    * figure — the service never invents one. Between 1 and {@link MAX_MANAGED_KEY_TRIAL_CENTS},
@@ -1510,6 +1564,9 @@ export const VARIABLES = {
   managedKeyPool: "OURO_MANAGED_KEY_POOL",
   liveExecutionEnabled: "OURO_LIVE_EXECUTION_ENABLED",
   queueClaimLeaseSeconds: "OURO_QUEUE_CLAIM_LEASE_SECONDS",
+  liveRunCeilingMax: "OURO_LIVE_RUN_CEILING_MAX",
+  liveRunWallClockMinutes: "OURO_LIVE_RUN_WALL_CLOCK_MINUTES",
+  liveRunNoProgressMinutes: "OURO_LIVE_RUN_NO_PROGRESS_MINUTES",
   managedKeyTrialCents: "OURO_MANAGED_KEY_TRIAL_CENTS",
   hostedRunnerPool: "OURO_HOSTED_RUNNER_POOL",
   dataRegion: "OURO_DATA_REGION",
@@ -2357,6 +2414,24 @@ const environmentShape = z.object({
     DEFAULT_QUEUE_CLAIM_LEASE_SECONDS,
     MAX_QUEUE_CLAIM_LEASE_SECONDS,
   ),
+  // Live-run admission and limits (DI.4, #1312).
+  OURO_LIVE_RUN_CEILING_MAX: boundedWhole(
+    MIN_LIVE_RUN_CEILING_MAX,
+    DEFAULT_LIVE_RUN_CEILING_MAX,
+    MAX_LIVE_RUN_CEILING_MAX,
+  ),
+  OURO_LIVE_RUN_WALL_CLOCK_MINUTES: boundedWhole(
+    MIN_LIVE_RUN_WALL_CLOCK_MINUTES,
+    DEFAULT_LIVE_RUN_WALL_CLOCK_MINUTES,
+    MAX_LIVE_RUN_WALL_CLOCK_MINUTES,
+    "minutes",
+  ),
+  OURO_LIVE_RUN_NO_PROGRESS_MINUTES: boundedWhole(
+    MIN_LIVE_RUN_NO_PROGRESS_MINUTES,
+    DEFAULT_LIVE_RUN_NO_PROGRESS_MINUTES,
+    MAX_LIVE_RUN_NO_PROGRESS_MINUTES,
+    "minutes",
+  ),
   OURO_MANAGED_KEY_TRIAL_CENTS: z
     .string()
     .regex(/^\d+$/, `expected between 1 and ${MAX_MANAGED_KEY_TRIAL_CENTS} cents`)
@@ -2676,6 +2751,9 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     managedKeyPool: values.OURO_MANAGED_KEY_POOL,
     liveExecutionEnabled: values.OURO_LIVE_EXECUTION_ENABLED,
     queueClaimLeaseSeconds: values.OURO_QUEUE_CLAIM_LEASE_SECONDS,
+    liveRunCeilingMax: values.OURO_LIVE_RUN_CEILING_MAX,
+    liveRunWallClockMinutes: values.OURO_LIVE_RUN_WALL_CLOCK_MINUTES,
+    liveRunNoProgressMinutes: values.OURO_LIVE_RUN_NO_PROGRESS_MINUTES,
     managedKeyTrialCents: values.OURO_MANAGED_KEY_TRIAL_CENTS,
     hostedRunnerPool: values.OURO_HOSTED_RUNNER_POOL,
     dataRegion: values.OURO_DATA_REGION,

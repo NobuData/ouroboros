@@ -72,6 +72,7 @@ import {
   type RunStageReturnReason,
   type RunStageStatus,
 } from "../db/schema";
+import { STAGE_EXECUTOR_KINDS, type StageExecutorKind } from "../engine/engine.contract";
 
 /**
  * The longest idempotency key — 128, matching `run_ingest_receipts_idempotency_key_shape` and
@@ -335,6 +336,17 @@ export class ClaimQueueItemDto extends IdempotentRequestDto {
   @MaxLength(128)
   @IsString()
   worker!: string;
+
+  /**
+   * The stage-executor kinds this worker has registered (DI.4,
+   * [#1312](https://github.com/NobuData/ouroboros/issues/1312)). An empty list is refused with
+   * `409 no_executor`; absent, the engine's status call is asked instead.
+   */
+  @IsOptional()
+  @IsIn(STAGE_EXECUTOR_KINDS, { each: true })
+  @ArrayMaxSize(STAGE_EXECUTOR_KINDS.length)
+  @IsArray()
+  executors?: StageExecutorKind[];
 }
 
 /**

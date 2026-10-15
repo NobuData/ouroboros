@@ -51,11 +51,8 @@ import {
 } from "../insights/calibration.observer";
 import { OrgPolicyService, type DryRunPolicyReader } from "../policies/org-policy.service";
 import { draftFor } from "../policies/org-policy.rules";
-import { effectiveDryRun } from "../policies/policy-resolution";
-import {
-  PolicyResolutionService,
-  type PolicySnapshotSource,
-} from "../policies/policy-resolution.service";
+import { PolicyResolutionService } from "../policies/policy-resolution.service";
+import { repositoryDryRun, type PolicyLoopSource } from "../policies/repository-dry-run";
 import type {
   CreatePrInput,
   MergePrInput,
@@ -168,23 +165,8 @@ export class PrSyncService {
    * @param githubRepoId - The repository, or null when not known.
    * @returns True while the org-wide switch is on, or the repository is inside its first N loops.
    */
-  private async dryRunFor(organizationId: string, githubRepoId: string | null): Promise<boolean> {
-    if (this.policy === undefined) {
-      return true;
-    }
-
-    const override = await this.policy.dryRunNow(organizationId);
-
-    if (override || this.resolver === undefined) {
-      return override;
-    }
-
-    const [snapshot, loop] = await Promise.all([
-      this.resolver.snapshot(organizationId, true),
-      this.resolver.nextLoop(organizationId, githubRepoId),
-    ]);
-
-    return effectiveDryRun(override, snapshot.resolve("dry_run_new_repos", { loop })).active;
+  private dryRunFor(organizationId: string, githubRepoId: string | null): Promise<boolean> {
+    return repositoryDryRun(this.policy, this.resolver, organizationId, githubRepoId);
   }
 
   /**
@@ -409,5 +391,5 @@ export class PrSyncService {
   }
 }
 
-/** What the PR opener needs of the policy resolver (#481). */
-export type PolicyLoopSource = PolicySnapshotSource & Pick<PolicyResolutionService, "nextLoop">;
+/** What the PR opener needs of the policy resolver (#481) — shared with live-run admission. */
+export type { PolicyLoopSource };

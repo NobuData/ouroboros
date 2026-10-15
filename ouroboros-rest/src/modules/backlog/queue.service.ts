@@ -63,8 +63,11 @@
  * queue write would be.
  */
 
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 
+import { AdmissionService } from "../admission/admission.service";
+import type { QueueItemSummary } from "../dashboard/resources";
+import type { QueueItem } from "../db/schema";
 import { WorkflowRegistryService } from "../workflows/registry.service";
 import { TriggerService, type QueuedTicket, type WorkflowPin } from "../workflows/trigger.service";
 import {
@@ -115,12 +118,26 @@ export class BacklogQueueService {
    *   may suggest and what this accepts are one answer.
    * @param triggers - R.1's trigger service: which workflow claims each issue, and the version
    *   it is pinned at.
+   * @param admission - Who confirms an enqueue, and why each item waits (DI.4, #1312).
    */
   constructor(
     private readonly queue: BacklogQueueRepository,
     private readonly workflows: WorkflowRegistryService,
     private readonly triggers: TriggerService,
+    @Inject(AdmissionService)
+    private readonly admission: Pick<AdmissionService, "confirmerFor" | "summaries">,
   ) {}
+
+  /**
+   * Queue items as the API publishes them, each with why it is waiting (#1312).
+   *
+   * @param organizationId - The workspace.
+   * @param rows - The rows.
+   * @returns The summaries, in the same order.
+   */
+  summaries(organizationId: string, rows: readonly QueueItem[]): Promise<QueueItemSummary[]> {
+    return this.admission.summaries(organizationId, rows);
+  }
 
   /**
    * Queue a selection of issues, or refuse the whole of it.
@@ -131,6 +148,9 @@ export class BacklogQueueService {
    *   when one is named.
    * @param launch - A playbook launch (BF.6): its workflow and pinned version replace `workflow`
    *   and the trigger service, and its id is written onto every row. Absent for an ordinary write.
+   * @param caller - The signed-in person queueing, when one is (DI.4, #1312). Their rows are
+   *   confirmed for a live run at once when the deployment runs live loops and they hold
+   *   `can_approve_loops`; every other write's rows wait as `needs_confirmation`.
    * @returns The created queue items in queue order, each pinned to a workflow version, and
    *   their combined estimate — the number the selection action bar renders as *"est. 1h 10m
    *   combined autonomous work"*.
@@ -148,6 +168,7 @@ export class BacklogQueueService {
     organizationId: string,
     body: QueueSelectionBody,
     launch?: QueueLaunch,
+    caller?: { readonly userId: string; readonly roles: readonly string[] },
   ): Promise<QueuedSelection> {
     await this.refuseUnknownWorkflow(organizationId, launch?.workflow ?? body.workflow);
 
@@ -172,12 +193,16 @@ export class BacklogQueueService {
       launch === undefined
         ? await this.triggers.pin(organizationId, queueable.map(queuedTicket), body.workflow)
         : queueable.map(() => launchPin(launch));
-    const rows = queueable.map((issue, index) =>
-      appendRow(issue, pins[index], launch?.playbookId ?? null),
-    );
+    const confirmedBy = await this.admission.confirmerFor(organizationId, caller);
+    const rows = queueable.map((issue, index) => ({
+      ...appendRow(issue, pins[index], launch?.playbookId ?? null),
+      confirmedBy,
+    }));
 
     try {
-      return queuedSelection(await this.queue.append(organizationId, rows));
+      const appended = await this.queue.append(organizationId, rows);
+
+      return queuedSelection(appended, await this.admission.summaries(organizationId, appended));
     } catch (error) {
       // The window between the check above and the insert, closed by
       // `queue_items_organization_issue_key`. Anything else is the service's own failure and

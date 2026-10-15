@@ -51,6 +51,7 @@ describe("a backlog row", () => {
       state: "open",
       sizingStatus: "sized",
       queued: false,
+      queueWaiting: null,
       githubRepoId: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
       repository: "acme-robotics/helios-firmware",
       estimate: {

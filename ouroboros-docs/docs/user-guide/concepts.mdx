@@ -99,6 +99,14 @@ dry-run on, so a new workspace starts safe; an owner or admin turns it off
 The **Dry-run mode for new repos** policy does the same for each new repository's first
 loops only.
 
+**A live run needs dry-run.** In this version a live run may only open a draft pull
+request. A queued issue whose repository is not in dry-run waits as **Not in dry-run** and
+does not start. A live run also waits for the deployment's switch, a workspace that is not
+paused, a free slot under the workspace's ceiling, and a person with loop approval to
+confirm it. See [Issues § Why a queued issue is waiting](./issues.mdx#why-a-queued-issue-is-waiting)
+and [Live execution](../administration/live-execution.mdx). Turning dry-run off during a run
+does not let that run merge: its pull request is still a draft.
+
 **A dry run of a workflow** is a rehearsal in the Workflow Studio: you pick a sized
 issue, choose **Run dry run**, and see which path the workflow would take. No model is
 called, nothing runs and nothing is recorded. See

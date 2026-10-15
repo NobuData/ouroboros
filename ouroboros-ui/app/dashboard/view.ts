@@ -38,6 +38,7 @@ import {
 } from "@/app/format";
 import type { PullRequestRef } from "@/app/api/pull-requests";
 import { prPath } from "@/app/paths";
+import type { QueueWaiting } from "@/app/queue/waiting-copy";
 import type { StatTone } from "@/app/ui/stat-card";
 
 /**
@@ -1347,6 +1348,12 @@ export interface QueuedIssue {
   readonly effort: EffortSize;
   /** The workflow's label, as free text — opaque, so it is rendered rather than parsed. */
   readonly workflowTag: string;
+  /**
+   * Why it is not starting a live run, or `null` when it would be taken now
+   * ([#1312](https://github.com/NobuData/ouroboros/issues/1312)) — the contract's own reason,
+   * worded by `app/queue/waiting-copy.ts`.
+   */
+  readonly waiting: QueueWaiting | null;
 }
 
 /**
@@ -1372,6 +1379,7 @@ export function queueRows(items: readonly QueueItemSummary[]): readonly QueuedIs
     issueTitle: item.issueTitle,
     effort: EFFORT_LABEL[item.effort],
     workflowTag: item.workflowTag,
+    waiting: item.waiting,
   }));
 }
 

@@ -102,6 +102,8 @@ import {
   CHAT_ON_CALL_CHANGED_EVENT,
   CHAT_DELIVERY_RETRIED_EVENT,
   TICKET_SOURCE_REMOVED_EVENT,
+  QUEUE_ITEM_CONFIRMED_EVENT,
+  WORKSPACE_LIVE_CEILING_CHANGED_EVENT,
   ROADMAP_SUGGESTION_DISMISSED_EVENT,
 } from "./audit.events";
 
@@ -262,6 +264,8 @@ describe("the vocabulary", () => {
       "chat.on_call_changed",
       "chat.delivery_retried",
       "ticket_source.removed",
+      "queue_item.confirmed",
+      "workspace.live_ceiling_changed",
     ]);
   });
 
@@ -317,6 +321,7 @@ describe("the vocabulary", () => {
       "pr_criterion",
       "pr_thread",
       "provider",
+      "queue_item",
       "regression_watch",
       "roadmap",
       "runner",
@@ -434,6 +439,8 @@ describe("the vocabulary", () => {
       CHAT_ON_CALL_CHANGED_EVENT,
       CHAT_DELIVERY_RETRIED_EVENT,
       TICKET_SOURCE_REMOVED_EVENT,
+      QUEUE_ITEM_CONFIRMED_EVENT,
+      WORKSPACE_LIVE_CEILING_CHANGED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

@@ -5,6 +5,7 @@
  * the actual assembly, and only the statements are doubles.
  */
 
+import { admissionStub } from "../admission/admission.fixture";
 import type { QueueAppendRow, QueueCandidate } from "../backlog/queue.repository";
 import { BacklogQueueService } from "../backlog/queue.service";
 import { ContextAssemblyService } from "../context-assembly/context-assembly.service";
@@ -319,6 +320,8 @@ export class PlaybookWorld {
               claimed_by: null,
               claim_token: null,
               claim_key: null,
+              confirmed_at: null,
+              confirmed_by: null,
               position: this.queued.size + index,
               est_minutes: row.estMinutes,
               enqueued_at: new Date("2026-09-30T12:00:00.000Z"),
@@ -339,7 +342,7 @@ export class PlaybookWorld {
       },
     } as unknown as TriggerService;
 
-    return new BacklogQueueService(repository as never, registry, triggers);
+    return new BacklogQueueService(repository as never, registry, triggers, admissionStub());
   }
 
   private row(p: StoredPlaybook): PlaybookRow {

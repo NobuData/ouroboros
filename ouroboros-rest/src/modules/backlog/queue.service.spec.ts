@@ -1,3 +1,4 @@
+import { admissionStub } from "../admission/admission.fixture";
 import { UNIQUE_VIOLATION } from "../tenancy/constraints";
 import type { QueueItem } from "../db/schema";
 import type { WorkflowRegistryService } from "../workflows/registry.service";
@@ -94,6 +95,8 @@ function written(position: number, overrides: Partial<QueueItem> = {}): QueueIte
     claimed_by: null,
     claim_token: null,
     claim_key: null,
+    confirmed_at: null,
+    confirmed_by: null,
     position,
     est_minutes: 45,
     enqueued_at: new Date("2026-09-10T15:41:12.000Z"),
@@ -190,7 +193,7 @@ describe("the bulk queue write", () => {
     } as unknown as jest.Mocked<BacklogQueueRepository>;
 
     pins = triggers();
-    queue = new BacklogQueueService(repository, registry().service, pins.service);
+    queue = new BacklogQueueService(repository, registry().service, pins.service, admissionStub());
   });
 
   describe("the happy path", () => {
@@ -243,7 +246,49 @@ describe("the bulk queue write", () => {
           workflowPinReason: "suggested",
           estMinutes: 45,
           playbookId: null,
+          confirmedBy: null,
         },
+      ]);
+    });
+  });
+
+  describe("confirmation for a live run (DI.4, #1312)", () => {
+    it("asks admission who confirms the caller's rows, and stamps each row with it", async () => {
+      const confirmerFor = jest.fn().mockResolvedValue("user-approver");
+      queue = new BacklogQueueService(repository, registry().service, pins.service, {
+        ...admissionStub(),
+        confirmerFor,
+      });
+      const caller = { userId: "user-approver", roles: ["admin"] };
+
+      await queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485] }, undefined, caller);
+
+      const [, rows] = repository.append.mock.calls[0];
+
+      expect(confirmerFor).toHaveBeenCalledWith(WORKSPACE, caller);
+      expect(rows.map((row) => row.confirmedBy)).toEqual(["user-approver"]);
+    });
+
+    it("leaves the rows unconfirmed for a write no person made", async () => {
+      await queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485] });
+
+      const [, rows] = repository.append.mock.calls[0];
+
+      expect(rows.map((row) => row.confirmedBy)).toEqual([null]);
+    });
+
+    it("answers each queued item with why it is waiting", async () => {
+      queue = new BacklogQueueService(
+        repository,
+        registry().service,
+        pins.service,
+        admissionStub({ waiting: { reason: "needs_confirmation", scope: "item" } }),
+      );
+
+      const answer = await queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485] });
+
+      expect(answer.items.map((item) => item.waiting)).toEqual([
+        { reason: "needs_confirmation", scope: "item" },
       ]);
     });
   });
@@ -279,7 +324,12 @@ describe("the bulk queue write", () => {
           ? { slug: "docs-loop", version: 2, reason: "most_specific", matched: [] }
           : { slug: "standard-fix", version: 14, reason: "predicate", matched: [] },
       );
-      queue = new BacklogQueueService(repository, registry().service, pins.service);
+      queue = new BacklogQueueService(
+        repository,
+        registry().service,
+        pins.service,
+        admissionStub(),
+      );
       repository.selection.mockResolvedValue([
         candidate(),
         candidate({ id: ISSUE_484, number: 484, labels: ["docs"] }),
@@ -329,7 +379,12 @@ describe("the bulk queue write", () => {
     });
 
     it("is not asked about a workflow the registry refuses", async () => {
-      queue = new BacklogQueueService(repository, registry(["standard-fix"]).service, pins.service);
+      queue = new BacklogQueueService(
+        repository,
+        registry(["standard-fix"]).service,
+        pins.service,
+        admissionStub(),
+      );
 
       await expect(
         queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485], workflow: "hotfix-p0" }),
@@ -386,7 +441,7 @@ describe("the bulk queue write", () => {
       // The amendment's whole point: the vocabulary is the workspace's registry, so a slug no
       // installation shares is as valid as `standard-fix` in the workspace that owns it.
       const workflows = registry(["release-train"]);
-      queue = new BacklogQueueService(repository, workflows.service, pins.service);
+      queue = new BacklogQueueService(repository, workflows.service, pins.service, admissionStub());
       repository.selection.mockResolvedValue([candidate()]);
 
       await queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485], workflow: "release-train" });
@@ -397,7 +452,12 @@ describe("the bulk queue write", () => {
     });
 
     it("refuses one the workspace does not have, naming the vocabulary", async () => {
-      queue = new BacklogQueueService(repository, registry(["standard-fix"]).service, pins.service);
+      queue = new BacklogQueueService(
+        repository,
+        registry(["standard-fix"]).service,
+        pins.service,
+        admissionStub(),
+      );
 
       await expect(
         queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485], workflow: "midnight-loop" }),
@@ -412,7 +472,12 @@ describe("the bulk queue write", () => {
     it("refuses it before reading the selection, and writes nothing", async () => {
       // A request naming a workflow the workspace does not have cannot succeed for *any*
       // selection, so refusing it first keeps one failure one answer — and costs no statement.
-      queue = new BacklogQueueService(repository, registry(["standard-fix"]).service, pins.service);
+      queue = new BacklogQueueService(
+        repository,
+        registry(["standard-fix"]).service,
+        pins.service,
+        admissionStub(),
+      );
 
       await expect(
         queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485], workflow: "midnight-loop" }),
@@ -428,7 +493,7 @@ describe("the bulk queue write", () => {
       // stored estimate for naming a workflow that has since been renamed — which is exactly
       // the history decision F8 keeps readable.
       const workflows = registry(["release-train"]);
-      queue = new BacklogQueueService(repository, workflows.service, pins.service);
+      queue = new BacklogQueueService(repository, workflows.service, pins.service, admissionStub());
       repository.selection.mockResolvedValue([candidate({ suggestedWorkflow: "standard-fix" })]);
 
       await queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485] });
@@ -461,7 +526,12 @@ describe("the bulk queue write", () => {
     });
 
     it("holds the playbook's workflow to the registry like any named workflow", async () => {
-      queue = new BacklogQueueService(repository, registry(["docs-loop"]).service, pins.service);
+      queue = new BacklogQueueService(
+        repository,
+        registry(["docs-loop"]).service,
+        pins.service,
+        admissionStub(),
+      );
 
       await expect(
         queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485] }, LAUNCH),

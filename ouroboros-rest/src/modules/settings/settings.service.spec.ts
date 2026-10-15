@@ -27,6 +27,7 @@ function effective(enabled: boolean): WorkspaceSettingsEffective {
     action_token_ttl_minutes: 2880,
     research_start_role: "member",
     dry_run_cap_cents: 1000,
+    live_run_ceiling: 1,
     updated_at: new Date("2026-08-13T09:00:00.000Z"),
     updated_by: FIXTURE_USER.id,
   };
@@ -42,6 +43,7 @@ function stored(enabled: boolean): WorkspaceSettings {
     action_token_ttl_minutes: 2880,
     research_start_role: "member",
     dry_run_cap_cents: 1000,
+    live_run_ceiling: 1,
     updated_by: FIXTURE_USER.id,
     created_at: new Date("2026-08-11T10:20:23.114Z"),
     updated_at: new Date("2026-08-13T09:00:00.000Z"),

@@ -34,6 +34,7 @@ import type {
   RunStatus,
 } from "../db/schema";
 import { ACTIVE_RUN_STATUSES } from "../db/schema";
+import type { QueueWaiting } from "../admission/admission";
 
 /**
  * One run of the loop, as every card that draws a run draws it.
@@ -123,6 +124,18 @@ export interface QueueItemSummary {
    * item keeps its place in the queue until the run opened from it removes it.
    */
   readonly claimed: { readonly by: string; readonly until: string } | null;
+  /**
+   * When a member holding `can_approve_loops` confirmed the item for a live run (DI.4,
+   * [#1312](https://github.com/NobuData/ouroboros/issues/1312)), or `null` while nobody has.
+   */
+  readonly confirmedAt: string | null;
+  /**
+   * Why the item is not starting, or `null` when live-run admission would take it now — or a
+   * worker already holds it (DI.4). `scope: "workspace"` holds every item alike (the switch, a
+   * pause, the ceiling); `scope: "item"` is this item's own (`needs_confirmation`, …). The
+   * same evaluator decides the engine's claim, so the reason shown is the reason acted on.
+   */
+  readonly waiting: QueueWaiting | null;
 }
 
 /** *Loops live* — how many runs are in flight, and in which stage. */
@@ -336,11 +349,16 @@ export function runSummary(row: Run): RunSummary {
  * One queued issue, as the card draws it.
  *
  * @param row - The row.
+ * @param waiting - Why it is not starting, from `AdmissionService.waiting` (#1312).
  * @param now - The instant a lease is measured against (#91).
  * @returns The resource. `estMinutes` is passed through rather than coalesced — see
  *   {@link QueueItemSummary.estMinutes}.
  */
-export function queueItemSummary(row: QueueItem, now: Date = new Date()): QueueItemSummary {
+export function queueItemSummary(
+  row: QueueItem,
+  waiting: QueueWaiting | null,
+  now: Date = new Date(),
+): QueueItemSummary {
   const held =
     row.claimed_by !== null && row.claim_expires_at !== null && row.claim_expires_at > now;
 
@@ -360,6 +378,8 @@ export function queueItemSummary(row: QueueItem, now: Date = new Date()): QueueI
       held && row.claimed_by !== null && row.claim_expires_at !== null
         ? { by: row.claimed_by, until: at(row.claim_expires_at) }
         : null,
+    confirmedAt: row.confirmed_at === null ? null : at(row.confirmed_at),
+    waiting,
   };
 }
 

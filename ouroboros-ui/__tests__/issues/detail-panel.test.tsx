@@ -6,6 +6,9 @@ import type { IssueDetail } from "@/app/api/backlog";
 import { QUEUE_ISSUE_CODES, type QueueOutcome, queuedToast } from "@/app/issues/bar";
 import { UNREACHABLE_ISSUE } from "@/app/issues/detail-poll";
 import {
+  CONFIRM_LIVE_DONE,
+  CONFIRM_LIVE_LABEL,
+  CONFIRM_LIVE_ROLE_REASON,
   BREAKDOWN_EYEBROW,
   CLOSE_PANEL_LABEL,
   FILES_LABEL,
@@ -69,10 +72,12 @@ import { settle } from "../helpers/settle";
 /** What the two actions answer, per case. */
 const queueUnder = vi.fn();
 const reestimateIssue = vi.fn();
+const confirmForLive = vi.fn();
 
 vi.mock("@/app/issues/head-actions", () => ({
   queueUnder: (ids: readonly string[], workflow: string | null) => queueUnder(ids, workflow),
   reestimateIssue: (id: string) => reestimateIssue(id),
+  confirmForLive: (id: string) => confirmForLive(id),
   queueSelected: vi.fn(),
   reestimateAll: vi.fn(),
   syncBacklog: vi.fn(),
@@ -188,6 +193,9 @@ beforeEach(() => {
   reestimateIssue
     .mockReset()
     .mockResolvedValue({ ok: true, message: REESTIMATE_ONE_STARTED } satisfies HeadOutcome);
+  confirmForLive
+    .mockReset()
+    .mockResolvedValue({ ok: true, message: CONFIRM_LIVE_DONE } satisfies HeadOutcome);
 });
 
 afterEach(() => {
@@ -614,5 +622,50 @@ describe("both palettes", () => {
     const [light, dark] = renderInBothPalettes(panel());
 
     expect(maskIds(light!)).toBe(maskIds(dark!));
+  });
+});
+
+describe("a queued issue that waits (#1312)", () => {
+  /** `#485`, queued and waiting for the reason given. */
+  function waitingOn(reason: "needs_confirmation" | "policy_not_dry_run"): IssueDetail {
+    return issueDetail({
+      issue: {
+        queued: true,
+        queueItemId: "7a1c0b90-0000-4000-8000-000000000485",
+        queueWaiting: { reason, scope: "item" },
+      },
+    });
+  }
+
+  it("says why, and offers Confirm for live run when that is what it waits for", async () => {
+    answers = [fresh(waitingOn("needs_confirmation"))];
+    await opened(485);
+
+    expect(within(region()).getByRole("note")).toHaveAttribute("data-reason", "needs_confirmation");
+    fireEvent.click(action(CONFIRM_LIVE_LABEL));
+    await settle();
+
+    expect(confirmForLive).toHaveBeenCalledExactlyOnceWith("7a1c0b90-0000-4000-8000-000000000485");
+    expect(within(region()).getByText(CONFIRM_LIVE_DONE)).toBeInTheDocument();
+  });
+
+  it("offers no confirmation for a reason confirming cannot fix", async () => {
+    answers = [fresh(waitingOn("policy_not_dry_run"))];
+    await opened(485);
+
+    expect(within(region()).getByRole("note")).toHaveAttribute("data-reason", "policy_not_dry_run");
+    expect(within(region()).queryByRole("button", { name: CONFIRM_LIVE_LABEL })).toBeNull();
+  });
+
+  it("explains rather than offers for a reader who may not contribute", async () => {
+    answers = [fresh(waitingOn("needs_confirmation"))];
+    await opened(485, { mayContribute: false });
+
+    const confirm = action(CONFIRM_LIVE_LABEL);
+    expect(confirm).toHaveAttribute("title", CONFIRM_LIVE_ROLE_REASON);
+    fireEvent.click(confirm);
+    await settle();
+
+    expect(confirmForLive).not.toHaveBeenCalled();
   });
 });

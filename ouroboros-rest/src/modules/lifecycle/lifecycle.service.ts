@@ -17,7 +17,7 @@
  * cannot express: the confirmations, the typed name, the step-up, and which moves exist.
  */
 
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import type { Transaction } from "kysely";
 
 import { AuditService } from "../audit/audit.service";
@@ -31,8 +31,10 @@ import {
   type AuditDetail,
 } from "../audit/audit.events";
 import type { AuthRequest } from "../auth/http";
+import { ControlsService } from "../controls/controls.service";
 import type { Principal } from "../auth/principal";
 import type { Database, WorkspaceLifecycleState } from "../db/schema";
+import { describeForLog } from "../errors/failure";
 import { GithubCredentialsService } from "../github/github.credentials.service";
 import {
   STEP_UP_MAX_AGE_SECONDS,
@@ -91,7 +93,13 @@ export class LifecycleService {
     private readonly github: GithubCredentialsService,
     private readonly stepUp: StepUpService,
     @Inject(WORKSPACE_AUTH_STORE) private readonly auth: WorkspaceAuthStore,
+    @Optional()
+    @Inject(ControlsService)
+    private readonly controls?: Pick<ControlsService, "pauseLiveRuns" | "resumeLiveRuns">,
   ) {}
+
+  /** Where a fan-out that failed is reported. */
+  private readonly logger = new Logger(LifecycleService.name);
 
   /**
    * Where the workspace stands, with the app-wide banner.
@@ -334,6 +342,39 @@ export class LifecycleService {
       at,
       detail: detail,
     });
+
+    await this.reachLiveRuns(organizationId, detail.from, detail.to);
+  }
+
+  /**
+   * Carry a move to the live runs already executing (DI.4, #1312). Leaving `active` asks each to
+   * pause at its next safe boundary — new claims already stop, by admission, the moment the
+   * state is written; returning to `active` resumes the runs that leaving paused, and no others.
+   *
+   * After the move commits, and never failing it: the workspace's state is the decision, and a
+   * run that missed its control is still held by the engine's own boundary check.
+   *
+   * @param organizationId - The workspace.
+   * @param from - The state before the move.
+   * @param to - The state after it.
+   */
+  private async reachLiveRuns(organizationId: string, from: unknown, to: unknown): Promise<void> {
+    if (this.controls === undefined || from === to) {
+      return;
+    }
+
+    try {
+      if (from === "active") {
+        await this.controls.pauseLiveRuns(organizationId);
+      } else if (to === "active") {
+        await this.controls.resumeLiveRuns(organizationId);
+      }
+    } catch (error) {
+      this.logger.error(
+        `Workspace ${organizationId} moved ${String(from)} → ${String(to)}; its live runs were not all reached.`,
+        describeForLog(error),
+      );
+    }
   }
 
   /**
