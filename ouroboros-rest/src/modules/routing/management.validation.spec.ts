@@ -6,6 +6,7 @@ import {
   batchProblems,
   floorTooDeepMessage,
   hopAliasField,
+  newRouteTag,
   unknownAliasMessage,
 } from "./management.validation";
 
@@ -28,6 +29,9 @@ const TASK_KINDS = new Set(["analyze", "implement", "docs", "review"]);
 /** Every one of them is routed, unless a test narrows it. */
 const ROUTED = new Set(TASK_KINDS);
 
+/** The routes' tags. */
+const TAGS = new Set(["analyze-primary", "implement-primary", "docs-primary", "review-primary"]);
+
 /** The mockup's aliases. `second-opinion` is in no chain, which is why it is in the registry. */
 const ALIASES = new Set(["coder-max", "coder-fallback", "local-docs", "second-opinion"]);
 
@@ -48,7 +52,7 @@ function request(overrides: Partial<DesiredRoute> = {}): DesiredRoute {
 
 /** Run the checks against the standard workspace. */
 function problems(...requests: DesiredRoute[]) {
-  return batchProblems(requests, TASK_KINDS, ROUTED, ALIASES);
+  return batchProblems(requests, TASK_KINDS, ROUTED, ALIASES, TAGS);
 }
 
 describe("a batch this workspace can save", () => {
@@ -77,15 +81,24 @@ describe("a task kind the save cannot land on", () => {
     });
   });
 
-  it("is a different complaint when the kind exists and nothing routes it", () => {
-    // The two send somebody to different places: one is a typo, and the other is a matrix row
-    // with an empty cell that needs a route before it can be saved onto. V016 makes the second
-    // possible on purpose — `routes.task_kind_id` is unique, not mandatory.
+  it("is no complaint when the kind exists and nothing routes it — the save creates its route", () => {
+    // #1748: the empty matrix cell is where a first route is made, so the copilot's kind (and
+    // any other a workspace has without a route) can be routed from Model routing.
     const routed = new Set(["implement"]);
+    const tags = new Set(["implement-primary"]);
 
-    expect(batchProblems([request({ taskKind: "docs" })], TASK_KINDS, routed, ALIASES)).toEqual({
-      docs: { [TASK_KIND_FIELD]: [SAVE_MESSAGES.noRouteForTaskKind] },
-    });
+    expect(
+      batchProblems([request({ taskKind: "docs" })], TASK_KINDS, routed, ALIASES, tags),
+    ).toEqual({});
+  });
+
+  it("is a complaint when the route it would create takes a tag another route has", () => {
+    const routed = new Set(["implement"]);
+    const tags = new Set(["implement-primary", "docs-primary"]);
+
+    expect(
+      batchProblems([request({ taskKind: "docs" })], TASK_KINDS, routed, ALIASES, tags),
+    ).toEqual({ docs: { [TASK_KIND_FIELD]: [SAVE_MESSAGES.newRouteTagTaken] } });
   });
 
   it("refuses a kind named twice rather than letting the later entry win", () => {
@@ -196,5 +209,19 @@ describe("a batch with several things wrong", () => {
     expect(Object.keys(collected.implement).sort()).toEqual(
       [TASK_KIND_FIELD, hopAliasField(0)].sort(),
     );
+  });
+});
+
+describe("the tag a first route is created under", () => {
+  it("is the seed's convention, <kind>-primary", () => {
+    expect(newRouteTag("copilot-workflow")).toBe("copilot-workflow-primary");
+  });
+
+  it("stays within V016's 64-character tag bound and its shape", () => {
+    const tag = newRouteTag(`${"a".repeat(55)}-bcdefgh`);
+
+    expect(tag.length).toBeLessThanOrEqual(64);
+    expect(tag).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
+    expect(tag.endsWith("-primary")).toBe(true);
   });
 });

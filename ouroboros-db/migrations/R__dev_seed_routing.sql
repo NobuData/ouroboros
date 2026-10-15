@@ -221,8 +221,8 @@
 --   |-----------------------------|-----------------------------------------------------|
 --   | `model_aliases` (9)         | `5eed000f-0000-4000-8000-` + ordinal 1–9            |
 --   | `task_kinds` (10)           | `5eed0010-0000-4000-8000-` + matrix position 1–10   |
---   | `routes` (10)               | `5eed0011-0000-4000-8000-` + its kind's position    |
---   | `route_hops` (21)           | `5eed0012-0000-4000-8000-` + ordinal 1–21           |
+--   | `routes` (11)               | `5eed0011-0000-4000-8000-` + its kind's position    |
+--   | `route_hops` (22)           | `5eed0012-0000-4000-8000-` + ordinal 1–22           |
 --   | `escalation_rules` (3)      | `5eed0013-0000-4000-8000-` + card position 1–3      |
 --   | `token_usage` (370)         | `5eed0014-0000-4000-8000-` + ordinal 1–370          |
 --   | `model_prices` (1)          | `5eed0016-0000-4000-8000-` + 1                      |
@@ -245,7 +245,8 @@
 -- carry a **deferrable** unique key, and PostgreSQL refuses a targetless `on conflict` on
 -- such a table outright — the same accommodation #68 makes for `queue_items`.
 --
--- **The personal workspace is deliberately empty.** `kensuenobu` gets no alias, no task kind,
+-- **The personal workspace is deliberately empty.** `kensuenobu` gets no alias, no task kind
+-- of this file's (only V142's `copilot-workflow`, which every workspace has, with no route),
 -- no route and no usage row, exactly as it gets no run and no provider — which is what makes
 -- it the fixture AA.6 (#205) renders *"set up your first route"* against, and the one M7's
 -- em-dashes can be observed in: a workspace with no usage has no `$/run` to average and no
@@ -371,7 +372,8 @@ select ('5eed0010-0000-4000-8000-' || lpad(seed.sort_order::text, 12, '0'))::uui
 on conflict (id) do nothing;
 
 -- ---------------------------------------------------------------------------
--- The ten routes — one per kind, and the inspector's three policies.
+-- The eleven routes — one per kind (the copilot's kind is V142's, #1748), and the inspector's
+-- three policies.
 --
 -- `tag` is the name the matrix prints as a pill and the inspector's title —
 -- `implement-primary`. V016 makes it unique per workspace, so it is what a URL and an
@@ -379,7 +381,7 @@ on conflict (id) do nothing;
 --
 -- **Only `implement-primary` carries a cost cap**, because it is the only route the mockup
 -- opens: its inspector reads *Max cost per run* `$2.50`, which is `max_cost_cents_per_run =
--- 250`. The other nine are null — *no cap configured* — rather than 250 repeated ten
+-- 250`. The other ten are null — *no cap configured* — rather than 250 repeated ten
 -- times, because a policy nobody set is not a policy, and a seed that quietly applies one
 -- everywhere would make the inspector's field look like a display of a default.
 --
@@ -406,7 +408,9 @@ select ('5eed0011-0000-4000-8000-' || lpad(seed.sort_order::text, 12, '0'))::uui
          (7, 'docs',       'docs-primary',       null),
          (8, 'commit-msg', 'commitmsg-primary',  null),
          (9, 'research-plan', 'researchplan-primary', null),
-         (10, 'research',  'research-primary',   null)
+         (10, 'research',  'research-primary',   null),
+         -- The copilot's kind is V142's (every workspace has it), not a row of this file's.
+         (11, 'copilot-workflow', 'copilot-primary', null)
        ) as seed (sort_order, kind_name, tag, max_cost_cents)
   join ouroboros.organization org on org."slug" = 'acme-robotics'
   join ouroboros.task_kinds kind
@@ -416,13 +420,13 @@ select ('5eed0011-0000-4000-8000-' || lpad(seed.sort_order::text, 12, '0'))::uui
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
--- The twenty-one hops — the chains, in order.
+-- The twenty-two hops — the chains, in order.
 --
 -- The matrix shows a route's first two hops as its *Primary model* and *Fallback* columns;
 -- the inspector shows the whole chain, which is why `implement-primary` has three and the
--- other nine have two. `position` is dense from 1 within each route, which V016 makes a
--- correctness rule rather than a convention — `floor_hop_index` is a statement about a hop
--- *number*, and a chain numbered 1, 2, 5 makes *"fail instead of degrading below fallback
+-- others have two, except `copilot-primary`'s one (`coder-std`, the alias #564's suites
+-- expect). `position` is dense from 1 within each route, which V016 makes a correctness rule
+-- rather than a convention — `floor_hop_index` is a statement about a hop *number*, and a chain numbered 1, 2, 5 makes *"fail instead of degrading below fallback
 -- 2"* mean nothing.
 --
 -- **`note` is written where the mockup writes prose and left null where it composes one.**
@@ -433,7 +437,7 @@ on conflict do nothing;
 -- `health.latency_ms` measured minutes ago. Storing that sentence would freeze a latency
 -- into a note and make the chip and the hop disagree the first time a check ran.
 --
--- The other nine routes have no notes at all, which is the ordinary state — V016 made the
+-- The other routes have no notes at all, which is the ordinary state — V016 made the
 -- column nullable for it, and a seed that invented a sentence per hop would be putting words
 -- in an operator's mouth.
 -- ---------------------------------------------------------------------------
@@ -463,7 +467,8 @@ select ('5eed0012-0000-4000-8000-' || lpad(seed.n::text, 12, '0'))::uuid,
          (18, 'researchplan-primary', 1, 'sizer',       null),
          (19, 'researchplan-primary', 2, 'local-free',  null),
          (20, 'research-primary',  1, 'researcher-long-ctx', null),
-         (21, 'research-primary',  2, 'coder-std',      null)
+         (21, 'research-primary',  2, 'coder-std',      null),
+         (22, 'copilot-primary',   1, 'coder-std',      null)
        ) as seed (n, tag, position, alias, note)
   join ouroboros.organization org on org."slug" = 'acme-robotics'
   join ouroboros.routes route

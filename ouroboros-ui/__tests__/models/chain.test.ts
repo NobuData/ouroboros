@@ -36,6 +36,9 @@ import {
   swapMenuLabel,
   toSaveInput,
   type ChainDraft,
+  newRoute,
+  newRouteNote,
+  newRouteTag,
 } from "@/app/models/chain";
 import { matrixRows } from "@/app/models/matrix";
 
@@ -98,13 +101,28 @@ describe("the baseline", () => {
     expect(implement().hops.map((hop) => hop.id)).toEqual(["implement:1", "implement:2", "implement:3"]);
   });
 
-  it("answers null for a kind with no route, and leaves it out of the list", () => {
+  it("answers null for a kind with no route, and carries an empty baseline for it in the list (#1748)", () => {
     const kinds = seededTaskKinds();
     const unrouted = { ...kinds[0], route: null };
 
     expect(savedRoute(unrouted)).toBeNull();
-    expect(savedRoutes([unrouted, ...kinds.slice(1)]).map((route) => route.kind)).not.toContain("analyze");
+    expect(savedRoutes([unrouted, ...kinds.slice(1)])[0]).toEqual(newRoute("analyze"));
     expect(savedRoutes(kinds)).toHaveLength(8);
+  });
+
+  it("gives a new route the service's defaults and the tag the save will create", () => {
+    expect(newRoute("copilot-workflow")).toEqual({
+      kind: "copilot-workflow",
+      tag: "copilot-workflow-primary",
+      hops: [],
+      allowLocalFallback: true,
+      floorHopIndex: null,
+      maxCostCentsPerRun: null,
+    });
+    expect(newRouteTag(`${"a".repeat(60)}-bc`).length).toBeLessThanOrEqual(64);
+    expect(newRouteNote("copilot-workflow")).toBe(
+      "No route yet. Add a hop and save routes to create copilot-workflow-primary.",
+    );
   });
 
   it("keeps an added hop's id apart from every saved one", () => {

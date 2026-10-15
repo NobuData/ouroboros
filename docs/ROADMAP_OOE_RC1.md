@@ -53,13 +53,14 @@ in RC1; they are candidates for the release candidates after it. The Studio moun
 
 ## Progress
 
-**1 of 44 ordered issues is closed.** Every issue number in this document links to its
+**10 of 44 ordered issues are closed.** Every issue number in this document links to its
 GitHub issue, and a **✅** in front of one means that issue is **closed**.
 
 | Status | Phases | Issues |
 |--------|--------|-------:|
-| ✅ **Complete** | — | **1** |
-| ⬜ **Not started** | R0, R1, R2, R3, R4, R5, R6, R7 | **0** of 44 |
+| ✅ **Complete** | — | **10** |
+| 🟡 **In progress** | R0, R1, R2, R7 | **10** of 29 |
+| ⬜ **Not started** | R3, R4, R5, R6 | **0** of 15 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
 > them with `gh issue list --milestone RC1 --state closed --limit 100 --json number`
@@ -236,14 +237,14 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 1 | **DG.1** | [#1299](https://github.com/NobuData/ouroboros/issues/1299) | Promote the execution chain — labels, milestones, amendments & roadmap write-back | .github, docs | S | — |
+| 1 | **DG.1** | ✅ [#1299](https://github.com/NobuData/ouroboros/issues/1299) | Promote the execution chain — labels, milestones, amendments & roadmap write-back | .github, docs | S | — |
 | 2 | **AB.1** | [#207](https://github.com/NobuData/ouroboros/issues/207) | Invocation-gateway requirements handoff | docs | S | DG.1 |
-| 3 | **DH.4** | [#1304](https://github.com/NobuData/ouroboros/issues/1304) | Provider-terms guard — invocation eligibility per adapter & credential kind | ouroboros-rest, ouroboros-ui, ouroboros-docs, docs | S | — |
+| 3 | **DH.4** | ✅ [#1304](https://github.com/NobuData/ouroboros/issues/1304) | Provider-terms guard — invocation eligibility per adapter & credential kind | ouroboros-rest, ouroboros-ui, ouroboros-docs, docs | S | — |
 | 4 | **AF.1** | [#234](https://github.com/NobuData/ouroboros/issues/234) | Invocation gateway ADR | docs | M | AB.1, DH.4 |
-| 5 | **DH.1** | [#1302](https://github.com/NobuData/ouroboros/issues/1302) | `StageExecutor` SPI & the harness option for the execution ADR | ouroboros-engine, docs | M | — |
+| 5 | **DH.1** | ✅ [#1302](https://github.com/NobuData/ouroboros/issues/1302) | `StageExecutor` SPI & the harness option for the execution ADR | ouroboros-engine, docs | M | — |
 | 6 | **T.1** | [#155](https://github.com/NobuData/ouroboros/issues/155) | Execution engine ADR (custom vs Temporal vs Hatchet) | docs, ouroboros-engine | M | DG.1, DH.1 |
-| 7 | **DG.2** | [#1300](https://github.com/NobuData/ouroboros/issues/1300) | Loop capability report | ouroboros-rest, ouroboros-docs | S | — |
-| 8 | **DL.1** | [#1320](https://github.com/NobuData/ouroboros/issues/1320) | Public sample repository & issue set | new repository, docs | M | — |
+| 7 | **DG.2** | ✅ [#1300](https://github.com/NobuData/ouroboros/issues/1300) | Loop capability report | ouroboros-rest, ouroboros-docs | S | — |
+| 8 | **DL.1** | ✅ [#1320](https://github.com/NobuData/ouroboros/issues/1320) | Public sample repository & issue set | new repository, docs | M | — |
 
 ## R1 — A model is invoked
 
@@ -263,9 +264,9 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 9 | **6.5** | [#54](https://github.com/NobuData/ouroboros/issues/54) | Task execution skeleton (queue & worker model) | ouroboros-engine | L | DG.1 |
 | 10 | **AF.2** | [#235](https://github.com/NobuData/ouroboros/issues/235) | Chain executor implementation | ouroboros-rest, ouroboros-engine | L | AF.1, DH.4 |
-| 11 | **DH.2** | [#1303](https://github.com/NobuData/ouroboros/issues/1303) | Anthropic Messages-format facade over the chain executor | ouroboros-rest | L | AF.1, AF.2 |
-| 12 | **DJ.1** | [#1313](https://github.com/NobuData/ouroboros/issues/1313) | Data origin on runs and what derives from them | ouroboros-db, ouroboros-rest | M | — |
-| 13 | **DG.3** | [#1301](https://github.com/NobuData/ouroboros/issues/1301) | Capability-driven loop copy — retire "simulated" in the product | ouroboros-ui, ouroboros-docs | M | DG.2 |
+| 11 | **DH.2** | ✅ [#1303](https://github.com/NobuData/ouroboros/issues/1303) | Anthropic Messages-format facade over the chain executor | ouroboros-rest | L | AF.1, AF.2 |
+| 12 | **DJ.1** | ✅ [#1313](https://github.com/NobuData/ouroboros/issues/1313) | Data origin on runs and what derives from them | ouroboros-db, ouroboros-rest | M | — |
+| 13 | **DG.3** | ✅ [#1301](https://github.com/NobuData/ouroboros/issues/1301) | Capability-driven loop copy — retire "simulated" in the product | ouroboros-ui, ouroboros-docs | M | DG.2 |
 
 ## R2 — What the gateway lights up is correct
 
@@ -283,7 +284,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 14 | *bug* | [#1748](https://github.com/NobuData/ouroboros/issues/1748) | No copilot-workflow task kind or route exists, so the copilot cannot be routed | ouroboros-db, ouroboros-rest | — | — |
+| 14 | *bug* | ✅ [#1748](https://github.com/NobuData/ouroboros/issues/1748) | No copilot-workflow task kind or route exists, so the copilot cannot be routed | ouroboros-db, ouroboros-rest | — | — |
 | 15 | *bug* | [#1744](https://github.com/NobuData/ouroboros/issues/1744) | Copilot drafts on a blank workflow cannot be published or dry-run | ouroboros-rest | — | — |
 | 16 | *bug* | [#1751](https://github.com/NobuData/ouroboros/issues/1751) | Canvas and code saves record no draft operation, so provenance, the draft rev and edit counts ignore human edits | ouroboros-rest | — | — |
 | 17 | *bug* | [#1745](https://github.com/NobuData/ouroboros/issues/1745) | The promote dialog never reports an unknown model alias | ouroboros-rest | — | — |

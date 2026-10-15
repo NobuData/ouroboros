@@ -82,7 +82,8 @@ export function RoutePolicy({ kind }: RoutePolicyProps) {
   const draft = editor.draft(kind);
   const noteId = useId();
 
-  if (draft === null) return null;
+  // A route that does not exist yet has no policy to set until it has a hop (#1748).
+  if (draft === null || draft.hops.length === 0) return null;
 
   // Every control is inert while the batch is in flight, and for a role that may not edit —
   // most consequential reason first, and one reason for all of them.

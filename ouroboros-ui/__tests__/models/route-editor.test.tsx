@@ -511,3 +511,55 @@ describe("the policy edits join the batch (#203)", () => {
     expect(result.current.draft("implement")?.allowLocalFallback).toBe(true);
   });
 });
+
+describe("a kind with no route (#1748)", () => {
+  /** The seed with `docs` unrouted — what every workspace's copilot kind looks like. */
+  const UNROUTED = savedRoutes(
+    seededTaskKinds().map((kind) => (kind.name === "docs" ? { ...kind, route: null } : kind)),
+  );
+
+  function unroutedEditor() {
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <RouteEditorProvider editable routes={UNROUTED}>
+        {children}
+      </RouteEditorProvider>
+    );
+
+    return renderHook(() => useRouteEditor(), { wrapper });
+  }
+
+  it("starts from an empty chain that is nothing to save", () => {
+    const { result } = unroutedEditor();
+
+    expect(result.current.draft("docs")?.hops).toEqual([]);
+    expect(result.current.pending).toBe(0);
+  });
+
+  it("keeps no edit to a route that still has no hop", () => {
+    const { result } = unroutedEditor();
+
+    act(() => {
+      result.current.allowLocal("docs", false);
+    });
+
+    expect(result.current.pending).toBe(0);
+  });
+
+  it("sends a first hop as the route the save creates", async () => {
+    const { result } = unroutedEditor();
+
+    act(() => {
+      result.current.add("docs", CODER_STD);
+    });
+    expect(result.current.pending).toBe(1);
+
+    await act(async () => {
+      result.current.save();
+    });
+
+    const batch = saveRoutes.mock.calls.at(-1)?.[0] as { taskKind: string; hops: { alias: string }[] }[];
+    expect(batch).toEqual([
+      expect.objectContaining({ taskKind: "docs", hops: [expect.objectContaining({ alias: "coder-std" })] }),
+    ]);
+  });
+});

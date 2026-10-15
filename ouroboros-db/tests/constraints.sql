@@ -4252,8 +4252,35 @@ update ouroboros.task_kinds
 
 select pg_temp.must_hold(
   (select array_agg(name order by sort_order) = array['implement', 'docs', 'test-gen']
-     from ouroboros.task_kinds where organization_id = 'org-matrix'),
+     from ouroboros.task_kinds
+    where organization_id = 'org-matrix'
+      -- V142's row, which every workspace is given (#1748); it sits at 1000.
+      and name <> 'copilot-workflow'),
   'a one-statement matrix reorder succeeds inside a transaction');
+
+-- --- V142: every workspace has the copilot's task kind (#1748) ----------------
+--
+-- A workspace created after the migration is given `copilot-workflow` by the trigger, clear of
+-- any matrix it builds, and seeding it twice gives it nothing more.
+select pg_temp.must_hold(
+  (select count(*) = 1 and min(sort_order) = 1000
+     from ouroboros.task_kinds
+    where organization_id = 'org-matrix' and name = 'copilot-workflow'),
+  'a new workspace is given the copilot-workflow task kind, at sort order 1000');
+
+select ouroboros.copilot_task_kind_seed('org-matrix');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.task_kinds
+    where organization_id = 'org-matrix' and name = 'copilot-workflow'),
+  'seeding the copilot task kind again leaves the one it has');
+
+select pg_temp.must_hold(
+  (select not exists (select 1 from ouroboros.routes route
+                        join ouroboros.task_kinds kind on kind.id = route.task_kind_id
+                       where kind.organization_id = 'org-matrix'
+                         and kind.name = 'copilot-workflow')),
+  'the kind comes with no route — a route needs a hop, and a hop needs an alias the workspace chose');
 
 update ouroboros.task_kinds
    set sort_order = case sort_order when 5 then 7 when 7 then 5 end

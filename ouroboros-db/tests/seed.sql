@@ -1114,8 +1114,8 @@ select pg_temp.must_hold(
 -- R__dev_seed_routing.sql — mockup 06, surface for surface.
 --
 -- The fourth seed's rows: nine `model_aliases` (`5eed000f…`), ten `task_kinds`
--- (`5eed0010…`), their ten `routes` (`5eed0011…`), twenty-one ordered `route_hops`
--- (`5eed0012…`), three `escalation_rules` (`5eed0013…`) and the 370 routed `token_usage`
+-- (`5eed0010…`), their ten `routes` plus the copilot's (`5eed0011…`), twenty-two ordered
+-- `route_hops` (`5eed0012…`), three `escalation_rules` (`5eed0013…`) and the 370 routed `token_usage`
 -- calls (`5eed0014…`) every number on the screen is aggregated out of.
 --
 -- **What this section is really testing is decision M7.** Every assertion below that names a
@@ -1283,7 +1283,7 @@ select pg_temp.must_hold(
 -- correctness rule rather than a convention: `floor_hop_index` is a statement about a hop
 -- *number*, and a chain numbered 1, 2, 5 makes "below fallback 2" mean nothing.
 select pg_temp.must_hold(
-  (select count(*) = 10 from (
+  (select count(*) = 11 from (
      select route.id
        from ouroboros.routes route
        join ouroboros.organization org on org."id" = route.organization_id
@@ -1336,14 +1336,38 @@ select pg_temp.must_hold(
   'implement-primary allows local fallback, sets no floor, and caps a run at $2.50');
 
 select pg_temp.must_hold(
-  (select count(*) = 9 from ouroboros.routes route
+  (select count(*) = 10 from ouroboros.routes route
      join ouroboros.organization org on org."id" = route.organization_id
     where org."slug" = 'acme-robotics'
       and route.tag <> 'implement-primary'
       and route.allow_local_fallback
       and route.floor_hop_index is null
       and route.max_cost_cents_per_run is null),
-  'the other nine routes allow local fallback and set neither a floor nor a cap');
+  'the other ten routes allow local fallback and set neither a floor nor a cap');
+
+-- The copilot's route (#1748): V142 gives every workspace the `copilot-workflow` kind, and this
+-- workspace's is routed — one hop, `coder-std` — so a seeded copilot can reach a model.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.task_kinds kind
+     join ouroboros.organization org on org."id" = kind.organization_id
+     join ouroboros.routes route on route.task_kind_id = kind.id and route.tag = 'copilot-primary'
+     join ouroboros.route_hops hop on hop.route_id = route.id and hop.position = 1
+     join ouroboros.model_aliases alias on alias.id = hop.model_alias_id and alias.alias = 'coder-std'
+    where org."slug" = 'acme-robotics'
+      and kind.name = 'copilot-workflow'
+      and not exists (select 1 from ouroboros.route_hops other
+                       where other.route_id = route.id and other.position > 1)),
+  'the copilot-workflow kind routes through copilot-primary, one hop, coder-std');
+
+-- …and every workspace has exactly one copilot kind, whether or not it is routed.
+select pg_temp.must_hold(
+  (select bool_and(copilot_kinds = 1) from (
+     select count(kind.id) filter (where kind.name = 'copilot-workflow') as copilot_kinds
+       from ouroboros.organization org
+       left join ouroboros.task_kinds kind on kind.organization_id = org."id"
+      group by org."id"
+   ) as per_workspace),
+  'every workspace has the copilot-workflow task kind (V142)');
 
 -- ---------------------------------------------------------------------------
 -- The escalation rules — `3 active`, and their sentences character for character.
@@ -1541,6 +1565,8 @@ select pg_temp.must_hold(
      select 1 from ouroboros.task_kinds k
        join ouroboros.organization o on o."id" = k.organization_id
       where o."slug" in ('kensuenobu', 'acme-labs')
+        -- V142's copilot kind is every workspace's; it has no route here (#1748).
+        and k.name <> 'copilot-workflow'
      union all
      select 1 from ouroboros.routes r
        join ouroboros.organization o on o."id" = r.organization_id
@@ -1697,6 +1723,7 @@ select pg_temp.must_hold(
 -- be amended to these; what is asserted is that every count, the unbound row's zero
 -- included, falls out of the view and is stored nowhere. #622's research routes move three of
 -- them again — `coder-std` 5, `local-free` 3, `sizer` 4 — and add `researcher-long-ctx` at 1.
+-- #1748's copilot route takes `coder-std` to 6.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
   (select array_agg(refs.ref_label order by refs.kind, refs.ref_label)
@@ -1708,7 +1735,7 @@ select pg_temp.must_hold(
 
 select pg_temp.must_hold(
   (select array_agg(counted.line order by counted.line) = array[
-            'coder-fallback=2', 'coder-max=4', 'coder-std=5', 'gpt5-experiments=0',
+            'coder-fallback=2', 'coder-max=4', 'coder-std=6', 'gpt5-experiments=0',
             'local-docs=3', 'local-free=3', 'researcher-long-ctx=1', 'second-opinion=1',
             'sizer=4']
      from (select alias.alias || '=' || count(refs.ref_id) as line
@@ -1827,12 +1854,12 @@ select pg_temp.must_hold(
 -- ---------------------------------------------------------------------------
 -- The id convention, for the routing seed's own rows.
 --
--- 425 rows under eight prefixes — an alias, a kind, a route, a hop, a rule, a routed call, a
+-- 427 rows under eight prefixes — an alias, a kind, a route, a hop, a rule, a routed call, a
 -- price override and a resolution are each recognisable on sight in a log or a URL — so a
 -- row added later with a generated id is caught here rather than by nobody.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
-  (select count(*) = 425 from (
+  (select count(*) = 427 from (
      select id from ouroboros.model_aliases    where id::text like '5eed000f-0000-4000-8000-%'
      union all
      select id from ouroboros.task_kinds       where id::text like '5eed0010-0000-4000-8000-%'
@@ -1850,7 +1877,7 @@ select pg_temp.must_hold(
      select id from ouroboros.resolution_snapshots
                                                where id::text like '5eed0017-0000-4000-8000-%'
    ) as seeded),
-  'the routing seed created its 425 prefixed rows and no 426th');
+  'the routing seed created its 427 prefixed rows and no 428th');
 
 
 -- ===========================================================================

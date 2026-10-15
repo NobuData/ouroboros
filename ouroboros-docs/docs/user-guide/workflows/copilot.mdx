@@ -232,8 +232,10 @@ stay readable.
   [Providers](../../administration/providers.mdx) through **See Providers**, where providers
   are connected and checked. The status line is left out if the providers cannot be read.
 - **The copilot has no model route** — the workspace has no route for the Copilot's task kind,
-  `copilot-workflow`, or the route does not resolve. The notice gives the reason and links to
-  **Model routing**, where an owner or admin adds the route.
+  `copilot-workflow`, or the route does not resolve. Every workspace has the task kind; its
+  route is created the first time an owner or admin saves a chain for it. The notice gives the
+  reason and links to **Model routing** — see
+  [Routing a task kind that has no route](../models.mdx#routing-a-task-kind-that-has-no-route).
 
 ### When a reply fails
 

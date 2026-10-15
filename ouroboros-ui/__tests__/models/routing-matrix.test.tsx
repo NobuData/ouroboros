@@ -1,7 +1,14 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CHANGED, NO_ROUTE_NOTE, editChainHint, savedRoutes } from "@/app/models/chain";
+import {
+  ADD_HOP,
+  CHANGED,
+  NO_ROUTE_NOTE,
+  editChainHint,
+  newRouteNote,
+  savedRoutes,
+} from "@/app/models/chain";
 import { ALLOW_LOCAL_LABEL, OPEN_REGISTRY, SIMULATE_ROUTE, hopHealthIndex } from "@/app/models/inspector";
 import { REGISTRY_PATH } from "@/app/paths";
 import {
@@ -484,15 +491,35 @@ describe("the route card", () => {
     expect(within(rowFor("implement")).getByText(CHANGED)).toBeInTheDocument();
   });
 
-  it("says so for a selected kind that has no route", () => {
-    const rows = matrixRows(
-      seededTaskKinds().map((kind) => (kind.name === "docs" ? { ...kind, route: null } : kind)),
-      seededRules(),
+  it("offers an owner or admin an empty chain to start a selected kind's route on (#1748)", () => {
+    const kinds = seededTaskKinds().map((kind) =>
+      kind.name === "docs" ? { ...kind, route: null } : kind,
     );
-    matrix({ rows, selected: "docs" });
+    render(
+      <RouteEditorProvider editable routes={savedRoutes(kinds)}>
+        <RoutingMatrix rows={matrixRows(kinds, seededRules())} selected="docs" />
+      </RouteEditorProvider>,
+    );
 
     expect(screen.getByRole("heading", { level: 2, name: "Route" })).toBeInTheDocument();
+    expect(screen.getByText(newRouteNote("docs"))).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: ADD_HOP })).toBeInTheDocument();
+    // No policy to set until the route has a hop.
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+
+  it("tells a reader who may not edit who can create the route", () => {
+    const kinds = seededTaskKinds().map((kind) =>
+      kind.name === "docs" ? { ...kind, route: null } : kind,
+    );
+    render(
+      <RouteEditorProvider editable={false} routes={savedRoutes(kinds)}>
+        <RoutingMatrix rows={matrixRows(kinds, seededRules())} selected="docs" />
+      </RouteEditorProvider>,
+    );
+
     expect(screen.getByText(NO_ROUTE_NOTE)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: ADD_HOP })).not.toBeInTheDocument();
   });
 });
 

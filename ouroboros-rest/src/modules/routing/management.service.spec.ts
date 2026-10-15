@@ -14,6 +14,7 @@ import {
   unknownRuleTargetMessage,
 } from "./management.service";
 import { SAVE_MESSAGES } from "./management.validation";
+import { HOPS_KEY } from "./management.diff";
 import {
   CHECK_VIOLATION,
   RULE_SORT_ORDER_CONSTRAINT,
@@ -177,6 +178,7 @@ describe("the routing management service", () => {
       ruleGrammar: jest.fn().mockResolvedValue({ when: true, then: true }),
       writeRoutePolicy: jest.fn().mockResolvedValue(undefined),
       replaceChain: jest.fn().mockResolvedValue(undefined),
+      createRoute: jest.fn().mockResolvedValue("0f0f0000-0000-4000-8000-00000000d0c5"),
       recordRevision: jest.fn().mockResolvedValue("a1000000-0000-4000-8000-000000000001"),
       insertRule: jest.fn().mockResolvedValue(STORED_RULE),
       updateRule: jest.fn().mockResolvedValue(STORED_RULE),
@@ -283,15 +285,68 @@ describe("the routing management service", () => {
     it("refuses the whole batch when one route in it is wrong", async () => {
       // The atomicity criterion from the client's side: the good route in this batch is not
       // committed either, so a corrected batch can simply be re-sent.
-      const batch = [body(), body({ taskKind: "docs" })];
+      const batch = [body({ floorHopIndex: 1 }), body({ taskKind: "triage" })];
 
       await expect(service.save(WORKSPACE, ACTOR, batch)).rejects.toMatchObject({
         response: {
-          details: { routes: { docs: { taskKind: [SAVE_MESSAGES.noRouteForTaskKind] } } },
+          details: { routes: { triage: { taskKind: [SAVE_MESSAGES.unknownTaskKind] } } },
         },
       });
 
       expect(entered).toBe(0);
+    });
+
+    it("refuses to create a route whose tag another route already has", async () => {
+      management.routes.mockResolvedValue([{ ...ROUTES[0], tag: "docs-primary" }]);
+
+      await expect(
+        service.save(WORKSPACE, ACTOR, [body({ taskKind: "docs" })]),
+      ).rejects.toMatchObject({
+        response: {
+          details: { routes: { docs: { taskKind: [SAVE_MESSAGES.newRouteTagTaken] } } },
+        },
+      });
+
+      expect(management.createRoute).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("a kind with no route (#1748)", () => {
+    it("creates its route, then writes its policy and chain onto it, in one transaction", async () => {
+      await service.save(WORKSPACE, ACTOR, [body({ taskKind: "docs" })]);
+
+      expect(entered).toBe(1);
+      expect(management.createRoute).toHaveBeenCalledWith(
+        expect.anything(),
+        WORKSPACE,
+        "3ee0-2",
+        "docs-primary",
+        ACTOR,
+      );
+      expect(management.writeRoutePolicy).toHaveBeenCalledWith(
+        expect.anything(),
+        WORKSPACE,
+        "0f0f0000-0000-4000-8000-00000000d0c5",
+        expect.objectContaining({ taskKind: "docs" }),
+        ACTOR,
+      );
+      expect(management.replaceChain).toHaveBeenCalledWith(
+        expect.anything(),
+        WORKSPACE,
+        "0f0f0000-0000-4000-8000-00000000d0c5",
+        expect.any(Array),
+      );
+    });
+
+    it("records the whole chain as added in the revision", async () => {
+      await service.save(WORKSPACE, ACTOR, [body({ taskKind: "docs" })]);
+
+      const diff = management.recordRevision.mock.calls[0][3] as {
+        routes: { task_kind: string; changes: Record<string, unknown> }[];
+      };
+
+      expect(diff.routes[0].task_kind).toBe("docs");
+      expect(diff.routes[0].changes).toHaveProperty(HOPS_KEY);
     });
   });
 

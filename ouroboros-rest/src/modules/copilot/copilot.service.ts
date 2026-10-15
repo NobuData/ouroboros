@@ -38,6 +38,7 @@ import { dryRunInProgress } from "../dry-runs/dry-runs.errors";
 import { DryRunSuggestionsService } from "../dry-runs/suggestions.service";
 import { ENGINE_DRY_RUN_TIMEOUT_MS } from "../engine/engine.dryruns";
 import { INVOCATION_GATEWAY_AVAILABLE } from "../internal/invoke.contract";
+import { COPILOT_TASK_KIND } from "../routing/copilot.task-kind";
 import { ResolutionService } from "../routing/resolution.service";
 import { draftEtag } from "../workflows/draft.etag";
 import { workflowNotFound } from "../workflows/workflows.errors";
@@ -80,7 +81,7 @@ import type { CopilotStreamEvent } from "./copilot.stream";
 import type { DslCatalogue } from "../workflows/dsl.references";
 
 /** The task kind the copilot is routed as — a `task_kinds.name` a workspace routes like any other. */
-export const COPILOT_TASK_KIND = "copilot-workflow";
+export { COPILOT_TASK_KIND };
 
 /** The reply could not be made because nothing routes the copilot in this workspace. */
 export const COPILOT_UNROUTED = "copilot_unrouted";

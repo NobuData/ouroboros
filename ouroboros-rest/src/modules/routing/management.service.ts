@@ -54,12 +54,13 @@ import {
 } from "./management.repository";
 import {
   chainsByRoute,
+  newRouteState,
   toRouteState,
   type DesiredRoute,
   type ManagedHopRow,
   type ManagedRouteRow,
 } from "./management.rows";
-import { batchProblems } from "./management.validation";
+import { batchProblems, newRouteTag } from "./management.validation";
 import {
   EMPTY_ROUTE_STATS,
   toAliasResource,
@@ -222,6 +223,7 @@ export class RoutingManagementService {
       new Set(kinds.map((kind) => kind.name)),
       new Set(routesByKind.keys()),
       new Set(aliasIds.keys()),
+      new Set(routes.map((route) => route.tag)),
     );
 
     if (Object.keys(problems).length > 0) {
@@ -229,16 +231,28 @@ export class RoutingManagementService {
     }
 
     const chains = chainsByRoute(hops);
+    const kindIds = new Map(kinds.map((kind) => [kind.name, kind.id]));
     const plans = desired.map((request) => {
-      // Non-null by construction: `batchProblems` files `noRouteForTaskKind` for every kind
-      // without one, and a batch carrying that complaint threw above.
-      const route = routesByKind.get(request.taskKind) as ManagedRouteRow;
+      const route = routesByKind.get(request.taskKind);
 
-      return {
-        request,
-        routeId: route.route_id,
-        entry: routeEntry(toRouteState(route, chains.get(route.route_id) ?? []), request),
-      };
+      // A kind with no route has one created by this save (#1748): its "before" is a route
+      // with V016's defaults and no chain, so the revision records the whole chain as added.
+      return route === undefined
+        ? {
+            request,
+            routeId: null,
+            create: {
+              taskKindId: kindIds.get(request.taskKind) as string,
+              tag: newRouteTag(request.taskKind),
+            },
+            entry: routeEntry(newRouteState(request.taskKind), request),
+          }
+        : {
+            request,
+            routeId: route.route_id,
+            create: null,
+            entry: routeEntry(toRouteState(route, chains.get(route.route_id) ?? []), request),
+          };
     });
 
     const diff = revisionDiff(plans.flatMap((plan) => (plan.entry === null ? [] : [plan.entry])));
@@ -252,10 +266,21 @@ export class RoutingManagementService {
                 continue;
               }
 
+              const routeId =
+                plan.create === null
+                  ? plan.routeId
+                  : await this.management.createRoute(
+                      trx,
+                      organizationId,
+                      plan.create.taskKindId,
+                      plan.create.tag,
+                      actorId,
+                    );
+
               await this.management.writeRoutePolicy(
                 trx,
                 organizationId,
-                plan.routeId,
+                routeId,
                 plan.request,
                 actorId,
               );
@@ -267,7 +292,7 @@ export class RoutingManagementService {
                 await this.management.replaceChain(
                   trx,
                   organizationId,
-                  plan.routeId,
+                  routeId,
                   resolveHops(plan.request, aliasIds),
                 );
               }

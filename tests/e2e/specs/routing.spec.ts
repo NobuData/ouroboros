@@ -377,8 +377,15 @@ test.describe("the routing screen draws the seeded workspace", () => {
 
       await expect(aliases.nth(0), `${where} primary`).toContainText(expected.primary.alias);
       await expect(aliases.nth(0), `${where} primary`).toContainText(expected.primary.resolution);
-      await expect(aliases.nth(1), `${where} fallback`).toContainText(expected.fallback.alias);
-      await expect(aliases.nth(1), `${where} fallback`).toContainText(expected.fallback.resolution);
+      if (expected.fallback === null) {
+        // A one-hop chain — the copilot's (#1748) — has no fallback pill to draw.
+        await expect(aliases, `${where} fallback`).toHaveCount(1);
+      } else {
+        await expect(aliases.nth(1), `${where} fallback`).toContainText(expected.fallback.alias);
+        await expect(aliases.nth(1), `${where} fallback`).toContainText(
+          expected.fallback.resolution,
+        );
+      }
 
       // The computed columns — an average and a median over the ledger, not a stored figure.
       // `$0.00` on the two local rows is priced-at-nothing and is drawn; the em-dash is what

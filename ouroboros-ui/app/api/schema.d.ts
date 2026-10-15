@@ -5502,8 +5502,13 @@ export interface paths {
          *
          *     The page's editing model is **staged, not live**: drag a chain into order, swap an alias,
          *     set a floor and a cap — all client-side — then commit the whole matrix in one request.
-         *     `200` rather than `201`, because nothing is created; routes exist, and this is what they
-         *     now say.
+         *     `200` rather than `201`: a save is what the matrix now says, not a new resource.
+         *
+         *     **A task kind with no route gets one** ([#1748](https://github.com/NobuData/ouroboros/issues/1748)).
+         *     Saving a chain onto the empty matrix cell — the copilot's `copilot-workflow` kind in a new
+         *     workspace, say — creates its route under the tag `<taskKind>-primary`, with the policy and
+         *     chain the body sends, and the revision records the whole chain as added. Refused with
+         *     `route_save_invalid` only when another route already has that tag.
          *
          *     **The batch is atomic, and every refusal is decided before anything is written.** A body
          *     naming an alias this workspace does not have, or a floor deeper than the chain sent with
@@ -57859,8 +57864,8 @@ export interface operations {
              *     `details` is keyed by field path, `routes.0.hops` and the like.
              *
              *     `route_save_invalid` — the body is well formed and this workspace cannot honour it:
-             *     a task kind it does not have, a task kind with no route to save onto, the same kind
-             *     twice in one batch, an alias it has never bound, or a floor deeper than the chain
+             *     a task kind it does not have, a task kind with no route whose new route's tag
+             *     (`<taskKind>-primary`) is already taken, the same kind twice in one batch, an alias it has never bound, or a floor deeper than the chain
              *     sent with it. `details.routes` is keyed by **task kind**, so each complaint maps
              *     back to the row of the matrix that produced it.
              */
@@ -58066,8 +58071,8 @@ export interface operations {
             };
             /**
              * @description `validation_failed` or `route_save_invalid`, exactly as the batch operation
-             *     documents them — including for a task kind this workspace does not have, or has no
-             *     route for. Nothing was saved.
+             *     documents them — including for a task kind this workspace does not have. A kind
+             *     with no route has one created, as the batch operation describes. Nothing was saved.
              */
             422: {
                 headers: {
