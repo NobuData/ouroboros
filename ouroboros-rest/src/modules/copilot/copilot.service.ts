@@ -41,6 +41,7 @@ import { INVOCATION_GATEWAY_AVAILABLE } from "../internal/invoke.contract";
 import { COPILOT_TASK_KIND } from "../routing/copilot.task-kind";
 import { ResolutionService } from "../routing/resolution.service";
 import { draftEtag } from "../workflows/draft.etag";
+import { validateWorkflowDocument } from "../workflows/dsl.validator";
 import { workflowNotFound } from "../workflows/workflows.errors";
 import { CopilotContextService } from "./copilot.context";
 import type { CopilotAnswerBody, StartCopilotSessionBody } from "./copilot.dto";
@@ -257,9 +258,12 @@ export class CopilotService implements OnModuleInit {
    * What **Promote to workflow** would publish — the version, the guards with where each is
    * really enforced, and the references that do not resolve (CE.1, #565).
    *
-   * A read, and an honest one: it does **not** run the engine's validation, so `blocked` is
-   * only what is known without asking — no draft, or a pinned alias the publish gate refuses.
-   * The publish still validates, and its `422 workflow_definition_invalid` is the authority.
+   * A read, and an honest one: it runs the publish gate's first stage — the in-process DSL
+   * validator, over the registry's aliases (#1745) — but **not** the engine's validation, so
+   * `blocked` is what can be known without asking: no draft, a document the validator refuses
+   * (no ending, an unreachable stage, a schema error), or a pinned alias the registry does not
+   * hold. The publish still runs both stages, and its `422 workflow_definition_invalid` is the
+   * authority.
    *
    * @param organizationId - The workspace.
    * @param workflowId - The workflow.
@@ -268,18 +272,20 @@ export class CopilotService implements OnModuleInit {
    */
   async promotion(organizationId: string, workflowId: string): Promise<CopilotPromotionResource> {
     const workflow = await this.requireWorkflow(organizationId, workflowId);
-    const [draft, highest, session, spendCapCents, { catalogue }] = await Promise.all([
+    const [draft, highest, session, spendCapCents, catalogue] = await Promise.all([
       this.copilots.draftOf(workflow.id),
       this.copilots.highestVersion(workflow.id),
       this.latestSession(organizationId, workflow.id),
       this.suggestions.draftSpendGuardCents(organizationId, workflow.id),
-      this.grounding.grounding(organizationId),
+      this.grounding.promotionCatalogue(organizationId),
     ]);
 
     const definition = draft?.definition ?? null;
     const version = (highest ?? 0) + 1;
     const references = unresolvedReferences(definition, catalogue).map(promotionReference);
-    const reasons = blockedReasons(draft !== undefined, references);
+    const findings =
+      draft === undefined ? [] : validateWorkflowDocument(definition, { catalogue }).errors;
+    const reasons = blockedReasons(draft !== undefined, references, findings);
 
     return {
       workflow: { id: workflow.id, slug: workflow.slug, name: workflow.name },

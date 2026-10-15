@@ -63,6 +63,11 @@ A guard marked **Not enforced on real runs yet** is not a protection once publis
 confirmation says so. To cap what real runs spend, use the
 [spend guard](../../administration/policies.mdx) in the workspace's policies.
 
+Most problems are reported before you press it: a draft with no ending, a stage nothing
+leads to, a setting the workflow language refuses, or a model alias the workspace does not
+have makes **This draft cannot be promoted yet**, with a sentence for each — see
+[Unresolved references](#unresolved-references). The publish then runs one more check.
+
 If the checks find problems, nothing is published. Each finding names the stage it is about;
 choose one to go to that stage's row in [the draft](#the-draft), which is outlined and brought
 into view.
@@ -81,6 +86,11 @@ alias. The page says so **before** you press Promote, under the buttons:
 - **N unresolved references are flagged** — the draft names a **skill** or a **task route**
   that does not exist yet. These do not stop a promote; they are published as they are, and a
   stage that depends on one will not do its work until it exists.
+
+**This draft cannot be promoted yet** also lists what the draft is missing as a workflow —
+for example *A workflow needs at least one terminal node; no path through this one ends.*, or
+a stage nothing leads to, named as ``Stage `orphan`: …``. Fix it in the conversation or on the
+canvas, and the list updates.
 
 A workflow with no draft has nothing to promote, and the button says that too.
 

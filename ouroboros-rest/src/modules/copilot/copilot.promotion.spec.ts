@@ -1,4 +1,4 @@
-import { DslWarningCode } from "../workflows/dsl.errors";
+import { DslErrorCode, DslWarningCode } from "../workflows/dsl.errors";
 import {
   NO_DRAFT_REASON,
   SPEND_GUARD_ENFORCED_BY,
@@ -174,8 +174,37 @@ describe("why a promotion is blocked", () => {
     ]);
   });
 
+  it("is, on the validator's findings — each naming its stage when it has one (#1745)", () => {
+    const findings = [
+      {
+        code: DslErrorCode.DOCUMENT_NO_TERMINAL,
+        path: "/nodes",
+        message: "A workflow needs at least one terminal node; no path through this one ends.",
+      },
+      {
+        code: DslErrorCode.NODE_UNREACHABLE,
+        path: "/nodes/2",
+        node: "orphan",
+        message: "Nothing reaches this stage from the trigger.",
+      },
+    ];
+
+    expect(blockedReasons(true, [advisory, blocking], findings)).toEqual([
+      "A workflow needs at least one terminal node; no path through this one ends.",
+      "Stage `orphan`: Nothing reaches this stage from the trigger.",
+      "Stage `review-second` pins the alias `second-opinion`, which is not in this workspace's registry — publishing refuses it.",
+    ]);
+  });
+
   it("is, with no draft — and that is the whole reason", () => {
     expect(blockedReasons(false, [blocking])).toEqual([NO_DRAFT_REASON]);
+    expect(
+      blockedReasons(
+        false,
+        [],
+        [{ code: DslErrorCode.DOCUMENT_NO_TRIGGER, path: "/nodes", message: "x" }],
+      ),
+    ).toEqual([NO_DRAFT_REASON]);
     expect(NO_DRAFT_REASON).toBe("There is no draft to promote.");
   });
 });

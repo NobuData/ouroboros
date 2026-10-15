@@ -16,7 +16,7 @@ import { WorkflowCatalogService } from "./catalog.service";
 const WORKSPACE = "acme-robotics-id";
 
 describe("the stage catalog service", () => {
-  let repository: jest.Mocked<Pick<WorkflowCatalogRepository, "taskKindNames">>;
+  let repository: jest.Mocked<Pick<WorkflowCatalogRepository, "taskKindNames" | "registryAliases">>;
   let skills: jest.Mocked<Pick<SkillsRegistryService, "catalogSlugs">>;
 
   /** A service over the given schema, or the committed one. */
@@ -29,7 +29,13 @@ describe("the stage catalog service", () => {
   }
 
   beforeEach(() => {
-    repository = { taskKindNames: jest.fn().mockResolvedValue(["analyze", "implement"]) };
+    repository = {
+      taskKindNames: jest.fn().mockResolvedValue(["analyze", "implement"]),
+      registryAliases: jest.fn().mockResolvedValue([
+        { alias: "coder-max", modelId: "claude-opus" },
+        { alias: "fast-triage", modelId: "claude-haiku" },
+      ]),
+    };
     skills = { catalogSlugs: jest.fn().mockResolvedValue(["repo-map", "zephyr-conventions"]) };
   });
 
@@ -211,5 +217,11 @@ describe("the stage catalog service", () => {
     expect(() => service({ $id: "https://ouroboros.build/schemas/workflow-dsl/v1.json" })).toThrow(
       DslSchemaError,
     );
+  });
+
+  it("names the registry's aliases for the promotion read, and leaves them out of P7's catalogue (#1745)", async () => {
+    expect(await service().aliasNames(WORKSPACE)).toEqual(["coder-max", "fast-triage"]);
+    expect(repository.registryAliases).toHaveBeenCalledWith(WORKSPACE);
+    expect(await service().dslCatalogue(WORKSPACE)).not.toHaveProperty("aliases");
   });
 });

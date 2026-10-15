@@ -26,15 +26,20 @@
  * **References** are decision W7's unresolved names, with the one thing a person about to
  * publish needs added: whether the publish gate will refuse it. `publish.gate.ts` promotes
  * `reference.unknown_alias` to a finding and leaves an unknown skill or task route advisory, so
- * `blocking` is true for exactly that code. **This read does not run the engine's validation**
- * — the publish does, and its `422 workflow_definition_invalid` findings remain the authority;
- * `blocked` here is what can be known without asking, so a dialog can refuse early and never
- * promise a publish it has not attempted.
+ * `blocking` is true for exactly that code. The read checks aliases against the workspace's
+ * registry, as the gate does (#1745).
+ *
+ * **The gate's first stage runs here too** (#1745): the in-process DSL validator, whose errors —
+ * no ending, an unreachable stage, a value the schema refuses — are blocking reasons, each naming
+ * its stage. **The engine's validation does not run** — the publish does, and its
+ * `422 workflow_definition_invalid` findings remain the authority; `blocked` here is what can be
+ * known without asking, so a dialog can refuse early and never promise a publish it has not
+ * attempted.
  *
  * Pure: `copilot.service.ts` reads the rows and this file decides what they mean.
  */
 
-import { DslWarningCode } from "../workflows/dsl.errors";
+import { DslWarningCode, type DslDiagnostic } from "../workflows/dsl.errors";
 import type { UnresolvedReference } from "./copilot.references";
 import type {
   CopilotPromotionGuardResource,
@@ -161,22 +166,41 @@ export function promotionReference(
 }
 
 /**
- * Why a promotion cannot go ahead, as far as can be known without validating.
+ * Why a promotion cannot go ahead, as far as can be known without asking the engine.
  *
  * @param draftPresent - Whether the workflow has a draft.
  * @param references - The draft's unresolved references.
- * @returns A sentence per reason — empty when nothing known stands in the way.
+ * @param findings - The DSL validator's errors over the draft (#1745) — the publish gate's first
+ *   stage. Empty when the draft validates.
+ * @returns A sentence per reason, the validator's first and in document order, then each blocking
+ *   reference — empty when nothing known stands in the way.
  */
 export function blockedReasons(
   draftPresent: boolean,
   references: readonly CopilotPromotionReferenceResource[],
+  findings: readonly DslDiagnostic[] = [],
 ): string[] {
   if (!draftPresent) return [NO_DRAFT_REASON];
 
-  return references
-    .filter((reference) => reference.blocking)
-    .map(
-      (reference) =>
-        `Stage \`${reference.node}\` pins the alias \`${reference.name}\`, which is not in this workspace's registry — publishing refuses it.`,
-    );
+  return [
+    ...findings.map(findingReason),
+    ...references
+      .filter((reference) => reference.blocking)
+      .map(
+        (reference) =>
+          `Stage \`${reference.node}\` pins the alias \`${reference.name}\`, which is not in this workspace's registry — publishing refuses it.`,
+      ),
+  ];
+}
+
+/**
+ * One validator error as the dialog's sentence: the stage it is about, when it is about one.
+ *
+ * @param finding - The error.
+ * @returns The sentence.
+ */
+function findingReason(finding: DslDiagnostic): string {
+  return finding.node === undefined
+    ? finding.message
+    : `Stage \`${finding.node}\`: ${finding.message}`;
 }

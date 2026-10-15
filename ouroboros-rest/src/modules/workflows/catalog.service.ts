@@ -106,6 +106,18 @@ export class WorkflowCatalogService {
   }
 
   /**
+   * The model aliases this workspace's registry holds, by name — what a pinned model must name
+   * for the publish gate to accept it (`publish.gate.ts`, decision W7). Not part of
+   * {@link dslCatalogue}: the promotion read is the one caller that asks (#1745).
+   *
+   * @param organizationId - The workspace.
+   * @returns The aliases, in name order.
+   */
+  async aliasNames(organizationId: string): Promise<string[]> {
+    return (await this.repository.registryAliases(organizationId)).map((row) => row.alias);
+  }
+
+  /**
    * What this workspace is advised to name — the one read every answer shares.
    *
    * @param organizationId - The workspace.
