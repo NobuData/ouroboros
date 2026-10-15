@@ -58,4 +58,21 @@ export class CopilotContextService {
       catalogue,
     };
   }
+
+  /**
+   * The catalogue a promotion is read against (#1745): P7's skills and task routes, and the
+   * registry's model aliases — the names the publish gate holds a pinned model to, so an alias
+   * it will refuse is reported as blocking before **Promote** is pressed.
+   *
+   * @param organizationId - The workspace.
+   * @returns The catalogue, aliases included.
+   */
+  async promotionCatalogue(organizationId: string): Promise<DslCatalogue> {
+    const [catalogue, aliases] = await Promise.all([
+      this.catalog.dslCatalogue(organizationId),
+      this.catalog.aliasNames(organizationId),
+    ]);
+
+    return { ...catalogue, aliases };
+  }
 }

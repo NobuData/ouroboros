@@ -227,6 +227,9 @@ function harness(
       context: { catalog: [], skills: ["pr-etiquette"], tasks: ["review"], guards: [] },
       catalogue: { skills: ["pr-etiquette"], tasks: ["review"] },
     }),
+    promotionCatalogue: jest
+      .fn()
+      .mockResolvedValue({ skills: ["pr-etiquette"], tasks: ["review"], aliases: ["coder-max"] }),
   };
 
   const routing = {
@@ -448,8 +451,16 @@ describe("what a promotion would publish", () => {
     },
   };
 
-  function drafted(...nodes: unknown[]) {
-    return draftRow({ ...DRAFT_DOCUMENT, nodes: [TRIGGER_NODE, ...nodes] });
+  /** A draft of the trigger then each node, each joined to the next by a default edge. */
+  function drafted(...nodes: ({ id: string } & Record<string, unknown>)[]) {
+    const chain = [TRIGGER_NODE, ...nodes];
+    return draftRow({
+      ...DRAFT_DOCUMENT,
+      nodes: chain,
+      edges: chain
+        .slice(1)
+        .map((node, index) => ({ from: chain[index].id, to: node.id, kind: "default" })),
+    });
   }
 
   it("names the next version, the draft, the session, the guards and the references", async () => {
@@ -457,7 +468,11 @@ describe("what a promotion would publish", () => {
     copilots.workflow.mockResolvedValue(workflow({ draft_rev: 3 }));
     copilots.draftOf.mockResolvedValue(
       drafted(
-        { ...REVIEW_NODE, id: "analyze", config: { ...REVIEW_NODE.config, skill: "advisory-db" } },
+        {
+          ...REVIEW_NODE,
+          id: "analyze",
+          config: { ...REVIEW_NODE.config, mode: "skill", skill: "advisory-db" },
+        },
         {
           ...REVIEW_NODE,
           id: "exploit-verify",
@@ -559,20 +574,24 @@ describe("what a promotion would publish", () => {
     const { service, copilots, grounding } = harness();
     copilots.draftOf.mockResolvedValue(
       drafted(
-        { ...REVIEW_NODE, id: "analyze", config: { ...REVIEW_NODE.config, skill: "advisory-db" } },
+        {
+          ...REVIEW_NODE,
+          id: "analyze",
+          config: { ...REVIEW_NODE.config, mode: "skill", skill: "advisory-db" },
+        },
         {
           ...REVIEW_NODE,
           id: "review-second",
           config: { ...REVIEW_NODE.config, routing: { pinned_model: { alias: "second-opinion" } } },
         },
+        NEEDS_REVIEW,
       ),
     );
-    grounding.grounding.mockResolvedValue({
-      context: { catalog: [], skills: [], tasks: ["review"], guards: [] },
-      catalogue: { skills: ["pr-etiquette"], tasks: ["review"], aliases: ["coder-max"] },
-    });
 
     const promotion = await service.promotion(WORKSPACE, WORKFLOW);
+
+    // The registry's aliases are what the pin is checked against — the publish gate's own list.
+    expect(grounding.promotionCatalogue).toHaveBeenCalledWith(WORKSPACE);
 
     expect(promotion.references.map((reference) => [reference.code, reference.blocking])).toEqual([
       ["reference.unknown_skill", false],
@@ -581,6 +600,63 @@ describe("what a promotion would publish", () => {
     expect(promotion.blocked).toBe(true);
     expect(promotion.blockedReasons).toEqual([
       "Stage `review-second` pins the alias `second-opinion`, which is not in this workspace's registry — publishing refuses it.",
+    ]);
+  });
+
+  it("resolves a pinned alias the registry holds, and is not blocked by it", async () => {
+    const { service, copilots } = harness();
+    copilots.draftOf.mockResolvedValue(
+      drafted(
+        {
+          ...REVIEW_NODE,
+          id: "review-second",
+          config: { ...REVIEW_NODE.config, routing: { pinned_model: { alias: "coder-max" } } },
+        },
+        NEEDS_REVIEW,
+      ),
+    );
+
+    const promotion = await service.promotion(WORKSPACE, WORKFLOW);
+
+    expect(promotion.references).toEqual([]);
+    expect(promotion.blocked).toBe(false);
+  });
+
+  it("is blocked by a draft the validator refuses, naming each finding's stage (#1745)", async () => {
+    const { service, copilots } = harness();
+    // No ending, and a stage nothing reaches: the publish gate's first stage refuses both.
+    const orphan = { ...REVIEW_NODE, id: "orphan" };
+    const row = drafted(REVIEW_NODE);
+    copilots.draftOf.mockResolvedValue(
+      draftRow({ ...(row.definition as object), nodes: [TRIGGER_NODE, REVIEW_NODE, orphan] }),
+    );
+
+    const promotion = await service.promotion(WORKSPACE, WORKFLOW);
+
+    expect(promotion.blocked).toBe(true);
+    expect(promotion.blockedReasons).toEqual([
+      "A workflow needs at least one terminal node; no path through this one ends.",
+      expect.stringMatching(/^Stage `orphan`: /) as string,
+    ]);
+    // Validation is not a reference: the list W7 draws is unchanged by it.
+    expect(promotion.references).toEqual([]);
+  });
+
+  it("lists the validator's findings before an unknown alias, both blocking", async () => {
+    const { service, copilots } = harness();
+    copilots.draftOf.mockResolvedValue(
+      drafted({
+        ...REVIEW_NODE,
+        id: "review-second",
+        config: { ...REVIEW_NODE.config, routing: { pinned_model: { alias: "no-such-alias" } } },
+      }),
+    );
+
+    const promotion = await service.promotion(WORKSPACE, WORKFLOW);
+
+    expect(promotion.blockedReasons).toEqual([
+      "A workflow needs at least one terminal node; no path through this one ends.",
+      "Stage `review-second` pins the alias `no-such-alias`, which is not in this workspace's registry — publishing refuses it.",
     ]);
   });
 

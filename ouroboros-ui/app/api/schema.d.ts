@@ -7446,12 +7446,18 @@ export interface paths {
          *
          *     **References** are the draft's W7 warnings with `blocking`: `true` exactly for
          *     `reference.unknown_alias`, which the publish gate refuses; an unknown skill or task
-         *     route is advisory and publishes.
+         *     route is advisory and publishes. A pinned alias is checked against the workspace's model
+         *     registry, as the publish gate checks it
+         *     ([#1745](https://github.com/NobuData/ouroboros/issues/1745)).
          *
-         *     **`blocked` is what is known without validating** — no draft, or a blocking reference —
-         *     with a sentence each in `blockedReasons`. This read does **not** run the engine's
-         *     validation: `POST …/publish` does, and its `422 workflow_definition_invalid` findings
-         *     remain the authority. A promotion that is not `blocked` may still be refused there.
+         *     **`blocked` is what is known without asking the engine** — no draft, a document the DSL
+         *     validator refuses (the publish gate's first stage: no ending, a stage nothing reaches, a
+         *     value the schema refuses), or a blocking reference — with a sentence each in
+         *     `blockedReasons`: the validator's first, each naming its stage when it has one
+         *     (`` Stage `orphan`: … ``), then each unknown alias. This read does **not** run the
+         *     engine's validation: `POST …/publish` does, and its `422 workflow_definition_invalid`
+         *     findings remain the authority. A promotion that is not `blocked` may still be refused
+         *     there.
          *
          *     Promoting is `POST /api/v1/workflows/{id}/publish`; `draft.etag` is the draft slot's
          *     etag as every save uses it.
@@ -27521,7 +27527,7 @@ export interface components {
             guards: components["schemas"]["CopilotPromotionGuard"][];
             /** @description The draft's unresolved references, in document order. */
             references: components["schemas"]["CopilotPromotionReference"][];
-            /** @description Whether something already known stands in the way — no draft, or a blocking reference. Publishing still validates; this is not its verdict. */
+            /** @description Whether something already known stands in the way — no draft, a validator finding, or a blocking reference. Publishing still asks the engine; this is not its verdict. */
             blocked: boolean;
             /** @description A sentence per reason. Empty when `blocked` is `false`. */
             blockedReasons: string[];

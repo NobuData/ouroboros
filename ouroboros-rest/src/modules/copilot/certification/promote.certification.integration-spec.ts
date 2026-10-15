@@ -426,6 +426,25 @@ describe("copilot certification — the promote gate (#564)", () => {
       expect((await promotion(workflow.id)).publishes.version).toBe(1);
     });
 
+    it("says before the press that a draft with no ending or an unreachable stage is blocked (#1745)", async () => {
+      const noEnding = await drafted("no ending read", graph(null));
+      const unreachable = await drafted("unreachable read", [
+        ...graph(REVIEW_END),
+        toolCall("orphan", "add_stage", { node: TEST_NODE }),
+      ]);
+
+      const first = await promotion(noEnding.workflow.id);
+      expect(first.blocked).toBe(true);
+      expect(first.blockedReasons).toEqual([expect.stringMatching(/terminal node/)]);
+
+      const second = await promotion(unreachable.workflow.id);
+      expect(second.blocked).toBe(true);
+      expect(second.blockedReasons).toEqual([expect.stringMatching(/^Stage `test`: /)]);
+      // …and publish agrees with both.
+      await publish(noEnding.workflow.id).expect(422);
+      await publish(unreachable.workflow.id).expect(422);
+    });
+
     it("refuses a draft whose stage nothing leads to", async () => {
       const { workflow } = await drafted("unreachable", [
         ...graph(REVIEW_END),
@@ -645,6 +664,22 @@ describe("copilot certification — the promote gate (#564)", () => {
         "unknown alias",
         graph(REVIEW_END, implementWith({ routing: { pinned_model: { alias: "no-such-alias" } } })),
       );
+
+      // The dialog says so before the press (#1745): the read checks the pin against the
+      // workspace's registry, as the publish gate does.
+      const read = await promotion(workflow.id);
+      expect(read.references).toEqual([
+        expect.objectContaining({
+          code: "reference.unknown_alias",
+          node: "implement",
+          name: "no-such-alias",
+          blocking: true,
+        }),
+      ]);
+      expect(read.blocked).toBe(true);
+      expect(read.blockedReasons).toEqual([
+        "Stage `implement` pins the alias `no-such-alias`, which is not in this workspace's registry — publishing refuses it.",
+      ]);
 
       const refused = await publish(workflow.id).expect(422);
 

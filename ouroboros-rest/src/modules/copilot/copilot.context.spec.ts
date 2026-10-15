@@ -48,4 +48,19 @@ describe("the copilot grounding", () => {
     expect(grounding.context.tasks).toEqual([]);
     expect(grounding.context.skills).toEqual([]);
   });
+
+  it("reads a promotion against P7's catalogue and the registry's aliases (#1745)", async () => {
+    const catalog = {
+      dslCatalogue: jest.fn().mockResolvedValue({ skills: ["pr-etiquette"], tasks: ["review"] }),
+      aliasNames: jest.fn().mockResolvedValue(["coder-max"]),
+    };
+    const service = new CopilotContextService(catalog as unknown as WorkflowCatalogService);
+
+    expect(await service.promotionCatalogue("acme-robotics-id")).toEqual({
+      skills: ["pr-etiquette"],
+      tasks: ["review"],
+      aliases: ["coder-max"],
+    });
+    expect(catalog.aliasNames).toHaveBeenCalledWith("acme-robotics-id");
+  });
 });
