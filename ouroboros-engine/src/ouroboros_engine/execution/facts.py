@@ -14,8 +14,9 @@ not hold. So the interpreter judges each predicate with what it actually has:
   from the execution brief (``POST …/start``), by the dry run's own rules
   (:func:`~ouroboros_engine.workflows.predicates.evaluate_predicate`). A ticket nobody sized
   has an **unknown** effort.
-* ``checks`` is **unknown**: check results come from an infrastructure stage, and those are
-  ``infra_unavailable`` until AR.1 / #991.
+* ``checks`` is tested against this loop round's check results — a build stage's real exit
+  code on the farm, a model stage that succeeded (AJ.3, #265,
+  :mod:`~ouroboros_engine.execution.checks`). A named check with no result is **unknown**.
 
 An unknown judgement is never read as a pass. A decision does not take a branch it cannot
 judge, and a gate it cannot judge fails the run, naming why.
@@ -23,11 +24,12 @@ judge, and a gate it cannot judge fails the run, naming why.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from pydantic import BaseModel
 
+from ouroboros_engine.execution.checks import CheckFailure, CheckResult, judge_checks
 from ouroboros_engine.execution.glob import first_match
 from ouroboros_engine.workflows.contract import DryRunTicket, TicketEstimate
 from ouroboros_engine.workflows.dsl import (
@@ -82,10 +84,12 @@ class Judgement:
     Attributes:
         holds: Whether it holds, or ``None`` when the run cannot know.
         clause: Why, as a lower-case clause with no full stop.
+        failure: For a ``checks`` predicate, the first failed check's return reason.
     """
 
     holds: bool | None
     clause: str
+    failure: CheckFailure | None = None
 
 
 def _paths(predicate: PathsPredicate, changed: Sequence[str]) -> Judgement:
@@ -110,6 +114,7 @@ def judge(
     predicate: BaseModel,
     changed: Sequence[str],
     facts: TicketFacts | None = None,
+    checks: Mapping[str, CheckResult] | None = None,
 ) -> Judgement:
     """Judge one predicate with what an executing run knows.
 
@@ -117,6 +122,7 @@ def judge(
         predicate: A parsed DSL predicate.
         changed: The run's changed paths, tree-relative.
         facts: The ticket's labels and effort; ``None`` is no labels and no size.
+        checks: This loop round's check results; ``None`` is none.
 
     Returns:
         The judgement; ``holds`` is ``None`` for a fact the run does not have.
@@ -143,12 +149,9 @@ def judge(
             )
             return Judgement(holds=evaluation.holds, clause=evaluation.clause)
         case ChecksPredicate():
+            verdict = judge_checks(predicate.op, predicate.names, checks or {})
             return Judgement(
-                holds=None,
-                clause=(
-                    "check results need an infrastructure stage, and those are "
-                    "infra_unavailable"
-                ),
+                holds=verdict.holds, clause=verdict.clause, failure=verdict.failure
             )
         case _:
             raise TypeError(f"{type(predicate).__name__} is not a workflow predicate")

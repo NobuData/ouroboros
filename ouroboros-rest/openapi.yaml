@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.42.1"
+  version: "0.42.2"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -49210,6 +49210,49 @@ components:
           minItems: 1
           items:
             $ref: "#/components/schemas/RunStageAttempt"
+        build:
+          $ref: "#/components/schemas/RunStageBuild"
+
+    RunStageBuild:
+      type: object
+      title: RunStageBuild
+      description: |-
+        The farm job a build stage's latest attempt submitted (AJ.3, #265), followed to the latest
+        attempt of its retry chain — the stage's real lifecycle, and the job whose log the
+        console's *Build log* link opens (`GET /api/v1/farm/jobs/{id}/log`). Omitted for a stage
+        that submitted none.
+      additionalProperties: false
+      required: [jobId, jobNumber, phase, pool, runnerName, exitCode, ccacheHitRatePct, retries]
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        jobNumber:
+          type: integer
+          minimum: 1
+          description: The job's number within the workspace — mockup 08's `#479`.
+        phase:
+          type: string
+          enum: [waiting, offered, accepted, running, succeeded, failed, retried, canceled]
+          description: |-
+            `waiting` (queued, no runner) → `offered` → `accepted` → `running` → `succeeded` |
+            `failed` | `canceled`. A retried attempt is followed to its successor.
+        pool:
+          type: string
+        runnerName:
+          type: [string, "null"]
+          description: The runner holding or last holding it; `null` while it waits.
+        exitCode:
+          type: [integer, "null"]
+        ccacheHitRatePct:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 100
+          description: The ccache hit rate to one decimal, or `null` when nothing was measured.
+        retries:
+          type: integer
+          minimum: 0
+          description: Automatic retries the farm made before this attempt.
 
     RunStageAttempt:
       type: object

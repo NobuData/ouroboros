@@ -40,7 +40,7 @@ import type {
   RunGuardrailsLatest,
   RunStage,
 } from "../db/schema";
-import type { ReservationRow, RouteCap, RunRepository } from "./console.resources";
+import type { ReservationRow, RouteCap, RunRepository, StageBuildRow } from "./console.resources";
 import { readSpendTotals, type SpendTotals } from "./run.spend";
 
 @Injectable()
@@ -175,6 +175,63 @@ export class ConsoleRepository {
     return row === undefined
       ? undefined
       : { tag: row.tag, maxCostCentsPerRun: row.max_cost_cents_per_run };
+  }
+
+  /**
+   * Every farm job the run's build stages submitted, retries included (AJ.3, V153).
+   *
+   * @param organizationId - The run's workspace.
+   * @param run - `runs.id`.
+   * @returns The jobs, oldest first.
+   */
+  async stageBuilds(organizationId: string, run: string): Promise<StageBuildRow[]> {
+    const rows = await this.database.db
+      .selectFrom("build_jobs")
+      .innerJoin("runner_pools", (join) =>
+        join
+          .onRef("runner_pools.id", "=", "build_jobs.pool_id")
+          .onRef("runner_pools.organization_id", "=", "build_jobs.organization_id"),
+      )
+      .leftJoin("runners", "runners.id", "build_jobs.runner_id")
+      .select([
+        "build_jobs.id",
+        "build_jobs.number",
+        "build_jobs.status",
+        "build_jobs.runner_id",
+        "build_jobs.stage_key",
+        "build_jobs.stage_attempt",
+        "build_jobs.exit_code",
+        "build_jobs.ccache_stats",
+        "build_jobs.retry_of",
+        "runner_pools.name as pool_name",
+        "runners.name as runner_name",
+      ])
+      .where("build_jobs.organization_id", "=", organizationId)
+      .where("build_jobs.run_id", "=", run)
+      .where("build_jobs.stage_key", "is not", null)
+      .orderBy("build_jobs.queued_at", "asc")
+      .orderBy("build_jobs.number", "asc")
+      .execute();
+
+    return rows.flatMap((row) =>
+      row.stage_key === null || row.stage_attempt === null
+        ? []
+        : [
+            {
+              id: row.id,
+              number: row.number,
+              status: row.status,
+              runnerId: row.runner_id,
+              runnerName: row.runner_name,
+              poolName: row.pool_name,
+              stageKey: row.stage_key,
+              stageAttempt: row.stage_attempt,
+              exitCode: row.exit_code,
+              ccacheStats: row.ccache_stats,
+              retryOf: row.retry_of,
+            },
+          ],
+    );
   }
 
   /**

@@ -7,8 +7,11 @@ import {
   STAGE_PARAM,
   STEP_GLYPH,
   attemptCaption,
+  buildLogJob,
+  buildPhaseCaption,
   runStepper,
   selectedStage,
+  stepBuild,
   stepCaption,
   stepName,
   stepTone,
@@ -185,5 +188,62 @@ describe("the URL's filter", () => {
     expect(withStage("?from=build-farm&stage=plan", null)).toBe("?from=build-farm");
     expect(withStage("?stage=plan", null)).toBe("");
     expect(withStage("", "open pr")).toBe("?stage=open+pr");
+  });
+});
+
+describe("a build stage's farm job (AJ.3 #265)", () => {
+  const JOB = {
+    jobId: "5eed0028-0000-4000-8000-000000000483",
+    jobNumber: 483,
+    phase: "running",
+    pool: "pool-a",
+    runnerName: "forge-02",
+    exitCode: null,
+    ccacheHitRatePct: null,
+    retries: 0,
+  } as const;
+
+  it.each([
+    [{ phase: "waiting", runnerName: null }, "waiting for a runner in pool-a"],
+    [{ phase: "offered" }, "offered to forge-02"],
+    [{ phase: "accepted" }, "accepted by forge-02"],
+    [{ phase: "running" }, "building on forge-02"],
+    [{ phase: "succeeded", exitCode: 0, ccacheHitRatePct: 78.4 }, "exit 0 · ccache 78.4%"],
+    [{ phase: "failed", exitCode: 2 }, "exit 2"],
+    [{ phase: "canceled", runnerName: null }, "cancelled"],
+  ] as const)("says the job's real phase — %o", (over, said) => {
+    expect(buildPhaseCaption({ ...JOB, ...over })).toBe(said);
+  });
+
+  it("puts the job's number and phase under the build node, and nothing under the others", () => {
+    const view = runStepper(
+      runConsole({
+        stages: seededStages().map((stage) =>
+          stage.stageKey === "build" ? { ...stage, status: "active", build: JOB } : stage,
+        ),
+      }),
+    );
+
+    const build = view.steps.find((step) => step.key === "build")!;
+    expect(build.build).toEqual({
+      jobId: JOB.jobId,
+      number: "#483",
+      line: "#483 · building on forge-02",
+      runner: "forge-02",
+    });
+    expect(view.steps.filter((step) => step.build !== null)).toHaveLength(1);
+  });
+
+  it("hands the log sheet the job, titled for its stage", () => {
+    const build = stepBuild(JOB)!;
+
+    expect(buildLogJob(build, "Build")).toEqual({
+      id: JOB.jobId,
+      number: "#483",
+      title: "Build",
+      runner: "forge-02",
+      startedAt: null,
+    });
+    expect(stepBuild(undefined)).toBeNull();
   });
 });

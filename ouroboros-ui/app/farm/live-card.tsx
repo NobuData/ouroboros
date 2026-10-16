@@ -48,9 +48,9 @@ import { useLogStream } from "./use-log-stream";
  *
  * ### `Full log ↗` opens a sheet
  *
- * Its honest destination is mockup 10's run console, which does not exist (#309, linked by
- * #265). Until it does, the control opens `app/farm/log-sheet.tsx`: the whole log, from its
- * first byte. It is a button, not a link, for the reason the runners table's job cell is.
+ * It opens `app/farm/log-sheet.tsx`: the whole log, from its first byte — the same sheet a build
+ * stage's **Build log ↗** opens in its run's console (AJ.3, #265). It is a button, not a link,
+ * for the reason the runners table's job cell is.
  *
  * @param props.log Test seams for the log streams; the screen passes none.
  * @returns The card, as a direct child of the farm's grid.

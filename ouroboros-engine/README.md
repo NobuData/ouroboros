@@ -638,8 +638,16 @@ the run executes on a background thread (`execution/worker.py`).
   the run tree); its events become transcript batches and spend, and the change-set is the
   tree's diff at stage end. Decisions and gates are judged by `execution/facts.py`, which never
   assumes what it cannot know: `labels` and `effort` are read from the start answer, `paths`
-  from the tree's diff, but `checks` and an unsized ticket's effort are unknown, so a gate on
-  them fails the run, naming why. Infrastructure stages fail with `infra_unavailable` until AR.1.
+  from the tree's diff, `checks` from this loop round's results (`execution/checks.py`), and an
+  unsized ticket's effort — or a check that has not run — is unknown, so a gate on it fails the
+  run, naming why. **Build stages run on the farm** (AJ.3, #265, `execution/build.py`): after the
+  branch is pushed, the stage attempt is submitted through `POST /internal/runs/{id}/builds` on
+  the stage's `runner_pool` (required; the command split into argv with `shlex`), read every
+  5 s through `GET …/builds/{jobId}` with each phase written to the transcript, and cancelled
+  after ten minutes with no eligible runner. Exit 0 records a passed check and follows the
+  default edge; any other exit records a failed one (`failed_build`, or `failed_tests` for a
+  stage named test) and goes straight to the gate that requires it, whose loop edge sends the
+  run back. No pool, no runner, or a farm refusal fails the run with the reason.
   Terminals finish through `POST /internal/runs/{id}/finish`: `needs_review` → `needs_human`,
   `open_pr_automerge` → the branch is pushed (DI.2) and its draft pull request opened (DI.3),
   then `review`; `back_to_queue` → `back_to_queue`.

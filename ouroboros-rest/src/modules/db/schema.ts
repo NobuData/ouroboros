@@ -5622,6 +5622,14 @@ export interface BuildJobsTable {
    * `never`.
    */
   origin: ColumnType<DataOrigin, DataOrigin | undefined, never>;
+  /**
+   * The run's workflow stage this job builds for — `run_stages.stage_key` (V153, AJ.3
+   * [#265](https://github.com/NobuData/ouroboros/issues/265)). Null for every job no build stage
+   * submitted; copied onto an automatic retry.
+   */
+  stage_key: ColumnType<string | null, string | null | undefined, never>;
+  /** The attempt of `stage_key` it builds for, 1-based; set with `stage_key` or not at all (V153). */
+  stage_attempt: ColumnType<number | null, number | null | undefined, never>;
 }
 
 /** `build_jobs.test_selection.scope` — which re-run button asked (V061). */
@@ -9652,6 +9660,8 @@ export const TABLE_COLUMNS = {
     "test_selection",
     "log_lines",
     "origin",
+    "stage_key",
+    "stage_attempt",
   ],
   build_log_chunks: [
     "id",

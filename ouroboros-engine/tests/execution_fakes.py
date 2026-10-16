@@ -14,6 +14,11 @@ from collections.abc import AsyncIterator, Callable
 from itertools import pairwise
 from typing import Any, ClassVar
 
+from ouroboros_engine.control_plane.builds import (
+    RunBuild,
+    RunBuildCancelRequest,
+    RunBuildRequest,
+)
 from ouroboros_engine.control_plane.client import ControlPlaneError
 from ouroboros_engine.control_plane.contract import (
     AckedControl,
@@ -77,6 +82,53 @@ def fenced(current: int) -> ControlPlaneError:
     )
 
 
+def farm_job(phase: str, number: int = 483, **over: Any) -> dict[str, Any]:
+    """One read of a run's farm job, as ``ouroboros-rest`` answers it (AJ.3, #265).
+
+    Args:
+        phase: ``waiting``, ``offered``, ``accepted``, ``running``, ``succeeded``,
+            ``failed`` or ``canceled``.
+        number: The job's number; its id is derived from it.
+        **over: Any other field — ``exit_code``, ``queue_state``, ``ccache``.
+
+    Returns:
+        The job's camel-case fields.
+    """
+    finished = phase in ("succeeded", "failed")
+    job: dict[str, Any] = {
+        "jobId": f"5eed0028-0000-4000-8000-{number:012d}",
+        "number": number,
+        "phase": phase,
+        "queueState": None,
+        "pool": "pool-a",
+        "runnerName": None if phase == "waiting" else "forge-02",
+        "stageKey": "build",
+        "stageAttempt": 1,
+        "exitCode": (0 if phase == "succeeded" else 2) if finished else None,
+        "ccache": {"hits": 784, "misses": 216, "hitRatePct": 78.4}
+        if finished
+        else None,
+        "retries": 0,
+    }
+    job.update(over)
+    return job
+
+
+#: A build that is offered, runs and passes — the default round.
+PASSING_BUILD: list[dict[str, Any]] = [
+    farm_job("offered"),
+    farm_job("running"),
+    farm_job("succeeded"),
+]
+
+#: A build that is offered, runs and fails with exit 2.
+FAILING_BUILD: list[dict[str, Any]] = [
+    farm_job("offered"),
+    farm_job("running"),
+    farm_job("failed"),
+]
+
+
 def refusal(code: str, status: int = 409, **details: Any) -> ControlPlaneError:
     """Any control-plane refusal."""
     return ControlPlaneError(code, code, status, details)
@@ -128,6 +180,12 @@ class FakeControl:
         self.push_refspec: str | None = None
         #: The push grant's remote; the run's remote unless a test sets another.
         self.push_remote: str | None = None
+        #: The farm's answers per build submission (AJ.3): each submission takes the next
+        #: round (the last repeats); its first entry answers the submit and each read
+        #: answers the next, staying on the last.
+        self.build_rounds: list[list[dict[str, Any]]] = [PASSING_BUILD]
+        self._round: list[dict[str, Any]] = []
+        self._last_build: dict[str, Any] | None = None
         #: The draft pull request REST opened for the run (DI.3) — ``None`` until one is.
         self.pull_request_opened: PullRequestOpened | None = None
         #: How many pull requests REST created on the host — a re-run must not add one.
@@ -356,6 +414,51 @@ class FakeControl:
         self._fence(body.epoch)
         return PushRecorded(recorded=True)
 
+    def build(self, run: str, body: RunBuildRequest) -> RunBuild:
+        """Submit a build — the next scripted round, or a scripted refusal."""
+        del run
+        self._record("build", body)
+        self._fence(body.epoch)
+        rounds = self.build_rounds
+        self._round = [
+            dict(entry) for entry in (rounds.pop(0) if len(rounds) > 1 else rounds[0])
+        ]
+        return self._next_build(body.stage_key, body.attempt)
+
+    def read_build(self, run: str, job: str) -> RunBuild:
+        """Read the build — the round's next answer, staying on its last."""
+        del run
+        self._record("read_build", job)
+        return self._next_build(None, None)
+
+    def cancel_build(self, run: str, job: str, body: RunBuildCancelRequest) -> RunBuild:
+        """Cancel the build: it ends ``canceled`` unless it already finished."""
+        del run
+        self._record("cancel_build", (job, body))
+        self._fence(body.epoch)
+        last = self._last_build or farm_job("waiting")
+        if last["phase"] in ("succeeded", "failed"):
+            return RunBuild.model_validate(last)
+        cancelled = {
+            **last,
+            "phase": "canceled",
+            "queueState": None,
+            "runnerName": None,
+        }
+        self._round = [cancelled]
+        self._last_build = cancelled
+        return RunBuild.model_validate(cancelled)
+
+    def _next_build(self, stage_key: str | None, attempt: int | None) -> RunBuild:
+        """The round's next answer, stamped with the submission's stage."""
+        answer = self._round.pop(0) if len(self._round) > 1 else self._round[0]
+        if stage_key is not None:
+            for entry in self._round:
+                entry.update(stageKey=stage_key, stageAttempt=attempt)
+            answer = {**answer, "stageKey": stage_key, "stageAttempt": attempt}
+        self._last_build = answer
+        return RunBuild.model_validate(answer)
+
     def pull_request(self, run: str, body: PullRequestRequest) -> PullRequestOpened:
         """Open the run's draft pull request once, then answer it — or a scripted refusal."""
         del run
@@ -464,14 +567,21 @@ def llm(
     }
 
 
-def infra(node_id: str) -> dict[str, Any]:
-    """An infrastructure stage."""
+def infra(
+    node_id: str, *, pool: str | None = "pool-a", command: str | None = None
+) -> dict[str, Any]:
+    """An infrastructure stage — a build on ``pool`` unless a test leaves it without one."""
+    config: dict[str, Any] = {}
+    if pool is not None:
+        config["runner_pool"] = pool
+    if command is not None:
+        config["command"] = command
     return {
         "id": node_id,
         "type": "infra",
         "title": node_id,
         "position": _AT,
-        "config": {},
+        "config": config,
     }
 
 
@@ -651,6 +761,11 @@ class Blocking(Failing):
                 break
             await asyncio.sleep(0.01)
         self._outcome = StageOutcome(status="aborted")
+
+
+async def instant(_seconds: float) -> None:
+    """A sleep that returns at once — a build's polling, without waiting."""
+    await asyncio.sleep(0)
 
 
 async def never(_seconds: float) -> None:

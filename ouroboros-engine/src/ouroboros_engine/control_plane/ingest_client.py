@@ -42,6 +42,11 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from ouroboros_engine.control_plane.builds import (
+    RunBuild,
+    RunBuildCancelRequest,
+    RunBuildRequest,
+)
 from ouroboros_engine.control_plane.client import ControlPlaneClient
 from ouroboros_engine.control_plane.contract import AckedControl, ControlsFetched
 from ouroboros_engine.control_plane.execution import (
@@ -349,6 +354,46 @@ class IngestClient:
         """
         answer = self._transport.send(self._client.push_result_request(run, body))
         return self._client.read_push_recorded(answer.status, answer.body)
+
+    def build(self, run: str, body: RunBuildRequest) -> RunBuild:
+        """Submit a build stage's job to the farm (AJ.3, #265).
+
+        Args:
+            run: The run.
+            body: The stage and attempt, the pool, the pushed commit and the command, keyed.
+
+        Returns:
+            The job.
+        """
+        answer = self._transport.send(self._client.build_request(run, body))
+        return self._client.read_build(answer.status, answer.body)
+
+    def read_build(self, run: str, job: str) -> RunBuild:
+        """Read where one of the run's builds is now (AJ.3, #265).
+
+        Args:
+            run: The run.
+            job: The job the submission answered.
+
+        Returns:
+            The latest attempt of its retry chain.
+        """
+        answer = self._transport.send(self._client.build_read_request(run, job))
+        return self._client.read_build(answer.status, answer.body)
+
+    def cancel_build(self, run: str, job: str, body: RunBuildCancelRequest) -> RunBuild:
+        """Give up on one of the run's builds (AJ.3, #265).
+
+        Args:
+            run: The run.
+            job: The job.
+            body: The key, the epoch and why.
+
+        Returns:
+            The latest attempt — ``canceled`` unless it had already finished.
+        """
+        answer = self._transport.send(self._client.build_cancel_request(run, job, body))
+        return self._client.read_build(answer.status, answer.body)
 
     def pull_request(self, run: str, body: PullRequestRequest) -> PullRequestOpened:
         """Open the run branch's draft pull request, or read the one already open (DI.3).

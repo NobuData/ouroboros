@@ -162,7 +162,12 @@ class HttpTransport:
             raise ValueError(
                 f"the control plane is reached over http or https, not {outgoing.url!r}"
             )
-        data = json.dumps(outgoing.json).encode("utf-8")
+        # A read carries no body: its question is its URL.
+        data = (
+            None
+            if outgoing.method == "GET"
+            else json.dumps(outgoing.json).encode("utf-8")
+        )
         prepared = request.Request(  # noqa: S310 - the URL is the configured control plane's
             outgoing.url,
             data=data,

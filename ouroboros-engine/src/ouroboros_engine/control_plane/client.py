@@ -54,6 +54,15 @@ from urllib.parse import urljoin
 
 from pydantic import BaseModel
 
+from ouroboros_engine.control_plane.builds import (
+    RUN_BUILD_CANCEL_PATH,
+    RUN_BUILD_PATH,
+    RUN_BUILDS_PATH,
+    RunBuild,
+    RunBuildAnswer,
+    RunBuildCancelRequest,
+    RunBuildRequest,
+)
 from ouroboros_engine.control_plane.contract import (
     EVENT_MODELS,
     INTERNAL_KEY_HEADER,
@@ -843,6 +852,68 @@ class ControlPlaneClient:
             The request to send.
         """
         return self._write("POST", RUN_PUSH_RESULT_PATH.format(id=run), body)
+
+    def build_request(self, run: str, body: RunBuildRequest) -> ControlPlaneRequest:
+        """Build the request that submits a build stage's job to the farm (AJ.3, #265).
+
+        Args:
+            run: The run.
+            body: The stage and attempt, the pool, the pushed commit and the command.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", RUN_BUILDS_PATH.format(id=run), body)
+
+    def build_read_request(self, run: str, job: str) -> ControlPlaneRequest:
+        """Build the request that reads where one of the run's builds is now.
+
+        Args:
+            run: The run.
+            job: The job the submission answered.
+
+        Returns:
+            The request to send. A read carries no body.
+        """
+        return ControlPlaneRequest(
+            method="GET",
+            url=self._url(RUN_BUILD_PATH.format(id=run, job=job)),
+            headers=self._headers(JSON_MEDIA_TYPE),
+            json={},
+        )
+
+    def build_cancel_request(
+        self, run: str, job: str, body: RunBuildCancelRequest
+    ) -> ControlPlaneRequest:
+        """Build the request that gives up on one of the run's builds.
+
+        Args:
+            run: The run.
+            job: The job.
+            body: The key, the epoch and why.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", RUN_BUILD_CANCEL_PATH.format(id=run, job=job), body)
+
+    def read_build(self, status: int, body: dict[str, Any]) -> RunBuild:
+        """Read the answer of any build route.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            The build, at the latest attempt of its retry chain.
+
+        Raises:
+            ControlPlaneError: On any status but ``200`` —
+                :data:`~ouroboros_engine.control_plane.builds.BUILD_NO_ELIGIBLE_RUNNER`, a
+                farm refusal (``farm_pool_not_found``, ``farm_pool_disabled``,
+                ``farm_command_required``), or the run no longer this worker's.
+        """
+        return _read(status, body, RunBuildAnswer).job
 
     def read_push_recorded(self, status: int, body: dict[str, Any]) -> PushRecorded:
         """Read the answer to a push result.

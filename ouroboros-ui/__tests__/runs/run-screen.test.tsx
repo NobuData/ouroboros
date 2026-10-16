@@ -8,7 +8,10 @@ import { CONTROLS_LABEL } from "@/app/runs/controls";
 import type { ControlsPollOptions } from "@/app/runs/controls-poll";
 import type { TranscriptStreamOptions } from "@/app/runs/transcript-stream";
 import { BUILD_FARM_ORIGIN, DASHBOARD_ORIGIN, type RunOrigin } from "@/app/runs/origin";
+import { JOB_SHEET_CLOSE } from "@/app/farm/runners";
+import type { LogStreamOptions } from "@/app/farm/log-stream";
 import { RunScreen } from "@/app/runs/run-screen";
+import { BUILD_LOG_LINK } from "@/app/runs/stepper";
 import {
   BREADCRUMB_LABEL,
   NO_BRANCH,
@@ -28,6 +31,7 @@ import {
   runConsole,
   seededStages,
 } from "../helpers/runs";
+import { buildLog, logAnswer } from "../helpers/farm";
 import { answerCapabilities, deploymentOff, live, withOff } from "../helpers/loop-capabilities";
 import { LIVE_EXECUTION_DOCS } from "@/app/loop/capability-copy";
 
@@ -447,6 +451,64 @@ describe("the stage timeline (#311)", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Plan/ }));
     expect(window.location.search).toBe("?from=build-farm");
     expect(screen.getByRole("button", { name: /^Plan/ })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("opens a build stage's farm log over the console, and closes it again (AJ.3 #265)", async () => {
+    const JOB_ID = "5eed0028-0000-4000-8000-000000000483";
+    const asked: string[] = [];
+    const log: LogStreamOptions = {
+      read: (jobId, after) => {
+        asked.push(jobId);
+        return Promise.resolve(
+          logAnswer(
+            buildLog("west build: 412 files\n", { jobId, offset: after, live: false, end: 22, nextOffset: 22 }),
+          ),
+        );
+      },
+      visible: () => true,
+    };
+    const stages = seededStages().map((stage) =>
+      stage.stageKey === "build"
+        ? {
+            ...stage,
+            status: "active" as const,
+            build: {
+              jobId: JOB_ID,
+              jobNumber: 483,
+              phase: "running" as const,
+              pool: "pool-a",
+              runnerName: "forge-02",
+              exitCode: null,
+              ccacheHitRatePct: null,
+              retries: 0,
+            },
+          }
+        : stage,
+    );
+    render(
+      <RunScreen
+        controlsPoll={QUIET_CONTROLS}
+        id={SEEDED_RUN_ID}
+        initial={runConsole({ stages })}
+        initialError={null}
+        log={log}
+        origin={DASHBOARD_ORIGIN}
+        poll={QUIET}
+        transcript={QUIET_TRANSCRIPT}
+      />,
+    );
+
+    const timeline = screen.getByRole("region", { name: "Stage timeline" });
+    expect(within(timeline).getByText("#483 · building on forge-02")).toBeInTheDocument();
+    fireEvent.click(within(timeline).getByRole("button", { name: BUILD_LOG_LINK }));
+
+    const sheet = await screen.findByRole("dialog", { name: "Build job #483 — full log" });
+    expect(within(sheet).getByRole("heading", { name: "Build" })).toBeInTheDocument();
+    expect(await within(sheet).findByText(/west build: 412 files/)).toBeInTheDocument();
+    expect(asked[0]).toBe(JOB_ID);
+
+    fireEvent.click(within(sheet).getByRole("button", { name: JOB_SHEET_CLOSE }));
+    expect(screen.queryByRole("dialog", { name: "Build job #483 — full log" })).toBeNull();
   });
 
   it("opens filtered when the address names a stage — the view is shareable", () => {

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest (internal)",
-    "version": "0.42.1",
+    "version": "0.42.2",
     "summary": "What ouroboros-engine may ask the control plane for — and what it is never given.",
     "description": "The **engine-facing** surface of\n[Ouroboros](https://github.com/NobuData/ouroboros)' communications layer. Two\noperations, one caller, and one idea holding both of them together — roadmap decision\n**P3**, [#224](https://github.com/NobuData/ouroboros/issues/224):\n\n> **A worker never holds a provider credential.**\n\nMockup 07's page subline promises something weaker — *\"keys never leave the control\nplane — workers only ever see short-lived tokens\"* — and this document is where the\nfirst clause is made literal and the second is **improved on**. There is no token. A\nfifteen-minute credential is still a credential: it genuinely reaches the worker,\nrevocation is bounded only by its TTL, and the audit surface widens to every process\nthat ever held one. It is also, for most LLM providers, fiction — almost none support\nderiving short-lived scoped keys, so such a token would in practice be a full API key\nwith a timer bolted on by us.\n\nSo the two operations divide the world:\n\n| Operation | For | Hands over |\n|---|---|---|\n| `POST /internal/llm/invoke` | every **cloud** provider | nothing — the control plane makes the call and streams back the answer |\n| `POST /internal/credentials/lease` | **local** providers only | an address, TTL-bounded and audited |\n\nThe exception is narrow and is not a compromise. An engine worker calling an Ollama\ndaemon on the same box gains nothing from proxying its traffic through this service,\nbecause there is no key on that path to protect — so it is told the address and nothing\nelse, and a lease naming a cloud provider is a `403` by policy, enforced here rather\nthan trusted to the caller.\n\n**What is built.** The lease and the proxy are both implemented. The proxy was\n*specified* by this document first (AD.3) so that AF.1\n([#234](https://github.com/NobuData/ouroboros/issues/234)) could choose an executor\n**against** it, and AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235))\nimplemented it — a custom chain executor inside this service, with no sidecar.\n\n**Authentication is the #51 pattern, in the other direction.** Every operation requires\n`X-Ouro-Internal-Key`, carrying `OURO_ENGINE_SHARED_SECRET` — the same header and the\nsame variable `ouroboros-rest` sends when *it* calls the engine\n([#51](https://github.com/NobuData/ouroboros/issues/51)). The comparison is constant\ntime, a missing header takes the same path as a wrong one, and the rejection is one\nconstant body: `401` with `code: \"unauthenticated\"` and nothing else. A session cookie\nis not accepted here, whoever it belongs to.\n\n**These paths are outside `/api`, and unversioned.** `/api` is the browser's boundary;\nthe only caller of these two is deployed alongside this service and upgraded with it, so\na version in the path would be one nobody could ever be on a different side of. That is\nthe same argument `/health/live` and `ouroboros-engine`'s `/healthz` are written under.\n\n**Every error has the shape every other error in this system has** — `{code, message,\ndetails}`, `docs/ARCHITECTURE.md` § 5.3 — so a worker parses one envelope whether it\nwas refused at the boundary or inside a handler.\n\n**The naming convention changes at this boundary, once.** This service writes\n`camelCase` in its contracts and `ouroboros-engine` writes `snake_case` in its own; each\nside translates in exactly one file — `src/modules/engine/engine.contract.ts` here,\n`ouroboros_engine/control_plane/contract.py` there — so no code on either side carries\nthe other's spelling.",
     "license": {
@@ -2663,6 +2663,383 @@
         }
       }
     },
+    "/internal/runs/{id}/builds": {
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Submit a build stage's job to the farm",
+        "description": "A workflow's build stage on a real runner (AJ.3, #265). The engine names the stage and\nits attempt, the pool (the stage's `runner_pool`), the commit it pushed to the run's\nbranch, and optionally argv; the control plane submits through the farm's one dispatch\npath (`FarmJobsService.submitForRun`) with **the run's own repository and branch** —\n`refs/heads/<runs.branch_name>` — and writes `build_jobs.run_id`, `stage_key` and\n`stage_attempt` (V153). The workspace is the run's; a body cannot name another.\n\n- **One job per stage attempt.** Resending the same stage and attempt answers the job it\n  already created, followed to its latest attempt — never a second build.\n- **`409 build_no_eligible_runner`** — no runner of the pool can take the job now\n  (offline, drained, full, or without the pool's executor). The job is cancelled at once\n  rather than left waiting; the message is the stage's failure reason.\n- The farm's own refusals pass through: `404 farm_pool_not_found`, `409\n  farm_pool_disabled`, `422 farm_command_required`.\n\nA submitted job is reserved by the run (`runs.reserved_build_job_id`) and a `coding` run\nbecomes `building` until the job completes.",
+        "operationId": "submitRunBuild",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunBuildRequest"
+              },
+              "example": {
+                "idempotencyKey": "run-482-build-1",
+                "epoch": 3,
+                "stageKey": "build",
+                "attempt": 1,
+                "pool": "pool-a",
+                "commit": "3f9c2ae0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6",
+                "command": [
+                  "west",
+                  "build",
+                  "-b",
+                  "helios_mainboard",
+                  "app"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The job, followed to its latest attempt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunBuildAnswer"
+                },
+                "example": {
+                  "job": {
+                    "jobId": "5eed0028-0000-4000-8000-000000000483",
+                    "number": 483,
+                    "phase": "offered",
+                    "queueState": null,
+                    "pool": "pool-a",
+                    "runnerName": "forge-02",
+                    "stageKey": "build",
+                    "stageAttempt": 1,
+                    "exitCode": null,
+                    "ccache": null,
+                    "retries": 0,
+                    "queuedAt": "2026-10-16T12:00:00.000Z",
+                    "offeredAt": "2026-10-16T12:00:01.000Z",
+                    "startedAt": null,
+                    "finishedAt": null
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-Ouro-Internal-Key`, or a value matching neither principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "unauthenticated",
+                  "message": "Unauthorized.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`run_not_found`, `repository_not_found`, `farm_pool_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "run_not_found",
+                  "message": "No such run. A report is made against the run it is about.",
+                  "details": {
+                    "run": "5eed0009-0000-4000-8000-000000000999"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`fenced`, `run_not_executable`, `run_branch_missing`, `farm_pool_disabled`,\n`build_no_eligible_runner`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "build_no_eligible_runner",
+                  "message": "No runner in pool `pool-a` can take this build: every runner is offline, drained, full, or lacks the pool's executor. Build #483 was cancelled.",
+                  "details": {
+                    "pool": "pool-a",
+                    "job_number": 483
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid, or a field is missing or the wrong shape; `farm_command_required` — no command, and the pool has no default.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "validation_failed",
+                  "message": "The request body is not valid.",
+                  "details": {
+                    "commit": [
+                      "commit must be forty lower-case hex digits"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/runs/{id}/builds/{jobId}": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Where one of the run's builds is now",
+        "description": "The job's real lifecycle (AJ.3, #265) — `waiting` → `offered` → `accepted` → `running` →\n`succeeded` | `failed` | `canceled` — with its runner, exit code and ccache result. A job\nthe farm retried after an infrastructure failure is followed to its latest attempt, so\nthe engine keeps the id the submission answered. A `waiting` job carries `queueState`,\nwhich says whether any runner could take it now.\n\nOnly the run's own builds: another run's or another workspace's job is `404\nrun_build_not_found`, the same as no job at all.",
+        "operationId": "readRunBuild",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/BuildJobId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The latest attempt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunBuildAnswer"
+                },
+                "example": {
+                  "job": {
+                    "jobId": "5eed0028-0000-4000-8000-000000000483",
+                    "number": 483,
+                    "phase": "failed",
+                    "queueState": null,
+                    "pool": "pool-a",
+                    "runnerName": "forge-02",
+                    "stageKey": "build",
+                    "stageAttempt": 1,
+                    "exitCode": 2,
+                    "ccache": {
+                      "hits": 784,
+                      "misses": 216,
+                      "hitRatePct": 78.4
+                    },
+                    "retries": 0,
+                    "queuedAt": "2026-10-16T12:00:00.000Z",
+                    "offeredAt": "2026-10-16T12:00:01.000Z",
+                    "startedAt": "2026-10-16T12:00:02.000Z",
+                    "finishedAt": "2026-10-16T12:04:10.000Z"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-Ouro-Internal-Key`, or a value matching neither principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "unauthenticated",
+                  "message": "Unauthorized.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`run_not_found`, `run_build_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "run_build_not_found",
+                  "message": "No such build of this run. A run reads only the builds its own stages submitted.",
+                  "details": {
+                    "run": "5eed0009-0000-4000-8000-000000000482",
+                    "job": "5eed0028-0000-4000-8000-000000000479"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` or `jobId` is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "validation_failed",
+                  "message": "The request is not valid.",
+                  "details": {
+                    "jobId": [
+                      "jobId must be a UUID"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/runs/{id}/builds/{jobId}/cancel": {
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Give up on one of the run's builds",
+        "description": "The engine's grace window ran out with no runner to take the job, or the stage is being\nabandoned (AJ.3, #265). The latest attempt of the chain is cancelled through the farm's\nown path — its runner, if any, is told — and answered. A build that has already finished\nis answered as it is: cancelling is idempotent by outcome.",
+        "operationId": "cancelRunBuild",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/BuildJobId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunBuildCancelRequest"
+              },
+              "example": {
+                "idempotencyKey": "run-482-build-1-cancel",
+                "epoch": 3,
+                "reason": "no eligible runner for 600 seconds"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The latest attempt — `canceled` unless it had already finished.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunBuildAnswer"
+                },
+                "example": {
+                  "job": {
+                    "jobId": "5eed0028-0000-4000-8000-000000000483",
+                    "number": 483,
+                    "phase": "canceled",
+                    "queueState": null,
+                    "pool": "pool-a",
+                    "runnerName": null,
+                    "stageKey": "build",
+                    "stageAttempt": 1,
+                    "exitCode": null,
+                    "ccache": null,
+                    "retries": 0,
+                    "queuedAt": "2026-10-16T12:00:00.000Z",
+                    "offeredAt": null,
+                    "startedAt": null,
+                    "finishedAt": "2026-10-16T12:10:00.000Z"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-Ouro-Internal-Key`, or a value matching neither principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "unauthenticated",
+                  "message": "Unauthorized.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`run_not_found`, `run_build_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "run_not_found",
+                  "message": "No such run. A report is made against the run it is about.",
+                  "details": {
+                    "run": "5eed0009-0000-4000-8000-000000000999"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`fenced`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "fenced",
+                  "message": "Another worker has started this run since; this write carried a superseded epoch. Stop.",
+                  "details": {
+                    "current_epoch": 4
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` or `jobId` is not a uuid, or a field is the wrong shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "validation_failed",
+                  "message": "The request body is not valid.",
+                  "details": {
+                    "idempotencyKey": [
+                      "idempotencyKey must be a string"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/internal/runs/{id}/pull-request": {
       "post": {
         "tags": [
@@ -4013,6 +4390,17 @@
           "format": "uuid"
         },
         "example": "5eed0009-0000-4000-8000-000000000482"
+      },
+      "BuildJobId": {
+        "name": "jobId",
+        "in": "path",
+        "required": true,
+        "description": "`build_jobs.id` — the job a build submission answered, or any later attempt of its retry\nchain. Validated as a uuid by the body's pipe: a malformed one is `422 validation_failed`.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "5eed0028-0000-4000-8000-000000000483"
       }
     },
     "securitySchemes": {
@@ -6215,6 +6603,247 @@
           "recorded": {
             "type": "boolean",
             "const": true
+          }
+        }
+      },
+      "RunBuildRequest": {
+        "type": "object",
+        "title": "RunBuildRequest",
+        "description": "A build stage's submission (#265): the stage and attempt, the pool, the commit pushed to\nthe run's branch, and optionally argv. There is no repository or ref field — a run builds\nits own repository at its own branch.",
+        "additionalProperties": false,
+        "required": [
+          "idempotencyKey",
+          "stageKey",
+          "attempt",
+          "pool",
+          "commit"
+        ],
+        "properties": {
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "stageKey": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 11
+          },
+          "pool": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$"
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "command": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 256,
+            "items": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "description": "argv — the pool's `default_command` when absent. Never a shell string."
+          }
+        }
+      },
+      "RunBuildCancelRequest": {
+        "type": "object",
+        "title": "RunBuildCancelRequest",
+        "additionalProperties": false,
+        "required": [
+          "idempotencyKey"
+        ],
+        "properties": {
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "epoch": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "RunBuildAnswer": {
+        "type": "object",
+        "title": "RunBuildAnswer",
+        "additionalProperties": false,
+        "required": [
+          "job"
+        ],
+        "properties": {
+          "job": {
+            "$ref": "#/components/schemas/RunBuild"
+          }
+        }
+      },
+      "RunBuild": {
+        "type": "object",
+        "title": "RunBuild",
+        "description": "One build of a run (#265), followed to the latest attempt of its retry chain — the real\nlifecycle the engine reports as stage progress, and the exit code and ccache result its\ngate decides on.",
+        "additionalProperties": false,
+        "required": [
+          "jobId",
+          "number",
+          "phase",
+          "queueState",
+          "pool",
+          "runnerName",
+          "stageKey",
+          "stageAttempt",
+          "exitCode",
+          "ccache",
+          "retries",
+          "queuedAt",
+          "offeredAt",
+          "startedAt",
+          "finishedAt"
+        ],
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "offered",
+              "accepted",
+              "running",
+              "succeeded",
+              "failed",
+              "retried",
+              "canceled"
+            ],
+            "description": "Never `retried` in practice — a retried attempt is followed to its successor."
+          },
+          "queueState": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "queued_runner_available",
+              "queued_no_eligible_runner",
+              null
+            ],
+            "description": "For a `waiting` job, whether any runner could take it now; null otherwise."
+          },
+          "pool": {
+            "type": "string"
+          },
+          "runnerName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stageKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stageAttempt": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "exitCode": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "ccache": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CcacheSummary"
+              }
+            ]
+          },
+          "retries": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "queuedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "offeredAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "CcacheSummary": {
+        "type": "object",
+        "title": "CcacheSummary",
+        "description": "A ccache result — the counts, and the hit rate they make. Null is not zero.",
+        "additionalProperties": false,
+        "required": [
+          "hits",
+          "misses",
+          "hitRatePct"
+        ],
+        "properties": {
+          "hits": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "misses": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hitRatePct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
           }
         }
       },

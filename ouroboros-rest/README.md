@@ -7008,6 +7008,17 @@ engine ── POST /internal/runs {…, queueItem: {id, claimToken}}
   receipt stores its answer. `POST …/push/result {epoch, idempotency_key, branch, outcome,
   pushed_sha?, reason?}` writes `run.branch_pushed` (receipt-backed, operation
   `run.push_result`). Both audit rows name the person who started the run as their actor.
+- **A run's build stage on the farm (AJ.3, #265).** `POST /internal/runs/{id}/builds
+  {idempotencyKey, epoch?, stageKey, attempt, pool, commit, command?}`
+  (`src/modules/run-builds/`) submits through `FarmJobsService.submitForRun` with the run's own
+  repository and `refs/heads/<runs.branch_name>`, writing `build_jobs.run_id`, `stage_key` and
+  `stage_attempt` (V153 — unique per first submission, so a resend answers the same job). A
+  job no runner can take is cancelled and refused `409 build_no_eligible_runner`; the farm's
+  own refusals pass through. A submitted job is reserved by the run, and a `coding` run becomes
+  `building` until `JobCompletions` reports the job finished (`run-builds.status.ts`). `GET
+  …/builds/{jobId}` answers the job's phase, runner, exit code and ccache result, followed down
+  the retry chain; `POST …/builds/{jobId}/cancel` gives up on it. The console's timeline
+  carries each build stage's job as `stages[].build`.
 - **Opening a run's draft pull request (DI.3, #1311).** `POST /internal/runs/{id}/pull-request
   {epoch, idempotency_key}` (`src/modules/ingest/run-pull-request.*`) is called at the
   `open_pr_automerge` terminal. A run with a linked PR answers it (`created: false`). Otherwise it

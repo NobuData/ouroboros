@@ -1,5 +1,5 @@
 /**
- * Submitting and cancelling build jobs — the route's surface, and the internal one AJ.3 will use.
+ * Submitting and cancelling build jobs — the route's surface, and the internal one AJ.3 uses.
  *
  * AH.4 ([#252](https://github.com/NobuData/ouroboros/issues/252)). Two ways in, one path:
  *
@@ -10,13 +10,13 @@
  * ```
  *
  * ---------------------------------------------------------------------------
- * **{@link FarmJobsService.submitForRun} is the internal submission surface, defined and not
- * wired** — decision **B6**. MVP builds are submitted by people and by the API; a workflow's build
- * stage (AJ.3, [#265](https://github.com/NobuData/ouroboros/issues/265)) will submit them too, and
- * this is the entry point it calls rather than a second dispatch path. It takes the same request
- * as the route, plus the loop run the build belongs to, which it writes to `build_jobs.run_id` —
- * V040's composite key then refuses a run of any other workspace. Nothing calls it yet; the module
- * exports it for AJ.3, and `jobs.service.spec.ts` holds it to the same rules as the route.
+ * **{@link FarmJobsService.submitForRun} is the internal submission surface** — decision **B6**'s
+ * seam, wired by AJ.3 ([#265](https://github.com/NobuData/ouroboros/issues/265)). A workflow's
+ * build stage submits through it (`POST /internal/runs/:id/builds`, `runs/builds/`) rather than
+ * through a second dispatch path. It takes the same request as the route, plus the loop run the
+ * build belongs to, which it writes to `build_jobs.run_id` — V040's composite key then refuses a
+ * run of any other workspace — and the stage and attempt it builds for (V153).
+ * `jobs.service.spec.ts` holds it to the same rules as the route.
  *
  * **What a submission snapshots.** The pool's executor and image, and the command — the
  * request's, or the pool's `default_command` (V043) — are copied onto the job, so a pool edited
@@ -59,7 +59,7 @@ import { parseCommand, renderCommand } from "./command";
 import { DispatchRepository, type WaitingJob } from "./dispatch.repository";
 import { DispatchService } from "./dispatcher";
 import { JobCompletions } from "./job.completions";
-import type { BuildJobRequest } from "./jobs.dto";
+import type { BuildJobRequest, RunBuildStage } from "./jobs.dto";
 import {
   buildJobResource,
   type BuildJobResource,
@@ -107,12 +107,14 @@ export class FarmJobsService {
 
   /**
    * Submit a build on behalf of a loop run — **the internal surface AJ.3
-   * ([#265](https://github.com/NobuData/ouroboros/issues/265)) will call**. Defined, documented
-   * and not wired: see this file's header.
+   * ([#265](https://github.com/NobuData/ouroboros/issues/265)) calls**: see this file's header.
    *
    * @param organizationId - The run's workspace.
    * @param runId - The run the build belongs to, written to `build_jobs.run_id`.
    * @param request - As {@link submit}.
+   * @param stage - The workflow stage and attempt it builds for, written to
+   *   `build_jobs.stage_key` and `stage_attempt` (V153); absent for a build tied to the run but
+   *   to no stage.
    * @returns The job, `queued`.
    * @throws As {@link submit}.
    */
@@ -120,9 +122,27 @@ export class FarmJobsService {
     organizationId: string,
     runId: string,
     request: BuildJobRequest,
+    stage?: RunBuildStage,
   ): Promise<BuildJobResource> {
     // No person authorised this one: the run did, and the event names it by `runId`.
-    return this.enqueue(organizationId, null, request, runId);
+    return this.enqueue(organizationId, null, request, runId, null, stage ?? null);
+  }
+
+  /**
+   * A job and where it honestly stands now — what {@link submitRerun} answers, for any job.
+   *
+   * @param organizationId - The workspace.
+   * @param jobId - The job.
+   * @returns The job and its queue state.
+   * @throws {NotFoundError} `farm_job_not_found` — including for another workspace's job.
+   */
+  async dispatchState(organizationId: string, jobId: string): Promise<RerunDispatch> {
+    const view = await this.repository.view(organizationId, jobId);
+    if (!view) throw jobNotFound();
+
+    const resource = buildJobResource(view);
+
+    return { job: resource, queueState: await this.queueState(resource, view.job) };
   }
 
   /**
@@ -324,6 +344,8 @@ export class FarmJobsService {
    * @param actorId - The person who submitted it, or null when a run did.
    * @param request - What to build.
    * @param runId - The loop run, or null for a user- or API-submitted build.
+   * @param hookId - The farm job hook that submitted it, or null.
+   * @param stage - The run's stage and attempt it builds for, or null.
    * @returns The job.
    */
   private async enqueue(
@@ -332,6 +354,7 @@ export class FarmJobsService {
     request: BuildJobRequest,
     runId: string | null,
     hookId: string | null = null,
+    stage: RunBuildStage | null = null,
   ): Promise<BuildJobResource> {
     const pool = await this.repository.pool(organizationId, request.pool);
     if (!pool) throw poolNotFound(request.pool);
@@ -365,6 +388,8 @@ export class FarmJobsService {
       // (#330): a pool edited later does not change what this build collects.
       artifact_globs: JSON.stringify(snapshotGlobs(pool.artifact_globs, request.artifacts)),
       queued_at: this.now(),
+      stage_key: stage?.key ?? null,
+      stage_attempt: stage?.attempt ?? null,
     });
 
     // A refusal above threw before anything was written, so it records nothing: the trail is

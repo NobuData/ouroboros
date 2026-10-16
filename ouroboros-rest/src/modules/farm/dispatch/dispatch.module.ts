@@ -7,7 +7,7 @@
  *
  * ```
  * the route      jobs.controller.ts     POST /farm/jobs · POST /farm/jobs/:id/cancel (member+)
- * the surface    jobs.service.ts        submit · submitForRun (AJ.3's, defined, not wired) · cancel
+ * the surface    jobs.service.ts        submit · submitForRun (AJ.3's run builds) · cancel
  * the loop       dispatcher.ts          kick/drain · tick · the agents' answers · stale-work cancels
  * the rows       dispatch.repository.ts eligibility · placement under the runner's lock · q:N
  *                job.lifecycle.ts       numbering · attempts · the retry — shared with the gateway

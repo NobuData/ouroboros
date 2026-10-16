@@ -286,7 +286,7 @@ export class RunPushService {
  * @param run - The run, locked.
  * @throws {ConflictError} `409 run_not_executable`.
  */
-function assertExecutable(run: Pick<Run, "id" | "status">): void {
+export function assertExecutable(run: Pick<Run, "id" | "status">): void {
   if (!(EXECUTABLE_RUN_STATUSES as readonly string[]).includes(run.status)) {
     throw runNotExecutable(run.id, run.status);
   }

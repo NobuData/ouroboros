@@ -19,6 +19,7 @@
 
 import type { RunStatus } from "@/app/api/dashboard";
 import type { RunConsole } from "@/app/api/runs";
+import type { LiveJob } from "@/app/farm/live";
 import { elapsedOfSeconds } from "@/app/format";
 
 /** One stage, as the timeline payload carries it. */
@@ -39,6 +40,12 @@ export const TEST_STAGE_KEY = "test";
 
 /** The Test stage's link to its results page (#335). */
 export const TEST_RESULTS_LINK = "Test results ↗";
+
+/**
+ * A build stage's link to its farm job's log (AJ.3, [#265](https://github.com/NobuData/ouroboros/issues/265))
+ * — it opens the farm's full-log sheet over the console.
+ */
+export const BUILD_LOG_LINK = "Build log ↗";
 
 /** The card's title — the mockup's `STAGE TIMELINE`. */
 export const STEPPER_TITLE = "Stage timeline";
@@ -76,6 +83,26 @@ export const FAILED_CAPTION = "failed";
 /** The caption of a skipped stage. */
 export const SKIPPED_CAPTION = "skipped";
 
+/** A build stage's farm job, as the timeline carries it (AJ.3, #265). */
+export type RunStageBuild = NonNullable<RunTimelineStage["build"]>;
+
+/** Where a build stage's farm job is, as the line under its node says it. */
+export type BuildPhase = RunStageBuild["phase"];
+
+/**
+ * A build stage's farm job, ready to draw: the line under the node and what the log link opens.
+ */
+export interface StepBuild {
+  /** `build_jobs.id` — what the log is read by. */
+  readonly jobId: string;
+  /** `#483`. */
+  readonly number: string;
+  /** `#483 · building on forge-02`. */
+  readonly line: string;
+  /** The runner holding or last holding it, or `null`. */
+  readonly runner: string | null;
+}
+
 /** Treatments the loop has reached — the ones a glowing segment may lead into. */
 const REACHED: ReadonlySet<StepTone> = new Set(["done", "active", "failed"]);
 
@@ -103,6 +130,8 @@ export interface StepView {
   readonly doneSegment: boolean;
   /** `Implement, in progress, attempt 2/3` — the node's name for a screen reader. */
   readonly accessibleName: string;
+  /** The farm job a build stage's latest attempt submitted, or `null` (AJ.3, #265). */
+  readonly build: StepBuild | null;
 }
 
 /** The whole card, ready to draw. */
@@ -126,6 +155,69 @@ export interface StepperView {
  */
 export function attemptCaption(attempt: number, maxAttempts: number | null): string {
   return maxAttempts === null ? `attempt ${attempt}` : `attempt ${attempt}/${maxAttempts}`;
+}
+
+/**
+ * Where a farm job is, in the words the line under a build stage uses — the job's real
+ * lifecycle, never a generic *in progress*.
+ *
+ * @param build The stage's farm job.
+ * @returns `waiting for a runner`, `offered to forge-02`, `building on forge-02`,
+ *   `exit 0 · ccache 78.4%`, `exit 2`, `cancelled`.
+ */
+export function buildPhaseCaption(build: RunStageBuild): string {
+  const runner = build.runnerName ?? "a runner";
+
+  switch (build.phase) {
+    case "waiting":
+      return `waiting for a runner in ${build.pool}`;
+    case "offered":
+      return `offered to ${runner}`;
+    case "accepted":
+      return `accepted by ${runner}`;
+    case "running":
+      return `building on ${runner}`;
+    case "succeeded":
+    case "failed": {
+      const exit = build.exitCode === null ? "no exit code" : `exit ${build.exitCode}`;
+      return build.ccacheHitRatePct === null ? exit : `${exit} · ccache ${build.ccacheHitRatePct}%`;
+    }
+    case "retried":
+      return "retried by the farm";
+    case "canceled":
+      return "cancelled";
+  }
+}
+
+/**
+ * A build stage's farm job, ready to draw.
+ *
+ * @param build The stage's farm job, or `undefined` for a stage that submitted none.
+ * @returns The line and the link's target, or `null`.
+ */
+export function stepBuild(build: RunStageBuild | undefined): StepBuild | null {
+  if (build === undefined) return null;
+
+  const number = `#${build.jobNumber}`;
+
+  return {
+    jobId: build.jobId,
+    number,
+    line: `${number} · ${buildPhaseCaption(build)}`,
+    runner: build.runnerName,
+  };
+}
+
+/**
+ * The build a stage's **Build log ↗** opens, as the farm's log sheet takes one.
+ *
+ * @param build The stage's farm job.
+ * @param label The stage's label — the sheet's title, *Build farm*.
+ * @returns The sheet's build: the job, its number and runner; no start instant, which the
+ *   timeline does not carry and the sheet prints as not measured.
+ */
+export function buildLogJob(build: StepBuild, label: string): LiveJob {
+  return { id: build.jobId, number: build.number, title: label, runner: build.runner, startedAt: null };
 }
 
 /**
@@ -232,6 +324,7 @@ export function runStepper(snapshot: RunConsole): StepperView {
       note: stage.note,
       doneSegment: previousDone && REACHED.has(tone),
       accessibleName: stepName(stage.label, tone, caption),
+      build: stepBuild(stage.build),
     };
     previousDone = tone === "done";
     return view;

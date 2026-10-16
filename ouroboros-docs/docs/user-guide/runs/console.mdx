@@ -55,6 +55,28 @@ Select a stage to show only its entries in the transcript; select it again, or c
 **Show all**, to see everything. Once the loop reaches its test stage, **Test results ↗** on
 that stage opens the run's [test results](./tests.mdx).
 
+### Build stages
+
+A build stage runs on your [Build Farm](../../administration/build-farm.mdx), in the runner pool the stage
+names. Under the stage, the timeline shows the farm job and where it really is, such as
+**#483 · building on forge-02**:
+
+- **waiting for a runner in pool-a** — the job is queued in the pool.
+- **offered to forge-02**, then **accepted by forge-02** — a runner is taking it.
+- **building on forge-02** — the runner is running the build.
+- **exit 0 · ccache 78.4%** or **exit 2** — the build finished, with its exit code and, when
+  it was measured, its ccache hit rate.
+
+The transcript says the same as it happens: **Build #483 is running on forge-02.**, then
+**Build #483 passed on forge-02 (exit 0 · ccache 78.4%).** **Build log ↗** under the stage
+opens the build's whole log over the console, without leaving the run.
+
+The build's exit code decides the workflow's gate. When the build passes, the loop moves on.
+When it fails, the loop skips the stages before the gate and the gate sends it back the way
+the workflow says, usually to **Implement**. The next attempt then shows a note such as
+**attempt 1 failed the build — loop returned from gate ↺**. The gate's verdict appears in the
+transcript with the exit code and ccache result it decided on.
+
 ## The agent transcript
 
 The **Agent transcript** is what the loop did, entry by entry, each with its time and who
@@ -178,8 +200,17 @@ as in the example above — in which case the cards say so rather than showing n
   workspace. Check the workspace in the header.
 - **A control stays at "sent".** The loop has not picked it up yet — it answers between
   stages. If it expires with **no response**, try again.
-- **The run failed at a build or test stage straight away.** This version does not run build
-  and test stages for a live run yet. The run fails at that stage and says so.
+- **"No runner in pool `pool-a` can take this build …"** No runner in the stage's pool is
+  online, free and set up for the pool's executor. The build was cancelled and the run fails
+  at that stage. Bring a runner back on the [Build Farm](../../administration/build-farm.mdx) and queue the issue
+  again. A build that waits ten minutes with no runner able to take it fails the same way.
+- **"build_pool_required: stage `build` names no runner pool."** The workflow's build stage
+  has no **Runner pool**. Set one in [Workflow Studio](../workflows/studio.mdx) and publish.
+- **A build failed and the loop went back to Implement.** That is the workflow's gate doing
+  its job — see [Build stages](#build-stages). If **Implement** has used all its attempts,
+  the run fails, naming the gate and the build that failed.
+- **"Build #483 was cancelled on the farm before it finished."** Someone cancelled the job on
+  the Build Farm. The run fails at the build stage.
 - **The run failed after "attempt 3/3".** The stage failed, or was refused a tool call by its
   permissions, as many times as its **Max retries** allows. The transcript shows the last
   refusal or error.

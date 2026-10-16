@@ -20,6 +20,11 @@ import logging
 from collections.abc import Callable
 from typing import Any, Protocol, TypeVar
 
+from ouroboros_engine.control_plane.builds import (
+    RunBuild,
+    RunBuildCancelRequest,
+    RunBuildRequest,
+)
 from ouroboros_engine.control_plane.client import ControlPlaneError
 from ouroboros_engine.control_plane.contract import AckedControl, ControlsFetched
 from ouroboros_engine.control_plane.execution import (
@@ -42,6 +47,7 @@ from ouroboros_engine.control_plane.execution import (
 from ouroboros_engine.control_plane.ingest import (
     ChangeSet,
     CommitsAppended,
+    EventActor,
     EventsAppended,
     IngestCommit,
     IngestEvent,
@@ -139,6 +145,18 @@ class RunControl(Protocol):
 
     def resources(self, run: str, body: ReportResourcesRequest) -> ResourcesReported:
         """Attribute spend. See :meth:`IngestClient.resources`."""
+        ...
+
+    def build(self, run: str, body: RunBuildRequest) -> RunBuild:
+        """Submit a build stage's job. See :meth:`IngestClient.build`."""
+        ...
+
+    def read_build(self, run: str, job: str) -> RunBuild:
+        """Read a build. See :meth:`IngestClient.read_build`."""
+        ...
+
+    def cancel_build(self, run: str, job: str, body: RunBuildCancelRequest) -> RunBuild:
+        """Give up on a build. See :meth:`IngestClient.cancel_build`."""
         ...
 
     def fetch_controls(self, run: str) -> ControlsFetched:
@@ -308,6 +326,102 @@ class RunReporter:
         self._pending.append(entry)
         if len(self._pending) >= self._batch_size:
             await self.flush()
+
+    async def note(
+        self,
+        stage_key: str,
+        attempt: int,
+        body: str,
+        *,
+        actor: EventActor = "system",
+        payload: dict[str, object] | None = None,
+    ) -> None:
+        """Write one transcript entry of the engine's own, and send it now.
+
+        What a build stage says as its farm job moves — *"Build #483 is running on
+        forge-02"* — so the console's transcript shows the lifecycle as it happens rather than
+        at the next model turn's batch.
+
+        Args:
+            stage_key: The stage it belongs to.
+            attempt: The attempt it belongs to.
+            body: The sentence.
+            actor: Who is speaking — ``system`` for progress, ``gate`` for a verdict.
+            payload: The structure, such as the job and its phase.
+        """
+        self._pending.append(
+            IngestEvent(
+                hint=1,
+                actor=actor,
+                stage_key=stage_key,
+                attempt=attempt,
+                body=body[:20_000],
+                payload=payload,
+            )
+        )
+        await self.flush()
+
+    async def build(
+        self,
+        stage_key: str,
+        attempt: int,
+        pool: str,
+        commit: str,
+        command: list[str] | None,
+    ) -> RunBuild:
+        """Submit a build stage's job to the farm (AJ.3, #265).
+
+        Args:
+            stage_key: The build stage.
+            attempt: Its attempt — a resend of the same one answers the same job.
+            pool: The runner pool, by name.
+            commit: The commit pushed to the run's branch.
+            command: argv, or ``None`` for the pool's default.
+
+        Returns:
+            The job.
+
+        Raises:
+            ControlPlaneError: ``build_no_eligible_runner`` or a farm refusal.
+        """
+        body = RunBuildRequest(
+            idempotency_key=self._control.key("run.build"),
+            epoch=self.epoch,
+            stage_key=stage_key,
+            attempt=attempt,
+            pool=pool,
+            commit=commit,
+            command=command,
+        )
+        return await self._send(self._control.build, self.run_id, body)
+
+    async def read_build(self, job: str) -> RunBuild:
+        """Read where one of the run's builds is now.
+
+        Args:
+            job: The job the submission answered.
+
+        Returns:
+            The latest attempt of its retry chain.
+        """
+        return await self._send(self._control.read_build, self.run_id, job)
+
+    async def cancel_build(self, job: str, reason: str) -> RunBuild:
+        """Give up on one of the run's builds.
+
+        Args:
+            job: The job.
+            reason: Why, for the control plane's log.
+
+        Returns:
+            The latest attempt.
+        """
+        body = RunBuildCancelRequest(
+            idempotency_key=self._control.key("run.build_cancel"),
+            epoch=self.epoch,
+            reason=reason[:500],
+        )
+        return await self._send(self._control.cancel_build, self.run_id, job, body)
 
     async def flush(self) -> None:
         """Send the pending transcript entries, numbered past the last hint.
