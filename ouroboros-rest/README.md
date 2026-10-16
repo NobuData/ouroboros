@@ -6992,7 +6992,22 @@ engine ── POST /internal/runs {…, queueItem: {id, claimToken}}
   under a superseded epoch is `409 fenced` (`details.current_epoch`). `finish` maps `review` →
   `review`, `needs_human` → `needs_human` (+ inbox card), `failed` and `back_to_queue` →
   `failed` (the latter requeues the issue at the tail, unconfirmed). The claim answers the
-  `model` the run will record (`AdmissionService.modelFor`).
+  `model` the run will record (`AdmissionService.modelFor`). The start also answers
+  `started_by {name, email}` — the person who confirmed the run's queue item, copied into
+  `runs.started_by` (V151) when the run opens — or `null`.
+- **Pushing a run's branch (DI.2, #1310).** `POST /internal/runs/{id}/push {epoch,
+  idempotency_key, branch, head_sha, change_set_seq, force?}` (`src/modules/ingest/run-push.*`)
+  refuses, in order and before the workspace's GitHub token is opened: `force_push_refused`,
+  `branch_mismatch` (not `runs.branch_name`), `not_a_run_branch` (outside `ouro/run-*`),
+  `default_branch`, `changes_not_evaluated` (the change-set is not the run's latest, or a
+  guardrail check has not judged it or is `pending`), `guardrail_blocking` (a `block`-mode fail),
+  `github_not_configured`, then `protected_branch` from GitHub's `GET …/branches/{branch}` (`502
+  branch_check_failed` when GitHub cannot be asked). Then it writes `run.push_granted` and answers
+  `{refspec, remote, username, password}` — one refspec, `refs/heads/<b>:refs/heads/<b>`, built
+  from the run's row, and the token opened for this one push. It is **not** receipt-backed: a
+  receipt stores its answer. `POST …/push/result {epoch, idempotency_key, branch, outcome,
+  pushed_sha?, reason?}` writes `run.branch_pushed` (receipt-backed, operation
+  `run.push_result`). Both audit rows name the person who started the run as their actor.
 - **The run supervisor.** `RunSupervisor` (`src/modules/ingest/run-supervisor.ts`) ticks every
   `OURO_RUN_SUPERVISOR_TICK_SECONDS` (5): a live `coding`/`building` run whose heartbeat is older
   than `OURO_RUN_HEARTBEAT_STALE_SECONDS` (30) — or never started and opened that long ago — is

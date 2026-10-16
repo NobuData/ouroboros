@@ -265,6 +265,18 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
       ? "handed a runner the credential to check out a repository"
       : `handed a runner the credential to check out ${repository}`;
   },
+  "run.push_granted": (f) => {
+    const branch = text(f, "branch");
+    return branch === undefined
+      ? "handed the engine the credential to push a run's branch"
+      : `handed the engine the credential to push ${branch}`;
+  },
+  "run.branch_pushed": (f) => {
+    const branch = text(f, "branch");
+    const outcome = text(f, "outcome");
+    const where = branch === undefined ? "a run's branch" : branch;
+    return outcome === "failed" ? `could not push ${where}` : `pushed ${where}`;
+  },
 };
 
 /**

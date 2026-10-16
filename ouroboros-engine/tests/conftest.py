@@ -59,6 +59,8 @@ _ENGINE_VARIABLES = (
     "OURO_ENGINE_RUN_IDLE_HOURS",
     "OURO_ENGINE_HEARTBEAT_SECONDS",
     "OURO_ENGINE_WORKER_ID",
+    "OURO_ENGINE_COMMIT_AUTHOR_NAME",
+    "OURO_ENGINE_COMMIT_AUTHOR_EMAIL",
 )
 
 #: The shared secret the suite runs with. Not a credential and never deployed — the

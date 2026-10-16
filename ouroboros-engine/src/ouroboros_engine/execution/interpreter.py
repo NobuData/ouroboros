@@ -11,14 +11,15 @@ trigger              follow its default edge
 llm                  an attempt on a registered executor (``active`` → ``succeeded`` |
                      ``failed``), its events reported as they arrive, the change-set read
                      from the working tree at the end; retried while ``max_retries`` allows
-infra                ``active`` → ``failed``, and the run finishes ``failed``
-                     (``infra_unavailable`` until AR.1 / #991)
+infra                the run branch is pushed (DI.2), then ``active`` → ``failed``, and the
+                     run finishes ``failed`` (``infra_unavailable`` until #265)
 flow ``decision``    the first ``branch`` edge whose condition holds (paths, labels, effort,
                      source), else the default edge
 flow ``gate``        passes → the default edge; fails → its ``loop`` edge, bounded by the
                      loop target's ``max_retries``; undecidable → the run fails, saying why
-term                 ``needs_review`` → ``needs_human``; ``open_pr_automerge`` → ``review``
-                     (the tree is kept for DI.2); ``back_to_queue`` → ``back_to_queue``
+term                 ``needs_review`` → ``needs_human``; ``open_pr_automerge`` → the run
+                     branch is pushed (DI.2), then ``review``; ``back_to_queue`` →
+                     ``back_to_queue``
 ==================== =======================================================================
 
 **It keeps nothing it cannot lose** (A.1). The position is checkpointed to the control plane
@@ -76,6 +77,7 @@ from ouroboros_engine.execution.graph import WorkflowGraph
 from ouroboros_engine.execution.guardrails import halt_reason
 from ouroboros_engine.execution.heartbeat import Heartbeat, Sleep
 from ouroboros_engine.execution.poller import ControlPoller
+from ouroboros_engine.execution.publisher import Publisher, PublishError, PublishRun
 from ouroboros_engine.execution.registry import ExecutorRegistry
 from ouroboros_engine.execution.reporter import RunControl, RunLostError, RunReporter
 from ouroboros_engine.execution.spi import (
@@ -180,6 +182,7 @@ class Interpreter:
         heartbeat_seconds: float = 5.0,
         sleep: Sleep = asyncio.sleep,
         poll_sleep: Sleep | None = None,
+        publisher: Publisher | None = None,
     ) -> None:
         """Hold the collaborators.
 
@@ -193,6 +196,9 @@ class Interpreter:
             sleep: Waits between heartbeats.
             poll_sleep: Waits between control fetches (same cadence); ``sleep`` unless a
                 test separates the two.
+            publisher: Pushes the run branch before each build stage and at the pull
+                request terminal (DI.2, #1310). ``None`` publishes nothing — the tree is
+                kept at ``review`` as before; the engine's composition root always sets it.
         """
         self._control = control
         self._clones = clones
@@ -202,6 +208,7 @@ class Interpreter:
         self._heartbeat_seconds = heartbeat_seconds
         self._sleep = sleep
         self._poll_sleep = poll_sleep or sleep
+        self._publisher = publisher
 
     async def execute(self, run_id: str) -> None:
         """Take a run and walk it until it finishes, parks, or is lost.
@@ -502,7 +509,7 @@ class Interpreter:
             correction = bool(run.controls.corrections)
             if outcome.status == "completed":
                 assert run.workspace is not None  # noqa: S101
-                await asyncio.to_thread(run.workspace.checkpoint, node.id)
+                await asyncio.to_thread(run.workspace.checkpoint, node.id, attempt)
                 await run.reporter.transition(node.id, "succeeded", attempt)
                 if not correction or attempt >= min(limit, MAX_ATTEMPT):
                     return await self._forward(run, node)
@@ -771,6 +778,8 @@ class Interpreter:
             run: The execution.
             node: The stage.
         """
+        if not await self._publish(run, node.id):
+            return
         attempt = run.state.attempts.get(node.id, 0) + 1
         run.state.attempts[node.id] = attempt
         await run.reporter.transition(node.id, "active", attempt)
@@ -871,12 +880,17 @@ class Interpreter:
             assert run.workspace is not None  # noqa: S101
             await self._before_finish(run, node.id)
             await asyncio.to_thread(run.workspace.checkpoint, node.id)
+            if not await self._publish(run, node.id):
+                return
             await run.reporter.finish(
                 "review",
                 f"The workflow reached `{node.id}`; the branch is ready for its pull "
                 "request.",
                 node.id,
             )
+            if self._publisher is not None and run.workspace.published() is not None:
+                workspace, run.workspace = run.workspace, None
+                await asyncio.to_thread(workspace.finish, "pushed")
             return
         if config.action == "needs_review":
             await self._end(
@@ -892,6 +906,35 @@ class Interpreter:
             f"The workflow ended at `{node.id}`: the ticket goes back to the queue.",
             node.id,
         )
+
+    async def _publish(self, run: _Run, stage_key: str) -> bool:
+        """Push the run branch, when there is a publisher and something new to push (DI.2).
+
+        A refusal — here or by ``ouroboros-rest`` — or a host failure finishes the run
+        ``failed`` with the reason and **keeps the tree**: it is closed, not abandoned, so a
+        restarted run publishes the same checkpoints again.
+
+        Args:
+            run: The execution.
+            stage_key: The stage the publish happens at.
+
+        Returns:
+            ``True`` to go on; ``False`` when the run was finished.
+        """
+        if self._publisher is None:
+            return True
+        assert run.workspace is not None  # noqa: S101
+        try:
+            await self._publisher.publish(
+                run.workspace, _publish_run(run), run.reporter
+            )
+        except PublishError as failed:
+            await self._before_finish(run, stage_key)
+            await run.reporter.finish("failed", failed.reason[:500], stage_key)
+            workspace, run.workspace = run.workspace, None
+            await asyncio.to_thread(workspace.close)
+            return False
+        return True
 
     async def _end(
         self,
@@ -931,6 +974,36 @@ class Interpreter:
             run, f"before the run finishes at {stage_key or 'its start'}"
         )
         await run.controls.settle()
+
+
+def _publish_run(run: _Run) -> PublishRun:
+    """What the branch publisher writes about this run.
+
+    Args:
+        run: The execution, with its graph.
+
+    Returns:
+        The issue, the branch, the pin, the alias per model stage and the co-author.
+    """
+    assert run.graph is not None  # noqa: S101
+    started = run.started
+    aliases = {
+        node.id: stage_model(node.config, started.model)
+        for node in run.graph.document.nodes
+        if isinstance(node.config, LlmConfig)
+    }
+    return PublishRun(
+        run_id=started.run_id,
+        issue_number=started.issue_number,
+        issue_title=started.issue_title,
+        branch=started.branch_name
+        or f"ouro/run-{started.run_id}-{started.issue_number}",
+        workflow_tag=started.workflow.tag,
+        workflow_version=started.workflow.version,
+        default_alias=started.model,
+        aliases=aliases,
+        started_by=started.started_by,
+    )
 
 
 def _limit(run: _Run, stage_key: str) -> int:

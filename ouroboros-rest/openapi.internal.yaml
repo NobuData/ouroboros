@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.41.51"
+  version: "0.42.0"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -1883,6 +1883,9 @@ paths:
                   - id: 5eed0057-0000-4000-8000-000000000002
                     text: No regression in the e-stop response envelope
                 model: coder-max
+                started_by:
+                  name: Ken Suenobu
+                  email: ken@acme-robotics.dev
                 branch_name: ouro/run-5eed0009-0000-4000-8000-000000000482-482
                 workflow:
                   tag: docs-loop
@@ -2204,6 +2207,201 @@ paths:
                 message: The request body is not valid.
                 details:
                   epoch: ["epoch must not be less than 1"]
+
+  /internal/runs/{id}/push:
+    post:
+      tags: [runs]
+      summary: Ask to push the run's branch — one refspec and a one-call credential
+      description: |-
+        The branch publisher's grant (DI.2, #1310). The engine names the branch it believes is
+        the run's, the commit it would leave it at and the change-set it publishes; the control
+        plane decides, **in this order and before the credential is opened**:
+
+        1. **`409 force_push_refused`** — the request asked for force. A run's branch only moves
+           forward.
+        2. **`409 branch_mismatch`** — the branch is not `runs.branch_name`.
+        3. **`409 not_a_run_branch`** — the run's branch is not under `ouro/run-*`.
+        4. **`409 default_branch`** — the branch is the repository's default branch.
+        5. **`409 changes_not_evaluated`** — `change_set_seq` is not the run's latest change-set,
+           or a guardrail check has no verdict about it yet, or one is `pending`.
+        6. **`409 guardrail_blocking`** — a latest guardrail check failed in `block` mode. A
+           `warn`-mode fail does not refuse.
+        7. **`409 github_not_configured`** — the workspace holds no GitHub token.
+        8. **`409 protected_branch`** — GitHub reports the branch as protected (`GET
+           /repos/{owner}/{repo}/branches/{branch}`; a `404` is a new branch, not protected).
+           **`502 branch_check_failed`** when GitHub could not be asked.
+
+        Then the workspace's token is opened for this one answer, `run.push_granted` is written to
+        the audit trail (actor: the person who started the run), and the grant answers exactly one
+        refspec, `refs/heads/<branch>:refs/heads/<branch>`, built from the run's row — never
+        forced. **Not idempotency-keyed**: a receipt stores its answer, and this answer carries a
+        credential no table may hold; a repeated request is a new grant and a new audit row.
+      operationId: requestRunPush
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunPushRequest"
+            example:
+              idempotency_key: run-482-push-1
+              epoch: 3
+              branch: ouro/run-5eed0009-0000-4000-8000-000000000482-482
+              head_sha: 3f9c2ae0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6
+              change_set_seq: 2
+      responses:
+        "200":
+          description: The one refspec, the remote, and the workspace's GitHub token for this push.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunPushGrant"
+              example:
+                refspec: refs/heads/ouro/run-5eed0009-0000-4000-8000-000000000482-482:refs/heads/ouro/run-5eed0009-0000-4000-8000-000000000482-482
+                remote: https://github.com/acme-robotics/helios-firmware.git
+                username: x-access-token
+                password: ghp_example-opened-for-one-push
+        "401":
+          description: No `X-Ouro-Internal-Key`, or a value matching neither principal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: unauthenticated
+                message: Unauthorized.
+                details: {}
+        "404":
+          description: "`run_not_found`, `repository_not_found`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: run_not_found
+                message: No such run. A report is made against the run it is about.
+                details:
+                  run: 5eed0009-0000-4000-8000-000000000999
+        "409":
+          description: |-
+            `fenced`, `run_not_executable`, or one of the push refusals above, each naming the
+            branch and the reason in one sentence.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: changes_not_evaluated
+                message: "A push of ouro/run-5eed0009-0000-4000-8000-000000000482-482 was refused: its changes have not been evaluated by every guardrail check."
+                details:
+                  branch: ouro/run-5eed0009-0000-4000-8000-000000000482-482
+                  change_set_seq: 1
+                  current_change_set_seq: 2
+        "422":
+          description: "`validation_failed` — `id` is not a uuid, or a field is missing or the wrong shape."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: validation_failed
+                message: The request body is not valid.
+                details:
+                  head_sha: ["head_sha must be forty lower-case hex digits"]
+        "502":
+          description: "`branch_check_failed` — GitHub could not be asked whether the branch is protected."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: branch_check_failed
+                message: "A push of ouro/run-5eed0009-0000-4000-8000-000000000482-482 was refused: GitHub could not be asked whether the branch is protected (upstream_error)."
+                details:
+                  branch: ouro/run-5eed0009-0000-4000-8000-000000000482-482
+                  failure: upstream_error
+
+  /internal/runs/{id}/push/result:
+    post:
+      tags: [runs]
+      summary: Report how a granted push ended
+      description: |-
+        The engine reports the host's answer to a granted push (DI.2, #1310), and the control
+        plane writes `run.branch_pushed` to the audit trail — the run, the branch, the outcome,
+        and the pushed commit or the host's own reason — with the person who started the run as
+        its actor.
+
+        Idempotent on `idempotency_key` (operation `run.push_result`): a replay answers what the
+        first delivery was told and writes no second row.
+      operationId: reportRunPushResult
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunPushResultRequest"
+            example:
+              idempotency_key: run-482-push-1-result
+              epoch: 3
+              branch: ouro/run-5eed0009-0000-4000-8000-000000000482-482
+              outcome: pushed
+              pushed_sha: 3f9c2ae0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6
+      responses:
+        "200":
+          description: Recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunPushRecorded"
+              example:
+                recorded: true
+        "401":
+          description: No `X-Ouro-Internal-Key`, or a value matching neither principal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: unauthenticated
+                message: Unauthorized.
+                details: {}
+        "404":
+          description: "`run_not_found`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: run_not_found
+                message: No such run. A report is made against the run it is about.
+                details:
+                  run: 5eed0009-0000-4000-8000-000000000999
+        "409":
+          description: "`fenced`, `idempotency_key_reused`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: fenced
+                message: Another worker has started this run since; this write carried a superseded epoch. Stop.
+                details:
+                  current_epoch: 4
+        "422":
+          description: "`validation_failed` — a pushed outcome without `pushed_sha`, a failed one without `reason`, or a field of the wrong shape."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: validation_failed
+                message: The request body is not valid.
+                details:
+                  reason: ["reason must be longer than or equal to 1 characters"]
 
   /internal/research/tools/{slug}/{op}:
     post:
@@ -4855,6 +5053,114 @@ components:
           maxLength: 1024
           description: The quoted claim, as stored.
 
+    ExecutionStarter:
+      type: object
+      title: ExecutionStarter
+      description: Who started a run (#1310) — what a `Co-authored-by` trailer is written from.
+      additionalProperties: false
+      required: [name, email]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+
+    RunPushRequest:
+      type: object
+      title: RunPushRequest
+      description: |-
+        The branch the engine believes is the run's, the commit it would leave it at and the
+        change-set it publishes (#1310). There is no refspec field: the control plane builds it.
+      additionalProperties: false
+      required: [idempotency_key, branch, head_sha, change_set_seq]
+      properties:
+        idempotency_key:
+          type: string
+          minLength: 1
+          maxLength: 128
+        epoch:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        branch:
+          type: string
+          minLength: 1
+          maxLength: 255
+        head_sha:
+          type: string
+          pattern: "^[0-9a-f]{40}$"
+        change_set_seq:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        force:
+          type: boolean
+          description: Accepted so that a request asking for force is refused by name — `409 force_push_refused`.
+
+    RunPushGrant:
+      type: object
+      title: RunPushGrant
+      description: |-
+        One push's grant (#1310): the only refspec the engine may push, the remote, and the
+        workspace's GitHub token opened for this push. Never stored by either side.
+      additionalProperties: false
+      required: [refspec, remote, username, password]
+      properties:
+        refspec:
+          type: string
+          description: "`refs/heads/<branch>:refs/heads/<branch>` — one ref, never forced."
+        remote:
+          type: string
+          description: "`OURO_GITHUB_CLONE_BASE_URL/<owner>/<name>.git`."
+        username:
+          type: string
+          description: "`x-access-token`."
+        password:
+          type: string
+          description: The workspace's GitHub token, for this one push.
+
+    RunPushResultRequest:
+      type: object
+      title: RunPushResultRequest
+      description: How a granted push ended (#1310) — the pushed commit, or the host's reason.
+      additionalProperties: false
+      required: [idempotency_key, branch, outcome]
+      properties:
+        idempotency_key:
+          type: string
+          minLength: 1
+          maxLength: 128
+        epoch:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        branch:
+          type: string
+          minLength: 1
+          maxLength: 255
+        outcome:
+          type: string
+          enum: [pushed, failed]
+        pushed_sha:
+          type: string
+          pattern: "^[0-9a-f]{40}$"
+          description: Required when `pushed`.
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: The host's own words. Required when `failed`.
+
+    RunPushRecorded:
+      type: object
+      title: RunPushRecorded
+      additionalProperties: false
+      required: [recorded]
+      properties:
+        recorded:
+          type: boolean
+          const: true
+
     RunStarted:
       type: object
       title: RunStarted
@@ -4862,8 +5168,8 @@ components:
       additionalProperties: false
       required:
         [run_id, epoch, organization_id, issue_number, issue_title, issue_body, labels, effort,
-         acceptance_criteria, model, branch_name, workflow, repository, protected_paths, base_commit, checkpoint,
-         status]
+         acceptance_criteria, model, started_by, branch_name, workflow, repository, protected_paths, base_commit,
+         checkpoint, status]
       properties:
         run_id:
           type: string
@@ -4905,6 +5211,14 @@ components:
         model:
           type: string
           description: "`runs.model`, as the run was opened with it."
+        started_by:
+          description: |-
+            The person who started the run — who confirmed the queue item it was opened from
+            (`runs.started_by`, #1310) — or null when no person did. The engine names them as
+            the co-author of the run's commits.
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/ExecutionStarter"
         branch_name:
           type: string
           description: "`ouro/run-<id>-<issue>` unless the run was opened with a branch of its own."

@@ -24,6 +24,7 @@
  * PUT    /repos/{o}/{r}/pulls/{n}/merge                    the merge itself
  * POST   /repos/{o}/{r}/git/refs                           a branch created through the API (#1314)
  * GET    /repos/{o}/{r}/git/ref/heads/{branch}             … and read back
+ * GET    /repos/{o}/{r}/branches/{branch}                  whether a branch is protected — the push grant's read (#1310)
  * DELETE /repos/{o}/{r}/git/refs/heads/{branch}            the merged head branch
  * GET    /repos/{o}/{r}/issues/{n}/comments · POST         a keyed PR comment: look, then post
  * PATCH  /repos/{o}/{r}/issues/comments/{id}               … or edit the one already there
@@ -1161,6 +1162,23 @@ async function handle(request, response) {
     createdRefs.set(slug, held);
     deletedRefs.get(slug)?.delete(branch);
     json(response, 201, { ref, object: { sha, type: "commit" } });
+    return;
+  }
+
+  // GET /repos/{o}/{r}/branches/{branch} — the push grant's question (DI.2, #1310): is this branch
+  // protected? A branch created here is answered, never protected — this host has no branch
+  // rules — and any other is GitHub's `404 Branch not found`, which the grant reads as a branch
+  // that does not exist yet. The branch may hold slashes, so the rest of the path is the name.
+  if (rest[0] === "branches" && rest.length > 1) {
+    const branch = rest.slice(1).map(decodeURIComponent).join("/");
+    const sha = createdRefs.get(slug)?.get(branch);
+
+    if (method !== "GET" || sha === undefined) {
+      json(response, 404, { message: "Branch not found" });
+      return;
+    }
+
+    json(response, 200, { name: branch, protected: false, commit: { sha } });
     return;
   }
 

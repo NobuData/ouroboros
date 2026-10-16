@@ -252,6 +252,26 @@ describe("composing the audit card's lines", () => {
       "handed a runner the credential to check out a repository",
     );
   });
+  it("names the branch a run's push was granted for, and how it ended (#1310)", () => {
+    expect(
+      eventSentence({ action: "run.push_granted", detail: { branch: "ouro/run-1-482" } }),
+    ).toBe("handed the engine the credential to push ouro/run-1-482");
+    expect(eventSentence({ action: "run.push_granted", detail: {} })).toBe(
+      "handed the engine the credential to push a run's branch",
+    );
+    expect(
+      eventSentence({
+        action: "run.branch_pushed",
+        detail: { branch: "ouro/run-1-482", outcome: "pushed" },
+      }),
+    ).toBe("pushed ouro/run-1-482");
+    expect(
+      eventSentence({
+        action: "run.branch_pushed",
+        detail: { branch: "ouro/run-1-482", outcome: "failed" },
+      }),
+    ).toBe("could not push ouro/run-1-482");
+  });
 });
 
 describe("the actor column", () => {

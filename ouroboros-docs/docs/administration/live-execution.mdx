@@ -124,6 +124,51 @@ was stopped, using session files kept beside the run's working tree under
 <EnvVar name="OURO_ENGINE_RUN_DIR" />. If the session cannot be continued, the stage starts
 again as its next attempt. See [Recovery after an engine restart](#recovery-after-an-engine-restart).
 
+## What Ouroboros writes to your repository
+
+A live run writes to your repository in one way only: it pushes **one branch**,
+`ouro/run-<run id>-<issue number>`, fast-forward only. It never force-pushes, never deletes the
+branch, and never pushes to the default branch or to a branch your host protects.
+
+**When it pushes.** When the run reaches a build stage, so the build runs on the run's own
+changes, and when it reaches its pull-request stage. A correction round — a failed build sent
+back to the implement stage — adds commits on top of the ones already pushed.
+
+**What the commits say.** One commit per stage attempt that changed files. The author and
+committer are the deployment's Ouroboros identity, set by
+<EnvVar name="OURO_ENGINE_COMMIT_AUTHOR_NAME" /> and <EnvVar name="OURO_ENGINE_COMMIT_AUTHOR_EMAIL" />.
+The person who confirmed the live run is named in a `Co-authored-by:` trailer. Every message
+states that an automated loop generated the change and carries `Ouroboros-Run:`,
+`Ouroboros-Workflow:`, `Ouroboros-Model:` and `Ouroboros-Stage:` trailers. Commits are not
+signed. [The loop's branch on your host](../user-guide/pull-requests.mdx#the-loops-branch-on-your-host)
+shows a commit's parts.
+
+**What is refused before anything is sent.** Ouroboros checks every push before it hands over
+a credential, and refuses:
+
+- a force push;
+- a branch that is not the run's own, or one outside `ouro/run-*`;
+- the repository's default branch;
+- a branch your host reports as protected;
+- changes the guardrails have not evaluated for the run's current changes, or that a guardrail
+  in block mode failed;
+- a workspace with no GitHub credential.
+
+The engine refuses, on its side, a push of more than one ref, a forced ref, or any ref outside
+`refs/heads/ouro/run-`.
+
+**The credential.** The workspace's GitHub token is handed to the engine for that one push and
+used in memory. It is never written to the run's working tree, its git configuration, the
+process list or the logs.
+
+**When the host refuses.** A push your host refuses — permissions, branch protection, the
+network — ends the stage with the host's own reason. The working tree is kept, so the run can be
+retried.
+
+**The audit trail.** Two events are recorded for every push, both naming the run and the person
+who started it: `run.push_granted` when the credential is handed over, and `run.branch_pushed`
+with the outcome.
+
 ## Recovery after an engine restart
 
 A live run survives the engine stopping part-way through:
@@ -161,7 +206,9 @@ The engine gives every live run its own **working tree** to edit, under
   through `..`, an absolute path elsewhere, or a symbolic link that points out. So is any path
   through a `.git` directory.
 - **Checkpointed.** At each stage boundary the engine commits the tree on the run branch. The
-  commit is local only and never pushed as is. If the engine stops mid-stage, the tree is put
+  checkpoint is local only and never pushed as is: what is pushed is an attributed commit made
+  from it (see [What Ouroboros writes to your repository](#what-ouroboros-writes-to-your-repository)).
+  If the engine stops mid-stage, the tree is put
   back at the last checkpoint when the run resumes. Half-written files from the stopped stage
   are dropped.
 - **What the run console shows is what is on disk.** The *Changes* card is the tree's own
@@ -171,7 +218,7 @@ Trees are removed when they are no longer needed:
 
 | When | What happens |
 | --- | --- |
-| The run ends — its branch is pushed, or the run is abandoned | The engine removes the tree. |
+| The run ends — its branch is pushed at the pull-request stage, or the run is abandoned | The engine removes the tree. A push the host refused keeps it, for a retry. |
 | The engine starts, and whenever a new run's tree is made | A sweep removes trees whose run has ended, trees left half-made by a crash, and trees nobody has opened for <EnvVar name="OURO_ENGINE_RUN_IDLE_HOURS" /> hours. A tree that is open is never swept. |
 
 Set <EnvVar name="OURO_ENGINE_RUN_IDLE_HOURS" /> longer than a run may wait on a person at a
@@ -211,5 +258,7 @@ paused.
 | <EnvVar name="OURO_ENGINE_RUN_DIR" /> | `<temp dir>/ouroboros-engine/runs` | Where the engine keeps each run's working tree. Mount a volume there. |
 | <EnvVar name="OURO_ENGINE_RUN_MAX_MB" /> | `2048` | One tree's size limit in MB, and the free space a new run needs (16–1048576). |
 | <EnvVar name="OURO_ENGINE_RUN_IDLE_HOURS" /> | `168` | How long a tree may go unopened before the sweep removes it (1–8760). |
+| <EnvVar name="OURO_ENGINE_COMMIT_AUTHOR_NAME" /> | `Ouroboros` | The name a run's pushed commits are authored and committed under. |
+| <EnvVar name="OURO_ENGINE_COMMIT_AUTHOR_EMAIL" /> | `loop@ouroboros.invalid` | The email address a run's pushed commits are authored and committed under. |
 
 The [Configuration reference](./configuration/index.mdx) lists every variable.

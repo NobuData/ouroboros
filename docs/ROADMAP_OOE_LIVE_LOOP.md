@@ -1079,7 +1079,7 @@ The issues here are what the chain assumes and nothing filed provides.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | DI.1 | ✅ #1307 | 🟢 Done | ouroboros-engine: [DI.1] Run workspace — a writable working tree per run | A confined tree from the clone cache on a branch named for the run; created, checkpointed, removed | mvp, live-loop, engine, workflow | Y | Y | M | ouroboros-engine, ouroboros-docs |
-| DI.2 | #1310 | 🟡 Open | ouroboros-engine: [DI.2] Branch publisher — attributed commits & single-branch push | Commit the tree's changes with honest authorship; push one branch with a one-call credential | mvp, live-loop, engine, rest, pr | N (after DI.1) | Y | M | ouroboros-engine, ouroboros-rest, ouroboros-docs |
+| DI.2 | ✅ #1310 | 🟢 Done | ouroboros-engine: [DI.2] Branch publisher — attributed commits & single-branch push | Commit the tree's changes with honest authorship; push one branch with a one-call credential | mvp, live-loop, engine, rest, pr | N (after DI.1) | Y | M | ouroboros-engine, ouroboros-rest, ouroboros-docs |
 | DI.3 | #1311 | 🟡 Open | ouroboros-rest: [DI.3] Draft pull-request publisher under dry-run policy | `createPR` as a draft with the run summary and criteria; `run_id` linked; idempotent | mvp, live-loop, rest, pr, runs | N (after DI.2) | Y | M | ouroboros-rest, ouroboros-docs |
 | DI.4 | ✅ #1312 | 🟢 Done | ouroboros-rest: [DI.4] Live-run admission — dry-run required, pause honoured, concurrency ceiling | The one gate a queue item passes before the engine may claim it | mvp, live-loop, rest, runs, workflow | Y | Y | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
 | DI.5 | ✅ #1314 | 🟢 Done | ouroboros-db: [DI.5] Slice workflow, seeds & the e2e sandbox fixture | A published `live-slice` workflow, a fixture repository that accepts a push and a pull request, a recorded provider exchange | mvp, live-loop, db, ci, workflow | Y | Y | M | ouroboros-db, tests/e2e, docker-compose.e2e.yml |
@@ -1150,7 +1150,21 @@ The issues here are what the chain assumes and nothing filed provides.
 
 ### Issue DI.2 — ouroboros-engine: [DI.2] Branch publisher — attributed commits & single-branch push
 
-> **GitHub issue:** #1310 · **Status:** 🟡 Open · **Parent epic:** #1295
+> **GitHub issue:** #1310 · **Status:** 🟢 Done · **Parent epic:** #1295
+>
+> **Delivered (#1310):** the engine publishes the run branch on entering each build stage and at
+> the pull-request stage: one attributed commit per stage attempt that changed files (author
+> `OURO_ENGINE_COMMIT_AUTHOR_NAME` / `_EMAIL`, defaults `Ouroboros` / `loop@ouroboros.invalid`;
+> `Co-authored-by` the person who confirmed the live run, now kept as `runs.started_by`, V151;
+> trailers `Ouroboros-Run`, `Ouroboros-Workflow`, `Ouroboros-Model`, `Ouroboros-Stage`), reported
+> to AP.1, then one fast-forward push through dulwich in-process. REST's
+> `POST /internal/runs/:id/push` builds the single refspec and hands the workspace token over for
+> that call after refusing a force push, a branch other than the run's own `ouro/run-*`, the
+> default branch, changes the guardrails have not evaluated at the current change set, a
+> blocking guardrail failure, and a branch GitHub reports as protected; `…/push/result` records
+> the outcome. Audit events `run.push_granted` and `run.branch_pushed` name the starter. A host
+> refusal ends the stage with the host's reason and keeps the tree. Not done here: signed commits
+> and an App identity (#374).
 
 - **Problem Statement:** A changed working tree is not a pull request. #375
   folds "push the branch" into one line of an issue whose subject is autonomous

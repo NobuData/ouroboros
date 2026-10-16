@@ -108,6 +108,7 @@ function run(over: Partial<Run> = {}): Run {
     exec_base_commit: null,
     exec_checkpoint: null,
     exec_checkpoint_at: null,
+    started_by: null,
     ...over,
   };
 }
@@ -366,12 +367,27 @@ describe("opening a run from a claimed queue item (#91)", () => {
     expect(spy.removeQueueItem.mock.calls[0][1]).toBe(held);
   });
 
+  it("records who confirmed the item as the run's starter, before the item is consumed (#1310)", async () => {
+    const { repository, spy } = stubRepository();
+    spy.lockQueueItem.mockResolvedValueOnce(leasedItem({ confirmed_by: "user-ken" }));
+
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(
+      { ...OPEN, queueItem: LEASE },
+      false,
+    );
+
+    expect(spy.insertRun.mock.calls[0][1]).toMatchObject({ started_by: "user-ken" });
+    expect(spy.insertRun.mock.invocationCallOrder[0]).toBeLessThan(
+      spy.removeQueueItem.mock.invocationCallOrder[0],
+    );
+  });
+
   it("opens an ordinary run, and removes nothing, without one", async () => {
     const { repository, spy } = stubRepository();
 
     await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(OPEN, false);
 
-    expect(spy.insertRun.mock.calls[0][1]).toMatchObject({ queue_item_id: null });
+    expect(spy.insertRun.mock.calls[0][1]).toMatchObject({ queue_item_id: null, started_by: null });
     expect(spy.lockQueueItem).not.toHaveBeenCalled();
     expect(spy.removeQueueItem).not.toHaveBeenCalled();
   });

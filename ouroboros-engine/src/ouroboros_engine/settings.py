@@ -109,6 +109,13 @@ class Settings(BaseSettings):
             run's heartbeat is sent to ``ouroboros-rest`` (#160, ADR decision A.3).
         engine_worker_id: ``OURO_ENGINE_WORKER_ID``, the worker name this process claims
             queue items and starts runs under. Defaults to the host name.
+        commit_author_name: ``OURO_ENGINE_COMMIT_AUTHOR_NAME``, the name on the commits a
+            run pushes to its branch (DI.2, #1310) — author and committer both. The person
+            who started the run is the co-author. No ``<``, ``>`` or line break, which git
+            would read as the end of the identity.
+        commit_author_email: ``OURO_ENGINE_COMMIT_AUTHOR_EMAIL``, the address beside that
+            name. Defaults to an ``.invalid`` address, which no mail ever reaches; a
+            deployment that wants the commits linked to an account sets one it owns.
     """
 
     model_config = SettingsConfigDict(
@@ -195,6 +202,20 @@ class Settings(BaseSettings):
         max_length=128,
         pattern=r"^\S(.*\S)?$",
         validation_alias="OURO_ENGINE_WORKER_ID",
+    )
+    commit_author_name: str = Field(
+        default="Ouroboros",
+        min_length=1,
+        max_length=100,
+        pattern=r"^[^<>\s](?:[^<>\r\n]*[^<>\s])?$",
+        validation_alias="OURO_ENGINE_COMMIT_AUTHOR_NAME",
+    )
+    commit_author_email: str = Field(
+        default="loop@ouroboros.invalid",
+        min_length=3,
+        max_length=254,
+        pattern=r"^[^<>\s@]+@[^<>\s@]+$",
+        validation_alias="OURO_ENGINE_COMMIT_AUTHOR_EMAIL",
     )
 
 

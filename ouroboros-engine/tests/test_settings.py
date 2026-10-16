@@ -267,3 +267,50 @@ def test_the_env_files_are_the_repo_root_and_module_templates_siblings() -> None
     assert (module_directory / ".env.example").is_file(), (
         "the module template is what a developer copies to the file read above"
     )
+
+
+def test_the_commit_identity_defaults_to_an_address_no_mail_reaches() -> None:
+    settings = load_settings()
+
+    assert settings.commit_author_name == "Ouroboros"
+    assert settings.commit_author_email == "loop@ouroboros.invalid"
+
+
+def test_the_commit_identity_is_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OURO_ENGINE_COMMIT_AUTHOR_NAME", "Acme Loop Bot")
+    monkeypatch.setenv("OURO_ENGINE_COMMIT_AUTHOR_EMAIL", "loop-bot@acme.example")
+
+    settings = load_settings()
+
+    assert settings.commit_author_name == "Acme Loop Bot"
+    assert settings.commit_author_email == "loop-bot@acme.example"
+
+
+@pytest.mark.parametrize(
+    "value", ["", " Ouroboros", "Ouroboros ", "Ouro <boros>", "Ouro\nboros", "x" * 101]
+)
+def test_a_commit_name_git_would_misread_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("OURO_ENGINE_COMMIT_AUTHOR_NAME", value)
+
+    with pytest.raises(SettingsError) as failure:
+        load_settings()
+
+    assert "OURO_ENGINE_COMMIT_AUTHOR_NAME" in str(failure.value)
+
+
+@pytest.mark.parametrize(
+    "value", ["", "loop", "loop@", "@ouroboros.invalid", "lo op@x.y", "<loop@x.y>"]
+)
+def test_a_commit_email_that_is_not_one_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("OURO_ENGINE_COMMIT_AUTHOR_EMAIL", value)
+
+    with pytest.raises(SettingsError) as failure:
+        load_settings()
+
+    assert "OURO_ENGINE_COMMIT_AUTHOR_EMAIL" in str(failure.value)

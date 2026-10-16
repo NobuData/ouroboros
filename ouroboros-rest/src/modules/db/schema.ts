@@ -1065,6 +1065,11 @@ export interface RunsTable {
   >;
   /** When {@link RunsTable.exec_checkpoint} was last written (V147); null exactly when it is. */
   exec_checkpoint_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  /**
+   * The user who confirmed the queue item this run was opened from (V151, #1310) — the co-author
+   * of its commits and the actor of its push audit rows. Null for a run no person started.
+   */
+  started_by: ColumnType<string | null, string | null | undefined, string | null>;
 }
 
 /**
@@ -1289,6 +1294,8 @@ export interface RunsWithStageView {
   exec_checkpoint: Record<string, unknown> | null;
   /** `runs.exec_checkpoint_at` (V147). */
   exec_checkpoint_at: Date | null;
+  /** `runs.started_by` (V151). */
+  started_by: string | null;
 }
 
 /**
@@ -2328,9 +2335,10 @@ export type RunIngestOperation =
   | "run.files"
   | "run.commits"
   | "run.resources"
-  | "run.finish";
+  | "run.finish"
+  | "run.push_result";
 
-/** The seven, in the order the contract performs them — what a DTO validates and a test iterates. */
+/** The eight, in the order the contract performs them — what a DTO validates and a test iterates. */
 export const RUN_INGEST_OPERATIONS = [
   "run.create",
   "run.stage_transition",
@@ -2339,6 +2347,7 @@ export const RUN_INGEST_OPERATIONS = [
   "run.commits",
   "run.resources",
   "run.finish",
+  "run.push_result",
 ] as const satisfies readonly RunIngestOperation[];
 
 /**
@@ -8640,6 +8649,7 @@ export const TABLE_COLUMNS = {
     "exec_base_commit",
     "exec_checkpoint",
     "exec_checkpoint_at",
+    "started_by",
   ],
   run_stages: [
     "id",
@@ -10783,6 +10793,7 @@ export const TABLE_COLUMNS = {
     "exec_base_commit",
     "exec_checkpoint",
     "exec_checkpoint_at",
+    "started_by",
   ],
   run_events_jsonl: ["run_id", "seq", "line"],
   v_run_guardrails_latest: [

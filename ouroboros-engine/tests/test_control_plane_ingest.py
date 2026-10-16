@@ -19,9 +19,12 @@ from ouroboros_engine.control_plane.contract import INTERNAL_KEY_HEADER
 from ouroboros_engine.control_plane.execution import (
     EXECUTION_ERRORS,
     EXECUTION_PATHS,
+    PUSH_REFUSALS,
     RUN_CHECKPOINT_PATH,
     RUN_FINISH_PATH,
     RUN_HEARTBEAT_PATH,
+    RUN_PUSH_PATH,
+    RUN_PUSH_RESULT_PATH,
     RUN_START_PATH,
 )
 from ouroboros_engine.control_plane.ingest import (
@@ -105,11 +108,13 @@ def test_the_execution_paths_are_documented_with_their_verbs() -> None:
         RUN_START_PATH: {"post"},
         RUN_HEARTBEAT_PATH: {"post"},
         RUN_CHECKPOINT_PATH: {"put"},
+        RUN_PUSH_PATH: {"post"},
+        RUN_PUSH_RESULT_PATH: {"post"},
         RUN_FINISH_PATH: {"post"},
     }
 
 
-@pytest.mark.parametrize("code", EXECUTION_ERRORS)
+@pytest.mark.parametrize("code", (*EXECUTION_ERRORS, *PUSH_REFUSALS))
 def test_every_execution_refusal_named_here_is_documented(code: str) -> None:
     text = json.dumps({path: _document()["paths"][path] for path in EXECUTION_PATHS})
 

@@ -76,12 +76,18 @@ from ouroboros_engine.control_plane.execution import (
     RUN_CHECKPOINT_PATH,
     RUN_FINISH_PATH,
     RUN_HEARTBEAT_PATH,
+    RUN_PUSH_PATH,
+    RUN_PUSH_RESULT_PATH,
     RUN_START_PATH,
     CheckpointRequest,
     CheckpointSaved,
     FinishRunRequest,
     HeartbeatAccepted,
     HeartbeatRequest,
+    PushGrant,
+    PushRecorded,
+    PushRequest,
+    PushResultRequest,
     RunFinished,
     RunStarted,
     StartRunRequest,
@@ -789,6 +795,66 @@ class ControlPlaneClient:
                 ``run_not_executable``.
         """
         return _read(status, body, RunFinished)
+
+    # --- the run branch's push (DI.2, #1310) ----------------------------------------------
+
+    def push_request(self, run: str, body: PushRequest) -> ControlPlaneRequest:
+        """Build the request that asks to push the run's branch.
+
+        Args:
+            run: The run.
+            body: The branch, the head and the change-set it was judged in.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", RUN_PUSH_PATH.format(id=run), body)
+
+    def read_push_grant(self, status: int, body: dict[str, Any]) -> PushGrant:
+        """Read the answer to a push request.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            The refspec, the remote and this one push's credential.
+
+        Raises:
+            ControlPlaneError: On any status but ``200`` — one of
+                :data:`~ouroboros_engine.control_plane.execution.PUSH_REFUSALS`, or the run
+                no longer this worker's.
+        """
+        return _read(status, body, PushGrant)
+
+    def push_result_request(
+        self, run: str, body: PushResultRequest
+    ) -> ControlPlaneRequest:
+        """Build the request that records what a push did.
+
+        Args:
+            run: The run.
+            body: The outcome, keyed.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", RUN_PUSH_RESULT_PATH.format(id=run), body)
+
+    def read_push_recorded(self, status: int, body: dict[str, Any]) -> PushRecorded:
+        """Read the answer to a push result.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            That it was recorded.
+
+        Raises:
+            ControlPlaneError: On any status but ``200``.
+        """
+        return _read(status, body, PushRecorded)
 
     # --- harness credentials (DH.2 #1303, first called by DH.3 #1308) ------------------------
 

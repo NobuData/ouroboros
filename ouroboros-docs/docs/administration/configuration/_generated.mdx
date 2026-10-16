@@ -111,6 +111,18 @@ One run tree's size limit in MB (16–1048576). Over it, the tree is refused at 
 
 How long a run tree may go unopened, in hours (1–8760), before the sweeper removes it. Keep it longer than a run may wait at a gate. Optional; defaults to 168.
 
+### `OURO_ENGINE_COMMIT_AUTHOR_NAME`
+
+**Development default:** unset. Example: `Ouroboros`
+
+The name a run's pushed commits are authored and committed under by ouroboros-engine. The person who confirmed the live run is named as a co-author. Optional; defaults to Ouroboros.
+
+### `OURO_ENGINE_COMMIT_AUTHOR_EMAIL`
+
+**Development default:** unset. Example: `loop@ouroboros.invalid`
+
+The email address a run's pushed commits are authored and committed under. Use one your repository host accepts on a commit. Optional; defaults to loop@ouroboros.invalid.
+
 ### `OURO_ENGINE_HEARTBEAT_SECONDS`
 
 **Development default:** unset. Example: `5`

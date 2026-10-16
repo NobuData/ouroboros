@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from ouroboros_engine.control_plane.contract import _Response
 from ouroboros_engine.control_plane.ingest import IdempotencyKey
@@ -44,11 +44,19 @@ RUN_CHECKPOINT_PATH = "/internal/runs/{id}/checkpoint"
 #: ``POST``: end the run.
 RUN_FINISH_PATH = "/internal/runs/{id}/finish"
 
+#: ``POST``: ask to push the run's branch — the refspec and a one-call credential (DI.2).
+RUN_PUSH_PATH = "/internal/runs/{id}/push"
+
+#: ``POST``: what the push did — the audit row and the console's record of it (DI.2).
+RUN_PUSH_RESULT_PATH = "/internal/runs/{id}/push/result"
+
 #: Every execution path, in the order a run meets them.
 EXECUTION_PATHS: tuple[str, ...] = (
     RUN_START_PATH,
     RUN_HEARTBEAT_PATH,
     RUN_CHECKPOINT_PATH,
+    RUN_PUSH_PATH,
+    RUN_PUSH_RESULT_PATH,
     RUN_FINISH_PATH,
 )
 
@@ -74,6 +82,20 @@ EXECUTION_ERRORS: tuple[str, ...] = (
     RUN_NOT_EXECUTABLE,
     FENCED,
     BASE_COMMIT_MISMATCH,
+)
+
+#: Why ``ouroboros-rest`` refuses a push (DI.2, #1310) — each one before any credential is
+#: opened, so a refused push never reaches the host.
+PUSH_REFUSALS: tuple[str, ...] = (
+    "force_push_refused",
+    "branch_mismatch",
+    "not_a_run_branch",
+    "default_branch",
+    "changes_not_evaluated",
+    "guardrail_blocking",
+    "github_not_configured",
+    "protected_branch",
+    "branch_check_failed",
 )
 
 #: The codes after which a worker must stop writing: it no longer holds the run.
@@ -149,6 +171,18 @@ class StartedRepository(_Response):
     ref: StartedRepositoryRef
 
 
+class StartedBy(_Response):
+    """The person who started the run — the co-author of every commit it pushes (DI.2).
+
+    Attributes:
+        name: Their display name.
+        email: Their address.
+    """
+
+    name: str
+    email: str
+
+
 class AcceptanceCriterion(_Response):
     """One imported acceptance criterion of the run's issue (AX.3 / #359).
 
@@ -184,6 +218,8 @@ class RunStarted(_Response):
         acceptance_criteria: The issue's imported acceptance criteria, in their stored
             order; empty when there are none, or from a control plane that predates them
             (DH.3, #1308).
+        started_by: Who started the run, or ``None`` — a run opened without a person's
+            confirmation, or by a control plane that predates the field (DI.2, #1310).
     """
 
     run_id: str
@@ -203,6 +239,7 @@ class RunStarted(_Response):
     checkpoint: dict[str, Any] | None = None
     status: str
     acceptance_criteria: list[AcceptanceCriterion] = Field(default_factory=list)
+    started_by: StartedBy | None = None
 
 
 class HeartbeatRequest(_SnakeRequest):
@@ -281,3 +318,89 @@ class RunFinished(_Response):
     run_id: str
     status: str
     requeued_queue_item_id: str | None = None
+
+
+class PushRequest(_SnakeRequest):
+    """The body of ``POST /internal/runs/{id}/push`` — asking for one push of the run branch.
+
+    The engine names what it wants pushed; ``ouroboros-rest`` decides whether, and builds the
+    refspec itself. ``force`` exists only so a request for one is refused by name: this
+    engine never sends it.
+
+    Attributes:
+        idempotency_key: This submission's name.
+        epoch: The epoch this worker holds.
+        branch: The run's branch, as ``start`` answered it.
+        head_sha: The commit the branch is to point at.
+        change_set_seq: The change-set report the pushed tree was judged in — the
+            guardrails must have evaluated exactly it.
+        force: Never ``True`` from this engine.
+    """
+
+    idempotency_key: IdempotencyKey
+    epoch: int = Field(ge=1)
+    branch: str = Field(min_length=1, max_length=255)
+    head_sha: str = Field(pattern=_COMMIT)
+    change_set_seq: int = Field(ge=1)
+    force: bool | None = None
+
+
+class PushGrant(_Response):
+    """The answer to a push request: what to push, where, and this one call's credential.
+
+    The credential is a :class:`~pydantic.SecretStr`, so neither ``repr`` nor a log line nor
+    ``model_dump`` writes it out; :meth:`secret` is the one way to read it.
+
+    Attributes:
+        refspec: ``refs/heads/<branch>:refs/heads/<branch>`` — built by the control plane.
+        remote: The repository's https URL.
+        username: The credential's user name (``x-access-token``).
+        password: The credential, for this push only.
+    """
+
+    refspec: str
+    remote: str
+    username: str
+    password: SecretStr
+
+    def secret(self) -> str:
+        """The credential, for the push and nothing else.
+
+        Returns:
+            Its plaintext.
+        """
+        return self.password.get_secret_value()
+
+
+#: What a push did.
+PushOutcome = Literal["pushed", "failed"]
+
+
+class PushResultRequest(_SnakeRequest):
+    """The body of ``POST /internal/runs/{id}/push/result`` — the push's audit row.
+
+    Attributes:
+        idempotency_key: This submission's name.
+        epoch: The epoch this worker holds.
+        branch: The branch pushed.
+        outcome: ``pushed`` or ``failed``.
+        pushed_sha: The commit the branch now points at, when pushed.
+        reason: The host's reason, when it failed.
+    """
+
+    idempotency_key: IdempotencyKey
+    epoch: int = Field(ge=1)
+    branch: str = Field(min_length=1, max_length=255)
+    outcome: PushOutcome
+    pushed_sha: str | None = Field(default=None, pattern=_COMMIT)
+    reason: str | None = Field(default=None, min_length=1, max_length=500)
+
+
+class PushRecorded(_Response):
+    """The answer to a push result.
+
+    Attributes:
+        recorded: Always ``True``.
+    """
+
+    recorded: bool

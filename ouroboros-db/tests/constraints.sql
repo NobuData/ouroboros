@@ -16379,7 +16379,9 @@ insert into ouroboros.run_ingest_receipts
          ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.resources',
           'cover-resources', repeat('6', 64), '{}'::jsonb),
          ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.finish',
-          'cover-finish', repeat('7', 64), '{}'::jsonb);
+          'cover-finish', repeat('7', 64), '{}'::jsonb),
+         ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.push_result',
+          'cover-push-result', repeat('8', 64), '{}'::jsonb);
 
 select pg_temp.must_hold(
   pg_temp.vocabulary('ouroboros.run_ingest_receipts', 'run_ingest_receipts_operation')
@@ -45067,6 +45069,57 @@ select pg_temp.must_reject(
   'a redeemed ticket cannot be re-minted', 'build_job_source_credentials_lifecycle');
 
 delete from ouroboros.organization where "id" in ('org-v150', 'org-v150b');
+
+-- ===========================================================================
+-- V151 — who started a run (#1310, DI.2).
+-- ===========================================================================
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v151', 'Branch Publisher', 'branch-publisher-v151', now());
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v151', 'Starter V151', 'starter-v151@example.test', true);
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a1510000-0000-0000-0000-00000000000a', 'org-v151', 'publisher-v151', true);
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a151f000-0000-0000-0000-00000000000a', 'a1510000-0000-0000-0000-00000000000a', 'helios-firmware', true, 'main');
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq, simulated, started_by)
+  values
+    ('a1510000-0000-0000-0000-000000000001', 'org-v151', 'a151f000-0000-0000-0000-00000000000a',
+     1, 'Started by a person', 'live-slice', 'slice-coder', 'coding', 'Code', 1, 5, now(), 1, false,
+     'user-v151'),
+    ('a1510000-0000-0000-0000-000000000002', 'org-v151', 'a151f000-0000-0000-0000-00000000000a',
+     2, 'Started by nobody', 'live-slice', 'slice-coder', 'coding', 'Code', 1, 5, now(), 2, true,
+     null);
+
+select pg_temp.must_hold(
+  (select started_by = 'user-v151' from ouroboros.runs_with_stage
+    where id = 'a1510000-0000-0000-0000-000000000001'),
+  'runs_with_stage carries who started a run — the co-author of its commits, the actor of its push');
+
+select pg_temp.must_hold(
+  (select started_by is null from ouroboros.runs
+    where id = 'a1510000-0000-0000-0000-000000000002'),
+  'a run no person started has no starter');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set started_by = 'no-such-user'
+     where id = 'a1510000-0000-0000-0000-000000000002'$$,
+  'a starter is a real user', 'runs_started_by_fkey');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from pg_indexes
+    where schemaname = 'ouroboros' and tablename = 'runs' and indexname = 'runs_started_by_idx'),
+  'the starter is indexed, so deleting a user does not scan every run');
+
+delete from ouroboros."user" where "id" = 'user-v151';
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.runs
+    where id = 'a1510000-0000-0000-0000-000000000001' and started_by is null),
+  'deleting the person keeps the run they started — the starter becomes null, the history stays');
+
+delete from ouroboros.organization where "id" = 'org-v151';
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

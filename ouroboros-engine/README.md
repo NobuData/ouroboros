@@ -569,6 +569,31 @@ real tree to write in: `ouroboros_engine/execution/workspace.py`.
   `OURO_ENGINE_RUN_MAX_MB` caps one tree, and a new tree is refused while the volume has less
   than that free.
 
+## The branch publisher
+
+DI.2 (#1310) puts a run's work on the host as one branch, `execution/publisher.py`. It runs on
+entering each build (`infra`) stage and at the `open_pr_automerge` terminal, when the tree has
+checkpoints it has not pushed.
+
+- **Attributed commits.** One commit per checkpoint (one per completed stage attempt), with the
+  checkpoint's tree, chained on the last commit pushed. Author and committer are
+  `OURO_ENGINE_COMMIT_AUTHOR_NAME` / `OURO_ENGINE_COMMIT_AUTHOR_EMAIL`. The message is
+  `<stage>: <issue title> (#<issue>)`, a sentence saying an automated Ouroboros loop generated
+  it, and the trailers `Ouroboros-Run`, `Ouroboros-Workflow: <tag>@v<n>`, `Ouroboros-Model`,
+  `Ouroboros-Stage: <stage> attempt <n>` and `Co-authored-by: <the person who started the run>`.
+  No signature and no App identity (#374).
+- **The push.** The change-set is reported first, so the guardrails judge exactly the pushed
+  tree. `POST /internal/runs/{id}/push` then refuses, or answers the refspec, the remote and the
+  workspace's GitHub credential for this one call. The refspec is checked here too: one ref, no
+  `+`, the run branch under `refs/heads/ouro/run-`. dulwich pushes in process, fast-forward
+  only, and never deletes.
+- **The credential** is a `SecretStr` in the grant, handed to the transport as arguments and
+  dropped. No subprocess, no URL credential, no remote in `.git/config`, no log line.
+- **Afterwards** the commits go to AP.1's commit list and `POST …/push/result` writes the audit
+  row. A refusal or a host failure finishes the run `failed` with the reason and keeps the tree,
+  so the same checkpoints publish again. Local refs `refs/ouro/published` and
+  `refs/ouro/published-checkpoint` record where the next publish starts.
+
 ## The execution bridge
 
 #160 executes live runs under `docs/DECISION_EXECUTION_ENGINE.md` decision A. `ouroboros-rest`'s
@@ -973,6 +998,8 @@ Development default port: **8000** (`PORT`).
 | `OURO_ENGINE_RUN_IDLE_HOURS` | How long a tree may go unopened before the sweep removes it (1–8760) | `168` |
 | `OURO_ENGINE_HEARTBEAT_SECONDS` | How often an executing run's heartbeat is sent to `ouroboros-rest` (1–60); keep it well under REST's stale threshold ([#160](https://github.com/NobuData/ouroboros/issues/160)) | `5` |
 | `OURO_ENGINE_WORKER_ID` | The worker name queue claims and run starts are sent under (1–128 characters) | the host name |
+| `OURO_ENGINE_COMMIT_AUTHOR_NAME` | The name on the commits a run pushes to its `ouro/run-*` branch, author and committer both; the person who started the run is the co-author (1–100 characters, no `<`, `>` or line break) | `Ouroboros` |
+| `OURO_ENGINE_COMMIT_AUTHOR_EMAIL` | The address beside that name; the default is an `.invalid` address no mail reaches | `loop@ouroboros.invalid` |
 
 Values come from the **process environment layered over `.env` files** — the repo-root
 one, then this module's, then the real environment, later winning

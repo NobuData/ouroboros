@@ -25,15 +25,21 @@ from ouroboros_engine.control_plane.execution import (
     CheckpointSaved,
     FinishRunRequest,
     HeartbeatAccepted,
+    PushGrant,
+    PushRecorded,
+    PushRequest,
+    PushResultRequest,
     RunFinished,
     RunStarted,
 )
 from ouroboros_engine.control_plane.ingest import (
     ChangeSet,
+    CommitsAppended,
     EventsAppended,
     IngestEventsRequest,
     OpenRunRequest,
     QueueItemClaimed,
+    ReportCommitsRequest,
     ReportFilesRequest,
     ReportResourcesRequest,
     ResourcesReported,
@@ -57,6 +63,9 @@ ORG = "org-acme"
 SLUG = "acme/helios-firmware"
 ISSUE = 160
 NOW = "2026-10-15T12:00:00.000Z"
+
+#: The credential a push grant hands over — a canary: it must never be written anywhere.
+PUSH_TOKEN = "ghp_canary-1310"
 
 
 def fenced(current: int) -> ControlPlaneError:
@@ -108,6 +117,15 @@ class FakeControl:
         self.guardrail_failures: list[str] = []
         self.guardrail_warnings: list[str] = []
         self.guardrail_verdicts: list[dict[str, Any]] = []
+        #: Who started the run, as ``start`` answers it (DI.2) — ``None`` for nobody.
+        self.started_by: dict[str, str] | None = {
+            "name": "Ken Suenobu",
+            "email": "ken@acme-robotics.dev",
+        }
+        #: The push grant's refspec, when a test wants another than the run branch's.
+        self.push_refspec: str | None = None
+        #: The push grant's remote; the run's remote unless a test sets another.
+        self.push_remote: str | None = None
         self._lock = threading.Lock()
         self._keys = 0
 
@@ -218,6 +236,7 @@ class FakeControl:
                 "checkpoint": self.state,
                 "status": "coding",
                 "acceptance_criteria": self.acceptance_criteria,
+                "started_by": self.started_by,
             }
         )
 
@@ -294,6 +313,40 @@ class FakeControl:
             guardrail_verdicts=self.guardrail_verdicts,
             needs_human=self.needs_human,
         )
+
+    def commits(self, run: str, body: ReportCommitsRequest) -> CommitsAppended:
+        """Append commits."""
+        del run
+        self._record("commits", body)
+        self._fence(body.epoch)
+        return CommitsAppended(
+            submitted=len(body.commits),
+            appended=len(body.commits),
+            duplicates=0,
+            last_seq=len(body.commits),
+        )
+
+    def push(self, run: str, body: PushRequest) -> PushGrant:
+        """Grant the push — or raise the refusal a test scripted with ``refusals``."""
+        self._record("push", body)
+        self._fence(body.epoch)
+        branch = f"ouro/run-{run}-{ISSUE}"
+        return PushGrant.model_validate(
+            {
+                "refspec": self.push_refspec
+                or f"refs/heads/{branch}:refs/heads/{branch}",
+                "remote": self.push_remote or self.remote,
+                "username": "x-access-token",
+                "password": PUSH_TOKEN,
+            }
+        )
+
+    def push_result(self, run: str, body: PushResultRequest) -> PushRecorded:
+        """Record what a push did."""
+        del run
+        self._record("push_result", body)
+        self._fence(body.epoch)
+        return PushRecorded(recorded=True)
 
     def resources(self, run: str, body: ReportResourcesRequest) -> ResourcesReported:
         """Attribute spend."""

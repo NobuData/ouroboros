@@ -107,6 +107,8 @@ import {
   WORKSPACE_GUARDRAIL_MODES_CHANGED_EVENT,
   RUN_BUDGET_EXCEEDED_EVENT,
   RUNNER_SOURCE_CREDENTIAL_REDEEMED_EVENT,
+  RUN_PUSH_GRANTED_EVENT,
+  RUN_BRANCH_PUSHED_EVENT,
   ROADMAP_SUGGESTION_DISMISSED_EVENT,
 } from "./audit.events";
 
@@ -272,6 +274,8 @@ describe("the vocabulary", () => {
       "workspace.guardrail_modes_changed",
       "run.budget_exceeded",
       "runner.source_credential_redeemed",
+      "run.push_granted",
+      "run.branch_pushed",
     ]);
   });
 
@@ -452,6 +456,8 @@ describe("the vocabulary", () => {
       WORKSPACE_GUARDRAIL_MODES_CHANGED_EVENT,
       RUN_BUDGET_EXCEEDED_EVENT,
       RUNNER_SOURCE_CREDENTIAL_REDEEMED_EVENT,
+      RUN_PUSH_GRANTED_EVENT,
+      RUN_BRANCH_PUSHED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

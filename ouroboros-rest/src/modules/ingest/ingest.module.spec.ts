@@ -74,7 +74,9 @@ describe("the ingestion module", () => {
     // `LifecycleStateModule` the workspace state a paused workspace's runs and stages hold on (#489);
     // `DecisionsModule` the Needs-You registry the run plane's emitters file into (#461);
     // `EngineModule`, `CodeModule` and `ScheduleModule` the execution bridge's (#160): the engine
-    // the supervisor resubmits to, the repository ref a start hands out, and the supervisor's timer.
+    // the supervisor resubmits to, the repository ref a start hands out, and the supervisor's timer;
+    // `GithubModule` and `AuditModule` the branch publisher's (#1310): whether the workspace holds a
+    // GitHub token, the protected-branch read, and the push's audit rows.
     const imports = Reflect.getMetadata("imports", IngestModule) as {
       name?: string;
       module?: { name: string };
@@ -90,6 +92,8 @@ describe("the ingestion module", () => {
       "AdmissionModule",
       "EngineModule",
       "CodeModule",
+      "GithubModule",
+      "AuditModule",
       "ScheduleModule",
     ]);
   });
