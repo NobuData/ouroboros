@@ -44,7 +44,7 @@ import {
   type QueueWaiting,
   type WorkspaceAdmissionFacts,
 } from "./admission";
-import { pinnedTaskKinds } from "./admission.pin";
+import { firstModelStage, pinnedTaskKinds } from "./admission.pin";
 import { AdmissionRepository, type Writer } from "./admission.repository";
 
 /**
@@ -52,6 +52,15 @@ import { AdmissionRepository, type Writer } from "./admission.repository";
  * that cannot start, the claim answers nothing rather than walk the rest under its lock.
  */
 export const CLAIM_CANDIDATE_LIMIT = 50;
+
+/**
+ * The task kind whose route names a run's model when its pinned workflow has no model stage to
+ * read one from (#160) — the loop's own work.
+ */
+export const DEFAULT_MODEL_TASK_KIND = "implement";
+
+/** The model a claim names when nothing resolves one — never blank, as `runs.model` requires. */
+export const UNROUTED_MODEL = "unrouted";
 
 /** What one claim's admission decided. */
 export type AdmitNext =
@@ -157,6 +166,51 @@ export class AdmissionService {
 
     this.executorCache = { count, at };
     return count;
+  }
+
+  /**
+   * The model a run opened from a claimed item will record — `runs.model`, what the dashboard
+   * row renders (#160). The rule, in order:
+   *
+   *   1. the pinned workflow's **first model stage** (`llm` node, document order): its pinned
+   *      registry alias when it pins one;
+   *   2. otherwise the alias of the **first kept hop** of the route that stage inherits
+   *      (`routing.inherit_task`);
+   *   3. a definition with no model stage reads the route of {@link DEFAULT_MODEL_TASK_KIND}
+   *      the same way;
+   *   4. and when no route resolves to a kept hop, {@link UNROUTED_MODEL}.
+   *
+   * An alias, never a raw provider model id (decision M1) — the same name the run's stages are
+   * routed by. Admission has already required every inherited route to resolve, so step 4 is
+   * for a definition with no model stage in a workspace with no default route.
+   *
+   * @param organizationId - The workspace.
+   * @param definition - The pinned `workflow_versions.definition`, or `undefined` when there is
+   *   no pin.
+   * @returns The alias.
+   */
+  async modelFor(organizationId: string, definition: unknown): Promise<string> {
+    const stage = definition === undefined ? undefined : firstModelStage(definition);
+
+    if (stage !== undefined && "alias" in stage) {
+      return stage.alias;
+    }
+
+    const task = stage?.task ?? DEFAULT_MODEL_TASK_KIND;
+
+    try {
+      const resolution = await this.routing.resolve(organizationId, task);
+      const primary = resolution.chain.find((hop) => hop.decision === "kept");
+
+      return resolution.outcome === "resolved" && primary !== undefined
+        ? primary.alias
+        : UNROUTED_MODEL;
+    } catch (error) {
+      if (error instanceof NotFoundError) {
+        return UNROUTED_MODEL;
+      }
+      throw error;
+    }
   }
 
   /**

@@ -6923,6 +6923,22 @@ engine ── POST /internal/runs {…, queueItem: {id, claimToken}}
   runs a `pause` control; resuming resumes the ones that pause paused.
 - **Spend by stage.** A resources report's `spend` may carry `stage` and `attempt`, stored on
   `token_usage.stage` / `attempt` (V139's columns), so a run's spend reads per stage.
+- **Executing a run (#160, ADR decision A).** `POST /internal/runs/{id}/start {worker}` raises
+  `runs.exec_epoch` (V147) under the run's lock and answers the pinned document, the repository
+  and its per-call `ref`, the effective protected paths, the ticket's body/labels/effort and any
+  base commit and checkpoint to resume from; only live `coding`/`building` runs start
+  (`409 run_simulated` / `run_not_executable`). `POST …/heartbeat {epoch}`, `PUT …/checkpoint
+  {epoch, base_commit?, state}` and `POST …/finish {epoch, idempotency_key, outcome, reason}`
+  follow, in snake_case; any write — these and the six reports, which take an optional `epoch` —
+  under a superseded epoch is `409 fenced` (`details.current_epoch`). `finish` maps `review` →
+  `review`, `needs_human` → `needs_human` (+ inbox card), `failed` and `back_to_queue` →
+  `failed` (the latter requeues the issue at the tail, unconfirmed). The claim answers the
+  `model` the run will record (`AdmissionService.modelFor`).
+- **The run supervisor.** `RunSupervisor` (`src/modules/ingest/run-supervisor.ts`) ticks every
+  `OURO_RUN_SUPERVISOR_TICK_SECONDS` (5): a live `coding`/`building` run whose heartbeat is older
+  than `OURO_RUN_HEARTBEAT_STALE_SECONDS` (30) — or never started and opened that long ago — is
+  resubmitted to the engine's `POST /v0/runs/{id}/execute`; while `OURO_LIVE_EXECUTION_ENABLED`,
+  each workspace with a confirmed, unleased queue item gets one `POST /v0/execution/claims`.
 
 The engine's side is `ouroboros_engine.control_plane.ingest_client.IngestClient`: the builders,
 a transport that retries a dropped connection or a `502`/`503`/`504` with the same keyed request,

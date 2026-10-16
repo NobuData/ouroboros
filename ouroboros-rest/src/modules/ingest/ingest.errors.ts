@@ -113,6 +113,18 @@ export const INGEST_ERRORS = {
 
   /** The queue item a run is opened from is for another issue, repository or pin (#91). */
   queueItemMismatch: "queue_item_mismatch",
+
+  /** Only live runs execute; this one is simulated or seeded (#160). */
+  runSimulated: "run_simulated",
+
+  /** The run is not `coding` or `building` any more, so nothing may execute it (#160). */
+  runNotExecutable: "run_not_executable",
+
+  /** The write carried an execution epoch another start has superseded (#160). */
+  fenced: "fenced",
+
+  /** The run's base commit is already set, to a different commit (#160). */
+  baseCommitMismatch: "base_commit_mismatch",
 } as const;
 
 /** One of {@link INGEST_ERRORS}' values. */
@@ -515,5 +527,71 @@ export function queueItemMismatch(queueItem: string, field: string): InvalidRequ
     INGEST_ERRORS.queueItemMismatch,
     `That queue item is not for the run being opened: its ${field} differs.`,
     { queueItem, field },
+  );
+}
+
+/**
+ * `409` — only live runs execute (#160, ADR decision A). A simulated run is reported by the
+ * simulator and a seeded one by its seed; neither is ever interpreted, so neither may be started.
+ *
+ * @param run - The run that was asked for.
+ * @param origin - What it is instead — `simulated` or `seeded`.
+ * @returns The error to throw.
+ */
+export function runSimulated(run: string, origin: string): ConflictError {
+  return new ConflictError(
+    INGEST_ERRORS.runSimulated,
+    "Only live runs execute; this run is simulated or seeded. Nothing was started.",
+    { run, origin },
+  );
+}
+
+/**
+ * `409` — the run is not `coding` or `building` (#160): it has finished, a person cancelled it,
+ * or it has moved on to review. Nothing may execute it any more; an engine told this stops.
+ *
+ * @param run - The run.
+ * @param status - Where it stands.
+ * @returns The error to throw.
+ */
+export function runNotExecutable(run: string, status: string): ConflictError {
+  return new ConflictError(
+    INGEST_ERRORS.runNotExecutable,
+    "This run is no longer coding or building, so nothing may execute it. Stop.",
+    { run, status },
+  );
+}
+
+/**
+ * `409` — the write carried an epoch another start has superseded (#160, ADR decision A): a
+ * newer worker holds the run. The write was refused whole; the stale worker stops without
+ * finishing.
+ *
+ * @param currentEpoch - The epoch the run is at — `details.current_epoch`, spelled as the
+ *   execution contract spells its fields.
+ * @returns The error to throw.
+ */
+export function fenced(currentEpoch: number): ConflictError {
+  return new ConflictError(
+    INGEST_ERRORS.fenced,
+    "Another worker has started this run since; this write carried a superseded epoch. Stop.",
+    { current_epoch: currentEpoch },
+  );
+}
+
+/**
+ * `409` — the run's base commit is already set, to another commit (#160). A base commit is set
+ * once (V147's `runs_exec_base_commit_immutable`), so a resumed run reopens on the same base and
+ * never rebases silently.
+ *
+ * @param current - The base commit the run holds.
+ * @param offered - The one this checkpoint named.
+ * @returns The error to throw.
+ */
+export function baseCommitMismatch(current: string, offered: string): ConflictError {
+  return new ConflictError(
+    INGEST_ERRORS.baseCommitMismatch,
+    "This run's base commit is already set to another commit. Nothing was saved.",
+    { current, offered },
   );
 }

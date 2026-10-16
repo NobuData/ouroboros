@@ -97,6 +97,14 @@ import {
 } from "./engine.code.contract";
 import { engineUnavailable } from "./engine.errors";
 import {
+  ENGINE_EXECUTION_CLAIMS_ROUTE,
+  claimOutcomeSchema,
+  engineExecuteRunRoute,
+  executeAcceptedSchema,
+  type EngineClaimOutcome,
+  type EngineExecuteAccepted,
+} from "./engine.execution";
+import {
   ENGINE_INVESTIGATE_ROUTE,
   type EngineInvestigateRequest,
   type EngineInvestigationAccepted,
@@ -730,6 +738,39 @@ export class EngineClient {
       throw engineUnavailable();
     }
     return { ok: true, data: parsed.data };
+  }
+
+  /**
+   * Ask the engine to execute (or resume) a run — the run supervisor's resubmission of a run
+   * whose worker went quiet (#160). The engine starts it under a new epoch in the background and
+   * answers at once; it declines, without failing, when it has no executor or already holds the
+   * run.
+   *
+   * @param runId - `runs.id`.
+   * @returns Whether it took the run, and why not.
+   * @throws {UpstreamError} `engine_unavailable` — unreachable, a non-2xx answer, or a body
+   *   outside the contract.
+   */
+  async executeRun(runId: string): Promise<EngineExecuteAccepted> {
+    return this.call(engineExecuteRunRoute(runId), executeAcceptedSchema, { method: "POST" });
+  }
+
+  /**
+   * Ask the engine to claim a workspace's next admissible queue item and execute the run it
+   * opens from it (#160). It declines, without failing, when it has no executor or nothing is
+   * claimable.
+   *
+   * @param workspace - The workspace — `organization.id`.
+   * @returns Whether it claimed, the run it opened, and why not.
+   * @throws {UpstreamError} `engine_unavailable` — unreachable, a non-2xx answer, or a body
+   *   outside the contract.
+   */
+  async claimWork(workspace: string): Promise<EngineClaimOutcome> {
+    return this.call(ENGINE_EXECUTION_CLAIMS_ROUTE, claimOutcomeSchema, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workspace }),
+    });
   }
 
   /**

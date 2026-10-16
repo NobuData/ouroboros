@@ -1818,7 +1818,7 @@ e2e: parity ✓ · edit→apply ✓ · publish gate ✓ · dry-run path ✓ · r
 | T.3 | #157 | 🟡 Open | ouroboros-rest: [T.3] Linear ticket-source provider | GraphQL sync + webhooks behind the Q.2 SPI | v2, sources, rest | N (after Q.5) | N | M | ouroboros-rest |
 | T.4 | #158 | 🟡 Open | ouroboros-rest: [T.4] GitLab ticket-source provider | REST v4 sync + webhooks behind the Q.2 SPI | v2, sources, rest | N (after Q.5) | N | M | ouroboros-rest |
 | T.5 | #159 | 🟡 Open | ouroboros-ui: [T.5] Workflow template library | Curated starter workflows; "Browse templates" made real | v2, workflow, ui | N (after P.3) | N | M | ouroboros-ui, ouroboros-rest |
-| T.6 | #160 | 🟡 Open | ouroboros-engine: [T.6] Workflow execution bridge | Interpret published definitions over #54; runs feed DASH-J.3 | mvp, live-loop, workflow, engine, rest | Y (after T.1, #54, DASH-J.3) | N | L | ouroboros-engine, ouroboros-rest |
+| T.6 | ✅ #160 | 🟢 Done | ouroboros-engine: [T.6] Workflow execution bridge | Interpret published definitions over #54; runs feed DASH-J.3 | mvp, live-loop, workflow, engine, rest | Y (after T.1, #54, DASH-J.3) | N | L | ouroboros-engine, ouroboros-rest |
 
 ### Issue T.1 — ouroboros-engine: [T.1] Execution engine ADR
 

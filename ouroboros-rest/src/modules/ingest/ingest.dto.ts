@@ -190,6 +190,27 @@ export abstract class IdempotentRequestDto {
   idempotencyKey!: string;
 }
 
+/** The largest execution epoch a write may carry — `runs.exec_epoch` is a PostgreSQL integer. */
+export const MAX_EXEC_EPOCH = 2_147_483_647;
+
+/**
+ * What every run-scoped report carries: the key, and optionally the execution epoch (#160).
+ *
+ * The epoch is ADR decision A's fence. An engine that started the run (`POST
+ * /internal/runs/:id/start`) sends the epoch it was given on every write, and a write whose epoch
+ * is not the run's current one is refused `409 fenced` — a worker that lost the run to a newer
+ * start cannot write into it. **Optional**, so the simulator and every caller written before
+ * #160 keep working unchanged: absent, nothing is fenced.
+ */
+export abstract class FencedRequestDto extends IdempotentRequestDto {
+  /** The execution epoch the writer holds — `runs.exec_epoch` as its start answered it. */
+  @Max(MAX_EXEC_EPOCH)
+  @Min(1)
+  @IsInt()
+  @IsOptional()
+  epoch?: number;
+}
+
 /**
  * Which ticket a run is opened for — the canonical linkage the issue names.
  *
@@ -385,7 +406,7 @@ export class StageReturnDto {
 }
 
 /** `POST /internal/runs/:id/stage-transitions` — move one stage attempt. */
-export class StageTransitionDto extends IdempotentRequestDto {
+export class StageTransitionDto extends FencedRequestDto {
   /** The DSL node id — resolved against the run's pin for its label, position and limits. */
   @Matches(STAGE_KEY_PATTERN, { message: "stageKey must be a DSL node id" })
   @MaxLength(64)
@@ -501,7 +522,7 @@ export class IngestEventDto {
 }
 
 /** `POST /internal/runs/:id/events` — append to the transcript. */
-export class IngestEventsDto extends IdempotentRequestDto {
+export class IngestEventsDto extends FencedRequestDto {
   /**
    * The batch, in the executor's own order.
    *
@@ -613,7 +634,7 @@ export class IngestFileDto {
 }
 
 /** `PUT /internal/runs/:id/files` — report the change-set as it stands. */
-export class ReportFilesDto extends IdempotentRequestDto {
+export class ReportFilesDto extends FencedRequestDto {
   /**
    * The **whole** change-set, not the delta.
    *
@@ -656,7 +677,7 @@ export class IngestCommitDto {
 }
 
 /** `POST /internal/runs/:id/commits` — append commits. */
-export class ReportCommitsDto extends IdempotentRequestDto {
+export class ReportCommitsDto extends FencedRequestDto {
   /** The commits, oldest first. A sha already reported is a no-op, whatever request it is in. */
   @ValidateNested({ each: true })
   @Type(() => IngestCommitDto)
@@ -745,7 +766,7 @@ export class TokenSpendDto {
 }
 
 /** `POST /internal/runs/:id/resources` — token and cost deltas, and the farm link. */
-export class ReportResourcesDto extends IdempotentRequestDto {
+export class ReportResourcesDto extends FencedRequestDto {
   /**
    * The spend to attribute, or absent.
    *

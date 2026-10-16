@@ -178,11 +178,17 @@ class ClaimQueueItemRequest(_Request):
         idempotency_key: This claim's name. A replay answers the item it already leases.
         workspace: ``organization.id`` or its slug — whose queue to take from.
         worker: The worker claiming, as it names itself.
+        executors: The stage-executor kinds this worker has registered (#1312). An empty
+            list is refused ``409 no_executor``; absent, the control plane asks the
+            engine's ``/v0/status`` instead.
     """
 
     idempotency_key: IdempotencyKey
     workspace: str = Field(min_length=1, max_length=128)
     worker: str = Field(min_length=1, max_length=128, pattern=r"^\S(.*\S)?$")
+    executors: list[Literal["native", "harness"]] | None = Field(
+        default=None, max_length=2
+    )
 
 
 class ClaimedWorkflow(_Response):
@@ -231,6 +237,9 @@ class QueueItemClaimed(_Response):
         workflow: The workflow the item was queued under.
         playbook_id: The playbook it was launched through, or ``None``.
         ticket: The ticket to open the run for, or ``None`` when no source has mirrored it.
+        model: The model the run will record (#160): the pinned workflow's first model
+            stage's alias, else the route default. ``None`` from a control plane that
+            predates it.
     """
 
     id: str
@@ -243,6 +252,7 @@ class QueueItemClaimed(_Response):
     workflow: ClaimedWorkflow
     playbook_id: str | None = None
     ticket: ClaimedTicket | None = None
+    model: str | None = None
 
     def lease(self) -> QueueItemLease:
         """The lease as the open presents it.
@@ -379,6 +389,8 @@ class StageTransitionRequest(_Request):
             has to name one.
         at: When it happened by the executor's clock, ISO 8601. ``None`` is the server's.
         returned_from: For a retry, where the loop came back from.
+        epoch: The execution epoch this worker holds (#160). A stale one is refused
+            ``409 fenced``; absent, nothing is fenced (the simulator).
     """
 
     idempotency_key: IdempotencyKey
@@ -387,6 +399,7 @@ class StageTransitionRequest(_Request):
     attempt: int | None = Field(default=None, ge=1, le=11)
     at: str | None = None
     returned_from: StageReturn | None = None
+    epoch: int | None = Field(default=None, ge=1)
 
 
 class StageReturned(_Response):
@@ -473,10 +486,13 @@ class IngestEventsRequest(_Request):
     Attributes:
         idempotency_key: This submission's name.
         events: One to 500 entries, with strictly increasing hints.
+        epoch: The execution epoch this worker holds (#160). A stale one is refused
+            ``409 fenced``; absent, nothing is fenced (the simulator).
     """
 
     idempotency_key: IdempotencyKey
     events: list[IngestEvent] = Field(min_length=1, max_length=500)
+    epoch: int | None = Field(default=None, ge=1)
 
 
 class EventsAppended(_Response):
@@ -551,10 +567,13 @@ class ReportFilesRequest(_Request):
     Attributes:
         idempotency_key: This submission's name.
         files: Every file the run has changed. Empty triggers no evaluation.
+        epoch: The execution epoch this worker holds (#160). A stale one is refused
+            ``409 fenced``; absent, nothing is fenced (the simulator).
     """
 
     idempotency_key: IdempotencyKey
     files: list[IngestFile] = Field(max_length=2000)
+    epoch: int | None = Field(default=None, ge=1)
 
 
 class ChangeSet(_Response):
@@ -607,10 +626,13 @@ class ReportCommitsRequest(_Request):
     Attributes:
         idempotency_key: This submission's name.
         commits: One to 200 commits, oldest first.
+        epoch: The execution epoch this worker holds (#160). A stale one is refused
+            ``409 fenced``; absent, nothing is fenced (the simulator).
     """
 
     idempotency_key: IdempotencyKey
     commits: list[IngestCommit] = Field(min_length=1, max_length=200)
+    epoch: int | None = Field(default=None, ge=1)
 
 
 class CommitsAppended(_Response):
@@ -673,11 +695,14 @@ class ReportResourcesRequest(_Request):
         idempotency_key: This submission's name.
         spend: A spend to attribute, or ``None``.
         reserved_build_job: ``build_jobs.id`` to hold, or ``None`` to release.
+        epoch: The execution epoch this worker holds (#160). A stale one is refused
+            ``409 fenced``; absent, nothing is fenced (the simulator).
     """
 
     idempotency_key: IdempotencyKey
     spend: TokenSpend | None = None
     reserved_build_job: str | None = None
+    epoch: int | None = Field(default=None, ge=1)
 
 
 class ResourcesReported(_Response):

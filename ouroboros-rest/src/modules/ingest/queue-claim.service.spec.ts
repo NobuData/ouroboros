@@ -40,6 +40,9 @@ function item(overrides: Partial<QueueItem> = {}): QueueItem {
   };
 }
 
+/** The pinned version's document, as `workflow_versions.definition` stores it. */
+const PINNED = { dsl_version: 1, trigger: { kind: "always" }, nodes: [], edges: [] };
+
 const REQUEST: ClaimQueueItemDto = {
   idempotencyKey: "worker-a-claim-1",
   workspace: "acme-robotics",
@@ -73,6 +76,7 @@ function rig(
       Promise.resolve(item({ id, ...lease })),
     ),
     ticketOfQueuedIssue: jest.fn().mockResolvedValue("ticket" in options ? options.ticket : TICKET),
+    pinnedDefinition: jest.fn().mockResolvedValue({ definition: PINNED }),
   };
   const config = {
     liveExecutionEnabled: options.live ?? true,
@@ -86,6 +90,7 @@ function rig(
     admitNext: jest
       .fn()
       .mockResolvedValue(options.admitted ?? ({ refused: null, item: item() } as AdmitNext)),
+    modelFor: jest.fn().mockResolvedValue("coder-max"),
   };
   const service = new QueueClaimService(
     repository as unknown as IngestRepository,
@@ -124,7 +129,32 @@ describe("claiming the head of a workspace's queue (#91)", () => {
       workflow: { tag: "standard-fix", version: 14 },
       playbookId: null,
       ticket: TICKET,
+      model: "coder-max",
     });
+  });
+
+  it("names the model from the item's pinned workflow version (#160)", async () => {
+    const { service, repository, admission } = rig();
+
+    await service.claim(REQUEST, NOW);
+
+    expect(repository.pinnedDefinition).toHaveBeenCalledWith("trx", ORG, "standard-fix", 14);
+    expect(admission.modelFor).toHaveBeenCalledWith(ORG, PINNED);
+  });
+
+  it("asks for the model with no definition when the item has no pin", async () => {
+    const { service, repository, admission } = rig({
+      admitted: { refused: null, item: item({ workflow_version: null }) },
+    });
+    repository.lease.mockImplementationOnce(async (_trx, id, lease) =>
+      Promise.resolve(item({ id, ...lease, workflow_version: null })),
+    );
+
+    const claimed = await service.claim(REQUEST, NOW);
+
+    expect(repository.pinnedDefinition).not.toHaveBeenCalled();
+    expect(admission.modelFor).toHaveBeenCalledWith(ORG, undefined);
+    expect(claimed?.workflow.version).toBeNull();
   });
 
   it("answers nothing when admission admits no item", async () => {

@@ -106,6 +106,8 @@ Listens on `8000` on all interfaces, as the `engine` user. Its container health 
 | <EnvVar name="OURO_ENGINE_RUN_DIR" /> | no | `/var/lib/ouroboros-engine/runs` | Where each live run's working tree lives. Mount a volume there. |
 | <EnvVar name="OURO_ENGINE_RUN_MAX_MB" /> | no | `2048` | One run tree's size limit, and the free space a new run needs. |
 | <EnvVar name="OURO_ENGINE_RUN_IDLE_HOURS" /> | no | `168` | How long an unopened run tree is kept before it is swept. |
+| <EnvVar name="OURO_ENGINE_HEARTBEAT_SECONDS" /> | no | `5` | How often a running run's heartbeat is reported. |
+| <EnvVar name="OURO_ENGINE_WORKER_ID" /> | no | the host name | The name the engine claims issues and starts runs under. |
 
 The engine writes two things. The first is the **clones** the code & git mining tool reads, one
 per workspace and repository. Mount a volume at `/var/lib/ouroboros-engine/clones` and set
@@ -177,6 +179,8 @@ Build jobs upload their artifacts — test reports, captures, logs — to the RE
 | <EnvVar name="OURO_QUEUE_CLAIM_LEASE_SECONDS" /> | `300` | How long the engine holds a queued issue it has taken before the issue is available again, in seconds (30–3600). Opening the run removes the issue from the queue; if the engine stops in between, the issue goes back at the end of this window. |
 | <EnvVar name="OURO_LIVE_RUN_CEILING_MAX" /> | `4` | The most live runs any workspace may run at once (1–100). Each workspace runs one at a time until an owner or admin raises its own ceiling — see [Live execution](../live-execution.mdx#limits). |
 | <EnvVar name="OURO_LIVE_RUN_WALL_CLOCK_MINUTES" /> | `120` | How long a live run may go on before it is aborted, in minutes (5–1440). The branch is kept. |
+| <EnvVar name="OURO_RUN_SUPERVISOR_TICK_SECONDS" /> | `5` | How often quiet live runs and claimable issues are checked for, in seconds (1–300). |
+| <EnvVar name="OURO_RUN_HEARTBEAT_STALE_SECONDS" /> | `30` | How long a live run may go without an engine heartbeat before it is handed to the engine again, in seconds (10–3600). See [Recovery after an engine restart](../live-execution.mdx#recovery-after-an-engine-restart). |
 | <EnvVar name="OURO_LIVE_RUN_NO_PROGRESS_MINUTES" /> | `15` | How long a live run may go without reporting anything before it is aborted as stalled, in minutes (2–360). The branch is kept. |
 
 Everything else — poll intervals, sweeps, retention, budgets — has a working default. The

@@ -30,6 +30,7 @@ from ouroboros_engine.api import (
     copilot,
     dryruns,
     estimate,
+    execution,
     health,
     investigate,
     learn,
@@ -42,6 +43,8 @@ from ouroboros_engine.api import (
 )
 from ouroboros_engine.code.clones import CloneStore
 from ouroboros_engine.control_plane.client import ControlPlaneClient
+from ouroboros_engine.control_plane.ingest_client import IdempotencyKeys, IngestClient
+from ouroboros_engine.control_plane.transport import HttpTransport
 from ouroboros_engine.copilot.gateway import UrllibGateway
 from ouroboros_engine.copilot.turn import CopilotTurnRunner
 from ouroboros_engine.core.errors import register_error_handlers
@@ -57,6 +60,9 @@ from ouroboros_engine.estimation.model import (
     GatewaySizingCaller,
     ModelEstimator,
 )
+from ouroboros_engine.execution.interpreter import Interpreter
+from ouroboros_engine.execution.registry import ExecutorRegistry
+from ouroboros_engine.execution.worker import ExecutionWorker
 from ouroboros_engine.execution.workspace import RunWorkspaces
 from ouroboros_engine.investigation.control import HttpInvestigationControl
 from ouroboros_engine.investigation.loop import InvestigationLoop
@@ -236,6 +242,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         idle_seconds=resolved.run_idle_hours * 3600.0,
     )
 
+    # The execution bridge (#160): the stage executors this process can run — none until
+    # DH.3 (#1308) / DH.5 (#1309) register one, so `/v0/status` reports `executors: []` and
+    # nothing is claimed or executed — and the worker that turns the supervisor's calls into
+    # interpreter runs over `ouroboros-rest`'s internal run surface. A test installs its own
+    # registry or worker the same way.
+    app.state.executors = ExecutorRegistry()
+    ingest = IngestClient(
+        ControlPlaneClient(resolved.rest_url, resolved.shared_secret),
+        HttpTransport(),
+        IdempotencyKeys("".join(resolved.engine_worker_id.split())[:64] or "engine"),
+    )
+    app.state.execution = ExecutionWorker(
+        ingest,
+        app.state.executors,
+        Interpreter(
+            ingest,
+            app.state.code_clones,
+            app.state.run_workspaces,
+            app.state.executors,
+            worker=resolved.engine_worker_id,
+            heartbeat_seconds=resolved.engine_heartbeat_seconds,
+        ).execute,
+        worker=resolved.engine_worker_id,
+    )
     # And the Workflow Copilot's turn runner (CD.1, #559): the control-plane client built
     # against `OURO_REST_URL` with this service's own internal key — the one principal
     # `ouroboros-rest`'s internal surface accepts from the executor — and the standard-library
@@ -320,6 +350,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(dryruns.router)
     app.include_router(investigate.router)
     app.include_router(skills.router)
+    app.include_router(execution.router)
     _mount_simulator(app, resolved)
     return app
 

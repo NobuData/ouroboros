@@ -16,6 +16,14 @@ from pydantic import BaseModel, ValidationError
 
 from ouroboros_engine.control_plane.client import ControlPlaneClient, ControlPlaneError
 from ouroboros_engine.control_plane.contract import INTERNAL_KEY_HEADER
+from ouroboros_engine.control_plane.execution import (
+    EXECUTION_ERRORS,
+    EXECUTION_PATHS,
+    RUN_CHECKPOINT_PATH,
+    RUN_FINISH_PATH,
+    RUN_HEARTBEAT_PATH,
+    RUN_START_PATH,
+)
 from ouroboros_engine.control_plane.ingest import (
     EVENT_ACTORS,
     FILE_STATUSES,
@@ -78,15 +86,34 @@ def _wire(model: type[BaseModel]) -> set[str]:
 
 
 def test_the_seven_paths_are_the_documents_runs_family() -> None:
-    # AP.1's six run routes, and #91's queue claim, which opens the family.
+    # AP.1's six run routes, and #91's queue claim, which opens the family. #160's four
+    # execution routes may share the tag; they are mirrored in `control_plane.execution`.
     documented = {
         path
         for path, item in _document()["paths"].items()
         if any("runs" in op.get("tags", []) for op in item.values())
     }
 
-    assert set(INGEST_PATHS) == documented
+    assert set(INGEST_PATHS) <= documented <= set(INGEST_PATHS) | set(EXECUTION_PATHS)
     assert len(INGEST_PATHS) == 7
+
+
+def test_the_execution_paths_are_documented_with_their_verbs() -> None:
+    methods = {path: set(item) for path, item in _document()["paths"].items()}
+
+    assert {path: methods.get(path) for path in EXECUTION_PATHS} == {
+        RUN_START_PATH: {"post"},
+        RUN_HEARTBEAT_PATH: {"post"},
+        RUN_CHECKPOINT_PATH: {"put"},
+        RUN_FINISH_PATH: {"post"},
+    }
+
+
+@pytest.mark.parametrize("code", EXECUTION_ERRORS)
+def test_every_execution_refusal_named_here_is_documented(code: str) -> None:
+    text = json.dumps({path: _document()["paths"][path] for path in EXECUTION_PATHS})
+
+    assert code in text
 
 
 def test_the_change_set_report_is_the_one_put() -> None:

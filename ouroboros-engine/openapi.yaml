@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.7.39
+  version: 0.7.40
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -149,6 +149,7 @@ paths:
                 service: ouroboros-engine
                 version: 0.7.15
                 uptime_seconds: 1234.567
+                executors: []
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -2332,6 +2333,87 @@ paths:
         '502':
           $ref: '#/components/responses/SkillModelFailed'
 
+  /v0/runs/{run_id}/execute:
+    post:
+      tags: [v0]
+      summary: Execute a live run in the background
+      description: |-
+        The execution bridge (#160, `docs/DECISION_EXECUTION_ENGINE.md` decision A).
+        Answers `202` at once; the workflow interpreter then takes the run with
+        `POST /internal/runs/{id}/start` — which increments its epoch — and walks its
+        pinned workflow version, reporting every stage, transcript batch, change-set,
+        spend and checkpoint to `ouroboros-rest`'s internal run surface under that epoch.
+        Nothing comes back through this response.
+
+        `ouroboros-rest`'s run supervisor submits a live run here again when its
+        heartbeat goes stale; the engine that takes it resumes from the stored
+        checkpoint, and the previous holder's writes are refused `409 fenced`.
+
+        Refused with `accepted: false` and a `reason`: `no_executor` when this process has
+        registered no stage executor, `already_running` when it is already executing the
+        run.
+      operationId: executeRun
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          description: '`runs.id`.'
+          schema:
+            type: string
+          example: 5eed0009-0000-4000-8000-000000000482
+      responses:
+        "202":
+          description: Whether execution started. The run executes after this answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionAccepted"
+              example:
+                accepted: false
+                reason: no_executor
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v0/execution/claims:
+    post:
+      tags: [v0]
+      summary: Claim a workspace's queue head and execute its run
+      description: |-
+        Leases the head of the workspace's queue with `POST /internal/queue/claim`,
+        declaring this process's registered executor kinds, opens its run with the lease,
+        the pinned workflow version, the claim's `model` and the ticket, and executes it
+        in the background as `POST /v0/runs/{run_id}/execute` would.
+
+        Nothing claimed answers `claimed: false` with a `reason`: `no_executor` (nothing
+        registered — no claim is made), `nothing_queued`, `ticket_missing`,
+        `workflow_version_missing`, `model_missing` (the item is left for its lease to
+        lapse), `control_plane_unreachable`, or the control plane's own refusal code
+        (`deployment_disabled`, `workspace_paused`, `concurrency_ceiling`, …).
+      operationId: claimWork
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimRequest"
+            example:
+              workspace: acme-robotics
+      responses:
+        "200":
+          description: The run now executing, or why nothing is.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaimAnswer"
+              example:
+                claimed: false
+                run_id: null
+                reason: no_executor
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
 components:
   securitySchemes:
     InternalKey:
@@ -2574,7 +2656,7 @@ components:
       title: ServiceStatus
       description: The body of a `GET /v0/status` response.
       additionalProperties: false
-      required: [service, version, uptime_seconds]
+      required: [service, version, uptime_seconds, executors]
       properties:
         service:
           type: string
@@ -2594,6 +2676,62 @@ components:
             Seconds since this process built its application, rounded to milliseconds.
             Small and shrinking across calls means something is restarting the container.
           examples: [1234.567]
+        executors:
+          type: array
+          items:
+            type: string
+            enum: [native, harness]
+          description: |-
+            The stage-executor kinds this process has registered, sorted (#160). Empty
+            means it claims and executes nothing; `ouroboros-rest`'s admission (#1312)
+            reads it when a queue claim declares no executors of its own.
+          examples: [[native]]
+
+    ExecutionAccepted:
+      type: object
+      title: ExecutionAccepted
+      description: The body of a `POST /v0/runs/{run_id}/execute` response.
+      additionalProperties: false
+      required: [accepted, reason]
+      properties:
+        accepted:
+          type: boolean
+          description: Whether execution started.
+        reason:
+          type: [string, "null"]
+          enum: [no_executor, already_running, null]
+          description: Why it did not; `null` when it did.
+
+    ClaimRequest:
+      type: object
+      title: ClaimRequest
+      description: The body of a `POST /v0/execution/claims` request.
+      additionalProperties: false
+      required: [workspace]
+      properties:
+        workspace:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: '`organization.id` or its slug — whose queue to claim from.'
+          examples: [acme-robotics]
+
+    ClaimAnswer:
+      type: object
+      title: ClaimAnswer
+      description: The body of a `POST /v0/execution/claims` response.
+      additionalProperties: false
+      required: [claimed, run_id, reason]
+      properties:
+        claimed:
+          type: boolean
+          description: Whether a run was opened and is executing.
+        run_id:
+          type: [string, "null"]
+          description: That run, when one was.
+        reason:
+          type: [string, "null"]
+          description: Why nothing was claimed; `null` when a run was.
 
     TaskSubmitRequest:
       type: object

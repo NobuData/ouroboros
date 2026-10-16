@@ -43,6 +43,14 @@ long it took), **●** in progress, **○** pending, **✕** failed or **–** s
 is repeating shows its attempt — **attempt 2/3** — and a note says why it went round again,
 such as **attempt 1 failed tests — loop returned from gate ↺**.
 
+The stages come from the version the run is pinned to, so they stay the same even if the
+workflow is edited and published again while the run is going.
+
+**If the engine restarts mid-run**, the run picks up again on its own, usually within half
+a minute. It carries on from its last completed stage, and its working tree is put back to
+how that stage left it. The stage that was interrupted runs again as its next attempt, so
+you may see **attempt 2/3** on a stage that did not fail.
+
 Select a stage to show only its entries in the transcript; select it again, or choose
 **Show all**, to see everything. Once the loop reaches its test stage, **Test results ↗** on
 that stage opens the run's [test results](./tests.mdx).
@@ -125,7 +133,9 @@ up to 4,096 characters. Viewers can read the transcript but not steer.
 ## When a run needs you
 
 A run that is waiting for a decision shows the status **needs human**: it has stopped, and the
-console offers no controls or steering. The question it is waiting on is in
+console offers no controls or steering. A run gets there when its workflow reaches a
+**hand it over for review** terminal, or when the guardrails find a change a person must
+look at. The question it is waiting on is in
 [Needs You](../inbox.mdx) — answer it there and the loop carries on. The console does not link
 to the question itself.
 
@@ -152,6 +162,11 @@ as in the example above — in which case the cards say so rather than showing n
   workspace. Check the workspace in the header.
 - **A control stays at "sent".** The loop has not picked it up yet — it answers between
   stages. If it expires with **no response**, try again.
+- **The run failed at a build or test stage straight away.** This version does not run build
+  and test stages for a live run yet. The run fails at that stage and says so.
+- **The run failed after "attempt 3/3".** The stage failed, or was refused a tool call by its
+  permissions, as many times as its **Max retries** allows. The transcript shows the last
+  refusal or error.
 - **The controls are missing.** The run has finished, or you are not an owner or admin.
 - **"Type the loop number to enable the abort."** The number you typed does not match the
   loop; type it exactly, with or without the **#**.

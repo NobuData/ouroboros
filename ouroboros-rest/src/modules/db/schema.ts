@@ -980,6 +980,30 @@ export interface RunsTable {
    * No foreign key: opening the run removes the item.
    */
   queue_item_id: ColumnType<string | null, string | null | undefined, never>;
+  /**
+   * How many times an engine worker has started this run (V147, #160) — the epoch every engine
+   * write carries and a stale one is refused `409 fenced` against. 0 until the first start,
+   * always 0 for a simulated or seeded run; never decreases.
+   */
+  exec_epoch: Generated<number>;
+  /** The worker holding the current epoch, as it named itself (V147). Null until started. */
+  exec_worker: ColumnType<string | null, string | null | undefined, string | null>;
+  /**
+   * When the worker holding the epoch was last heard from (V147) — start, heartbeat or
+   * checkpoint. The run supervisor resubmits a run whose heartbeat is stale. A heartbeat alone
+   * does not move {@link RunsTable.updated_at}.
+   */
+  exec_heartbeat_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  /** The 40-hex commit the run's working tree was cut from (V147); set once, then immutable. */
+  exec_base_commit: ColumnType<string | null, string | null | undefined, string | null>;
+  /** The interpreter's opaque resume state (V147): a JSON object of at most 64 KiB, or null. */
+  exec_checkpoint: ColumnType<
+    Record<string, unknown> | null,
+    Record<string, unknown> | null | undefined,
+    Record<string, unknown> | null
+  >;
+  /** When {@link RunsTable.exec_checkpoint} was last written (V147); null exactly when it is. */
+  exec_checkpoint_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
 }
 
 /**
@@ -1192,6 +1216,18 @@ export interface RunsWithStageView {
   origin: DataOrigin;
   /** `runs.queue_item_id` (V145). */
   queue_item_id: string | null;
+  /** `runs.exec_epoch` (V147). */
+  exec_epoch: number;
+  /** `runs.exec_worker` (V147). */
+  exec_worker: string | null;
+  /** `runs.exec_heartbeat_at` (V147). */
+  exec_heartbeat_at: Date | null;
+  /** `runs.exec_base_commit` (V147). */
+  exec_base_commit: string | null;
+  /** `runs.exec_checkpoint` (V147). */
+  exec_checkpoint: Record<string, unknown> | null;
+  /** `runs.exec_checkpoint_at` (V147). */
+  exec_checkpoint_at: Date | null;
 }
 
 /**
@@ -2176,8 +2212,8 @@ export interface RunControlsTable {
 }
 
 /**
- * `run_ingest_receipts.operation` — which of the ingestion contract's six writes a receipt
- * answers for (V049, AP.1).
+ * `run_ingest_receipts.operation` — which of the ingestion contract's idempotency-keyed writes
+ * a receipt answers for (V049, AP.1; V147 added `run.finish` for #160).
  *
  * The `run_ingest_receipts_operation` CHECK, and the six operations `openapi.internal.yaml`
  * publishes under `/internal/runs`. It is part of the idempotency key, so an executor that
@@ -2190,9 +2226,10 @@ export type RunIngestOperation =
   | "run.events"
   | "run.files"
   | "run.commits"
-  | "run.resources";
+  | "run.resources"
+  | "run.finish";
 
-/** The six, in the order the contract performs them — what a DTO validates and a test iterates. */
+/** The seven, in the order the contract performs them — what a DTO validates and a test iterates. */
 export const RUN_INGEST_OPERATIONS = [
   "run.create",
   "run.stage_transition",
@@ -2200,6 +2237,7 @@ export const RUN_INGEST_OPERATIONS = [
   "run.files",
   "run.commits",
   "run.resources",
+  "run.finish",
 ] as const satisfies readonly RunIngestOperation[];
 
 /**
@@ -8461,6 +8499,12 @@ export const TABLE_COLUMNS = {
     "events_swept_at",
     "origin",
     "queue_item_id",
+    "exec_epoch",
+    "exec_worker",
+    "exec_heartbeat_at",
+    "exec_base_commit",
+    "exec_checkpoint",
+    "exec_checkpoint_at",
   ],
   run_stages: [
     "id",
@@ -10578,6 +10622,12 @@ export const TABLE_COLUMNS = {
     "events_swept_at",
     "origin",
     "queue_item_id",
+    "exec_epoch",
+    "exec_worker",
+    "exec_heartbeat_at",
+    "exec_base_commit",
+    "exec_checkpoint",
+    "exec_checkpoint_at",
   ],
   run_events_jsonl: ["run_id", "seq", "line"],
   v_run_guardrails_latest: [

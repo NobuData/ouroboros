@@ -1,7 +1,13 @@
 import { NotFoundError } from "../errors/error.envelope";
 import type { QueueItem, WorkspaceLifecycleState } from "../db/schema";
 import { queueItemRow } from "./admission.fixture";
-import { AdmissionService, CLAIM_CANDIDATE_LIMIT, EXECUTOR_CACHE_MS } from "./admission.service";
+import {
+  AdmissionService,
+  CLAIM_CANDIDATE_LIMIT,
+  DEFAULT_MODEL_TASK_KIND,
+  EXECUTOR_CACHE_MS,
+  UNROUTED_MODEL,
+} from "./admission.service";
 
 const ORG = "acme-robotics-id";
 const NOW = new Date("2026-10-15T14:25:00.000Z");
@@ -407,6 +413,65 @@ describe("the admission service", () => {
         refused: null,
         item: undefined,
       });
+    });
+  });
+
+  describe("the model a claimed item's run records (#160)", () => {
+    /** The definition with its one model stage routed some other way. */
+    function routed(routing: Record<string, unknown>) {
+      return {
+        ...DEFINITION,
+        nodes: [{ ...DEFINITION.nodes[0], config: { ...DEFINITION.nodes[0].config, routing } }],
+      };
+    }
+
+    /** A resolution whose first kept hop names `alias`, behind a dropped one. */
+    const CHAIN = {
+      outcome: "resolved",
+      chain: [
+        { decision: "dropped", alias: "coder-down" },
+        { decision: "kept", alias: "coder-max" },
+      ],
+    };
+
+    it("is the first model stage's pinned alias, without asking the router", async () => {
+      const { service, routing } = rig();
+
+      await expect(
+        service.modelFor(ORG, routed({ pinned_model: { alias: "planner-pro" } })),
+      ).resolves.toBe("planner-pro");
+      expect(routing.resolve).not.toHaveBeenCalled();
+    });
+
+    it("is the first kept hop of the route the stage inherits", async () => {
+      const { service, routing } = rig({ resolve: jest.fn().mockResolvedValue(CHAIN) });
+
+      await expect(service.modelFor(ORG, DEFINITION)).resolves.toBe("coder-max");
+      expect(routing.resolve).toHaveBeenCalledWith(ORG, "implement");
+    });
+
+    it("reads the default task kind's route when there is no model stage or no pin", async () => {
+      const { service, routing } = rig({ resolve: jest.fn().mockResolvedValue(CHAIN) });
+
+      await expect(service.modelFor(ORG, { ...DEFINITION, nodes: [] })).resolves.toBe("coder-max");
+      await expect(service.modelFor(ORG, undefined)).resolves.toBe("coder-max");
+      expect(routing.resolve).toHaveBeenCalledWith(ORG, DEFAULT_MODEL_TASK_KIND);
+    });
+
+    it("is unrouted when the route is missing or resolves to nothing runnable", async () => {
+      const missing = rig({ resolve: jest.fn().mockRejectedValue(new NotFoundError("x", "y")) });
+      const failing = rig({
+        resolve: jest.fn().mockResolvedValue({ outcome: "fail_run", chain: [] }),
+      });
+
+      await expect(missing.service.modelFor(ORG, DEFINITION)).resolves.toBe(UNROUTED_MODEL);
+      await expect(failing.service.modelFor(ORG, DEFINITION)).resolves.toBe(UNROUTED_MODEL);
+    });
+
+    it("lets any other router failure through", async () => {
+      const { service } = rig({ resolve: jest.fn().mockRejectedValue(new Error("db down")) });
+
+      await expect(service.modelFor(ORG, DEFINITION)).rejects.toThrow("db down");
     });
   });
 });

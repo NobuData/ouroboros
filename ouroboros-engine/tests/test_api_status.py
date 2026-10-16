@@ -52,7 +52,7 @@ def test_uptime_grows_between_calls(client: TestClient) -> None:
 def test_status_carries_exactly_the_documented_fields(client: TestClient) -> None:
     body = client.get(STATUS_PATH).json()
 
-    assert set(body) == {"service", "version", "uptime_seconds"}, (
+    assert set(body) == {"service", "version", "uptime_seconds", "executors"}, (
         "ouroboros-rest's typed client codes against this shape; adding a field is a "
         "contract change, and removing one is a /v1 (ouroboros_engine.api.v0)"
     )
@@ -84,7 +84,27 @@ def test_the_status_response_is_documented_by_schema(client: TestClient) -> None
 
     schema = document["components"]["schemas"]["ServiceStatus"]
 
-    assert set(schema["properties"]) == {"service", "version", "uptime_seconds"}
+    assert set(schema["properties"]) == {
+        "service",
+        "version",
+        "uptime_seconds",
+        "executors",
+    }
+
+
+def test_status_reports_no_executor_until_one_is_registered(client: TestClient) -> None:
+    # #160: REST's admission (#1312) refuses every claim `no_executor` while this is empty.
+    assert client.get(STATUS_PATH).json()["executors"] == []
+
+
+def test_status_reports_the_registered_executor_kinds_sorted(
+    client: TestClient,
+) -> None:
+    registry = client.app.state.executors
+    registry.register("harness", lambda: None)
+    registry.register("native", lambda: None)
+
+    assert client.get(STATUS_PATH).json()["executors"] == ["harness", "native"]
 
 
 def test_status_is_tagged_as_the_versioned_contract(client: TestClient) -> None:

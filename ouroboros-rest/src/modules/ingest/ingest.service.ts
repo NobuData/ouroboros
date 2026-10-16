@@ -68,7 +68,6 @@ import { GATE_EVIDENCE, type GateEvidenceSink } from "../pull-requests/gates/gat
 import { workspaceNotAdmitting } from "../lifecycle/lifecycle.errors";
 import { WorkspaceStateReader } from "../lifecycle/lifecycle.state";
 import { admitsNewWork } from "../lifecycle/lifecycle.states";
-import { isDatabaseFailure } from "../tenancy/constraints";
 import {
   GUARDRAIL_SCHEDULER,
   InjectGuardrailScheduler,
@@ -86,7 +85,6 @@ import {
   attemptLimitExceeded,
   buildJobNotFound,
   eventsOutOfOrder,
-  idempotencyKeyReused,
   repositoryNotFound,
   runNotFound,
   stageNotInPin,
@@ -100,7 +98,14 @@ import {
   queueItemMismatch,
   workflowPinUnreadable,
 } from "./ingest.errors";
+import { assertEpoch } from "./ingest.fence";
 import { requestDigest } from "./ingest.idempotency";
+import {
+  RECEIPT_KEY_CONSTRAINT,
+  commitReceipt,
+  replayedReceipt,
+  type Replay,
+} from "./ingest.receipts";
 import { readPinnedWorkflow, type PinnedStage, type PinnedWorkflow } from "./ingest.pin";
 import { IngestRepository, type Writer } from "./ingest.repository";
 import type {
@@ -113,20 +118,7 @@ import type {
 } from "./ingest.resources";
 import { canTransition, hasFinished, hasStarted } from "./ingest.transitions";
 
-/**
- * The constraint a concurrent first delivery collides on.
- *
- * Named rather than matched on SQLSTATE, so a rename in V049 stops matching here rather than
- * silently changing an answer — `workflows.errors.ts` makes the same argument.
- */
-export const RECEIPT_KEY_CONSTRAINT = "run_ingest_receipts_scope_key";
-
-/** What a replay lookup found. */
-type Replay<T> =
-  /** This key has never been used: do the work. */
-  | { readonly replayed: false }
-  /** This key answered this request: hand back what it was told. */
-  | { readonly replayed: true; readonly response: T };
+export { RECEIPT_KEY_CONSTRAINT };
 
 @Injectable()
 export class IngestService {
@@ -320,8 +312,8 @@ export class IngestService {
    *   edge it came back through.
    * @returns Where the stage stands afterwards, including the note the **database** composed.
    * @throws {NotFoundError} `404 run_not_found`, `404 workflow_pin_not_found`.
-   * @throws {ConflictError} `409 stage_not_in_pin`, `409 stage_transition_invalid`, `409
-   *   attempt_limit_exceeded`, `409 stage_return_not_a_retry`, `409 idempotency_key_reused`.
+   * @throws {ConflictError} `409 fenced`, `409 stage_not_in_pin`, `409 stage_transition_invalid`,
+   *   `409 attempt_limit_exceeded`, `409 stage_return_not_a_retry`, `409 idempotency_key_reused`.
    */
   async transitionStage(
     run: string,
@@ -331,6 +323,7 @@ export class IngestService {
 
     return this.runs.transaction(async (trx) => {
       const row = await this.locked(trx, run);
+      assertEpoch(row, request.epoch);
       const replay = await this.replayed<StageTransitionResource>(
         trx,
         row.organization_id,
@@ -426,13 +419,14 @@ export class IngestService {
    * @returns How many entries were stored, the dense sequence numbers they got, and whether a
    *   cap has elided this transcript.
    * @throws {NotFoundError} `404 run_not_found`.
-   * @throws {ConflictError} `409 events_out_of_order`, `409 idempotency_key_reused`.
+   * @throws {ConflictError} `409 fenced`, `409 events_out_of_order`, `409 idempotency_key_reused`.
    */
   async appendEvents(run: string, request: IngestEventsDto): Promise<EventsAppendedResource> {
     const digest = requestDigest(request);
 
     return this.runs.transaction(async (trx) => {
       const row = await this.locked(trx, run);
+      assertEpoch(row, request.epoch);
       const replay = await this.replayed<EventsAppendedResource>(
         trx,
         row.organization_id,
@@ -507,7 +501,7 @@ export class IngestService {
    * @returns The report's number, the totals, how many guardrail checks it evaluated, which of
    *   them failed, and whether that flags the run for a person (`needsHuman`).
    * @throws {NotFoundError} `404 run_not_found`.
-   * @throws {ConflictError} `409 idempotency_key_reused`.
+   * @throws {ConflictError} `409 fenced`, `409 idempotency_key_reused`.
    */
   async reportFiles(run: string, request: ReportFilesDto): Promise<ChangeSetResource> {
     const digest = requestDigest(request);
@@ -515,6 +509,7 @@ export class IngestService {
 
     const resource = await this.runs.transaction(async (trx) => {
       const row = await this.locked(trx, run);
+      assertEpoch(row, request.epoch);
       organizationId = row.organization_id;
       const replay = await this.replayed<ChangeSetResource>(
         trx,
@@ -612,13 +607,14 @@ export class IngestService {
    * @param request - The commits, oldest first.
    * @returns How many were new, how many were already recorded, and where the sequence stands.
    * @throws {NotFoundError} `404 run_not_found`.
-   * @throws {ConflictError} `409 idempotency_key_reused`.
+   * @throws {ConflictError} `409 fenced`, `409 idempotency_key_reused`.
    */
   async reportCommits(run: string, request: ReportCommitsDto): Promise<CommitsAppendedResource> {
     const digest = requestDigest(request);
 
     return this.runs.transaction(async (trx) => {
       const row = await this.locked(trx, run);
+      assertEpoch(row, request.epoch);
       const replay = await this.replayed<CommitsAppendedResource>(
         trx,
         row.organization_id,
@@ -692,7 +688,7 @@ export class IngestService {
    * @param request - The spend, the reservation, or both.
    * @returns What the run has spent in total, and what it now holds.
    * @throws {NotFoundError} `404 run_not_found`, `404 build_job_not_found`.
-   * @throws {ConflictError} `409 idempotency_key_reused`.
+   * @throws {ConflictError} `409 fenced`, `409 idempotency_key_reused`.
    */
   async reportResources(
     run: string,
@@ -702,6 +698,7 @@ export class IngestService {
 
     return this.runs.transaction(async (trx) => {
       const row = await this.locked(trx, run);
+      assertEpoch(row, request.epoch);
       const replay = await this.replayed<ResourcesReportedResource>(
         trx,
         row.organization_id,
@@ -868,17 +865,12 @@ export class IngestService {
     idempotencyKey: string,
     digest: string,
   ): Promise<Replay<T>> {
-    const receipt = await this.runs.findReceipt(writer, organizationId, operation, idempotencyKey);
-
-    if (receipt === undefined) {
-      return { replayed: false };
-    }
-
-    if (receipt.request_digest !== digest) {
-      throw idempotencyKeyReused(operation, idempotencyKey);
-    }
-
-    return { replayed: true, response: receipt.response as T };
+    return replayedReceipt<T>(this.runs, writer, {
+      organizationId,
+      operation,
+      idempotencyKey,
+      digest,
+    });
   }
 
   /**
@@ -915,42 +907,13 @@ export class IngestService {
     digest: string,
     response: T,
   ): Promise<T> {
-    try {
-      await this.runs.insertReceipt(trx, {
-        organization_id: organizationId,
-        run_id: run,
-        operation,
-        idempotency_key: idempotencyKey,
-        request_digest: digest,
-        response,
-      });
-
-      return response;
-    } catch (error) {
-      if (!isDatabaseFailure(error) || error.constraint !== RECEIPT_KEY_CONSTRAINT) {
-        throw error;
-      }
-
-      // The losing transaction is poisoned once PostgreSQL has refused a statement inside it,
-      // so the winner's receipt is read on a fresh connection rather than on `trx`. This one
-      // then rolls back, taking its duplicate rows with it.
-      const replay = await this.replayed<T>(
-        this.runs.db,
-        organizationId,
-        operation,
-        idempotencyKey,
-        digest,
-      );
-
-      if (!replay.replayed) {
-        // The key collided and is now absent, which means the winner rolled back after
-        // colliding with *us*. Nothing to replay and nothing to be done here: rethrow, and the
-        // caller's retry finds a clean slate.
-        throw error;
-      }
-
-      return replay.response;
-    }
+    return commitReceipt(
+      this.runs,
+      trx,
+      { organizationId, operation, idempotencyKey, digest },
+      run,
+      response,
+    );
   }
 
   /**

@@ -31,6 +31,7 @@ from ouroboros_engine.analysis.harness import (
     AnalyzerStarted,
 )
 from ouroboros_engine.api.analysis import AnalysisRequest, AnalyzerSet, AnalyzerSetEntry
+from ouroboros_engine.api.execution import ClaimAnswer, ClaimRequest, ExecutionAccepted
 from ouroboros_engine.api.health import HEALTH_PATH, Liveness
 from ouroboros_engine.api.root import ServiceIdentity
 from ouroboros_engine.api.status import ServiceStatus
@@ -132,6 +133,9 @@ _DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
     "Liveness": Liveness,
     "ServiceIdentity": ServiceIdentity,
     "ServiceStatus": ServiceStatus,
+    "ExecutionAccepted": ExecutionAccepted,
+    "ClaimRequest": ClaimRequest,
+    "ClaimAnswer": ClaimAnswer,
     "TaskSubmitRequest": TaskSubmitRequest,
     "TaskError": TaskError,
     "TaskRecord": TaskRecord,

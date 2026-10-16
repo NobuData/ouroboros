@@ -16,6 +16,7 @@ binds a port, and :func:`load_settings` turns pydantic's report into a message t
 names the offending environment variables rather than the Python attributes behind them.
 """
 
+import socket
 import tempfile
 from pathlib import Path
 from typing import Literal
@@ -104,6 +105,10 @@ class Settings(BaseSettings):
             refused while the run volume has less than this free.
         run_idle_hours: ``OURO_ENGINE_RUN_IDLE_HOURS``, how long a tree may go unopened
             before the sweeper removes it as orphaned.
+        engine_heartbeat_seconds: ``OURO_ENGINE_HEARTBEAT_SECONDS``, how often an executing
+            run's heartbeat is sent to ``ouroboros-rest`` (#160, ADR decision A.3).
+        engine_worker_id: ``OURO_ENGINE_WORKER_ID``, the worker name this process claims
+            queue items and starts runs under. Defaults to the host name.
     """
 
     model_config = SettingsConfigDict(
@@ -177,6 +182,19 @@ class Settings(BaseSettings):
         ge=1,
         le=8_760,
         validation_alias="OURO_ENGINE_RUN_IDLE_HOURS",
+    )
+    engine_heartbeat_seconds: int = Field(
+        default=5,
+        ge=1,
+        le=60,
+        validation_alias="OURO_ENGINE_HEARTBEAT_SECONDS",
+    )
+    engine_worker_id: str = Field(
+        default_factory=lambda: (socket.gethostname() or "ouroboros-engine")[:128],
+        min_length=1,
+        max_length=128,
+        pattern=r"^\S(.*\S)?$",
+        validation_alias="OURO_ENGINE_WORKER_ID",
     )
 
 

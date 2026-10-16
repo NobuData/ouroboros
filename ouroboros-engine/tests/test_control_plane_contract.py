@@ -53,6 +53,7 @@ from ouroboros_engine.control_plane.contract import (
     RunContext,
     UsageEvent,
 )
+from ouroboros_engine.control_plane.execution import EXECUTION_PATHS
 from ouroboros_engine.control_plane.ingest import INGEST_PATHS
 
 #: The control plane's committed internal document, from the sibling module.
@@ -95,6 +96,7 @@ def test_every_path_the_document_describes_is_one_this_package_mirrors() -> None
 
     assert set(_document()["paths"]) == (
         set(INGEST_PATHS)
+        | set(EXECUTION_PATHS)
         | _openapi(controls)
         | {LEASE_PATH, INVOKE_PATH, RESEARCH_TOOL_PATH}
         | set(RESEARCH_INVESTIGATION_PATHS)

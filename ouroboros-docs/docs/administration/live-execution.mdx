@@ -84,6 +84,26 @@ The abort goes through the run's control queue like any other abort. The engine 
 what a run may spend is set separately, by the route and the policy's spend guard — see
 [Policies & guardrails](./policies.mdx).
 
+## Recovery after an engine restart
+
+A live run survives the engine stopping part-way through:
+
+- **The engine reports a heartbeat** for each run it executes, every
+  <EnvVar name="OURO_ENGINE_HEARTBEAT_SECONDS" /> seconds (5 unless set).
+- **Ouroboros checks for quiet runs** every <EnvVar name="OURO_RUN_SUPERVISOR_TICK_SECONDS" />
+  seconds. A run with no heartbeat for <EnvVar name="OURO_RUN_HEARTBEAT_STALE_SECONDS" />
+  seconds (30 unless set) is handed to the engine again. So is a run that was opened but never
+  started. Recovery therefore takes about half a minute.
+- **The run resumes from its last checkpoint.** The engine saves the run's position after
+  every stage. The interrupted stage starts again as its next attempt, and the working tree is
+  put back to how the last completed stage left it (see [Disk and cleanup](#disk-and-cleanup)).
+- **A stale engine cannot write.** Each time a run is handed to an engine, the run's epoch goes
+  up. Anything the old engine still sends is refused, and it stops.
+
+The same check also hands queued issues to the engine. While live execution is on, each
+workspace with a confirmed issue waiting is offered to the engine on every check. The engine
+claims an issue only when it has a stage executor registered for it.
+
 ## Disk and cleanup
 
 The engine gives every live run its own **working tree** to edit, under
@@ -144,6 +164,10 @@ paused.
 | <EnvVar name="OURO_LIVE_RUN_CEILING_MAX" /> | `4` | The highest ceiling any workspace may set (1–100). |
 | <EnvVar name="OURO_LIVE_RUN_WALL_CLOCK_MINUTES" /> | `120` | The wall-clock limit (5–1440). |
 | <EnvVar name="OURO_LIVE_RUN_NO_PROGRESS_MINUTES" /> | `15` | The no-progress limit (2–360). |
+| <EnvVar name="OURO_RUN_SUPERVISOR_TICK_SECONDS" /> | `5` | How often quiet runs and claimable issues are checked for, in seconds (1–300). |
+| <EnvVar name="OURO_RUN_HEARTBEAT_STALE_SECONDS" /> | `30` | How long a run may go without a heartbeat before it is handed to the engine again (10–3600). |
+| <EnvVar name="OURO_ENGINE_HEARTBEAT_SECONDS" /> | `5` | How often the engine reports a running run's heartbeat (1–60). Keep it well under the stale limit. |
+| <EnvVar name="OURO_ENGINE_WORKER_ID" /> | the host name | The name the engine claims issues and starts runs under. |
 | <EnvVar name="OURO_ENGINE_RUN_DIR" /> | `<temp dir>/ouroboros-engine/runs` | Where the engine keeps each run's working tree. Mount a volume there. |
 | <EnvVar name="OURO_ENGINE_RUN_MAX_MB" /> | `2048` | One tree's size limit in MB, and the free space a new run needs (16–1048576). |
 | <EnvVar name="OURO_ENGINE_RUN_IDLE_HOURS" /> | `168` | How long a tree may go unopened before the sweep removes it (1–8760). |

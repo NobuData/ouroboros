@@ -52,3 +52,46 @@ export function pinnedTaskKinds(definition: unknown): readonly string[] | undefi
 
   return [...tasks];
 }
+
+/** Where a model stage takes its model from: a pinned registry alias, or a task kind's route. */
+export type ModelStageSource = { readonly alias: string } | { readonly task: string };
+
+/**
+ * Where the pinned definition's first model stage — the first `llm` node in document order —
+ * takes its model from (#160): the claim names the model a run will record by it.
+ *
+ * @param definition - `workflow_versions.definition`, as stored.
+ * @returns The pinned alias or the inherited task kind, or `undefined` when the definition has
+ *   no model stage, or does not read as a workflow.
+ */
+export function firstModelStage(definition: unknown): ModelStageSource | undefined {
+  const root = WorkflowRootSchema.safeParse(definition);
+
+  if (!root.success) {
+    return undefined;
+  }
+
+  for (const candidate of root.data.nodes) {
+    const node = NodeShapeSchema.safeParse(candidate);
+
+    if (!node.success || node.data.type !== "llm") {
+      continue;
+    }
+
+    const config = LlmConfigSchema.safeParse(node.data.config);
+
+    if (!config.success) {
+      return undefined;
+    }
+
+    const { pinned_model: pinned, inherit_task: task } = config.data.routing;
+
+    if (pinned !== undefined) {
+      return { alias: pinned.alias };
+    }
+
+    return task === undefined ? undefined : { task };
+  }
+
+  return undefined;
+}

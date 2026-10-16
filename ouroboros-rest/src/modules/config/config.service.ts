@@ -613,6 +613,19 @@ export class AppConfigService {
     return this.config.getOrThrow<number>("liveRunNoProgressMinutes");
   }
 
+  /** Seconds between run-supervisor ticks — `OURO_RUN_SUPERVISOR_TICK_SECONDS` (#160). */
+  get runSupervisorTickSeconds(): number {
+    return this.config.getOrThrow<number>("runSupervisorTickSeconds");
+  }
+
+  /**
+   * Seconds an executing live run may go without a heartbeat before it is resubmitted —
+   * `OURO_RUN_HEARTBEAT_STALE_SECONDS` (#160).
+   */
+  get runHeartbeatStaleSeconds(): number {
+    return this.config.getOrThrow<number>("runHeartbeatStaleSeconds");
+  }
+
   /**
    * The managed key pool's trial credit, in cents — `OURO_MANAGED_KEY_TRIAL_CENTS`. `undefined`
    * when unset: the wizard's managed row then names no figure.
@@ -752,6 +765,8 @@ export class AppConfigService {
       liveRunCeilingMax: this.liveRunCeilingMax,
       liveRunWallClockMinutes: this.liveRunWallClockMinutes,
       liveRunNoProgressMinutes: this.liveRunNoProgressMinutes,
+      runSupervisorTickSeconds: this.runSupervisorTickSeconds,
+      runHeartbeatStaleSeconds: this.runHeartbeatStaleSeconds,
       managedKeyTrialCents: this.managedKeyTrialCents,
       hostedRunnerPool: this.hostedRunnerPool,
       dataRegion: this.dataRegion,

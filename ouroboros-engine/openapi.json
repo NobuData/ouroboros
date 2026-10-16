@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-engine",
-    "version": "0.7.39",
+    "version": "0.7.40",
     "summary": "Internal backend for Ouroboros — executes the work ouroboros-rest brokers.",
     "description": "The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the\nservice that executes the work `ouroboros-rest` brokers.\n\nIt is **internal only**. Every request arrives from `ouroboros-rest`, inside the\ncluster, carrying a shared secret on the `X-Ouro-Internal-Key` header; a browser\nnever reaches it. That is a deployment claim, so the service enforces it itself\nrather than trusting it — **every path but `/healthz` requires the key**, the\ncomparison is constant time, and a request without one is refused before routing.\n\nA rejection is therefore one constant body whether the path exists or not: status\ncodes are how a surface gets mapped from outside, and an unauthenticated caller cannot\ntell `/v0/status` from `/v0/anything-else`. Read the `401` documented on each operation\nbelow as the answer to *anything* unauthenticated, including paths this document does\nnot list.\n\n**Every error has one shape** — `{code, message, details}`, the same envelope\n`ouroboros-rest` answers a browser with (`docs/ARCHITECTURE.md` § 5.3), so a failure\ncrossing the gateway does not change form on the way out. `code` is stable and\nmachine-readable and is what a caller branches on; `message` is written for a person\nand is a constant for anything `5xx`, because the real diagnosis names the inside of\nthis process and belongs in a log; `details` carries what is specific to the failure,\nwhich for a `422` is one entry per field that was refused. That covers the answers no\nroute produced too — a path nothing claims, a method a path does not allow, a body\nthat could not be parsed.\n\n`/v0` is the versioned internal prefix. It is unstable by definition — it changes\nwith the two services that share it, which deploy together — and a stable `/v1` is a\nlater promise, not this one. A field may be added to a response and a route may be\nadded to the prefix; a field that disappears, changes type or changes meaning is a\n`/v1` served alongside this one, not an edit to it.",
     "license": {
@@ -110,7 +110,8 @@
                 "example": {
                   "service": "ouroboros-engine",
                   "version": "0.7.15",
-                  "uptime_seconds": 1234.567
+                  "uptime_seconds": 1234.567,
+                  "executors": []
                 }
               }
             }
@@ -2508,6 +2509,93 @@
           }
         }
       }
+    },
+    "/v0/runs/{run_id}/execute": {
+      "post": {
+        "tags": [
+          "v0"
+        ],
+        "summary": "Execute a live run in the background",
+        "description": "The execution bridge (#160, `docs/DECISION_EXECUTION_ENGINE.md` decision A).\nAnswers `202` at once; the workflow interpreter then takes the run with\n`POST /internal/runs/{id}/start` — which increments its epoch — and walks its\npinned workflow version, reporting every stage, transcript batch, change-set,\nspend and checkpoint to `ouroboros-rest`'s internal run surface under that epoch.\nNothing comes back through this response.\n\n`ouroboros-rest`'s run supervisor submits a live run here again when its\nheartbeat goes stale; the engine that takes it resumes from the stored\ncheckpoint, and the previous holder's writes are refused `409 fenced`.\n\nRefused with `accepted: false` and a `reason`: `no_executor` when this process has\nregistered no stage executor, `already_running` when it is already executing the\nrun.",
+        "operationId": "executeRun",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "`runs.id`.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "5eed0009-0000-4000-8000-000000000482"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Whether execution started. The run executes after this answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionAccepted"
+                },
+                "example": {
+                  "accepted": false,
+                  "reason": "no_executor"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v0/execution/claims": {
+      "post": {
+        "tags": [
+          "v0"
+        ],
+        "summary": "Claim a workspace's queue head and execute its run",
+        "description": "Leases the head of the workspace's queue with `POST /internal/queue/claim`,\ndeclaring this process's registered executor kinds, opens its run with the lease,\nthe pinned workflow version, the claim's `model` and the ticket, and executes it\nin the background as `POST /v0/runs/{run_id}/execute` would.\n\nNothing claimed answers `claimed: false` with a `reason`: `no_executor` (nothing\nregistered — no claim is made), `nothing_queued`, `ticket_missing`,\n`workflow_version_missing`, `model_missing` (the item is left for its lease to\nlapse), `control_plane_unreachable`, or the control plane's own refusal code\n(`deployment_disabled`, `workspace_paused`, `concurrency_ceiling`, …).",
+        "operationId": "claimWork",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimRequest"
+              },
+              "example": {
+                "workspace": "acme-robotics"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The run now executing, or why nothing is.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimAnswer"
+                },
+                "example": {
+                  "claimed": false,
+                  "run_id": null,
+                  "reason": "no_executor"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2808,7 +2896,8 @@
         "required": [
           "service",
           "version",
-          "uptime_seconds"
+          "uptime_seconds",
+          "executors"
         ],
         "properties": {
           "service": {
@@ -2833,6 +2922,101 @@
             "examples": [
               1234.567
             ]
+          },
+          "executors": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "native",
+                "harness"
+              ]
+            },
+            "description": "The stage-executor kinds this process has registered, sorted (#160). Empty\nmeans it claims and executes nothing; `ouroboros-rest`'s admission (#1312)\nreads it when a queue claim declares no executors of its own.",
+            "examples": [
+              [
+                "native"
+              ]
+            ]
+          }
+        }
+      },
+      "ExecutionAccepted": {
+        "type": "object",
+        "title": "ExecutionAccepted",
+        "description": "The body of a `POST /v0/runs/{run_id}/execute` response.",
+        "additionalProperties": false,
+        "required": [
+          "accepted",
+          "reason"
+        ],
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "description": "Whether execution started."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "no_executor",
+              "already_running",
+              null
+            ],
+            "description": "Why it did not; `null` when it did."
+          }
+        }
+      },
+      "ClaimRequest": {
+        "type": "object",
+        "title": "ClaimRequest",
+        "description": "The body of a `POST /v0/execution/claims` request.",
+        "additionalProperties": false,
+        "required": [
+          "workspace"
+        ],
+        "properties": {
+          "workspace": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "`organization.id` or its slug — whose queue to claim from.",
+            "examples": [
+              "acme-robotics"
+            ]
+          }
+        }
+      },
+      "ClaimAnswer": {
+        "type": "object",
+        "title": "ClaimAnswer",
+        "description": "The body of a `POST /v0/execution/claims` response.",
+        "additionalProperties": false,
+        "required": [
+          "claimed",
+          "run_id",
+          "reason"
+        ],
+        "properties": {
+          "claimed": {
+            "type": "boolean",
+            "description": "Whether a run was opened and is executing."
+          },
+          "run_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "That run, when one was."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why nothing was claimed; `null` when a run was."
           }
         }
       },

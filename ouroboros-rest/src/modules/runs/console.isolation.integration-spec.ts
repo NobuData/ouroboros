@@ -67,6 +67,10 @@ const ROUTES: Readonly<Record<string, Isolation>> = {
   "PUT /internal/runs/:id/files": "fleet",
   "POST /internal/runs/:id/commits": "fleet",
   "POST /internal/runs/:id/controls/fetch": "fleet",
+  "POST /internal/runs/:id/start": "fleet",
+  "POST /internal/runs/:id/heartbeat": "fleet",
+  "PUT /internal/runs/:id/checkpoint": "fleet",
+  "POST /internal/runs/:id/finish": "fleet",
 };
 
 describe("org isolation across every run route", () => {
@@ -272,6 +276,15 @@ describe("org isolation across every run route", () => {
         commits: [{ sha: "a41c9e2", message: "m", committedAt: "2026-09-22T14:30:12.000Z" }],
       },
       "POST /internal/runs/:id/controls/fetch": {},
+      "POST /internal/runs/:id/start": { worker: "worker-a" },
+      "POST /internal/runs/:id/heartbeat": { epoch: 1 },
+      "PUT /internal/runs/:id/checkpoint": { epoch: 1, state: { position: "code" } },
+      "POST /internal/runs/:id/finish": {
+        epoch: 1,
+        idempotency_key: "k",
+        outcome: "failed",
+        reason: "x",
+      },
     };
 
     const fleet = Object.entries(ROUTES)

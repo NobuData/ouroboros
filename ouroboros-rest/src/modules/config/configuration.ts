@@ -419,6 +419,31 @@ export const MIN_LIVE_RUN_NO_PROGRESS_MINUTES = 2;
 export const MAX_LIVE_RUN_NO_PROGRESS_MINUTES = 360;
 
 /**
+ * How often the run supervisor ticks, when `OURO_RUN_SUPERVISOR_TICK_SECONDS` is not set — five
+ * seconds, the engine's heartbeat (#160).
+ */
+export const DEFAULT_RUN_SUPERVISOR_TICK_SECONDS = 5;
+
+/** Shortest supervisor tick an operator may set — a second. */
+export const MIN_RUN_SUPERVISOR_TICK_SECONDS = 1;
+
+/** Longest supervisor tick an operator may set — five minutes. */
+export const MAX_RUN_SUPERVISOR_TICK_SECONDS = 300;
+
+/**
+ * How long an executing live run may go without a heartbeat before the supervisor resubmits it,
+ * when `OURO_RUN_HEARTBEAT_STALE_SECONDS` is not set — thirty seconds, six missed heartbeats
+ * (#160).
+ */
+export const DEFAULT_RUN_HEARTBEAT_STALE_SECONDS = 30;
+
+/** Shortest heartbeat staleness an operator may set — ten seconds, two missed heartbeats. */
+export const MIN_RUN_HEARTBEAT_STALE_SECONDS = 10;
+
+/** Longest heartbeat staleness an operator may set — an hour. */
+export const MAX_RUN_HEARTBEAT_STALE_SECONDS = 3600;
+
+/**
  * Shortest staleness an operator may set — sixty seconds.
  *
  * A floor rather than a preference: an estimate legitimately takes two engine attempts of five
@@ -1446,6 +1471,17 @@ export interface Configuration {
    */
   readonly liveRunNoProgressMinutes: number;
   /**
+   * Seconds between run-supervisor ticks (#160). From `OURO_RUN_SUPERVISOR_TICK_SECONDS`,
+   * {@link DEFAULT_RUN_SUPERVISOR_TICK_SECONDS} when unset.
+   */
+  readonly runSupervisorTickSeconds: number;
+  /**
+   * Seconds an executing live run may go without a heartbeat before the supervisor resubmits it
+   * (#160). From `OURO_RUN_HEARTBEAT_STALE_SECONDS`, {@link DEFAULT_RUN_HEARTBEAT_STALE_SECONDS}
+   * when unset.
+   */
+  readonly runHeartbeatStaleSeconds: number;
+  /**
    * The trial credit the managed key pool gives a new workspace, in cents. From
    * `OURO_MANAGED_KEY_TRIAL_CENTS`; `undefined` when unset, and the managed row then names no
    * figure — the service never invents one. Between 1 and {@link MAX_MANAGED_KEY_TRIAL_CENTS},
@@ -1567,6 +1603,8 @@ export const VARIABLES = {
   liveRunCeilingMax: "OURO_LIVE_RUN_CEILING_MAX",
   liveRunWallClockMinutes: "OURO_LIVE_RUN_WALL_CLOCK_MINUTES",
   liveRunNoProgressMinutes: "OURO_LIVE_RUN_NO_PROGRESS_MINUTES",
+  runSupervisorTickSeconds: "OURO_RUN_SUPERVISOR_TICK_SECONDS",
+  runHeartbeatStaleSeconds: "OURO_RUN_HEARTBEAT_STALE_SECONDS",
   managedKeyTrialCents: "OURO_MANAGED_KEY_TRIAL_CENTS",
   hostedRunnerPool: "OURO_HOSTED_RUNNER_POOL",
   dataRegion: "OURO_DATA_REGION",
@@ -2432,6 +2470,18 @@ const environmentShape = z.object({
     MAX_LIVE_RUN_NO_PROGRESS_MINUTES,
     "minutes",
   ),
+  OURO_RUN_SUPERVISOR_TICK_SECONDS: boundedWhole(
+    MIN_RUN_SUPERVISOR_TICK_SECONDS,
+    DEFAULT_RUN_SUPERVISOR_TICK_SECONDS,
+    MAX_RUN_SUPERVISOR_TICK_SECONDS,
+    "seconds",
+  ),
+  OURO_RUN_HEARTBEAT_STALE_SECONDS: boundedWhole(
+    MIN_RUN_HEARTBEAT_STALE_SECONDS,
+    DEFAULT_RUN_HEARTBEAT_STALE_SECONDS,
+    MAX_RUN_HEARTBEAT_STALE_SECONDS,
+    "seconds",
+  ),
   OURO_MANAGED_KEY_TRIAL_CENTS: z
     .string()
     .regex(/^\d+$/, `expected between 1 and ${MAX_MANAGED_KEY_TRIAL_CENTS} cents`)
@@ -2754,6 +2804,8 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     liveRunCeilingMax: values.OURO_LIVE_RUN_CEILING_MAX,
     liveRunWallClockMinutes: values.OURO_LIVE_RUN_WALL_CLOCK_MINUTES,
     liveRunNoProgressMinutes: values.OURO_LIVE_RUN_NO_PROGRESS_MINUTES,
+    runSupervisorTickSeconds: values.OURO_RUN_SUPERVISOR_TICK_SECONDS,
+    runHeartbeatStaleSeconds: values.OURO_RUN_HEARTBEAT_STALE_SECONDS,
     managedKeyTrialCents: values.OURO_MANAGED_KEY_TRIAL_CENTS,
     hostedRunnerPool: values.OURO_HOSTED_RUNNER_POOL,
     dataRegion: values.OURO_DATA_REGION,

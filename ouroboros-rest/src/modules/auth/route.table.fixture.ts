@@ -56,6 +56,10 @@ import {
   INTERNAL_RUN_CONTROLS_FETCH_PATH,
   INTERNAL_RUN_CONTROL_ACK_PATH,
   INTERNAL_RUN_STAGE_TRANSITIONS_PATH,
+  INTERNAL_RUN_START_PATH,
+  INTERNAL_RUN_HEARTBEAT_PATH,
+  INTERNAL_RUN_CHECKPOINT_PATH,
+  INTERNAL_RUN_FINISH_PATH,
   INTERNAL_DRY_RUN_REPLAY_ESTIMATES_PATH,
   INTERNAL_REGRESSION_WATCH_RELEASES_PATH,
   INTERNAL_INVESTIGATION_BRIEF_PATH,
@@ -199,6 +203,13 @@ export const INTERNAL_SURFACE: readonly string[] = [
   // could swallow an abort before the executor ever saw it.
   `POST ${INTERNAL_RUN_CONTROLS_FETCH_PATH}`,
   `POST ${INTERNAL_RUN_CONTROL_ACK_PATH}`,
+  // The execution bridge (#160, ADR decision A): start a run under a new epoch, heartbeat,
+  // checkpoint and finish it. A stranger who could reach these could fence the engine out of
+  // any run, or end one with any outcome.
+  `POST ${INTERNAL_RUN_START_PATH}`,
+  `POST ${INTERNAL_RUN_HEARTBEAT_PATH}`,
+  `PUT ${INTERNAL_RUN_CHECKPOINT_PATH}`,
+  `POST ${INTERNAL_RUN_FINISH_PATH}`,
   // The research tool surface (CL.1, #614, decision V2): every research tool operation the
   // engine's investigation loop makes. A stranger who could reach it could spend a workspace's
   // tool credentials and write into its citation ledger.

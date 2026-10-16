@@ -65,6 +65,12 @@ export interface QueueItemClaimedResource {
   readonly playbookId: string | null;
   /** The ticket to open the run for — the open's `ticket` — or `null` when none is mirrored. */
   readonly ticket: { readonly source: string; readonly externalKey: string } | null;
+  /**
+   * The model the run opened from this item will record — `runs.model` (#160). The pinned
+   * workflow's first model stage's alias, else its inherited route's primary alias; the rule is
+   * `AdmissionService.modelFor`'s.
+   */
+  readonly model: string;
 }
 
 /** `POST /internal/runs` — the run that was opened. */

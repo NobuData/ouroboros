@@ -83,7 +83,9 @@ That is the command the image runs, minus the `uv` — see [Container](#containe
 |---|:---:|---|
 | `GET /healthz` | no | `{"status":"ok"}` — liveness, for a container platform's probe |
 | `GET /` | yes | The service name and its installed version |
-| `GET /v0/status` | yes | Version and uptime — what `ouroboros-rest`'s readiness probe reads |
+| `GET /v0/status` | yes | Version, uptime and the registered stage-executor kinds (`executors`) — what `ouroboros-rest`'s readiness probe and queue admission read |
+| `POST /v0/runs/{run_id}/execute` | yes | Execute a live run in the background — `202 {accepted, reason}`, refused `no_executor` / `already_running`; see [The execution bridge](#the-execution-bridge) — #160 |
+| `POST /v0/execution/claims` | yes | Claim a workspace's queue head, open its run and execute it — `{claimed, run_id, reason}`; see [The execution bridge](#the-execution-bridge) — #160 |
 | `POST /v0/tasks` · `GET /v0/tasks/{task_id}` · `POST /v0/tasks/{task_id}/cancel` | yes | The in-process task queue: submit (`202`), poll, cancel; see [The task queue](#the-task-queue) — #54 |
 | `POST /v0/tasks/echo` | yes | The contract exemplar: `{task_kind, payload}` back as `{accepted, echo, engine_version}` |
 | `POST /v0/estimate` | yes | Size one issue: `{issue, context}` in, one version of K.2's estimate row out |
@@ -567,6 +569,35 @@ real tree to write in: `ouroboros_engine/execution/workspace.py`.
   `OURO_ENGINE_RUN_MAX_MB` caps one tree, and a new tree is refused while the volume has less
   than that free.
 
+## The execution bridge
+
+#160 executes live runs under `docs/DECISION_EXECUTION_ENGINE.md` decision A. `ouroboros-rest`'s
+run supervisor calls `POST /v0/execution/claims` for a workspace with admissible queue work and
+`POST /v0/runs/{run_id}/execute` for a run whose heartbeat went stale; both answer at once and
+the run executes on a background thread (`execution/worker.py`).
+
+- **Executors** come from `execution/registry.py`'s `ExecutorRegistry` (`app.state.executors`).
+  It is empty until DH.3/DH.5 register one, so `/v0/status` reports `executors: []` and the
+  engine claims and executes nothing (`no_executor`).
+- **The interpreter** (`execution/interpreter.py`) takes the run with
+  `POST /internal/runs/{id}/start`, which increments its epoch and answers the pinned workflow
+  document, the repository, the protected paths, the base commit and the last checkpoint. A new
+  run's base commit is resolved from the default branch and stored before its tree
+  (`RunWorkspaces.open`) is made. It then walks the document: a model stage runs on a registered
+  executor under DH.1's `ToolPolicy` (the stage's `touch_ci`/`push_fixup`, the protected paths,
+  the run tree); its events become transcript batches and spend, and the change-set is the
+  tree's diff at stage end. Decisions and gates are judged by `execution/facts.py`, which never
+  assumes what it cannot know: `labels` and `effort` are read from the start answer, `paths`
+  from the tree's diff, but `checks` and an unsized ticket's effort are unknown, so a gate on
+  them fails the run, naming why. Infrastructure stages fail with `infra_unavailable` until AR.1.
+  Terminals finish through `POST /internal/runs/{id}/finish`: `needs_review` → `needs_human`,
+  `open_pr_automerge` → `review` (the tree is kept for DI.2), `back_to_queue` → `back_to_queue`.
+- **Fencing and resume.** Every write carries the epoch (`execution/reporter.py`), and a
+  heartbeat goes every `OURO_ENGINE_HEARTBEAT_SECONDS`. A heartbeat or write refused `fenced`
+  or `run_not_executable` aborts the executor and stops all writes. The state shape in
+  `execution/state.py` is checkpointed after every stage boundary. A run restarted mid-stage
+  resumes the executor's checkpoint once when the executor can, else starts one fresh attempt.
+
 ## The task queue
 
 `ouroboros_engine/tasks/` (#54) is a registry of task kinds, an in-process `asyncio.Queue` and a pool
@@ -853,6 +884,8 @@ Development default port: **8000** (`PORT`).
 | `OURO_ENGINE_RUN_DIR` | Where each run's writable working tree lives; a volume in a deployment ([#1307](https://github.com/NobuData/ouroboros/issues/1307)) | `<temp dir>/ouroboros-engine/runs` |
 | `OURO_ENGINE_RUN_MAX_MB` | One run tree's size limit, and the free space a new run needs (16–1048576) | `2048` |
 | `OURO_ENGINE_RUN_IDLE_HOURS` | How long a tree may go unopened before the sweep removes it (1–8760) | `168` |
+| `OURO_ENGINE_HEARTBEAT_SECONDS` | How often an executing run's heartbeat is sent to `ouroboros-rest` (1–60); keep it well under REST's stale threshold ([#160](https://github.com/NobuData/ouroboros/issues/160)) | `5` |
+| `OURO_ENGINE_WORKER_ID` | The worker name queue claims and run starts are sent under (1–128 characters) | the host name |
 
 Values come from the **process environment layered over `.env` files** — the repo-root
 one, then this module's, then the real environment, later winning
@@ -1023,6 +1056,7 @@ ouroboros-engine/
 │   │   ├── investigate.py #   /v0/investigate — accept, run in the background    · #620
 │   │   ├── dryruns.py  #   /v0/dry-runs — walk a draft, stream the rows; /harness — describe it · #560, #562
 │   │   ├── skills.py   #   /v0/skills/run — follow a registry skill over an input · #624
+│   │   ├── execution.py #  /v0/runs/{run_id}/execute · /v0/execution/claims — the execution bridge · #160
 │   │   └── v0.py       #   the versioned prefix and the rule that governs it
 │   ├── core/           # process-wide concerns, not routes
 │   │   ├── errors.py   #   the {code, message, details} envelope, for every failure

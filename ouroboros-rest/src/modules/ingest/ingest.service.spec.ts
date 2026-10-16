@@ -95,6 +95,12 @@ function run(over: Partial<Run> = {}): Run {
     events_swept_at: null,
     origin: "simulated",
     queue_item_id: null,
+    exec_epoch: 0,
+    exec_worker: null,
+    exec_heartbeat_at: null,
+    exec_base_commit: null,
+    exec_checkpoint: null,
+    exec_checkpoint_at: null,
     ...over,
   };
 }
@@ -1260,6 +1266,70 @@ describe("a run that is not there", () => {
     expect(await codeOf(call(new IngestService(repository, stubGuardrails(), ACTIVE_STATES)))).toBe(
       INGEST_ERRORS.runNotFound,
     );
+  });
+});
+
+describe("the execution epoch's fence (#160)", () => {
+  const WRITES: [string, (service: IngestService, epoch?: number) => Promise<unknown>][] = [
+    [
+      "a stage transition",
+      (service, epoch) =>
+        service.transitionStage(RUN, {
+          idempotencyKey: "k",
+          stageKey: "implement",
+          status: "active",
+          epoch,
+        } as never),
+    ],
+    [
+      "an event batch",
+      (service, epoch) =>
+        service.appendEvents(RUN, {
+          idempotencyKey: "k",
+          events: [{ hint: 21, actor: "system", body: "x" }],
+          epoch,
+        } as never),
+    ],
+    [
+      "a change-set report",
+      (service, epoch) => service.reportFiles(RUN, { idempotencyKey: "k", files: [], epoch }),
+    ],
+    [
+      "a commit report",
+      (service, epoch) =>
+        service.reportCommits(RUN, {
+          idempotencyKey: "k",
+          commits: [{ sha: "a41c9e2", message: "m", committedAt: "2026-09-22T14:30:12.000Z" }],
+          epoch,
+        }),
+    ],
+    [
+      "a resource report",
+      (service, epoch) => service.reportResources(RUN, { idempotencyKey: "k", epoch }),
+    ],
+  ];
+
+  it.each(WRITES)("refuses %s under a superseded epoch, before the replay", async (_name, call) => {
+    const { repository, spy } = stubRepository();
+    spy.lockRun.mockResolvedValueOnce(run({ exec_epoch: 3 }));
+
+    expect(
+      await codeOf(call(new IngestService(repository, stubGuardrails(), ACTIVE_STATES), 2)),
+    ).toBe(INGEST_ERRORS.fenced);
+    expect(spy.findReceipt).not.toHaveBeenCalled();
+  });
+
+  it.each(WRITES)("lets %s through under the run's epoch, or with none", async (_name, call) => {
+    for (const epoch of [3, undefined]) {
+      const { repository, spy } = stubRepository();
+      spy.lockRun.mockResolvedValueOnce(run({ exec_epoch: 3 }));
+
+      await call(new IngestService(repository, stubGuardrails(), ACTIVE_STATES), epoch).catch(
+        () => undefined,
+      );
+
+      expect(spy.findReceipt).toHaveBeenCalled();
+    }
   });
 });
 

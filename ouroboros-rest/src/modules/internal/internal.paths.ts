@@ -93,6 +93,21 @@ export const CONTROLS_FETCH_ROUTE = ":id/controls/fetch";
 /** Route segment of one control's acknowledgment, relative to {@link RUNS_PATH} (AP.4). */
 export const CONTROL_ACK_ROUTE = ":id/controls/:controlId/ack";
 
+/**
+ * Route segment of starting a run's execution, relative to {@link RUNS_PATH} (#160, ADR
+ * decision A): the engine takes a new epoch and the run's execution context.
+ */
+export const RUN_START_ROUTE = ":id/start";
+
+/** Route segment of an executing run's heartbeat, relative to {@link RUNS_PATH} (#160). */
+export const RUN_HEARTBEAT_ROUTE = ":id/heartbeat";
+
+/** Route segment of an executing run's checkpoint, relative to {@link RUNS_PATH} (#160). */
+export const RUN_CHECKPOINT_ROUTE = ":id/checkpoint";
+
+/** Route segment of finishing an executing run, relative to {@link RUNS_PATH} (#160). */
+export const RUN_FINISH_ROUTE = ":id/finish";
+
 /** The lease, as the engine calls it: `/internal/credentials/lease`. */
 export const INTERNAL_LEASE_PATH = `/${CREDENTIALS_PATH}/${LEASE_ROUTE}`;
 
@@ -125,6 +140,18 @@ export const INTERNAL_RUN_CONTROLS_FETCH_PATH = `/${RUNS_PATH}/${CONTROLS_FETCH_
 
 /** One control's acknowledgment: `/internal/runs/:id/controls/:controlId/ack`. */
 export const INTERNAL_RUN_CONTROL_ACK_PATH = `/${RUNS_PATH}/${CONTROL_ACK_ROUTE}`;
+
+/** Starting a run's execution: `/internal/runs/:id/start` (#160). */
+export const INTERNAL_RUN_START_PATH = `/${RUNS_PATH}/${RUN_START_ROUTE}`;
+
+/** An executing run's heartbeat: `/internal/runs/:id/heartbeat` (#160). */
+export const INTERNAL_RUN_HEARTBEAT_PATH = `/${RUNS_PATH}/${RUN_HEARTBEAT_ROUTE}`;
+
+/** An executing run's checkpoint: `/internal/runs/:id/checkpoint` (#160). */
+export const INTERNAL_RUN_CHECKPOINT_PATH = `/${RUNS_PATH}/${RUN_CHECKPOINT_ROUTE}`;
+
+/** Finishing an executing run: `/internal/runs/:id/finish` (#160). */
+export const INTERNAL_RUN_FINISH_PATH = `/${RUNS_PATH}/${RUN_FINISH_ROUTE}`;
 
 /**
  * The research tool surface's controller path (CL.1,
@@ -274,6 +301,10 @@ export const INTERNAL_PATHS = [
   INTERNAL_RUN_RESOURCES_PATH,
   INTERNAL_RUN_CONTROLS_FETCH_PATH,
   INTERNAL_RUN_CONTROL_ACK_PATH,
+  INTERNAL_RUN_START_PATH,
+  INTERNAL_RUN_HEARTBEAT_PATH,
+  INTERNAL_RUN_CHECKPOINT_PATH,
+  INTERNAL_RUN_FINISH_PATH,
   INTERNAL_RESEARCH_TOOL_PATH,
   INTERNAL_INVESTIGATION_START_PATH,
   INTERNAL_INVESTIGATION_CHECKPOINT_PATH,
