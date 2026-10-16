@@ -15,6 +15,7 @@ Its shape::
         "executor_checkpoint": {...} | null,  # the SPI Checkpoint of a paused attempt
         "stage_key": "implement" | null,  # set while that stage is mid-attempt
         "attempt": 2 | null,
+        "checks": {"build": {"passed": false, "exit_code": 2, ...}},  # this loop round's
     }
 
 ``stage_key``/``attempt`` are written when an attempt starts and cleared when the walk moves
@@ -25,6 +26,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+
+from ouroboros_engine.execution.checks import CheckResult, checks_from_json
 
 
 def edge_id(source: str, target: str) -> str:
@@ -70,6 +73,8 @@ class ExecutionState:
         executor_checkpoint: The paused attempt's SPI checkpoint, as JSON.
         stage_key: The stage mid-attempt, or ``None`` between stages.
         attempt: That attempt's number.
+        checks: This loop round's check results, by stage — what a ``require`` gate judges
+            (AJ.3, #265). Cleared when a gate loops back.
     """
 
     position: str | None = None
@@ -79,6 +84,7 @@ class ExecutionState:
     executor_checkpoint: dict[str, Any] | None = None
     stage_key: str | None = None
     attempt: int | None = None
+    checks: dict[str, CheckResult] = field(default_factory=dict)
 
     @classmethod
     def from_json(cls, stored: dict[str, Any] | None) -> ExecutionState:
@@ -105,6 +111,7 @@ class ExecutionState:
             executor_checkpoint=executor if isinstance(executor, dict) else None,
             stage_key=stage_key if isinstance(stage_key, str) else None,
             attempt=attempt if isinstance(attempt, int) and attempt >= 1 else None,
+            checks=checks_from_json(stored.get("checks")),
         )
 
     def to_json(self) -> dict[str, Any]:
@@ -121,6 +128,7 @@ class ExecutionState:
             "executor_checkpoint": self.executor_checkpoint,
             "stage_key": self.stage_key,
             "attempt": self.attempt,
+            "checks": {name: result.to_json() for name, result in self.checks.items()},
         }
 
     def move_to(self, position: str) -> None:

@@ -169,16 +169,6 @@ export const CLAIM_INVENTORY: readonly ClaimEntry[] = [
     handling: "until-owner",
   },
 
-  // --- Build Farm ----------------------------------------------------------------------
-  {
-    surface: "Build Farm — full-log sheet",
-    file: "app/farm/live.ts",
-    text: "A build links to its run console with #265",
-    falsifiedBy: "feature",
-    owner: 265,
-    handling: "until-owner",
-  },
-
   // --- Pull requests -------------------------------------------------------------------
   {
     surface: "Pull request — review thread watermark",
@@ -368,6 +358,8 @@ export const RETIRED_CLAIMS: readonly string[] = [
   "simulated — live runs arrive with invocation",
   "The run console is not built yet",
   "The run console arrives with #309",
+  // AJ.3 (#265) linked a loop's build to its run console.
+  "A build links to its run console with #265",
 ];
 
 /**

@@ -1,5 +1,6 @@
 import { SECRETS_RULESET_DISCLOSURE } from "../guardrails/guardrails.ruleset";
 import {
+  type StageBuildRow,
   budgetStageOf,
   changesOf,
   entryOf,
@@ -160,6 +161,97 @@ describe("the stepper", () => {
       currentStageKey: null,
       stages: [],
     });
+  });
+});
+
+describe("a build stage's farm job (AJ.3 #265)", () => {
+  const BUILD = stageRow({ stage_key: "build", stage_label: "Build farm", position: 5 });
+
+  function job(over: Partial<StageBuildRow> = {}): StageBuildRow {
+    return {
+      id: "job-483",
+      number: 483,
+      status: "running",
+      runnerId: "runner-2",
+      runnerName: "forge-02",
+      poolName: "pool-a",
+      stageKey: "build",
+      stageAttempt: 1,
+      exitCode: null,
+      ccacheStats: null,
+      retryOf: null,
+      ...over,
+    };
+  }
+
+  function buildOf(rows: StageBuildRow[], stages = [BUILD]) {
+    return timelineOf("standard-fix", 14, stages, rows).stages.find(
+      (stage) => stage.stageKey === "build",
+    )?.build;
+  }
+
+  it("carries the job's real phase, runner and pool on the stage", () => {
+    expect(buildOf([job()])).toEqual({
+      jobId: "job-483",
+      jobNumber: 483,
+      phase: "running",
+      pool: "pool-a",
+      runnerName: "forge-02",
+      exitCode: null,
+      ccacheHitRatePct: null,
+      retries: 0,
+    });
+  });
+
+  it("calls a queued job with no runner waiting, and one a runner holds accepted", () => {
+    expect(buildOf([job({ status: "queued", runnerId: null, runnerName: null })])?.phase).toBe(
+      "waiting",
+    );
+    expect(buildOf([job({ status: "queued" })])?.phase).toBe("accepted");
+  });
+
+  it("carries a finished build's exit code and ccache hit rate", () => {
+    expect(
+      buildOf([
+        job({
+          status: "failed",
+          exitCode: 2,
+          ccacheStats: { hits: 784, misses: 216, size_bytes: 1, max_size_bytes: 2 },
+        }),
+      ]),
+    ).toMatchObject({ phase: "failed", exitCode: 2, ccacheHitRatePct: 78.4 });
+  });
+
+  it("follows a retried job to its successor and counts the retry", () => {
+    expect(
+      buildOf([
+        job({ status: "retried" }),
+        job({ id: "job-484", number: 484, status: "running", retryOf: "job-483" }),
+      ]),
+    ).toMatchObject({ jobId: "job-484", jobNumber: 484, phase: "running", retries: 1 });
+  });
+
+  it("shows only the latest attempt's job — an earlier round's build is history", () => {
+    const stages = [BUILD, stageRow({ ...BUILD, attempt: 2, status: "active" })];
+
+    expect(
+      buildOf(
+        [
+          job({ status: "failed", exitCode: 1 }),
+          job({ id: "job-490", number: 490, stageAttempt: 2, status: "queued" }),
+        ],
+        stages,
+      ),
+    ).toMatchObject({ jobId: "job-490", jobNumber: 490 });
+    expect(buildOf([job({ status: "failed", exitCode: 1 })], stages)).toBeUndefined();
+  });
+
+  it("omits the field on every stage that submitted no job", () => {
+    const timeline = timelineOf("standard-fix", 14, mockupStages(), [job()]);
+
+    for (const stage of timeline.stages.filter((node) => node.stageKey !== "build")) {
+      expect(stage).not.toHaveProperty("build");
+    }
   });
 });
 

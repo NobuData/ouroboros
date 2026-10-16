@@ -125,6 +125,8 @@ describe("build job submission and cancellation", () => {
         env: {},
         artifact_globs: "[]",
         queued_at: NOW,
+        stage_key: null,
+        stage_attempt: null,
       });
       expect(dispatcher.kick).toHaveBeenCalledTimes(1);
       expect(resource.id).toBe(JOB);
@@ -281,6 +283,57 @@ describe("build job submission and cancellation", () => {
       expect(
         await refusal(jobs.submitForRun(ORG, "7f000009-0000-4000-8000-000000000001", REQUEST)),
       ).toMatchObject({ code: "farm_pool_disabled" });
+    });
+
+    it("writes the stage and attempt the build is for (V152)", async () => {
+      await jobs.submitForRun(ORG, "7f000009-0000-4000-8000-000000000001", REQUEST, {
+        key: "build",
+        attempt: 2,
+      });
+
+      expect(written()).toMatchObject({
+        run_id: "7f000009-0000-4000-8000-000000000001",
+        stage_key: "build",
+        stage_attempt: 2,
+      });
+    });
+
+    it("leaves the stage null for a run build no stage submitted", async () => {
+      await jobs.submitForRun(ORG, "7f000009-0000-4000-8000-000000000001", REQUEST);
+
+      expect(written()).toMatchObject({ stage_key: null, stage_attempt: null });
+    });
+  });
+
+  describe("a job's dispatch state (AJ.3 #265)", () => {
+    it("answers queued_no_eligible_runner for a waiting job nothing can take", async () => {
+      const { job, queueState } = await jobs.dispatchState(ORG, JOB);
+
+      expect(job.id).toBe(JOB);
+      expect(queueState).toBe("queued_no_eligible_runner");
+    });
+
+    it("answers queued_runner_available when a runner is eligible", async () => {
+      repository.candidates.mockResolvedValue([
+        { id: RUNNER, name: "forge-01", held: 0, max_concurrency: 2 },
+      ]);
+
+      expect((await jobs.dispatchState(ORG, JOB)).queueState).toBe("queued_runner_available");
+    });
+
+    it("answers offered, without asking for candidates, once a runner holds it", async () => {
+      repository.view.mockResolvedValue(jobView({ status: "running", runner_id: RUNNER }));
+
+      expect((await jobs.dispatchState(ORG, JOB)).queueState).toBe("offered");
+      expect(repository.candidates).not.toHaveBeenCalled();
+    });
+
+    it("refuses another workspace's job", async () => {
+      repository.view.mockResolvedValue(undefined);
+
+      expect(await refusal(jobs.dispatchState(ORG, JOB))).toMatchObject({
+        code: "farm_job_not_found",
+      });
     });
   });
 

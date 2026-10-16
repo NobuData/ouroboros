@@ -5,6 +5,9 @@ import { useEffect, useState } from "react";
 
 import type { PullRequestRef } from "@/app/api/pull-requests";
 import type { RunConsole } from "@/app/api/runs";
+import { LogSheet } from "@/app/farm/log-sheet";
+import type { LiveJob } from "@/app/farm/live";
+import type { LogStreamOptions } from "@/app/farm/log-stream";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { runConsoleNotice } from "@/app/loop/capability-copy";
 import { CapabilityNotice } from "@/app/loop/capability-notice";
@@ -27,7 +30,7 @@ import { RunStepper } from "./run-stepper";
 import { type SteerSender, TranscriptCard } from "./transcript-card";
 import type { TranscriptStreamOptions } from "./transcript-stream";
 import { isQueued } from "./states";
-import { runStepper, selectedStage, withStage } from "./stepper";
+import { buildLogJob, runStepper, selectedStage, withStage } from "./stepper";
 import {
   BREADCRUMB_LABEL,
   SIMULATED_HEADLINE,
@@ -99,6 +102,7 @@ import "./runs.css";
  * @param props.steer How to send a steer. Defaults to the Server Action; tests replace it.
  * @param props.controlsPoll Test seams for the controls' poll; production passes none.
  * @param props.send How to send a control. Defaults to the Server Action; tests replace it.
+ * @param props.log Test seams for a build stage's log sheet (AJ.3, #265); production passes none.
  * @returns The screen.
  */
 export function RunScreen({
@@ -115,6 +119,7 @@ export function RunScreen({
   steer,
   controlsPoll,
   send,
+  log,
 }: Readonly<{
   id: string;
   initial: RunConsole | null;
@@ -129,6 +134,7 @@ export function RunScreen({
   steer?: SteerSender;
   controlsPoll?: ControlsPollOptions;
   send?: ControlSender;
+  log?: LogStreamOptions;
 }>) {
   const { snapshot, refresh } = useKeyedPoll(id, (run) => createRunPoll(runUrl(run), poll));
 
@@ -142,6 +148,8 @@ export function RunScreen({
   const stepper = data === null ? null : runStepper(data);
 
   const [requestedStage, setRequestedStage] = useState<string | null>(initialStage);
+  // The build stage whose farm job log is open over the console (AJ.3, #265), or none.
+  const [logJob, setLogJob] = useState<LiveJob | null>(null);
   const [newestEntryAt, setNewestEntryAt] = useState<string | null>(null);
   const stage = stepper === null ? null : selectedStage(requestedStage, stepper.steps);
 
@@ -221,12 +229,15 @@ export function RunScreen({
 
       {stepper !== null && (
         <RunStepper
+          onOpenLog={(build, label) => setLogJob(buildLogJob(build, label))}
           onSelect={selectStage}
           selected={stage}
           testsHref={testsPath(id, { from: origin.id })}
           view={stepper}
         />
       )}
+
+      <LogSheet job={logJob} log={log} onClose={() => setLogJob(null)} />
 
       {data !== null && view !== null && stepper !== null && (
         <div className="run__body">

@@ -25,6 +25,7 @@
 
 import type { RunSummary } from "../dashboard/resources";
 import type {
+  BuildJobStatus,
   GuardrailCheck,
   GuardrailEvidence,
   GuardrailMode,
@@ -43,7 +44,9 @@ import type {
 } from "../db/schema";
 import type { DataOrigin } from "../db/schema";
 import { GUARDRAIL_CHECKS } from "../db/schema";
+import { phaseOf, type JobPhase } from "../farm/dispatch/job.states";
 import { SECRETS_RULESET_DISCLOSURE } from "../guardrails/guardrails.ruleset";
+import { ccacheSummary } from "../run-builds/run-builds.resources";
 import type { SpendTotals } from "./run.spend";
 
 // ---------------------------------------------------------------------------
@@ -148,6 +151,39 @@ export interface RunTimelineStage {
   readonly note: string | null;
   /** Every attempt, oldest first. */
   readonly attempts: RunStageAttempt[];
+  /**
+   * The farm job the latest attempt submitted — a build stage's real lifecycle (AJ.3,
+   * [#265](https://github.com/NobuData/ouroboros/issues/265)). Omitted for a stage that
+   * submitted none: every model stage, gate and terminal, and a build stage before its job.
+   */
+  readonly build?: RunStageBuild;
+}
+
+/**
+ * A build stage's farm job, followed to the latest attempt of its retry chain — what the stepper
+ * captions (*waiting for a runner*, *building on forge-02*, *exit 0 · ccache 78.4%*) and what its
+ * *Build log* link opens.
+ */
+export interface RunStageBuild {
+  /** `build_jobs.id` — the log sheet's `GET /api/v1/farm/jobs/:id/log`. */
+  readonly jobId: string;
+  /** The job's number within the workspace — mockup 08's `#479`. */
+  readonly jobNumber: number;
+  /**
+   * `waiting` (queued, no runner) → `offered` → `accepted` → `running` → `succeeded` | `failed` |
+   * `canceled`. Never `retried`: a retried attempt is followed to its successor.
+   */
+  readonly phase: JobPhase;
+  /** The pool it was submitted to, by name. */
+  readonly pool: string;
+  /** The runner holding or last holding it; `null` while it waits. */
+  readonly runnerName: string | null;
+  /** The command's exit code once it finished; `null` before, and for a cancelled build. */
+  readonly exitCode: number | null;
+  /** The ccache hit rate as a percentage to one decimal, or `null` when nothing was measured. */
+  readonly ccacheHitRatePct: number | null;
+  /** Automatic retries the farm made before this attempt. */
+  readonly retries: number;
 }
 
 /** One attempt at one stage. */
@@ -448,7 +484,10 @@ export function timelineOf(
   workflowTag: string,
   workflowVersion: number | null,
   rows: readonly RunStage[],
+  builds: readonly StageBuildRow[] = [],
 ): RunTimeline {
+  const buildOf = stageBuildsOf(builds);
+
   const byKey = new Map<string, RunStage[]>();
 
   for (const row of rows) {
@@ -471,6 +510,7 @@ export function timelineOf(
       durationSeconds: secondsBetween(latest.started_at, latest.finished_at),
       note: latest.note,
       attempts: attempts.map(attemptOf),
+      ...optionalBuild(buildOf.get(stageAttemptKey(latest.stage_key, latest.attempt))),
     };
   });
 
@@ -567,6 +607,74 @@ export interface RouteCap {
   readonly tag: string;
   /** `routes.max_cost_cents_per_run`, or `null` when the route sets none. */
   readonly maxCostCentsPerRun: number | null;
+}
+
+/** One run-linked build job with a stage, as the repository reads it (V152). */
+export interface StageBuildRow {
+  readonly id: string;
+  readonly number: number;
+  readonly status: string;
+  readonly runnerId: string | null;
+  readonly runnerName: string | null;
+  readonly poolName: string;
+  readonly stageKey: string;
+  readonly stageAttempt: number;
+  readonly exitCode: number | null;
+  readonly ccacheStats: unknown;
+  /** The attempt this one retries, when the farm retried it. */
+  readonly retryOf: string | null;
+}
+
+/**
+ * The key a stage attempt's build is filed under.
+ *
+ * @param stageKey - The stage.
+ * @param attempt - Its attempt.
+ * @returns One string per (stage, attempt).
+ */
+function stageAttemptKey(stageKey: string, attempt: number): string {
+  return `${stageKey}#${String(attempt)}`;
+}
+
+/**
+ * Each stage attempt's build, at the latest attempt of its retry chain.
+ *
+ * Rows arrive oldest first, so a retry — always queued after the attempt it replaces — overwrites
+ * its predecessor, and the count of rows filed under a key is the chain's length.
+ *
+ * @param rows - The run's stage builds, oldest first.
+ * @returns The build per {@link stageAttemptKey}.
+ */
+function stageBuildsOf(rows: readonly StageBuildRow[]): Map<string, RunStageBuild> {
+  const found = new Map<string, RunStageBuild>();
+
+  for (const row of rows) {
+    const key = stageAttemptKey(row.stageKey, row.stageAttempt);
+    const earlier = found.get(key);
+
+    found.set(key, {
+      jobId: row.id,
+      jobNumber: row.number,
+      phase: phaseOf({ status: row.status as BuildJobStatus, runner_id: row.runnerId }),
+      pool: row.poolName,
+      runnerName: row.runnerName,
+      exitCode: row.exitCode,
+      ccacheHitRatePct: ccacheSummary(row.ccacheStats)?.hitRatePct ?? null,
+      retries: earlier === undefined ? 0 : earlier.retries + 1,
+    });
+  }
+
+  return found;
+}
+
+/**
+ * The `build` field, present only when there is one — `returnedFrom`'s omit-when-absent rule.
+ *
+ * @param build - The stage attempt's build, or `undefined`.
+ * @returns `{build}` or `{}`.
+ */
+function optionalBuild(build: RunStageBuild | undefined): { build?: RunStageBuild } {
+  return build === undefined ? {} : { build };
 }
 
 /** A reservation, as the repository reads it. */

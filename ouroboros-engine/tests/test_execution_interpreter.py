@@ -334,15 +334,18 @@ def test_a_change_set_the_guardrails_flag_hands_the_run_to_a_person(bench) -> No
 # --- infrastructure, forks ------------------------------------------------------------------
 
 
-def test_an_infra_stage_fails_with_infra_unavailable(bench) -> None:
+def test_a_build_stage_with_nothing_pushed_fails_saying_so(bench) -> None:
+    # No publisher, so no branch on the host: a runner would have nothing to check out.
+    # The farm itself is driven in test_execution_build_stage.py (AJ.3, #265).
     doc = chain(trigger(), infra("build"), term("done", "open_pr_automerge"))
     run = bench(doc, writes("a.md"))
     control = run.run()
 
     assert control.transitions() == [("build", "active", 1), ("build", "failed", 1)]
+    assert not control.bodies("build")
     finished = control.finished()
     assert finished.outcome == "failed"
-    assert finished.reason.startswith("infra_unavailable")
+    assert finished.reason.startswith("build_branch_unpublished")
 
 
 def _decision_doc(globs: list[str]) -> dict[str, Any]:
@@ -500,7 +503,7 @@ def test_a_failing_gate_loops_back_with_the_next_attempt_until_the_bound(bench) 
     assert {"docs-only->implement": 1} in loops
 
 
-def test_a_gate_on_check_results_fails_honestly_without_infra(bench) -> None:
+def test_a_gate_on_every_check_judges_the_rounds_stages(bench) -> None:
     doc = document(
         [
             trigger(),
@@ -516,12 +519,34 @@ def test_a_gate_on_check_results_fails_honestly_without_infra(bench) -> None:
     )
     control = bench(doc, writes("a.md")).run()
 
+    # `implement` succeeded, so it is this round's one check, and it passed (AJ.3, #265).
+    assert control.finished().outcome == "review"
+
+
+def test_a_gate_on_a_check_that_never_ran_fails_honestly(bench) -> None:
+    doc = document(
+        [
+            trigger(),
+            llm("implement"),
+            flow(
+                "green",
+                "gate",
+                {"kind": "checks", "op": "all_passed", "names": ["build"]},
+            ),
+            term("done", "open_pr_automerge"),
+        ],
+        [
+            edge("trigger", "implement"),
+            edge("implement", "green"),
+            edge("green", "done"),
+        ],
+    )
+    control = bench(doc, writes("a.md")).run()
+
     finished = control.finished()
     assert finished.outcome == "failed"
-    assert (
-        "cannot be decided" in finished.reason
-        and "infra_unavailable" in finished.reason
-    )
+    assert "cannot be decided" in finished.reason
+    assert "no result for `build`" in finished.reason
 
 
 # --- terminals ------------------------------------------------------------------------------

@@ -45121,6 +45121,103 @@ select pg_temp.must_hold(
 
 delete from ouroboros.organization where "id" = 'org-v151';
 
+-- ===========================================================================
+-- V152 — which stage of a run a build job is (#265, AJ.3).
+-- ===========================================================================
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v152', 'Build Stage Works', 'build-stage-works-v152', now());
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a1520000-0000-0000-0000-00000000000a', 'org-v152', 'build-stage-works', true);
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a152f000-0000-0000-0000-00000000000a', 'a1520000-0000-0000-0000-00000000000a', 'helios-firmware', true, 'main');
+insert into ouroboros.runner_pools (id, organization_id, name, executor) values
+  ('a1527000-0000-0000-0000-00000000000a', 'org-v152', 'pool-a', 'shell');
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq, simulated)
+  values
+    ('a1520000-0000-0000-0000-000000000001', 'org-v152', 'a152f000-0000-0000-0000-00000000000a',
+     1, 'Build on the farm', 'standard-fix', 'coder-max', 'building', 'Build', 5, 7, now(), 1, false);
+insert into ouroboros.build_jobs
+    (id, organization_id, number, pool_id, run_id, github_repo_id, git_ref, commit_sha, label,
+     title, executor, command, status, stage_key, stage_attempt)
+  values
+    ('a1528000-0000-0000-0000-000000000001', 'org-v152', 1,
+     'a1527000-0000-0000-0000-00000000000a', 'a1520000-0000-0000-0000-000000000001',
+     'a152f000-0000-0000-0000-00000000000a', 'refs/heads/ouro/run-1', repeat('c', 40), 'pool-a',
+     'Build on the farm', 'shell', 'make all', 'queued', 'build', 1),
+    ('a1528000-0000-0000-0000-000000000002', 'org-v152', 2,
+     'a1527000-0000-0000-0000-00000000000a', null,
+     'a152f000-0000-0000-0000-00000000000a', 'refs/heads/main', repeat('c', 40), 'pool-a',
+     'A person''s build', 'shell', 'make all', 'queued', null, null);
+
+select pg_temp.must_hold(
+  (select stage_key = 'build' and stage_attempt = 1 from ouroboros.build_jobs
+    where id = 'a1528000-0000-0000-0000-000000000001'),
+  'a run''s build job names the stage and attempt it builds for');
+
+select pg_temp.must_hold(
+  (select stage_key is null and stage_attempt is null from ouroboros.build_jobs
+    where id = 'a1528000-0000-0000-0000-000000000002'),
+  'a build no stage submitted has neither');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set stage_attempt = null
+     where id = 'a1528000-0000-0000-0000-000000000001'$$,
+  'a stage and its attempt are set together or not at all', 'build_jobs_stage_pair');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set stage_key = 'build'
+     where id = 'a1528000-0000-0000-0000-000000000002'$$,
+  'a stage without its attempt is refused', 'build_jobs_stage_pair');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set stage_attempt = 0
+     where id = 'a1528000-0000-0000-0000-000000000001'$$,
+  'a stage attempt is 1-based', 'build_jobs_stage_attempt_positive');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set stage_key = ''
+     where id = 'a1528000-0000-0000-0000-000000000001'$$,
+  'a stage key is not empty', 'build_jobs_stage_key_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.build_jobs
+        (organization_id, number, pool_id, run_id, github_repo_id, git_ref, commit_sha, label,
+         title, executor, command, status, stage_key, stage_attempt)
+      values ('org-v152', 3, 'a1527000-0000-0000-0000-00000000000a',
+              'a1520000-0000-0000-0000-000000000001', 'a152f000-0000-0000-0000-00000000000a',
+              'refs/heads/ouro/run-1', repeat('c', 40), 'pool-a', 'Built twice', 'shell',
+              'make all', 'queued', 'build', 1)$$,
+  'one stage attempt submits one job — a resend is the same job', 'build_jobs_run_stage_key');
+
+-- An automatic retry copies the stage: a second row for the same attempt, by design.
+insert into ouroboros.build_jobs
+    (id, organization_id, number, pool_id, run_id, github_repo_id, git_ref, commit_sha, label,
+     title, executor, command, status, stage_key, stage_attempt, retry_of)
+  values
+    ('a1528000-0000-0000-0000-000000000003', 'org-v152', 3,
+     'a1527000-0000-0000-0000-00000000000a', 'a1520000-0000-0000-0000-000000000001',
+     'a152f000-0000-0000-0000-00000000000a', 'refs/heads/ouro/run-1', repeat('c', 40), 'pool-a',
+     'Build on the farm', 'shell', 'make all', 'queued', 'build', 1,
+     'a1528000-0000-0000-0000-000000000001');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.build_jobs
+    where run_id = 'a1520000-0000-0000-0000-000000000001' and stage_key = 'build'
+      and stage_attempt = 1),
+  'a retry of a stage attempt''s job carries the stage, beside the job it retries');
+
+update ouroboros.build_jobs set run_id = null
+ where id = 'a1528000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select run_id is null and stage_key = 'build' from ouroboros.build_jobs
+    where id = 'a1528000-0000-0000-0000-000000000001'),
+  'a job detached from its run keeps the stage it built for, as history');
+
+delete from ouroboros.organization where "id" = 'org-v152';
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

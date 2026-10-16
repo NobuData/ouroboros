@@ -1757,7 +1757,7 @@ e2e: enroll ✓ · presence ✓ · drain ✓ · revoke ✓ · read-only ✓ · t
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AJ.1 | #263 | 🟡 Open | ouroboros-rest: [AJ.1] Cloud auto-scale runners | Activate B9: ephemeral cloud runners when queue exceeds threshold | v2, build-farm, rest, infra | N (after AH.4) | N | L | ouroboros-rest, ouroboros-runner |
 | AJ.2 | #264 | 🟡 Open | ouroboros-runner: [AJ.2] Remote shared build cache | sccache/ccache remote storage — make `shared per pool` true | v2, build-farm | N (after AG.5) | N | M | ouroboros-runner, ouroboros-rest |
-| AJ.3 | #265 | 🟡 Open | ouroboros-rest: [AJ.3] Workflow build-stage integration | WF `build({farm})` dispatches farm jobs; run linkage + gates | mvp, live-loop, build-farm, workflow, rest, engine | Y (after WF-T.6, AH.4) | N | M | ouroboros-rest, ouroboros-engine |
+| AJ.3 | ✅ #265 | 🟢 Done | ouroboros-rest: [AJ.3] Workflow build-stage integration | WF `build({farm})` dispatches farm jobs; run linkage + gates | mvp, live-loop, build-farm, workflow, rest, engine | Y (after WF-T.6, AH.4) | N | M | ouroboros-rest, ouroboros-engine |
 | AJ.4 | #266 | 🟡 Open | ouroboros-rest: [AJ.4] Health history & analyzer telemetry foundation | Telemetry retention + history API (mockup 18 / `Health history →`) | v2, build-farm, rest | N (after AH.3) | N | M | ouroboros-rest, ouroboros-db |
 | AJ.5 | #267 | 🟡 Open | ouroboros-runner: [AJ.5] Pool image registry & isolation evaluation | Managed pool images; microVM/untrusted-code ADR | v2, build-farm, infra | N (after AG.4) | N | M | ouroboros-runner, docs |
 
@@ -1806,7 +1806,22 @@ e2e: enroll ✓ · presence ✓ · drain ✓ · revoke ✓ · read-only ✓ · t
 
 ### Issue AJ.3 — ouroboros-rest: [AJ.3] Workflow build-stage integration
 
-> **GitHub issue:** #265 · **Status:** 🟡 Open · **Parent epic:** #242
+> **GitHub issue:** #265 · **Status:** 🟢 Done · **Parent epic:** #242
+>
+> **Delivered (#265):** a workflow's build stage runs on the farm. The engine pushes the run
+> branch, submits the stage attempt through `POST /internal/runs/:id/builds` (pool from the
+> stage's `runner_pool`, command split into argv, commit as pushed; REST builds the run's own
+> repository at its own branch through `FarmJobsService.submitForRun`, writing `run_id`,
+> `stage_key` and `stage_attempt` — V152 — and reserving the job, so the run is `building`
+> until the job completes). It reads the job's real lifecycle (`GET …/builds/:jobId`, followed
+> down the retry chain) into the transcript and the console's stepper, with a **Build log ↗**
+> that opens the farm's log sheet. The exit code is the stage's check; a `require` gate judges
+> this round's checks with ccache results as evidence, and a failed build skips to that gate,
+> whose `onFail` edge loops back (`failed_build` / `failed_tests`). No eligible runner is
+> refused at submit (`409 build_no_eligible_runner`, job cancelled) or after a ten-minute grace
+> window (`…/cancel`); a stage with no pool fails as `build_pool_required`. The Studio dry run
+> names the pool. Not done here: `cache: "ccache"` as a DSL option — ccache is read from results
+> only.
 
 
 - **Problem Statement:** The point of the farm: the loop's

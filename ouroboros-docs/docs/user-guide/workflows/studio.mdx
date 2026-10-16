@@ -75,6 +75,15 @@ The chips on a card summarise its settings: the skill or prompt template, the mo
   back to the stage that writes the change. How many times a loop can come round is the
   retry bound of the stage it returns to.
 
+A gate that tests whether checks passed — `gate({require: ["build", "test", "review"],
+onFail: "implement"})` in the [code view](./code.mdx) — decides on what this round of the run
+actually produced. A build or test stage's check is its build's exit code on the farm: `0`
+passes, anything else fails. A model stage that finished is a passed check. When a build
+fails, the run skips straight to the gate that requires it, and the gate's loop edge sends it
+back. A check the round has not produced yet leaves the gate undecided, and the run fails
+saying which. See [Build stages](../runs/console.mdx#build-stages) for how a run shows its
+builds.
+
 ### Editing the canvas
 
 Owners and admins edit the canvas directly:
@@ -121,7 +130,10 @@ For a **model stage**:
   the write is refused and the stage fails. A stage without **May push fixup commits**
   cannot push one.
 
-A **build or test** stage takes a **Runner pool** and a **Command**; a **decision or gate**
+A **build or test** stage takes a **Runner pool** and a **Command**. A live run builds on the
+named pool and fails the stage if none is set; with no **Command**, the pool's default command
+runs. The command is split into arguments the way a shell would, with nothing expanded. A
+**decision or gate**
 takes its **Kind** and the condition it tests; a **terminal** takes its **Action** and, for
 merging, the merge method. An **edge** takes its **Kind**, a **Label** printed beside it (never
 evaluated), and — for a branch — its **Condition**. Settings that the form does not cover say
@@ -180,6 +192,9 @@ one.
 3. Loops are reported, not walked: **Loops back at most N times — the retry bound of the
    stage it returns to.** Gates that test checks assume them, since a dry run has no check
    results.
+4. A build or test stage names the runner pool a live run would build on — **A build stage:
+   runs `make all` on the `pool-a` runner pool; a live run's gate decides on its exit code.** —
+   or says that it names none, which a live run fails on.
 
 If the draft does not validate, nothing is walked and the findings are listed instead.
 The walk describes the draft as it was; edit the graph and it clears. **Close dry run**

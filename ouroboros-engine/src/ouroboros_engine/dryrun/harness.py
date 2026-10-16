@@ -55,6 +55,7 @@ from ouroboros_engine.workflows.dsl import (
     WorkflowEdge,
     WorkflowNode,
 )
+from ouroboros_engine.workflows.infra import infra_kind
 from ouroboros_engine.workflows.predicates import (
     Evaluation,
     evaluate_predicate,
@@ -81,7 +82,7 @@ from .contract import (
     StageStarted,
     StageVerdict,
 )
-from .estimates import EstimateUnavailableError, InfraKind, ReplayEstimates
+from .estimates import EstimateUnavailableError, ReplayEstimates
 from .guard import GuardAudit
 from .model import StageCall, StageCaller
 from .notes import (
@@ -241,22 +242,6 @@ def stage_order(document: WorkflowDocument) -> list[WorkflowNode]:
     order.extend(node.id for node in document.nodes if node.id not in seen)
     nodes = {node.id: node for node in document.nodes}
     return [nodes[node_id] for node_id in order]
-
-
-def infra_kind(node: WorkflowNode) -> InfraKind:
-    """Decide whether an infrastructure stage is a build or a test run.
-
-    The DSL does not say, so the stage's own name does: a stage whose id or title has
-    ``test`` as a word is a test run, and anything else is a build.
-
-    Args:
-        node: An infrastructure stage.
-
-    Returns:
-        ``test`` or ``build``.
-    """
-    words = _SLUG.findall(f"{node.id} {node.title}".lower())
-    return "test" if any(word in ("test", "tests") for word in words) else "build"
 
 
 class DryRunHarness:

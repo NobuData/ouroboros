@@ -3720,16 +3720,33 @@ select pg_temp.must_hold(
 -- `runs.reserved_build_job_id`. A reservation is not a dispatch, so AJ.3 (#265) is still
 -- what fills `run_id` in for a build that actually ran — which is why this asserts the
 -- exception is exactly one row, queued, and the one the run points back at.
+--
+-- Amended again by AJ.3 (#265), which is the product's path to a dispatched build with a loop:
+-- `#479`, forge-01's live build, is run `#479`'s `build` stage, and the run reserves it back.
 select pg_temp.must_hold(
-  (select count(*) = 1 from ouroboros.build_jobs j
+  (select count(*) = 2 from ouroboros.build_jobs j
      join ouroboros.organization o on o."id" = j.organization_id
     where o."slug" = 'acme-robotics' and j.run_id is not null)
    and (select j.number = 483 and j.status = 'queued' and j.finished_at is null
+           and j.stage_key is null
            and r.issue_number = 482 and r.reserved_build_job_id = j.id
           from ouroboros.build_jobs j
           join ouroboros.runs r on r.id = j.run_id
-         where j.run_id is not null),
-  'one seeded job is attributed to a loop run — #482''s reservation, and it points back (B6)');
+         where j.run_id is not null and j.number = 483),
+  'job #483 is #482''s reservation, and it points back (B6)');
+
+select pg_temp.must_hold(
+  (select j.status = 'running' and j.stage_key = 'build' and j.stage_attempt = 1
+          and r.issue_number = 479 and r.status = 'building'
+          and r.reserved_build_job_id = j.id
+          and s.status = 'active'
+     from ouroboros.build_jobs j
+     join ouroboros.organization o on o."id" = j.organization_id
+     join ouroboros.runs r on r.id = j.run_id
+     join ouroboros.run_stages s
+       on s.run_id = r.id and s.stage_key = j.stage_key and s.attempt = j.stage_attempt
+    where o."slug" = 'acme-robotics' and j.number = 479),
+  'job #479 is run #479''s active build stage, reserved back — building is a real job (AJ.3)');
 
 -- --- the live log, and the row it has to agree with ------------------------------
 select pg_temp.must_hold(

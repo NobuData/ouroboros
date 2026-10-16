@@ -204,6 +204,18 @@
 -- transaction-local setting for a row that states none.
 select set_config('ouroboros.seed_origin', 'seeded', true) where ${ouro_dev_seed};
 
+-- Run `#479` holds its build stage's job, `#479` on `forge-01` (AJ.3, #265) — the pointer half
+-- of R__dev_seed_farm.sql's linkage, so the dashboard's `building` loop is backed by the job a
+-- runner is building.
+update ouroboros.runs run
+   set reserved_build_job_id = job.id
+  from ouroboros.organization org
+  join ouroboros.build_jobs job on job.organization_id = org."id" and job.number = 479
+ where run.organization_id = org."id"
+   and org."slug" = 'acme-robotics'
+   and run.issue_number = 479
+   and ${ouro_dev_seed};
+
 update ouroboros.runs run
    set branch_name          = 'loop/482-canbus-flake',
        workflow_version_pin = 14,

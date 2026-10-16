@@ -30,6 +30,7 @@ import { FarmFleetModule } from "../farm/fleet/fleet.module";
 import { FarmLogsModule } from "../farm/logs/logs.module";
 import { FarmInstallerModule } from "../farm/installer/installer.module";
 import { IngestModule } from "../ingest/ingest.module";
+import { RunBuildsModule } from "../run-builds/run-builds.module";
 import { ControlsModule } from "../controls/controls.module";
 import { InternalModule } from "../internal/internal.module";
 import { OnboardingModule } from "../onboarding/onboarding.module";
@@ -685,6 +686,11 @@ export class AppModule {
         // routes under `/internal/runs` for an executor. After `InternalModule` for the reason
         // `IngestModule` is.
         ControlsModule,
+        // AJ.3 ([#265](https://github.com/NobuData/ouroboros/issues/265)) — a run's build stage on
+        // the farm: submit, read and cancel under `/internal/runs/:id/builds`, and the run's
+        // `building` status kept by its job's completion. After `InternalModule` for the reason
+        // `IngestModule` is.
+        RunBuildsModule,
         // AT.4 ([#332](https://github.com/NobuData/ouroboros/issues/332)) — classification &
         // routing: the Mark & Route card's hints, classify, re-run and waive under
         // `/api/v1/test-runs/:id`. After `ControlsModule` and `FarmDispatchModule`, whose services

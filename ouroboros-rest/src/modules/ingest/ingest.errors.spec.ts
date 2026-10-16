@@ -157,9 +157,10 @@ describe("the published contract", () => {
         path === "/internal/queue/claim",
     );
 
-    // Seven since #91, four more since #160's execution bridge, and two since DI.2's branch
-    // publisher (#1310) — whose own refusals `run-push.errors.ts` names and `run-push.*` specs hold.
-    expect(ingestion).toHaveLength(13);
+    // Seven since #91, four more since #160's execution bridge, two since DI.2's branch
+    // publisher (#1310) — whose own refusals `run-push.errors.ts` names and `run-push.*` specs
+    // hold — and three since AJ.3's build stage (#265), whose refusals `run-builds.errors.ts` names.
+    expect(ingestion).toHaveLength(16);
 
     return JSON.stringify(ingestion);
   }

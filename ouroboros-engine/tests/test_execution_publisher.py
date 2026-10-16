@@ -29,6 +29,7 @@ from execution_fakes import (
     Recording,
     chain,
     infra,
+    instant,
     llm,
     never,
     refusal,
@@ -515,6 +516,7 @@ def interpreter(
             heartbeat_seconds=5,
             sleep=never,
             poll_sleep=never,
+            build_sleep=instant,
             publisher=Publisher(IDENTITY, transport),
         ),
         control,
@@ -557,8 +559,9 @@ def test_a_build_stage_pushes_the_branch_before_it_runs(
     assert TARGET in host_refs(seeded)
     ops = control.ops()
     assert ops.index("push_result") < ops.index("finish")
+    assert control.bodies("build")[0].commit == host_refs(seeded)[TARGET].decode()
     finished = control.finished()
-    assert finished is not None and finished.reason.startswith("infra_unavailable")
+    assert finished is not None and finished.outcome == "review"
 
 
 def test_a_refused_push_fails_the_run_with_the_reason_and_keeps_the_tree(

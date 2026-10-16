@@ -16335,6 +16335,34 @@ export interface components {
              */
             note: string | null;
             attempts: components["schemas"]["RunStageAttempt"][];
+            build?: components["schemas"]["RunStageBuild"];
+        };
+        /**
+         * RunStageBuild
+         * @description The farm job a build stage's latest attempt submitted (AJ.3, #265), followed to the latest
+         *     attempt of its retry chain — the stage's real lifecycle, and the job whose log the
+         *     console's *Build log* link opens (`GET /api/v1/farm/jobs/{id}/log`). Omitted for a stage
+         *     that submitted none.
+         */
+        RunStageBuild: {
+            /** Format: uuid */
+            jobId: string;
+            /** @description The job's number within the workspace — mockup 08's `#479`. */
+            jobNumber: number;
+            /**
+             * @description `waiting` (queued, no runner) → `offered` → `accepted` → `running` → `succeeded` |
+             *     `failed` | `canceled`. A retried attempt is followed to its successor.
+             * @enum {string}
+             */
+            phase: "waiting" | "offered" | "accepted" | "running" | "succeeded" | "failed" | "retried" | "canceled";
+            pool: string;
+            /** @description The runner holding or last holding it; `null` while it waits. */
+            runnerName: string | null;
+            exitCode: number | null;
+            /** @description The ccache hit rate to one decimal, or `null` when nothing was measured. */
+            ccacheHitRatePct: number | null;
+            /** @description Automatic retries the farm made before this attempt. */
+            retries: number;
         };
         /**
          * RunStageAttempt

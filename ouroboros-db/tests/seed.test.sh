@@ -1153,10 +1153,16 @@ check_contains "$FARM_BODY" "date_trunc\('day', now\(\)\)" \
 # second job quietly acquiring a loop still fails here, which is the regression the original
 # line was protecting against. What the row *is* — queued, on the branch, pointed back at from
 # the run — is asserted in tests/seed.sql, where the rows can be read.
-check_equals 1 "$(grep -Ec 'run_id' "$FARM_BODY" || true)" \
-  'exactly one line of the farm seed names run_id — a second job acquiring a loop fails here (B6)'
+#
+# Amended by AJ.3 (#265): `#479` is run `#479`'s build stage, set by one update naming the run,
+# the stage and the attempt. Two lines name the column, and a third would be a job acquiring a
+# loop no stage submitted.
+check_equals 2 "$(grep -Ec 'run_id' "$FARM_BODY" || true)" \
+  'exactly two lines of the farm seed name run_id — a third job acquiring a loop fails here (B6)'
 check_contains "$FARM_BODY" 'runner_id, run_id, github_repo_id' \
-  'and it is the reservation statement s column list, so the one exception is the one row'
+  'one is the reservation statement s column list'
+check_contains "$FARM_BODY" "set run_id = run.id, stage_key = 'build', stage_attempt = 1" \
+  'and the other links #479 to its run s build stage (AJ.3)'
 
 # The figures the page prints are aggregates over these rows, so none of them may appear as a
 # literal in a statement. `23`, `78`, `4m 12s` and `38` are computed in tests/seed.sql; a

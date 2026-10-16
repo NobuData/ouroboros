@@ -76,11 +76,13 @@
 -- `build_jobs.number` is the farm's own sequence, `#435`–`#483`. One number in it is
 -- deliberately shared: **`#479`**, the live build on `forge-01`, is the same story as the
 -- dashboard seed's run `#479` — same title, same repository — because both seeds are drawn from
--- one universe (the coordination #328 extends). Those two are *not* linked, and `run_id` is
--- null on every row here but one: decision **B6** makes loop attribution AJ.3's (#265), and a
--- seeded dispatched job carrying a loop would be a state the product cannot yet reach.
+-- one universe (the coordination #328 extends). Since AJ.3 (#265) the two are **linked**: the
+-- job is that run's `build` stage on the farm (`run_id`, `stage_key`, `stage_attempt`, V152),
+-- which is what backs the dashboard's `building` and the run console's *#479 · building on
+-- forge-01*. Decision **B6** made loop attribution AJ.3's; AJ.3 is now the product's path to
+-- this state, so the seed may show it.
 --
--- The one exception is `#483`, added by #302 (AO.5): the job `#482` has **reserved** on
+-- The other job with a `run_id` is `#483`, added by #302 (AO.5): the job `#482` has **reserved** on
 -- `forge-02`, which is the other half of `runs.reserved_build_job_id` (V047, #300) and the row
 -- mockup 10's *forge-02 reserved* is drawn from. A reservation is not a dispatch, so B6 is
 -- untouched by it; see that statement's own header, which is also where `forge-02`'s queue
@@ -637,6 +639,26 @@ select ('5eed0028-0000-4000-8000-' || lpad('483', 12, '0'))::uuid,
  where org."slug" = 'acme-robotics'
    and ${ouro_dev_seed}
 on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- `#479` is run `#479`'s build stage (AJ.3, #265).
+--
+-- The LIVE card's build and the dashboard's `building` loop are one story, and since AJ.3 the
+-- product links them the way a workflow's build stage does: the job names the run, the stage
+-- (`build`, the dashboard seed's `Build farm · 5/7`, active) and the stage's attempt (V152).
+-- R__dev_seed_run_console.sql writes the run's half — its reservation of this job — because it
+-- sorts after this file. An update, not part of the insert above, so the insert's one
+-- `run_id` column list stays the reservation's; it is idempotent, writing the values already
+-- there.
+-- ---------------------------------------------------------------------------
+update ouroboros.build_jobs job
+   set run_id = run.id, stage_key = 'build', stage_attempt = 1
+  from ouroboros.organization org
+  join ouroboros.runs run on run.organization_id = org."id" and run.issue_number = 479
+ where job.organization_id = org."id"
+   and org."slug" = 'acme-robotics'
+   and job.number = 479
+   and ${ouro_dev_seed};
 
 -- ---------------------------------------------------------------------------
 -- The live log — the LIVE card's listing, in the chunks it was streamed as.
