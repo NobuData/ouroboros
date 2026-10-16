@@ -328,6 +328,30 @@ export class RunExecutionRepository {
   }
 
   /**
+   * The person who started a run (V151, #1310) — the co-author the engine names on the run's
+   * commits.
+   *
+   * @param writer - The connection or the open transaction.
+   * @param run - The run.
+   * @returns Their name and email, or `undefined` when no person started it (or the account is
+   *   gone — `started_by` is then null too).
+   */
+  async starterOf(
+    writer: Writer,
+    run: Pick<Run, "started_by">,
+  ): Promise<{ name: string; email: string } | undefined> {
+    if (run.started_by === null) {
+      return undefined;
+    }
+
+    return writer
+      .selectFrom("user")
+      .select(["user.name as name", "user.email as email"])
+      .where("user.id", "=", run.started_by)
+      .executeTakeFirst();
+  }
+
+  /**
    * The issue's current size estimate — its latest `issue_estimates` version, the effort chip
    * the backlog and the queue show.
    *

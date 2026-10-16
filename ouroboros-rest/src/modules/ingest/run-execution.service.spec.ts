@@ -92,6 +92,7 @@ function rig(
     emitter?: jest.Mock;
     estimate?: { effort: string; estMinutes: number | null } | undefined;
     criteria?: { id: string; text: string }[];
+    starter?: { name: string; email: string } | undefined;
   } = {},
 ) {
   const row = "row" in options ? options.row : run();
@@ -140,6 +141,7 @@ function rig(
       .mockResolvedValue(
         "estimate" in options ? options.estimate : { effort: "m", estMinutes: 90 },
       ),
+    starterOf: jest.fn().mockResolvedValue(options.starter),
   };
   const code = { repositoryRef: jest.fn().mockResolvedValue(REF) };
   const guardrails = {
@@ -211,6 +213,7 @@ describe("the run-execution service (#160)", () => {
         effort: "m",
         acceptance_criteria: CRITERIA,
         model: "coder-max",
+        started_by: null,
         branch_name: `ouro/run-${RUN}-482`,
         workflow: { tag: "docs-loop", version: 1, document: DOCUMENT },
         repository: { id: REPO, slug: REF.slug, default_branch: "main", ref: REF },
@@ -231,6 +234,18 @@ describe("the run-execution service (#160)", () => {
         expect.objectContaining({ id: RUN }),
         TICKET,
       );
+    });
+
+    it("names the person who started the run, the co-author of its commits (#1310)", async () => {
+      const { service, execution } = rig({
+        row: run({ started_by: "user-ken" }),
+        starter: { name: "Ken Suenobu", email: "ken@acme-robotics.dev" },
+      });
+
+      const started = await service.start(RUN, { worker: "w" });
+
+      expect(execution.starterOf).toHaveBeenCalledWith("trx", expect.objectContaining({ id: RUN }));
+      expect(started.started_by).toEqual({ name: "Ken Suenobu", email: "ken@acme-robotics.dev" });
     });
 
     it("answers [] for an issue without imported acceptance criteria", async () => {

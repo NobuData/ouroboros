@@ -108,6 +108,15 @@ export const RUN_CHECKPOINT_ROUTE = ":id/checkpoint";
 /** Route segment of finishing an executing run, relative to {@link RUNS_PATH} (#160). */
 export const RUN_FINISH_ROUTE = ":id/finish";
 
+/**
+ * Route segment of asking to push an executing run's branch, relative to {@link RUNS_PATH}
+ * (DI.2, #1310): the refusals, then the refspec and the one-call credential.
+ */
+export const RUN_PUSH_ROUTE = ":id/push";
+
+/** Route segment of reporting how a granted push ended, relative to {@link RUNS_PATH} (#1310). */
+export const RUN_PUSH_RESULT_ROUTE = ":id/push/result";
+
 /** The lease, as the engine calls it: `/internal/credentials/lease`. */
 export const INTERNAL_LEASE_PATH = `/${CREDENTIALS_PATH}/${LEASE_ROUTE}`;
 
@@ -152,6 +161,12 @@ export const INTERNAL_RUN_CHECKPOINT_PATH = `/${RUNS_PATH}/${RUN_CHECKPOINT_ROUT
 
 /** Finishing an executing run: `/internal/runs/:id/finish` (#160). */
 export const INTERNAL_RUN_FINISH_PATH = `/${RUNS_PATH}/${RUN_FINISH_ROUTE}`;
+
+/** Asking to push one run's branch: `/internal/runs/:id/push` (#1310). */
+export const INTERNAL_RUN_PUSH_PATH = `/${RUNS_PATH}/${RUN_PUSH_ROUTE}`;
+
+/** Reporting how that push ended: `/internal/runs/:id/push/result` (#1310). */
+export const INTERNAL_RUN_PUSH_RESULT_PATH = `/${RUNS_PATH}/${RUN_PUSH_RESULT_ROUTE}`;
 
 /**
  * The research tool surface's controller path (CL.1,
@@ -305,6 +320,8 @@ export const INTERNAL_PATHS = [
   INTERNAL_RUN_HEARTBEAT_PATH,
   INTERNAL_RUN_CHECKPOINT_PATH,
   INTERNAL_RUN_FINISH_PATH,
+  INTERNAL_RUN_PUSH_PATH,
+  INTERNAL_RUN_PUSH_RESULT_PATH,
   INTERNAL_RESEARCH_TOOL_PATH,
   INTERNAL_INVESTIGATION_START_PATH,
   INTERNAL_INVESTIGATION_CHECKPOINT_PATH,

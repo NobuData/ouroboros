@@ -50,6 +50,7 @@ const LIVE: Run = {
   exec_base_commit: null,
   exec_checkpoint: null,
   exec_checkpoint_at: null,
+  started_by: null,
 };
 
 /** Its counterpart on the completions card — the same table, the other half of decision F2. */

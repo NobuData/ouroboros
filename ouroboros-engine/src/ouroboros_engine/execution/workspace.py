@@ -71,6 +71,19 @@ BRANCH_TEMPLATE: Final = "ouro/run-{run}-{issue}"
 #: writes the attributed commits a pull request carries.
 CHECKPOINT_IDENTITY: Final = b"Ouroboros checkpoint <checkpoint@ouroboros.invalid>"
 
+#: The local ref holding the last attributed commit pushed to the run branch (DI.2). Outside
+#: ``refs/heads/``, so nothing that lists branches — or pushes them — ever sees it.
+PUBLISHED_REF: Final = b"refs/ouro/published"
+
+#: The local ref holding the checkpoint that last attributed commit was made from: where the
+#: next publish starts reading checkpoints.
+PUBLISHED_CHECKPOINT_REF: Final = b"refs/ouro/published-checkpoint"
+
+#: A checkpoint commit's message: the stage, and the attempt when a model stage made it.
+_CHECKPOINT_MESSAGE = re.compile(
+    r"^ouroboros checkpoint: (?P<stage>[A-Za-z0-9_.-]+)(?: attempt (?P<attempt>\d+))?\n?$"
+)
+
 #: The files beside a run's tree.
 METADATA_FILE: Final = "run.json"
 LOCK_FILE: Final = "lock"
@@ -158,6 +171,27 @@ class RunSpec:
             ``ouro/run-<run>-<issue>``.
         """
         return BRANCH_TEMPLATE.format(run=self.run, issue=self.issue_number)
+
+
+@dataclass(frozen=True)
+class CheckpointCommit:
+    """One local checkpoint a publish has not yet turned into an attributed commit.
+
+    Attributes:
+        sha: The checkpoint commit.
+        tree: Its tree — what the attributed commit carries.
+        stage: The stage whose boundary it was.
+        attempt: The attempt that made it, or ``None`` (a terminal or an abort).
+        time: Its commit time, seconds since the epoch.
+        timezone: Its time-zone offset, seconds.
+    """
+
+    sha: str
+    tree: bytes
+    stage: str
+    attempt: int | None
+    time: int
+    timezone: int
 
 
 @dataclass(frozen=True)
@@ -543,13 +577,15 @@ class RunWorkspace:
         self.touch()
         return sorted(files, key=lambda file: file.path)
 
-    def checkpoint(self, stage_key: str) -> str:
+    def checkpoint(self, stage_key: str, attempt: int | None = None) -> str:
         """Commit the tree on the run branch, locally, at a stage boundary.
 
         A stage that changed nothing since the last checkpoint makes no commit.
 
         Args:
             stage_key: The stage whose boundary this is, for the commit message.
+            attempt: The attempt that ended, for a model stage — DI.2 (#1310) writes one
+                attributed commit per checkpoint and names the attempt in it.
 
         Returns:
             The checkpoint commit id — the branch tip after the call.
@@ -561,12 +597,82 @@ class RunWorkspace:
         tree_id = self._stage_all()
         if self._commit(self._repo.refs[b"HEAD"]).tree != tree_id:
             self._repo.get_worktree().commit(
-                message=f"ouroboros checkpoint: {stage_key}".encode(),
+                message=(
+                    f"ouroboros checkpoint: {stage_key}"
+                    + ("" if attempt is None else f" attempt {attempt}")
+                ).encode(),
                 author=CHECKPOINT_IDENTITY,
                 committer=CHECKPOINT_IDENTITY,
             )
         self.touch()
         return self.head
+
+    @property
+    def git(self) -> Repo:
+        """The tree's repository, for the branch publisher (DI.2) to write and push through.
+
+        Returns:
+            The open repository. Its config names no remote and never will: a push is told
+            where to go per call.
+        """
+        return self._repo
+
+    def published(self) -> str | None:
+        """The last attributed commit pushed to the run branch.
+
+        Returns:
+            Its 40-hex id, or ``None`` before the first push.
+        """
+        found = self._repo.refs.as_dict().get(PUBLISHED_REF)
+        return None if found is None else found.decode("ascii")
+
+    def unpublished_checkpoints(self) -> list[CheckpointCommit]:
+        """The checkpoints made since the last push, oldest first.
+
+        Walks the run branch back from its tip to the checkpoint the last publish read up to
+        — or to the base commit before the first. A checkpoint is recognised by its message;
+        anything else on the branch (there is nothing else) would be skipped, not published.
+
+        Returns:
+            Each checkpoint, with the stage and attempt its message names.
+        """
+        refs = self._repo.refs.as_dict()
+        stop = refs.get(PUBLISHED_CHECKPOINT_REF) or self.spec.base_commit.encode()
+        found: list[CheckpointCommit] = []
+        current = self._repo.refs[b"HEAD"]
+        seen: set[bytes] = set()
+        while current != stop and current not in seen:
+            seen.add(current)
+            commit = self._commit(current)
+            matched = _CHECKPOINT_MESSAGE.match(
+                commit.message.decode("utf-8", "replace")
+            )
+            if matched is not None:
+                attempt = matched.group("attempt")
+                found.append(
+                    CheckpointCommit(
+                        sha=current.decode("ascii"),
+                        tree=commit.tree,
+                        stage=matched.group("stage"),
+                        attempt=None if attempt is None else int(attempt),
+                        time=commit.commit_time,
+                        timezone=commit.commit_timezone,
+                    )
+                )
+            if not commit.parents:
+                break
+            current = commit.parents[0]
+        return list(reversed(found))
+
+    def mark_published(self, attributed: str, checkpoint: str) -> None:
+        """Record a successful push: the next publish starts after ``checkpoint``.
+
+        Args:
+            attributed: The attributed commit now at the run branch's tip on the host.
+            checkpoint: The checkpoint it was made from.
+        """
+        self._repo.refs[PUBLISHED_REF] = attributed.encode("ascii")
+        self._repo.refs[PUBLISHED_CHECKPOINT_REF] = checkpoint.encode("ascii")
 
     def size_bytes(self) -> int:
         """The tree's size on disk, ``.git`` included; symbolic links are not followed.

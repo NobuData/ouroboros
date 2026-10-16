@@ -299,6 +299,11 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
     // AG.7 (#991): a build runner redeemed its ticket for a private repository's checkout credential.
     adds: ["audit.runner.source_credential_redeemed"],
   },
+  {
+    version: 20,
+    // DI.2 (#1310): a live run's branch push was granted, and how it ended.
+    adds: ["audit.run.push_granted", "audit.run.branch_pushed"],
+  },
 ];
 
 /** The newest registry version — what a new endpoint subscribes under. */

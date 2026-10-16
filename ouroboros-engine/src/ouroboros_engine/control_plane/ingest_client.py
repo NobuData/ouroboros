@@ -50,6 +50,10 @@ from ouroboros_engine.control_plane.execution import (
     FinishRunRequest,
     HeartbeatAccepted,
     HeartbeatRequest,
+    PushGrant,
+    PushRecorded,
+    PushRequest,
+    PushResultRequest,
     RunFinished,
     RunStarted,
     StartRunRequest,
@@ -317,6 +321,32 @@ class IngestClient:
         """
         answer = self._transport.send(self._client.finish_run_request(run, body))
         return self._client.read_run_finished(answer.status, answer.body)
+
+    def push(self, run: str, body: PushRequest) -> PushGrant:
+        """Ask to push the run's branch (DI.2, #1310).
+
+        Args:
+            run: The run.
+            body: The branch, the head and the change-set, keyed.
+
+        Returns:
+            The refspec, the remote and this one push's credential.
+        """
+        answer = self._transport.send(self._client.push_request(run, body))
+        return self._client.read_push_grant(answer.status, answer.body)
+
+    def push_result(self, run: str, body: PushResultRequest) -> PushRecorded:
+        """Record what a push did (DI.2, #1310).
+
+        Args:
+            run: The run.
+            body: The outcome, keyed.
+
+        Returns:
+            That it was recorded.
+        """
+        answer = self._transport.send(self._client.push_result_request(run, body))
+        return self._client.read_push_recorded(answer.status, answer.body)
 
     # --- run controls (AP.4, #306; honoured by the interpreter since #315) -------------------
 

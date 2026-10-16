@@ -43,6 +43,14 @@ export interface ExecutionCriterionResource {
   readonly text: string;
 }
 
+/** Who started a run (#1310): what a `Co-authored-by` trailer is written from. */
+export interface ExecutionStarterResource {
+  /** `user.name`. */
+  readonly name: string;
+  /** `user.email`. */
+  readonly email: string;
+}
+
 /** `POST /internal/runs/:id/start` → `200`. */
 export interface RunStartedResource {
   readonly run_id: string;
@@ -70,6 +78,11 @@ export interface RunStartedResource {
   readonly acceptance_criteria: ExecutionCriterionResource[];
   /** `runs.model`, as the run was opened with it. */
   readonly model: string;
+  /**
+   * The person who started the run (`runs.started_by`, V151, #1310) — named as the co-author of
+   * the run's commits — or `null` when no person did.
+   */
+  readonly started_by: ExecutionStarterResource | null;
   /** `runs.branch_name` — `ouro/run-<id>-<issue>` unless the run was opened with one. */
   readonly branch_name: string;
   readonly workflow: ExecutionWorkflowResource;

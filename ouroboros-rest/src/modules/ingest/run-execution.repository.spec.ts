@@ -207,6 +207,26 @@ describe("the run-execution repository", () => {
     await expect(execution.latestEstimate(service.db, run())).resolves.toBeUndefined();
   });
 
+  it("reads the person who started the run by their user id (#1310)", async () => {
+    database.answers({ rows: [{ name: "Ken Suenobu", email: "ken@acme-robotics.dev" }] });
+
+    await expect(execution.starterOf(service.db, run({ started_by: "user-ken" }))).resolves.toEqual(
+      {
+        name: "Ken Suenobu",
+        email: "ken@acme-robotics.dev",
+      },
+    );
+    expect(only()).toContain('from "ouroboros"."user" where "ouroboros"."user"."id" = $1');
+    expect(database.statements[0].parameters).toEqual(["user-ken"]);
+  });
+
+  it("asks nothing for a run no person started", async () => {
+    await expect(
+      execution.starterOf(service.db, run({ started_by: null })),
+    ).resolves.toBeUndefined();
+    expect(database.statements).toHaveLength(0);
+  });
+
   describe("requeueing", () => {
     it("appends an unconfirmed item at the tail, carrying the run's pin and the latest estimate", async () => {
       database.answers(

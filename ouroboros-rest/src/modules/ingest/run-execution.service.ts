@@ -141,6 +141,7 @@ export class RunExecutionService {
       const ticket = await this.execution.ticketOf(trx, started);
       const criteria = await this.execution.acceptanceCriteriaOf(trx, started, ticket.id);
       const estimate = await this.execution.latestEstimate(trx, started);
+      const starter = await this.execution.starterOf(trx, started);
       const protectedPaths = await this.guardrails.effectiveProtectedPaths(trx, {
         organizationId: started.organization_id,
         githubRepoId: started.github_repo_id,
@@ -157,6 +158,7 @@ export class RunExecutionService {
         ticket,
         criteria,
         effort: estimate?.effort ?? null,
+        starter,
         protectedPaths,
       };
     });
@@ -175,6 +177,7 @@ export class RunExecutionService {
       effort: context.effort,
       acceptance_criteria: context.criteria.map(({ id, text }) => ({ id, text })),
       model: started.model,
+      started_by: context.starter ?? null,
       // Set by the start when the run had none, so never null here.
       branch_name: started.branch_name ?? "",
       workflow: { tag: started.workflow_tag, version: context.version, document: context.document },

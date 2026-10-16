@@ -60,12 +60,14 @@ import { Module } from "@nestjs/common";
 import { ScheduleModule } from "@nestjs/schedule";
 
 import { AdmissionModule } from "../admission/admission.module";
+import { AuditModule } from "../audit/audit.module";
 import { LifecycleStateModule } from "../lifecycle/lifecycle-state.module";
 import { DbModule } from "../db/db.module";
 import { DecisionsModule } from "../decisions/decisions.module";
 import { GuardrailsModule } from "../guardrails/guardrails.module";
 import { ProtectedPathEmitter } from "../guardrails/protected-path.emitter";
 import { EngineModule } from "../engine/engine.module";
+import { GithubModule } from "../github/github.module";
 import { GatesModule } from "../pull-requests/gates/gates.module";
 import { CodeModule } from "../research/code/code.module";
 import { IngestController } from "./ingest.controller";
@@ -78,6 +80,9 @@ import { RunExecutionController } from "./run-execution.controller";
 import { RunExecutionRepository } from "./run-execution.repository";
 import { RunExecutionService } from "./run-execution.service";
 import { RunNeedsHumanEmitter } from "./run-needs-human.emitter";
+import { RunPushController } from "./run-push.controller";
+import { RunPushRepository } from "./run-push.repository";
+import { RunPushService } from "./run-push.service";
 import { RunSupervisor } from "./run-supervisor";
 import { SpendApprovalEmitter } from "./spend-approval.emitter";
 
@@ -94,9 +99,13 @@ import { SpendApprovalEmitter } from "./spend-approval.emitter";
     // ref a start hands out (its token opened per call), and the supervisor's timer.
     EngineModule,
     CodeModule,
+    // The branch publisher (DI.2, #1310): whether the workspace holds a GitHub token, the
+    // protected-branch read through its client, and the push's audit rows.
+    GithubModule,
+    AuditModule,
     ScheduleModule.forRoot(),
   ],
-  controllers: [IngestController, QueueClaimController, RunExecutionController],
+  controllers: [IngestController, QueueClaimController, RunExecutionController, RunPushController],
   providers: [
     IngestRepository,
     IngestService,
@@ -107,6 +116,8 @@ import { SpendApprovalEmitter } from "./spend-approval.emitter";
     SpendApprovalEmitter,
     RunExecutionRepository,
     RunExecutionService,
+    RunPushRepository,
+    RunPushService,
     RunSupervisor,
   ],
 })

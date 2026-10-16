@@ -62,6 +62,11 @@ from ouroboros_engine.estimation.model import (
 )
 from ouroboros_engine.execution.compose import register_executors
 from ouroboros_engine.execution.interpreter import Interpreter
+from ouroboros_engine.execution.publisher import (
+    CommitIdentity,
+    DulwichPushTransport,
+    Publisher,
+)
 from ouroboros_engine.execution.registry import ExecutorRegistry
 from ouroboros_engine.execution.worker import ExecutionWorker
 from ouroboros_engine.execution.workspace import RunWorkspaces
@@ -268,6 +273,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.executors,
             worker=resolved.engine_worker_id,
             heartbeat_seconds=resolved.engine_heartbeat_seconds,
+            # The branch publisher (DI.2, #1310): attributed commits under the configured
+            # identity, one fast-forward push of the run branch with the credential
+            # `ouroboros-rest` hands over for that one call.
+            publisher=Publisher(
+                CommitIdentity(
+                    name=resolved.commit_author_name,
+                    email=resolved.commit_author_email,
+                ),
+                DulwichPushTransport(timeout_seconds=resolved.clone_timeout_seconds),
+            ),
         ).execute,
         worker=resolved.engine_worker_id,
     )

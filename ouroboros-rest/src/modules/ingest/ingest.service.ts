@@ -263,6 +263,9 @@ export class IngestService {
         origin: originOf(simulated),
         playbook_id: playbookId,
         queue_item_id: queued?.id ?? null,
+        // DI.2 (#1310): the person who confirmed the item started the run — the co-author of
+        // its commits and the actor of its push. Copied now, because the item is consumed below.
+        started_by: queued?.confirmed_by ?? null,
       });
 
       // The item is consumed with the open: one transaction, so the queue never shows an item

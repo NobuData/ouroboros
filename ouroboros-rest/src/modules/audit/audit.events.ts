@@ -776,6 +776,23 @@ export const WORKSPACE_GUARDRAIL_MODES_CHANGED_EVENT = "workspace.guardrail_mode
 export const RUN_BUDGET_EXCEEDED_EVENT = "run.budget_exceeded";
 
 /**
+ * The control plane handed the engine the workspace's GitHub credential for one push of a live
+ * run's branch (DI.2, [#1310](https://github.com/NobuData/ouroboros/issues/1310)) — written after
+ * every refusal was passed and before the credential left. Subject `run`; the actor is **the
+ * person who started the run** (`runs.started_by`), null when no person did. The detail is flat:
+ * `branch`, `head_sha`, and nothing derived from the credential.
+ */
+export const RUN_PUSH_GRANTED_EVENT = "run.push_granted";
+
+/**
+ * The engine reported how a granted push ended (DI.2, #1310). Subject `run`; the actor is the
+ * person who started the run. The detail is flat: `branch`, `outcome` (`pushed` or `failed`),
+ * and `pushed_sha` for a push the host accepted or `reason` — the host's own words — for one it
+ * refused.
+ */
+export const RUN_BRANCH_PUSHED_EVENT = "run.branch_pushed";
+
+/**
  * An owner or admin queued the Slack connection's dead-lettered messages again (CA.5, #545).
  * Subject `chat_connection`. The detail is flat: `messages`, how many were queued, and `routes`,
  * the kinds of the routes they belong to, comma-joined. Not written when there was nothing to retry.
@@ -897,6 +914,8 @@ export const AUDIT_ACTIONS = [
   WORKSPACE_GUARDRAIL_MODES_CHANGED_EVENT,
   RUN_BUDGET_EXCEEDED_EVENT,
   RUNNER_SOURCE_CREDENTIAL_REDEEMED_EVENT,
+  RUN_PUSH_GRANTED_EVENT,
+  RUN_BRANCH_PUSHED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

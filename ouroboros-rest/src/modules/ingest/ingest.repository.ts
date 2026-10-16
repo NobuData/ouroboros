@@ -334,6 +334,8 @@ export class IngestRepository {
       playbook_id?: string | null;
       /** The queue item the run is opened from (#91), or null. */
       queue_item_id?: string | null;
+      /** The person who confirmed that item (V151, #1310), or null. */
+      started_by?: string | null;
     },
   ): Promise<Run> {
     return writer

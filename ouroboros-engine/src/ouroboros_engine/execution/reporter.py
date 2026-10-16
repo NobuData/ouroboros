@@ -29,17 +29,25 @@ from ouroboros_engine.control_plane.execution import (
     FinishOutcome,
     FinishRunRequest,
     HeartbeatAccepted,
+    PushGrant,
+    PushOutcome,
+    PushRecorded,
+    PushRequest,
+    PushResultRequest,
     RunFinished,
     RunStarted,
 )
 from ouroboros_engine.control_plane.ingest import (
     ChangeSet,
+    CommitsAppended,
     EventsAppended,
+    IngestCommit,
     IngestEvent,
     IngestEventsRequest,
     IngestFile,
     OpenRunRequest,
     QueueItemClaimed,
+    ReportCommitsRequest,
     ReportFilesRequest,
     ReportResourcesRequest,
     ResourcesReported,
@@ -109,6 +117,18 @@ class RunControl(Protocol):
 
     def files(self, run: str, body: ReportFilesRequest) -> ChangeSet:
         """Report the change-set. See :meth:`IngestClient.files`."""
+        ...
+
+    def commits(self, run: str, body: ReportCommitsRequest) -> CommitsAppended:
+        """Append commits. See :meth:`IngestClient.commits`."""
+        ...
+
+    def push(self, run: str, body: PushRequest) -> PushGrant:
+        """Ask to push the run branch. See :meth:`IngestClient.push`."""
+        ...
+
+    def push_result(self, run: str, body: PushResultRequest) -> PushRecorded:
+        """Record a push. See :meth:`IngestClient.push_result`."""
         ...
 
     def resources(self, run: str, body: ReportResourcesRequest) -> ResourcesReported:
@@ -338,6 +358,72 @@ class RunReporter:
             epoch=self.epoch,
         )
         return await self._send(self._control.files, self.run_id, body)
+
+    async def commits(self, commits: list[IngestCommit]) -> CommitsAppended:
+        """Append commits to the console's list (AP.1), oldest first.
+
+        Args:
+            commits: The commits — at most 200, which one push never approaches.
+
+        Returns:
+            How many were new.
+        """
+        body = ReportCommitsRequest(
+            idempotency_key=self._control.key("run.commits"),
+            commits=commits,
+            epoch=self.epoch,
+        )
+        return await self._send(self._control.commits, self.run_id, body)
+
+    async def push(self, branch: str, head_sha: str, change_set_seq: int) -> PushGrant:
+        """Ask ``ouroboros-rest`` to push the run branch (DI.2, #1310).
+
+        Args:
+            branch: The run's branch.
+            head_sha: The commit it is to point at.
+            change_set_seq: The change-set report the pushed tree was judged in.
+
+        Returns:
+            The refspec, the remote and this one push's credential.
+
+        Raises:
+            ControlPlaneError: The push was refused — one of
+                :data:`~ouroboros_engine.control_plane.execution.PUSH_REFUSALS`.
+        """
+        body = PushRequest(
+            idempotency_key=self._control.key("run.push"),
+            epoch=self.epoch,
+            branch=branch,
+            head_sha=head_sha,
+            change_set_seq=change_set_seq,
+        )
+        return await self._send(self._control.push, self.run_id, body)
+
+    async def push_result(
+        self,
+        branch: str,
+        outcome: PushOutcome,
+        *,
+        pushed_sha: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        """Record what a push did — the push's audit row (DI.2, #1310).
+
+        Args:
+            branch: The branch.
+            outcome: ``pushed`` or ``failed``.
+            pushed_sha: The new tip, when pushed.
+            reason: The host's reason, when it failed.
+        """
+        body = PushResultRequest(
+            idempotency_key=self._control.key("run.push_result"),
+            epoch=self.epoch,
+            branch=branch,
+            outcome=outcome,
+            pushed_sha=pushed_sha,
+            reason=None if reason is None else reason[:500],
+        )
+        await self._send(self._control.push_result, self.run_id, body)
 
     async def checkpoint(
         self, state: dict[str, Any], base_commit: str | None = None
