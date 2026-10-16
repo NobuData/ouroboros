@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.41.47"
+  version: "0.41.48"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -643,6 +643,15 @@ paths:
           `x-ouroboros-skipped-hops`; a chain with none left is `400 no_anthropic_hop`.
         - The run's cost cap is checked **before every call**; a breach is
           `400 cost_cap_exceeded`, naming the cap, and the stage halts.
+        - So is the stage attempt's token budget (the pinned node's `limits.token_budget`
+          against the input + output tokens the run, stage and attempt have already spent); a
+          breach is `400 token_budget_exceeded`, carrying `ouroboros.attemptBudget`
+          ([#315](https://github.com/NobuData/ouroboros/issues/315)).
+        - Either breach also **stops the run**: a system `abort` is filed through the control
+          queue (the branch is kept; the run becomes `canceled` when the engine acks it) and
+          `run.budget_exceeded` is audited — once per run, so a retried call while that abort
+          is pending is refused again without a second abort. A provider's monthly cap is not
+          the run's budget and aborts nothing.
         - A hop that answers `5xx`, `429`, an auth refusal or a model-specific refusal before any
           byte is relayed hands over to the next. When every hop fails, the last provider's error
           is returned **unmodified**.
@@ -1328,9 +1337,14 @@ paths:
 
         The four checks — `allowed_paths`, `ci_config`, `secrets`, `review_required` — are
         judged against the run's pinned policy inside the report's own transaction, and the
-        answer names the ones that failed. A failure sets `needsHuman`; it does **not** stop the
-        stage or move the run's status — enforcement is AR.1
-        ([#315](https://github.com/NobuData/ouroboros/issues/315)).
+        answer names the ones that failed. **Block or warn** (AR.1,
+        [#315](https://github.com/NobuData/ouroboros/issues/315)): each verdict is judged under the
+        workspace's mode for its check (`GET /api/v1/settings/guardrails`; `block` unless a
+        workspace chose `warn`). Only a `block` failure sets `needsHuman`, which the executor acts
+        on by halting the stage at that boundary and finishing the run `needs_human`; a `warn`
+        failure is listed in `guardrailWarnings` and stops nothing. `guardrailVerdicts` repeats
+        every failure with its mode and evidence, which is what a halt's reason is rendered from.
+        Evaluation itself never moves the run's status.
 
         **Send `hunks` to have the content scanned.** The secrets check reads each file's added
         hunk lines with the embedded ruleset (`v3`) and records a path, a line and a rule id —
@@ -1371,14 +1385,45 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ChangeSet"
-              example:
-                changeSetSeq: 3
-                files: 2
-                additions: 59
-                deletions: 12
-                guardrailChecks: 4
-                guardrailFailures: []
-                needsHuman: false
+              examples:
+                clean:
+                  summary: Every check passed or did not apply
+                  value:
+                    changeSetSeq: 3
+                    files: 2
+                    additions: 59
+                    deletions: 12
+                    guardrailChecks: 4
+                    guardrailFailures: []
+                    guardrailWarnings: []
+                    guardrailVerdicts: []
+                    needsHuman: false
+                blocked:
+                  summary: A block-mode failure beside a warn-mode one — the stage halts
+                  value:
+                    changeSetSeq: 1
+                    files: 3
+                    additions: 41
+                    deletions: 7
+                    guardrailChecks: 4
+                    guardrailFailures: [allowed_paths, secrets]
+                    guardrailWarnings: [secrets]
+                    guardrailVerdicts:
+                      - check: allowed_paths
+                        mode: block
+                        evidence:
+                          path: boot/rollback_flag.c
+                          glob: boot/**
+                          rule_id: protected-path
+                          detail: protected by the workspace policy; needs a one-time allowance
+                      - check: secrets
+                        mode: warn
+                        evidence:
+                          path: subsys/ota/checksum_verify.c
+                          line: 9
+                          rule_id: generic-password
+                          detail: 1 finding in 1 file.
+                    needsHuman: true
         "401":
           description: No `X-Ouro-Internal-Key`, or a value matching neither principal.
           content:
@@ -3330,11 +3375,34 @@ components:
                 - alias_unavailable
                 - no_anthropic_hop
                 - cost_cap_exceeded
+                - token_budget_exceeded
                 - resolution_failed
                 - vote_execution_unavailable
                 - provider_unavailable
             cap:
               $ref: "#/components/schemas/InvokeCap"
+            attemptBudget:
+              type: object
+              description: |-
+                On `token_budget_exceeded` ([#315](https://github.com/NobuData/ouroboros/issues/315))
+                — the stage attempt's budget and what it had spent when the call was refused.
+              required: [limitTokens, spentTokens, stage, attempt]
+              additionalProperties: false
+              properties:
+                limitTokens:
+                  type: integer
+                  minimum: 0
+                  description: The pinned node's `limits.token_budget`.
+                spentTokens:
+                  type: integer
+                  minimum: 0
+                  description: Input plus output tokens the attempt had already spent.
+                stage:
+                  type: string
+                  description: The DSL node id the credential was minted for.
+                attempt:
+                  type: integer
+                  minimum: 1
             reason:
               type: string
             skipped:
@@ -4479,7 +4547,17 @@ components:
       description: The change-set as it now stands, and what judging it produced.
       additionalProperties: false
       required:
-        [changeSetSeq, files, additions, deletions, guardrailChecks, guardrailFailures, needsHuman]
+        [
+          changeSetSeq,
+          files,
+          additions,
+          deletions,
+          guardrailChecks,
+          guardrailFailures,
+          guardrailWarnings,
+          guardrailVerdicts,
+          needsHuman,
+        ]
       properties:
         changeSetSeq:
           type: integer
@@ -4512,12 +4590,65 @@ components:
           items:
             type: string
             enum: [allowed_paths, ci_config, secrets, review_required]
+        guardrailWarnings:
+          type: array
+          description: |-
+            The failures judged under the workspace's `warn` mode — a subset of
+            `guardrailFailures`, in the same order (AR.1,
+            [#315](https://github.com/NobuData/ouroboros/issues/315)). Shown in a warn tone;
+            they do not stop the run.
+          items:
+            type: string
+            enum: [allowed_paths, ci_config, secrets, review_required]
+        guardrailVerdicts:
+          type: array
+          description: |-
+            Every failure of `guardrailFailures` again, in the same order, with the mode it was
+            judged under and its evidence (AR.1, #315) — what an executor renders a halt's reason
+            from, e.g. *guardrail allowed_paths failed: boot/rollback_flag.c is protected
+            (boot/\*\*)*. Use only the `block` entries for that reason.
+          items:
+            $ref: "#/components/schemas/IngestGuardrailFailure"
         needsHuman:
           type: boolean
           description: |-
-            Whether a failing check flags this run for a person. Evaluation, not enforcement:
-            the run's status is not moved and no stage is stopped (AR.1,
-            [#315](https://github.com/NobuData/ouroboros/issues/315)).
+            Whether a failing check flags this run for a person — at least one failure was
+            judged under `block` (AR.1, [#315](https://github.com/NobuData/ouroboros/issues/315)).
+            The executor halts the stage at that boundary and finishes the run `needs_human`. A
+            `warn` failure alone leaves it `false`.
+
+    IngestGuardrailFailure:
+      type: object
+      title: IngestGuardrailFailure
+      description: One failed guardrail check, with its mode and evidence (AR.1, #315).
+      additionalProperties: false
+      required: [check, mode]
+      properties:
+        check:
+          type: string
+          enum: [allowed_paths, ci_config, secrets, review_required]
+        mode:
+          type: string
+          enum: [block, warn]
+          description: "`block` stops the run and needs a person; `warn` is only shown."
+        evidence:
+          type: object
+          description: |-
+            Where, and by which rule — never the matched value (decision R5). The stored
+            evidence's closed key set; absent when the verdict carried none.
+          additionalProperties: false
+          properties:
+            path:
+              type: string
+            line:
+              type: integer
+              minimum: 1
+            rule_id:
+              type: string
+            glob:
+              type: string
+            detail:
+              type: string
 
     IngestCommit:
       type: object

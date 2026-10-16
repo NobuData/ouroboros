@@ -71,6 +71,7 @@ import { admitsNewWork } from "../lifecycle/lifecycle.states";
 import {
   GUARDRAIL_SCHEDULER,
   InjectGuardrailScheduler,
+  type GuardrailOutcome,
   type GuardrailScheduler,
 } from "./ingest.guardrails";
 import type {
@@ -520,7 +521,7 @@ export class IngestService {
       );
 
       if (replay.replayed) {
-        return replay.response;
+        return withGuardrailModes(replay.response);
       }
 
       await this.runs.replaceFiles(
@@ -544,9 +545,9 @@ export class IngestService {
         request.files.length === 0
           ? row.change_set_seq
           : await this.runs.allocateChangeSetSeq(trx, run);
-      const judged =
+      const judged: GuardrailOutcome =
         request.files.length === 0
-          ? { checks: 0, failures: [] }
+          ? { checks: 0, failures: [], failed: [] }
           : await this.guardrails.evaluate(trx, {
               runId: run,
               changeSetSeq,
@@ -571,7 +572,13 @@ export class IngestService {
           ...totals,
           guardrailChecks: judged.checks,
           guardrailFailures: [...judged.failures],
-          needsHuman: judged.failures.length > 0,
+          // AR.1 (#315): only a failure judged under the workspace's `block` mode asks for a
+          // person; a `warn` failure is reported and stops nothing.
+          guardrailWarnings: judged.failed
+            .filter((failure) => failure.mode === "warn")
+            .map((failure) => failure.check),
+          guardrailVerdicts: [...judged.failed],
+          needsHuman: judged.failed.some((failure) => failure.mode === "block"),
         },
       );
     });
@@ -584,8 +591,12 @@ export class IngestService {
 
     // A refused protected path asks a person for an allow-once (#461). Filed after the commit, so
     // a card never outlives a report that rolled back; one card per run and path however often the
-    // run reports. `verdictFailed` never rejects.
-    if (resource.guardrailFailures.includes("allowed_paths")) {
+    // run reports. `verdictFailed` never rejects. Only a `block` refusal (AR.1, #315): a warn-mode
+    // fail did not stop the run, so there is nothing for a person to allow.
+    if (
+      resource.guardrailFailures.includes("allowed_paths") &&
+      !resource.guardrailWarnings.includes("allowed_paths")
+    ) {
       await this.protectedPaths?.verdictFailed(run);
     }
 
@@ -1062,4 +1073,28 @@ export function queueItemMismatchOf(
     return "workflow version";
   }
   return undefined;
+}
+
+/**
+ * A change-set answer with the AR.1 fields ([#315](https://github.com/NobuData/ouroboros/issues/315))
+ * a receipt stored before them lacks.
+ *
+ * Every failure of such a receipt was judged before modes existed — `block`, the only behaviour
+ * there was — so it answers no warnings and each failure as a `block` verdict without evidence
+ * (the receipt never echoed it). A receipt that already carries the fields is returned as it is.
+ *
+ * @param stored - The replayed answer.
+ * @returns The answer, `guardrailWarnings` and `guardrailVerdicts` always present.
+ */
+export function withGuardrailModes(stored: ChangeSetResource): ChangeSetResource {
+  const legacy: Omit<ChangeSetResource, "guardrailWarnings" | "guardrailVerdicts"> &
+    Partial<Pick<ChangeSetResource, "guardrailWarnings" | "guardrailVerdicts">> = stored;
+
+  return {
+    ...stored,
+    guardrailWarnings: legacy.guardrailWarnings ?? [],
+    guardrailVerdicts:
+      legacy.guardrailVerdicts ??
+      stored.guardrailFailures.map((check) => ({ check, mode: "block" as const })),
+  };
 }

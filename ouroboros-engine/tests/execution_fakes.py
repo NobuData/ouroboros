@@ -10,11 +10,16 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from itertools import pairwise
 from typing import Any, ClassVar
 
 from ouroboros_engine.control_plane.client import ControlPlaneError
+from ouroboros_engine.control_plane.contract import (
+    AckedControl,
+    ControlsFetched,
+    PendingControl,
+)
 from ouroboros_engine.control_plane.execution import (
     CheckpointRequest,
     CheckpointSaved,
@@ -99,6 +104,10 @@ class FakeControl:
         self.refusals: dict[str, list[ControlPlaneError | None]] = {}
         self.claimed: QueueItemClaimed | None = None
         self.opened: RunOpened | None = None
+        self.planned: list[tuple[Callable[[FakeControl], bool], PendingControl]] = []
+        self.guardrail_failures: list[str] = []
+        self.guardrail_warnings: list[str] = []
+        self.guardrail_verdicts: list[dict[str, Any]] = []
         self._lock = threading.Lock()
         self._keys = 0
 
@@ -132,6 +141,37 @@ class FakeControl:
             (body.stage_key, body.status, body.attempt)
             for body in self.bodies("transition")
         ]
+
+    def plan(
+        self,
+        kind: str,
+        when: Callable[[FakeControl], bool] | None = None,
+        *,
+        payload: str | None = None,
+        retry_stage: bool = False,
+    ) -> str:
+        """Queue a control a fetch hands over once ``when(self)`` holds (default: at once)."""
+        control_id = f"control-{len(self.planned) + len(self.acks()) + 1}"
+        control = PendingControl.model_validate(
+            {
+                "id": control_id,
+                "kind": kind,
+                "payload": payload,
+                "retryStage": retry_stage,
+                "requestedAt": NOW,
+                "expiresAt": NOW,
+            }
+        )
+        self.planned.append((when or (lambda _control: True), control))
+        return control_id
+
+    def acks(self) -> list[dict[str, Any]]:
+        """Every acknowledgment sent, in order."""
+        return self.bodies("ack_control")
+
+    def ack_of(self, control_id: str) -> dict[str, Any]:
+        """The acknowledgment one control got."""
+        return next(ack for ack in self.acks() if ack["control"] == control_id)
 
     def finished(self) -> FinishRunRequest | None:
         """The finish, if one was sent."""
@@ -249,6 +289,9 @@ class FakeControl:
             additions=0,
             deletions=0,
             guardrail_checks=4,
+            guardrail_failures=self.guardrail_failures,
+            guardrail_warnings=self.guardrail_warnings,
+            guardrail_verdicts=self.guardrail_verdicts,
             needs_human=self.needs_human,
         )
 
@@ -258,6 +301,32 @@ class FakeControl:
         self._record("resources", body)
         self._fence(body.epoch)
         return ResourcesReported(tokens_in=0, tokens_out=0, unpriced_events=0)
+
+    def fetch_controls(self, run: str) -> ControlsFetched:
+        """Hand over every planned control whose moment has come."""
+        del run
+        with self._lock:
+            due = [(when, control) for when, control in self.planned if when(self)]
+            self.planned = [entry for entry in self.planned if entry not in due]
+        if due:
+            self._record("fetch_controls", [control.id for _, control in due])
+        return ControlsFetched(controls=[control for _, control in due])
+
+    def ack_control(
+        self,
+        run: str,
+        control: str,
+        *,
+        effect: str | None = None,
+        attempt: int | None = None,
+    ) -> AckedControl:
+        """Record an acknowledgment."""
+        self._record(
+            "ack_control", {"control": control, "effect": effect, "attempt": attempt}
+        )
+        return AckedControl(
+            id=control, run_id=run, kind="steer", state="acked", detail=effect
+        )
 
     def claim(
         self, workspace: str, worker: str, executors: list[str] | None = None
@@ -509,3 +578,67 @@ class Blocking(Failing):
 async def never(_seconds: float) -> None:
     """A heartbeat sleep that never ends: no heartbeat is sent."""
     await asyncio.Event().wait()
+
+
+class Waiting(Recording):
+    """A native fake that, after a chosen event, waits to be paused, aborted or steered.
+
+    The wait (at most five seconds, or until ``until()`` holds) gives a control poller time
+    to deliver a control while the attempt is still running, so a test can land one before
+    the next tool boundary.
+    """
+
+    def __init__(
+        self, script: Script, *, wait_after: str = "model_turn", steer: bool = False
+    ) -> None:
+        """Hold the script, the event kind to wait after, and whether it steers."""
+        super().__init__(script)
+        self.wait_after = wait_after
+        self.steers = steer
+        self.steered: list[str] = []
+        self.until: Callable[[], bool] | None = None
+        self._signalled = False
+
+    def capabilities(self) -> ExecutorCapabilities:
+        """A native tool loop that resumes, and steers when asked to."""
+        return ExecutorCapabilities(
+            tools=True, resume=True, steer=self.steers, provider_neutral=True
+        )
+
+    def pause(self) -> None:
+        """Pause at the next boundary, and stop waiting."""
+        super().pause()
+        self._signalled = True
+
+    def abort(self) -> None:
+        """Abort at the next boundary, and stop waiting."""
+        super().abort()
+        self._signalled = True
+
+    def steer(self, text: str) -> None:
+        """Record the guidance, and stop waiting."""
+        self.steered.append(text)
+        self._signalled = True
+
+    def run(self, ctx: StageContext) -> AsyncIterator[StageEvent]:
+        """Play, waiting once after the chosen event."""
+        return self._waiting(super().run(ctx))
+
+    async def _waiting(
+        self, stream: AsyncIterator[StageEvent]
+    ) -> AsyncIterator[StageEvent]:
+        """Relay the stream, holding once after the first event of the chosen kind."""
+        waited = False
+        async for event in stream:
+            yield event
+            if not waited and event.kind == self.wait_after:
+                waited = True
+                for _ in range(500):
+                    if self._signalled or (self.until is not None and self.until()):
+                        break
+                    await asyncio.sleep(0.01)
+
+
+async def fast(_seconds: float) -> None:
+    """A heartbeat or poll sleep that returns almost at once."""
+    await asyncio.sleep(0.005)

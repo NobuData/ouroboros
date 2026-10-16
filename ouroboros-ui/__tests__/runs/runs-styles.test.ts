@@ -218,4 +218,12 @@ describe("the right column (#313)", () => {
     }
     expect(rule(".run-guard__mark--idle")).toMatch(/color:\s*var\(--ink-faint\)/);
   });
+
+  it("tones a failure's note by mode, and tints a warn fail's evidence warn (#315)", () => {
+    expect(rule(".run-guard__note--block")).toMatch(/color:\s*var\(--err\)/);
+    expect(rule(".run-guard__note--warn")).toMatch(/color:\s*var\(--warn\)/);
+    const facts = rule(".run-guard__facts--warn");
+    expect(facts).toMatch(/border-color:\s*var\(--warn-line\)/);
+    expect(facts).toMatch(/background:\s*var\(--warn-tint\)/);
+  });
 });

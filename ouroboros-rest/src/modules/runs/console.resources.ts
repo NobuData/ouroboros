@@ -27,6 +27,7 @@ import type { RunSummary } from "../dashboard/resources";
 import type {
   GuardrailCheck,
   GuardrailEvidence,
+  GuardrailMode,
   GuardrailVerdict,
   RunCommit,
   RunEvent,
@@ -300,6 +301,13 @@ export interface RunGuardrailCheck {
   readonly rulesetVersion: string | null;
   readonly evaluatedAt: string;
   readonly changeSetSeq: number | null;
+  /**
+   * The workspace's mode for this check when the verdict was made (AR.1,
+   * [#315](https://github.com/NobuData/ouroboros/issues/315); `guardrail_evaluations.mode`). A
+   * `fail` under `block` stopped the run and needs a person; a `fail` under `warn` is shown in a
+   * warn tone and did not stop it. Present on every row; meaningful on a `fail`.
+   */
+  readonly mode: GuardrailMode;
 }
 
 /** The policy footer. */
@@ -683,6 +691,7 @@ export function guardrailsOf(
         rulesetVersion: row.ruleset_version,
         evaluatedAt: row.evaluated_at.toISOString(),
         changeSetSeq: row.change_set_seq,
+        mode: row.mode,
       };
 
       return row.evidence === null ? check : { ...check, evidence: row.evidence };

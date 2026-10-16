@@ -6965,10 +6965,24 @@ the hunks that carried it are scanned in memory and stored nowhere, and every ev
 screened against V048's constraints before it is written — a path that would break them is
 withheld rather than refused, so a verdict can never fail the report it rides in.
 
-**Evaluation, not enforcement.** A `fail` is returned to the executor as `guardrailFailures` and
-`needsHuman: true` on the change-set answer; nothing moves `runs.status` or stops a stage. That
-is AR.1 ([#315](https://github.com/NobuData/ouroboros/issues/315)). Re-evaluation appends, and
-`v_run_guardrails_latest` supersedes.
+**Block or warn, per check, per workspace** (AR.1, [#315](https://github.com/NobuData/ouroboros/issues/315)).
+`GET /api/v1/settings/guardrails` (any member) answers `{modes: {allowed_paths, ci_config,
+secrets, review_required}}`, each `block` or `warn`; `PATCH` (owner or admin, people only) takes
+a partial `{modes}` and audits `workspace.guardrail_modes_changed` when a mode moves. Stored in
+`guardrail_modes` (V148; no row is `block`) and stamped on every verdict as
+`guardrail_evaluations.mode`, so history stays as judged. The change-set answer lists every fail
+in `guardrailFailures`, the warn-mode ones again in `guardrailWarnings`, and each with its mode
+and evidence in `guardrailVerdicts`; `needsHuman` is true only for a `block` fail, and the
+executor halts the stage on it. A warn-mode fail files no allow-once card and is not an
+intervention. The run console's `guardrails.checks[].mode` carries it to the card. Evaluation
+never moves `runs.status` itself. Re-evaluation appends, and `v_run_guardrails_latest`
+supersedes.
+
+**Budgets stop the run** (AR.1, decision 2). Before each harness call, the facade checks the
+run's cost cap and the stage attempt's `token_budget` (the pinned node's `limits.token_budget`
+against the attempt's input + output tokens); a breach refuses the call (`cost_cap_exceeded` /
+`token_budget_exceeded`), files a system abort through the control queue (branch kept, `canceled`
+at the ack) and audits `run.budget_exceeded` — once per run (`src/modules/internal/harness/harness.budget.ts`).
 
 **The recall limit is stated, not implied.** A format ruleset recognises roughly 70 % of
 real-world secrets; high-entropy values with no recognisable shape are not detected.

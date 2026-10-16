@@ -44741,6 +44741,117 @@ select pg_temp.must_hold(
 
 delete from ouroboros.organization where "id" = 'org-v147';
 
+-- ===========================================================================
+-- V148 — guardrail modes: block or warn, per check, per workspace (#315).
+-- ===========================================================================
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v148', 'Guardrail Modes', 'guardrail-modes-v148', now());
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v148', 'Admin V148', 'admin-v148@example.test', true);
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a1480000-0000-0000-0000-00000000000a', 'org-v148', 'modes-v148', true);
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a148f000-0000-0000-0000-00000000000a', 'a1480000-0000-0000-0000-00000000000a', 'helios-firmware', true, 'main');
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq)
+  values
+    ('a1480000-0000-0000-0000-000000000001', 'org-v148', 'a148f000-0000-0000-0000-00000000000a',
+     1, 'Modes', 'standard-fix', 'claude-fable-5', 'coding', 'Code', 1, 4, now(), 1);
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.guardrail_modes where organization_id = 'org-v148'),
+  'a workspace that never chose has no mode rows — every check reads block');
+
+select pg_temp.must_hold(
+  (select pg_get_expr(d.adbin, d.adrelid) = '''block''::text'
+     from pg_attrdef d
+     join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+    where d.adrelid = 'ouroboros.guardrail_modes'::regclass and a.attname = 'mode'),
+  'a mode row defaults to block');
+
+insert into ouroboros.guardrail_modes (organization_id, "check", mode, updated_by)
+  values ('org-v148', 'secrets', 'warn', 'user-v148');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_modes (organization_id, "check", mode)
+    values ('org-v148', 'secrets', 'block')$$,
+  'one mode per check per workspace', 'guardrail_modes_pkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_modes (organization_id, "check", mode)
+    values ('org-v148', 'licence', 'warn')$$,
+  'a mode is for one of the four checks', 'guardrail_modes_check');
+
+select pg_temp.must_reject(
+  $$update ouroboros.guardrail_modes set mode = 'ignore'
+     where organization_id = 'org-v148' and "check" = 'secrets'$$,
+  'a mode is block or warn', 'guardrail_modes_mode');
+
+delete from ouroboros."user" where "id" = 'user-v148';
+
+select pg_temp.must_hold(
+  (select mode = 'warn' and updated_by is null from ouroboros.guardrail_modes
+    where organization_id = 'org-v148' and "check" = 'secrets'),
+  'removing the person who set a mode keeps the mode');
+
+select pg_temp.must_hold(
+  (select array_agg(privilege_type::text order by privilege_type) = '{INSERT,SELECT,UPDATE}'
+     from information_schema.role_table_grants
+    where table_schema = 'ouroboros' and table_name = 'guardrail_modes'
+      and grantee = 'ouroboros_app'),
+  'the application stores and re-stores a mode and never deletes one');
+
+-- The verdict snapshot.
+insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evaluated_at, change_set_seq)
+  values ('a1480000-0000-0000-0000-000000000001', 'allowed_paths', 'fail', now() - interval '2 minutes', 1);
+insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, evidence, ruleset_version,
+                                             evaluated_at, change_set_seq, mode)
+  values ('a1480000-0000-0000-0000-000000000001', 'secrets', 'fail',
+          '{"path": "src/a.c", "line": 3, "rule_id": "generic-password"}', 'v3',
+          now() - interval '2 minutes', 1, 'warn');
+
+select pg_temp.must_hold(
+  (select mode = 'block' from ouroboros.guardrail_evaluations
+    where run_id = 'a1480000-0000-0000-0000-000000000001' and "check" = 'allowed_paths'),
+  'a verdict written without a mode was made under block');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.guardrail_evaluations (run_id, "check", verdict, mode)
+    values ('a1480000-0000-0000-0000-000000000001', 'ci_config', 'pass', 'off')$$,
+  'a verdict''s mode is block or warn', 'guardrail_evaluations_mode');
+
+select pg_temp.must_hold(
+  (select array_agg("check" || '=' || verdict || '/' || mode order by "check")
+            = '{allowed_paths=fail/block,secrets=fail/warn}'
+     from ouroboros.v_run_guardrails_latest where run_id = 'a1480000-0000-0000-0000-000000000001'),
+  'the card''s read carries the mode each latest verdict was made under');
+
+select pg_temp.must_hold(
+  (select array_agg(column_name::text order by ordinal_position)
+            = '{id,run_id,check,verdict,evidence,ruleset_version,policy_ref,evaluated_at,change_set_seq,mode}'
+     from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'v_run_guardrails_latest'),
+  'mode is appended to the view, after V048''s columns');
+
+-- A warn-mode fail asks nobody for anything: it is no intervention and explains no handoff.
+update ouroboros.runs set status = 'needs_human', finished_at = now()
+ where id = 'a1480000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select array_agg(source || ':' || source_ref order by source)
+            = array['guardrail:a1480000-0000-0000-0000-000000000001/allowed_paths',
+                    'needs_human_run:a1480000-0000-0000-0000-000000000001']
+     from ouroboros.intervention_events where run_id = 'a1480000-0000-0000-0000-000000000001'),
+  'only the block-mode fail is a guardrail intervention — the warn-mode secrets fail is not');
+
+select pg_temp.must_hold(
+  (select signals = '{check:allowed_paths}' from ouroboros.intervention_events
+    where run_id = 'a1480000-0000-0000-0000-000000000001' and source = 'needs_human_run'),
+  'and the handoff is explained by the block-mode check alone');
+
+delete from ouroboros.organization where "id" = 'org-v148';
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

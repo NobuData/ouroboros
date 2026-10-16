@@ -205,6 +205,42 @@ describe("composing the audit card's lines", () => {
       "changed the live-run ceiling",
     );
   });
+  it("says what the guardrail modes became (#315)", () => {
+    expect(
+      eventSentence({
+        action: "workspace.guardrail_modes_changed",
+        detail: {
+          changed: "secrets",
+          after: "allowed_paths=block,ci_config=block,secrets=warn,review_required=block",
+        },
+      }),
+    ).toBe(
+      "set the guardrail modes to allowed_paths=block, ci_config=block, secrets=warn, review_required=block",
+    );
+    expect(eventSentence({ action: "workspace.guardrail_modes_changed", detail: {} })).toBe(
+      "changed the guardrail modes",
+    );
+  });
+  it("says which budget stopped a run, and in which stage (#315)", () => {
+    expect(
+      eventSentence({
+        action: "run.budget_exceeded",
+        detail: {
+          limit: "token_budget",
+          spent: 400_512,
+          cap: 400_000,
+          stage: "implement",
+          attempt: 2,
+        },
+      }),
+    ).toBe("stopped a run at its token budget in implement");
+    expect(eventSentence({ action: "run.budget_exceeded", detail: { limit: "cost_cap" } })).toBe(
+      "stopped a run at its cost cap",
+    );
+    expect(eventSentence({ action: "run.budget_exceeded", detail: {} })).toBe(
+      "stopped a run at a budget",
+    );
+  });
 });
 
 describe("the actor column", () => {

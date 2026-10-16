@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CHECK_TEXT,
+  FAIL_NOTE,
   FARM_DOT,
   FARM_STATE,
   MARK,
@@ -14,6 +15,7 @@ import {
   costRow,
   evidenceLines,
   farmRow,
+  checkMode,
   guardrailPill,
   guardrailsView,
   lowerBoundNote,
@@ -309,6 +311,121 @@ describe("guardrails", () => {
 
     it("is clean when every check passed or did not apply", () => {
       expect(guardrailPill(seededChecks()).label).toBe("clean");
+    });
+
+    it("keeps its copy for block fails alone, explicit or absent mode", () => {
+      expect(guardrailPill([guardrailCheck("secrets", "fail", undefined, "block")])).toEqual({
+        label: "violations",
+        tone: "err",
+        dot: "filled",
+      });
+      expect(
+        guardrailPill([guardrailCheck("secrets", "fail"), guardrailCheck("allowed_paths", "fail", undefined, "block")])
+          .label,
+      ).toBe("violations");
+    });
+
+    it("counts violations and warnings separately when both are on the card", () => {
+      expect(
+        guardrailPill([
+          guardrailCheck("allowed_paths", "fail", undefined, "block"),
+          guardrailCheck("secrets", "fail", undefined, "warn"),
+        ]),
+      ).toEqual({ label: "1 violation · 1 warning", tone: "err", dot: "filled" });
+      expect(
+        guardrailPill([
+          guardrailCheck("allowed_paths", "fail"),
+          guardrailCheck("ci_config", "fail"),
+          guardrailCheck("secrets", "fail", undefined, "warn"),
+          guardrailCheck("review_required", "fail", undefined, "warn"),
+        ]).label,
+      ).toBe("2 violations · 2 warnings");
+    });
+
+    it("is never violations for warn fails alone — a warning in the warn tone", () => {
+      expect(
+        guardrailPill([guardrailCheck("allowed_paths", "pass"), guardrailCheck("secrets", "fail", undefined, "warn")]),
+      ).toEqual({ label: "1 warning", tone: "warn", dot: "filled" });
+      expect(
+        guardrailPill([
+          guardrailCheck("secrets", "fail", undefined, "warn"),
+          guardrailCheck("ci_config", "fail", undefined, "warn"),
+        ]).label,
+      ).toBe("2 warnings");
+    });
+
+    it("says pending beside a warning while a check has not answered", () => {
+      expect(
+        guardrailPill([guardrailCheck("allowed_paths", "pending"), guardrailCheck("secrets", "fail", undefined, "warn")]),
+      ).toEqual({ label: "pending · 1 warning", tone: "warn", dot: "ring" });
+    });
+
+    it("ignores the mode on a verdict that did not fail", () => {
+      expect(guardrailPill([guardrailCheck("secrets", "pass", undefined, "warn")]).label).toBe("clean");
+    });
+  });
+
+  describe("block and warn fails (#315)", () => {
+    it("reads an absent mode as block", () => {
+      expect(checkMode(guardrailCheck("secrets", "fail"))).toBe("block");
+      expect(checkMode(guardrailCheck("secrets", "fail", undefined, "block"))).toBe("block");
+      expect(checkMode(guardrailCheck("secrets", "fail", undefined, "warn"))).toBe("warn");
+    });
+
+    it("keeps a block fail's ✗ and err tone and notes that the run needs a person", () => {
+      const [row] = guardrailsView({
+        ...SEED.guardrails,
+        checks: [guardrailCheck("allowed_paths", "fail", { path: "boot/rollback_flag.c" }, "block")],
+      }).rows;
+
+      expect(row).toMatchObject({
+        glyph: "✗",
+        tone: "err",
+        text: "Diff outside allowed paths",
+        failMode: "block",
+        note: "blocked — the run needs a person",
+        accessibleName: "Diff outside allowed paths: failed (blocked — the run needs a person)",
+        expanded: true,
+      });
+    });
+
+    it("draws a warn fail with ! in the warn tone and notes that it did not stop the run", () => {
+      const [row] = guardrailsView({
+        ...SEED.guardrails,
+        checks: [guardrailCheck("secrets", "fail", { rule_id: "generic-api-key" }, "warn")],
+      }).rows;
+
+      expect(row).toMatchObject({
+        glyph: "!",
+        tone: "warn",
+        text: "Possible secret in the diff",
+        failMode: "warn",
+        note: "warn — did not stop the run",
+        accessibleName: "Possible secret in the diff: failed (warn — did not stop the run)",
+        expanded: true,
+      });
+      expect(row!.glyph).not.toBe(MARK.fail.glyph);
+      expect(FAIL_NOTE).toEqual({
+        block: "blocked — the run needs a person",
+        warn: "warn — did not stop the run",
+      });
+    });
+
+    it("puts no note and no mode on a row that did not fail, whatever its mode", () => {
+      const view = guardrailsView({
+        ...SEED.guardrails,
+        checks: [
+          guardrailCheck("allowed_paths", "pass", undefined, "warn"),
+          guardrailCheck("ci_config", "pending", undefined, "block"),
+          guardrailCheck("review_required", "not_applicable", undefined, "warn"),
+        ],
+      });
+
+      expect(view.rows.map((row) => [row.glyph, row.tone, row.failMode, row.note, row.accessibleName])).toEqual([
+        ["✓", "ok", null, null, "Diff confined to allowed paths: passed"],
+        ["…", "warn", null, null, "CI config: evaluating"],
+        ["○", "idle", null, null, "Human review not required: not applicable"],
+      ]);
     });
   });
 

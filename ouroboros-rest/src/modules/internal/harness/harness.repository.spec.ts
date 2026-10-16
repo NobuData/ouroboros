@@ -74,4 +74,45 @@ describe("the harness repository", () => {
     ]);
     expect(database.statements[0].parameters).toEqual(expect.arrayContaining(["acme", "c1"]));
   });
+
+  describe("the token budget's reads (#315)", () => {
+    const ATTEMPT = {
+      id: "c1",
+      organizationId: "acme",
+      runId: "r1",
+      stage: "implement",
+      attempt: 2,
+    } as CredentialBinding;
+
+    it("reads the run's pinned document within its workspace, by slug and pinned version", async () => {
+      database.answers({ rows: [{ definition: { nodes: [] } }] });
+
+      await expect(repository.pinnedDefinition(ATTEMPT)).resolves.toEqual({ nodes: [] });
+      const [statement] = database.statements;
+      expect(statement.sql).toContain('"w"."slug" = "r"."workflow_tag"');
+      expect(statement.sql).toContain('"v"."version" = "r"."workflow_version_pin"');
+      expect(statement.parameters).toEqual(["r1", "acme"]);
+    });
+
+    it("answers no document for a run with no pin", async () => {
+      database.answers({ rows: [] });
+
+      await expect(repository.pinnedDefinition(ATTEMPT)).resolves.toBeUndefined();
+    });
+
+    it("sums input and output tokens over the run, stage and attempt", async () => {
+      database.answers({ rows: [{ spent: "412000" }] });
+
+      await expect(repository.attemptTokens(ATTEMPT)).resolves.toBe(412_000);
+      const [statement] = database.statements;
+      expect(statement.sql).toContain("sum(tokens_in + tokens_out)");
+      expect(statement.parameters).toEqual(["acme", "r1", "implement", 2]);
+    });
+
+    it("answers 0 before the attempt's first call", async () => {
+      database.answers({ rows: [{ spent: null }] });
+
+      await expect(repository.attemptTokens(ATTEMPT)).resolves.toBe(0);
+    });
+  });
 });

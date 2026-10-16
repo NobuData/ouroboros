@@ -1268,6 +1268,19 @@ a.run-changes__sha:focus-visible {
   color: var(--ink-faint);
 }
 
+/* A failure's note (#315) — what the fail did to the run: a block stopped it, a warn did not. */
+.run-guard__note {
+  font-size: var(--t-xs);
+}
+
+.run-guard__note--block {
+  color: var(--err);
+}
+
+.run-guard__note--warn {
+  color: var(--warn);
+}
+
 /* The secrets ruleset's disclosure: the pointer's tooltip; its text is in the tree too. */
 .run-guard__info {
   flex: none;
@@ -1298,6 +1311,12 @@ a.run-changes__sha:focus-visible {
   border: 1px solid var(--err-line);
   border-radius: var(--r-sm);
   background: var(--err-tint);
+}
+
+/* A warn-mode fail's evidence: the warn tint, not the err one. */
+.run-guard__facts--warn {
+  border-color: var(--warn-line);
+  background: var(--warn-tint);
 }
 
 .run-guard__fact {

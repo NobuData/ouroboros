@@ -71,7 +71,21 @@ const ANSWERS = {
     additions: 59,
     deletions: 12,
     guardrailChecks: 4,
-    guardrailFailures: ["secrets"],
+    guardrailFailures: ["secrets", "allowed_paths"],
+    guardrailWarnings: ["secrets"],
+    guardrailVerdicts: [
+      {
+        check: "secrets",
+        mode: "warn",
+        evidence: {
+          path: "src/a.c",
+          line: 3,
+          rule_id: "generic-password",
+          detail: "1 finding in 1 file.",
+        },
+      },
+      { check: "allowed_paths", mode: "block", evidence: { path: "boot/x.c", glob: "boot/**" } },
+    ],
     needsHuman: true,
   } satisfies ChangeSetResource,
 
@@ -144,15 +158,29 @@ describe("the answers that are not echoes", () => {
       "files",
       "guardrailChecks",
       "guardrailFailures",
+      "guardrailVerdicts",
+      "guardrailWarnings",
       "needsHuman",
     ]);
   });
 
-  it("names a failing check without echoing its evidence", () => {
-    // The evidence lives in `guardrail_evaluations`, held to decision R5's shape. A receipt is
-    // stored too, and a second copy of a path — or worse — is not something it should carry.
-    expect(ANSWERS["a change-set"].guardrailFailures).toEqual(["secrets"]);
-    expect(JSON.stringify(ANSWERS["a change-set"])).not.toMatch(/evidence|rule_id|line/);
+  it("names the failing checks, and echoes only evidence already held to decision R5 (#315)", () => {
+    // AR.1 hands the executor each failure's evidence so a halt can say why. It is the evidence
+    // `guardrail_evaluations` stored — a path, a line, a rule id, a glob, a sentence, screened by
+    // `safeEvidence` and the V048 constraints — never a matched value, and nothing else.
+    const answer = ANSWERS["a change-set"];
+
+    expect(answer.guardrailFailures).toEqual(["secrets", "allowed_paths"]);
+    expect(answer.guardrailVerdicts.map((failure) => failure.check)).toEqual(
+      answer.guardrailFailures,
+    );
+    for (const failure of answer.guardrailVerdicts) {
+      expect(
+        Object.keys(failure.evidence ?? {}).every((key) =>
+          ["path", "line", "rule_id", "glob", "detail"].includes(key),
+        ),
+      ).toBe(true);
+    }
   });
 });
 

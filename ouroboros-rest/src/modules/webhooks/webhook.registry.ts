@@ -289,6 +289,11 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
     // DI.4 (#1312): a queued issue was confirmed for a live run; the live-run ceiling changed.
     adds: ["audit.queue_item.confirmed", "audit.workspace.live_ceiling_changed"],
   },
+  {
+    version: 18,
+    // AR.1 (#315): a workspace's guardrail modes changed; a live run was stopped at its budget.
+    adds: ["audit.workspace.guardrail_modes_changed", "audit.run.budget_exceeded"],
+  },
 ];
 
 /** The newest registry version — what a new endpoint subscribes under. */

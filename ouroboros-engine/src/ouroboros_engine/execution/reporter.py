@@ -21,6 +21,7 @@ from collections.abc import Callable
 from typing import Any, Protocol, TypeVar
 
 from ouroboros_engine.control_plane.client import ControlPlaneError
+from ouroboros_engine.control_plane.contract import AckedControl, ControlsFetched
 from ouroboros_engine.control_plane.execution import (
     LOST_RUN_CODES,
     CheckpointRequest,
@@ -112,6 +113,21 @@ class RunControl(Protocol):
 
     def resources(self, run: str, body: ReportResourcesRequest) -> ResourcesReported:
         """Attribute spend. See :meth:`IngestClient.resources`."""
+        ...
+
+    def fetch_controls(self, run: str) -> ControlsFetched:
+        """Claim pending controls. See :meth:`IngestClient.fetch_controls`."""
+        ...
+
+    def ack_control(
+        self,
+        run: str,
+        control: str,
+        *,
+        effect: str | None = None,
+        attempt: int | None = None,
+    ) -> AckedControl:
+        """Acknowledge a control. See :meth:`IngestClient.ack_control`."""
         ...
 
 

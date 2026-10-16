@@ -2244,6 +2244,39 @@ export interface paths {
         patch: operations["patchLiveExecutionSettings"];
         trace?: never;
     };
+    "/api/v1/settings/guardrails": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether each guardrail check stops a run or is only shown
+         * @description The workspace's mode for each of the four guardrail checks
+         *     ([#315](https://github.com/NobuData/ouroboros/issues/315), AR.1) — `block` (a failed
+         *     check makes the run need a person; the executor halts the stage) or `warn` (a failed
+         *     check is drawn on the run console's Guardrails card in a warn tone and the run carries
+         *     on). A check the workspace never chose a mode for is `block`, so the answer always names
+         *     all four. Any member may read it. There is no settings screen; this is the API.
+         */
+        get: operations["readGuardrailModes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change some guardrail checks' modes
+         * @description **`owner` or `admin`, people only.** A partial map — name only the checks to change;
+         *     the others keep their mode. The change applies from the run's next change-set report:
+         *     each verdict records the mode it was judged under, so history is not rewritten. Writes
+         *     `workspace.guardrail_modes_changed` (`changed`, `before`, `after`) when a mode moves,
+         *     and nothing when none does. Answers all four modes as they now stand.
+         */
+        patch: operations["patchGuardrailModes"];
+        trace?: never;
+    };
     "/api/v1/settings/workspace": {
         parameters: {
             query?: never;
@@ -16217,6 +16250,14 @@ export interface components {
             evaluatedAt: string;
             /** @description Which change-set report was judged, or `null` for a policy-only check. */
             changeSetSeq: number | null;
+            /**
+             * @description The workspace's mode for this check when the verdict was made
+             *     ([#315](https://github.com/NobuData/ouroboros/issues/315)). A `fail` under `block`
+             *     stopped the run and needs a person; a `fail` under `warn` is drawn in a warn tone
+             *     and did not stop it. Always sent since 0.41.48; a client may read its absence as
+             *     `block`.
+             */
+            mode?: components["schemas"]["GuardrailMode"];
         };
         /**
          * RunGuardrailEvidence
@@ -16484,6 +16525,40 @@ export interface components {
          * @enum {string}
          */
         AdmissionReason: "deployment_disabled" | "workspace_paused" | "workspace_pending_delete" | "no_executor" | "concurrency_ceiling" | "repository_disabled" | "policy_not_dry_run" | "workflow_unpublished" | "route_not_invocable" | "needs_confirmation";
+        /**
+         * GuardrailMode
+         * @description What a failed guardrail check does ([#315](https://github.com/NobuData/ouroboros/issues/315)).
+         *     `block` — the run needs a person and the executor halts the stage. `warn` — the fail is
+         *     shown in a warn tone and the run carries on.
+         * @enum {string}
+         */
+        GuardrailMode: "block" | "warn";
+        /**
+         * GuardrailModesSettings
+         * @description The workspace's mode for each guardrail check
+         *     ([#315](https://github.com/NobuData/ouroboros/issues/315)) — always all four; `block`
+         *     where the workspace never chose.
+         */
+        GuardrailModesSettings: {
+            modes: {
+                allowed_paths: components["schemas"]["GuardrailMode"];
+                ci_config: components["schemas"]["GuardrailMode"];
+                secrets: components["schemas"]["GuardrailMode"];
+                review_required: components["schemas"]["GuardrailMode"];
+            };
+        };
+        /**
+         * GuardrailModesPatch
+         * @description The checks whose mode should change; the others keep theirs.
+         */
+        GuardrailModesPatch: {
+            modes: {
+                allowed_paths?: components["schemas"]["GuardrailMode"];
+                ci_config?: components["schemas"]["GuardrailMode"];
+                secrets?: components["schemas"]["GuardrailMode"];
+                review_required?: components["schemas"]["GuardrailMode"];
+            };
+        };
         /**
          * LiveExecutionSettings
          * @description The workspace's live-run ceiling beside the deployment's switch and limits
@@ -41358,6 +41433,194 @@ export interface operations {
             /**
              * @description `live_ceiling_above_max` — above `OURO_LIVE_RUN_CEILING_MAX`; `details` carries
              *     `requested` and `maximum`. `validation_failed` — not a whole number from 1 to 100.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readGuardrailModes: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The four checks' modes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "modes": {
+                     *         "allowed_paths": "block",
+                     *         "ci_config": "block",
+                     *         "secrets": "warn",
+                     *         "review_required": "block"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["GuardrailModesSettings"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchGuardrailModes: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "modes": {
+                 *         "secrets": "warn"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["GuardrailModesPatch"];
+            };
+        };
+        responses: {
+            /** @description The four checks' modes as they now stand. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "modes": {
+                     *         "allowed_paths": "block",
+                     *         "ci_config": "block",
+                     *         "secrets": "warn",
+                     *         "review_required": "block"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["GuardrailModesSettings"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — not an `owner` or `admin`, or a service account. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `modes` missing or not an object, a check other than the four,
+             *     or a mode other than `block` or `warn`.
              */
             422: {
                 headers: {

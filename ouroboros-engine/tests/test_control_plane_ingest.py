@@ -406,11 +406,20 @@ def test_every_documented_example_is_an_answer_this_client_reads(
     client: ControlPlaneClient, path: str, method: str, reader: str
 ) -> None:
     responses = _document()["paths"][path][method]["responses"]
-    example = responses["200"]["content"]["application/json"]["example"]
+    content = responses["200"]["content"]["application/json"]
+    # One `example`, or several named `examples` (the files answer documents a clean and a
+    # blocked change-set) — every one must be an answer this client reads.
+    examples = (
+        [named["value"] for named in content["examples"].values()]
+        if "examples" in content
+        else [content["example"]]
+    )
 
-    parsed = getattr(client, reader)(HTTPStatus.OK, example)
-
-    assert parsed.model_dump(by_alias=True, exclude_none=True).keys() <= set(example)
+    for example in examples:
+        parsed = getattr(client, reader)(HTTPStatus.OK, example)
+        assert parsed.model_dump(by_alias=True, exclude_none=True).keys() <= set(
+            example
+        )
 
 
 @pytest.mark.parametrize(

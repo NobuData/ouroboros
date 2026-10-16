@@ -2,7 +2,15 @@ import { useId } from "react";
 
 import { Card, CardHead, Chip } from "@/app/ui";
 
-import { EVIDENCE_LABEL, GUARDRAILS_TITLE, type GuardrailRowView, type GuardrailsView, type MarkTone, NO_VERDICTS } from "./cards";
+import {
+  EVIDENCE_LABEL,
+  GUARDRAILS_TITLE,
+  type GuardrailMode,
+  type GuardrailRowView,
+  type GuardrailsView,
+  type MarkTone,
+  NO_VERDICTS,
+} from "./cards";
 
 /** A row's mark, per tone — the mockup's `.mark.ok` / `.mark.idle`, and err and warn. */
 const MARK_CLASS: Readonly<Record<MarkTone, string>> = {
@@ -20,9 +28,23 @@ const DOT_CLASS: Readonly<Record<MarkTone, string>> = {
   warn: "run-guard__dot run-guard__dot--warn",
 };
 
+/** A failed row's note, per mode — a block fail in the err tone, a warn fail in the warn tone. */
+const NOTE_CLASS: Readonly<Record<GuardrailMode, string>> = {
+  block: "run-guard__note run-guard__note--block",
+  warn: "run-guard__note run-guard__note--warn",
+};
+
+/** A failed row's evidence box, per mode; any other row keeps the plain box. */
+const FACTS_CLASS: Readonly<Record<GuardrailMode, string>> = {
+  block: "run-guard__facts",
+  warn: "run-guard__facts run-guard__facts--warn",
+};
+
 /**
  * One verdict: its mark and dot, its sentence, the secrets disclosure where it applies, and its
- * evidence behind a disclosure — open from the start on a failure.
+ * evidence behind a disclosure — open from the start on a failure. A failure says what it did to
+ * the run (#315): a `block` fail keeps its `✗` and says the run needs a person; a `warn` fail
+ * takes the warn tone and `!` and says it did not stop the run.
  *
  * @param props.row The row, from `guardrailsView`.
  * @returns The list item.
@@ -38,6 +60,9 @@ function Row({ row }: Readonly<{ row: GuardrailRowView }>) {
         <span className="run-guard__text">
           {row.text}
           {row.caption !== null && <span className="run-guard__caption"> {row.caption}</span>}
+          {row.failMode !== null && row.note !== null && (
+            <span className={NOTE_CLASS[row.failMode]}> {row.note}</span>
+          )}
         </span>
         {row.disclosure !== null && (
           <span className="run-guard__info" title={row.disclosure}>
@@ -50,7 +75,7 @@ function Row({ row }: Readonly<{ row: GuardrailRowView }>) {
       {row.evidence.length > 0 && (
         <details className="run-guard__evidence" open={row.expanded}>
           <summary className="run-guard__summary">{EVIDENCE_LABEL}</summary>
-          <dl className="run-guard__facts">
+          <dl className={row.failMode === null ? "run-guard__facts" : FACTS_CLASS[row.failMode]}>
             {row.evidence.map((line) => (
               <div className="run-guard__fact" key={line.term}>
                 <dt className="run-guard__term">{line.term}</dt>

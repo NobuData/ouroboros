@@ -25,6 +25,7 @@ export const FACADE_ERROR_CODES = [
   "alias_unavailable",
   "no_anthropic_hop",
   "cost_cap_exceeded",
+  "token_budget_exceeded",
   "resolution_failed",
   "vote_execution_unavailable",
   "provider_unavailable",
@@ -40,10 +41,27 @@ export interface FacadeErrorBody {
   readonly ouroboros: {
     readonly code: FacadeErrorCode;
     readonly cap?: InvokeCap;
+    /**
+     * The stage attempt's token budget and what it has spent — on `token_budget_exceeded`
+     * (AR.1, [#315](https://github.com/NobuData/ouroboros/issues/315)).
+     */
+    readonly attemptBudget?: AttemptBudgetBreach;
     readonly reason?: string;
     /** Hops of the resolution the facade skipped, each with why. */
     readonly skipped?: readonly string[];
   };
+}
+
+/** A stage attempt's token budget, reached (AR.1, #315). */
+export interface AttemptBudgetBreach {
+  /** The pinned node's `limits.token_budget`. */
+  readonly limitTokens: number;
+  /** Input plus output tokens the attempt has already spent. */
+  readonly spentTokens: number;
+  /** The stage — the DSL node id the credential was minted for. */
+  readonly stage: string;
+  /** The attempt, from 1. */
+  readonly attempt: number;
 }
 
 /** A refusal: the status and the body. */
@@ -63,6 +81,7 @@ const SHAPES: Readonly<Record<FacadeErrorCode, readonly [number, string]>> = Obj
   alias_unavailable: [404, "not_found_error"],
   no_anthropic_hop: [400, "invalid_request_error"],
   cost_cap_exceeded: [400, "invalid_request_error"],
+  token_budget_exceeded: [400, "invalid_request_error"],
   resolution_failed: [400, "invalid_request_error"],
   vote_execution_unavailable: [400, "invalid_request_error"],
   provider_unavailable: [502, "api_error"],
@@ -73,7 +92,7 @@ const SHAPES: Readonly<Record<FacadeErrorCode, readonly [number, string]>> = Obj
  *
  * @param code - The rule.
  * @param message - The sentence for a person. Ours, never a provider's.
- * @param extra - The cap, the reason or the skipped hops, when the rule has them.
+ * @param extra - The cap, the token budget, the reason or the skipped hops, when the rule has them.
  * @returns The refusal.
  */
 export function facadeRefusal(

@@ -513,11 +513,12 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
                    "$name says secret only as the guardrail check named 'secrets'"
       continue
     fi
-    # The inbox seed (#460) mirrors PR #504's gate set, so it says the scan gate's name too.
+    # The inbox seed (#460) mirrors PR #504's gate set, so it says the scan gate's name too; and
+    # since #315 it seeds a warn-mode fail of the guardrail check named 'secrets' on loop #1844.
     if [ "$seed_file" = "$INBOX_SEED" ] && [ "$secret" = secret ]; then
-      check_equals "$(grep -Eo "'secrets_license'" "$body" | wc -l | tr -d ' ')" \
+      check_equals "$(grep -Eo "'secrets'|'secrets_license'" "$body" | wc -l | tr -d ' ')" \
                    "$(grep -Eo 'secret' "$body" | wc -l | tr -d ' ')" \
-                   "$name says secret only as the gate 'secrets_license'"
+                   "$name says secret only as the guardrail check 'secrets' and the gate 'secrets_license'"
       continue
     fi
     if [ "$seed_file" = "$VERIFICATION_SEED" ] && [ "$secret" = secret ]; then
@@ -1739,9 +1740,9 @@ done
 # rollup and its tooltip to the intervention that stop raised.
 inbox_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$INBOX_BODY" |
   sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
-check_equals 'decision_items decision_resolutions guardrail_evaluations metric_daily pr_criteria pr_criteria_evidence pr_gate_definitions pr_gate_results pr_revisions pull_requests run_blocks run_files tickets ' \
+check_equals 'decision_items decision_resolutions guardrail_evaluations guardrail_modes metric_daily pr_criteria pr_criteria_evidence pr_gate_definitions pr_gate_results pr_revisions pull_requests run_blocks run_files tickets ' \
   "$inbox_tables" \
-  'the inbox seed writes the cards, answers, blocks, the stop, PR #504 and the tickets — and amends only the rollup'
+  'the inbox seed writes the cards, answers, blocks, the stop and its warn-mode neighbour (with its mode), PR #504 and the tickets — and amends only the rollup'
 check_absent "$INBOX_BODY" 'pr_waivers|intervention_events \(' \
   'and writes no waiver and no intervention of its own'
 

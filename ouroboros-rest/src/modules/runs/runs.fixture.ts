@@ -267,6 +267,7 @@ export function guardrailRow(over: Partial<RunGuardrailsLatest> = {}): RunGuardr
     policy_ref: 14,
     evaluated_at: into(590),
     change_set_seq: 1,
+    mode: "block",
     ...over,
   };
 }

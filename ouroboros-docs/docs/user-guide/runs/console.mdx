@@ -96,15 +96,28 @@ or **Human review required** — either routed to a person, or, when it fails, b
 is not permitted for this change.
 
 The card's tag sums them up: **clean**, **violations**, **pending** while a check is still
-running, or **not evaluated**. A failed check opens its **Evidence** — the path, the rule and
+running, or **not evaluated**. When warning checks have failed too, the tag counts them
+separately, such as **1 violation · 1 warning**, or **1 warning** when only warnings failed. A failed check opens its **Evidence** — the path, the rule and
 the protected-path pattern it matched:
 
 <Screenshot id="user-guide.run.guardrail" />
 
 The secrets scan looks for known credential formats; a pass means none was found, not that the
-diff holds no secret. Its **ⓘ** says so. A failed guardrail is a question for a person — answer
-it in [Needs You](../inbox.mdx), where a one-time allowance can be granted. The console itself
-has no allow or override control.
+diff holds no secret. Its **ⓘ** says so.
+
+**Blocking and warning checks.** Each check either blocks or warns; an administrator chooses
+which for the workspace (see [Policies § Guardrail checks: block or warn](../../administration/policies.mdx#guardrail-checks-block-or-warn)).
+Every check blocks unless it is changed.
+
+- **A blocking check that fails** is marked **✗** with **blocked — the run needs a person**. The
+  checks run each time the loop changes a file, so a live run **stops right after the tool call
+  that caused the failure**, not at the end of the stage. The stage fails and the run moves to
+  **needs human**, with the failed check and its evidence as the reason.
+- **A warning check that fails** is marked **!** with **warn — did not stop the run**. The run
+  carries on, and the failure stays on the card for whoever reviews the change.
+
+A failed blocking check is a question for a person — answer it in [Needs You](../inbox.mdx),
+where a one-time allowance can be granted. The console itself has no allow or override control.
 
 ## Controlling a live run
 
@@ -113,7 +126,8 @@ none.
 
 <Screenshot id="user-guide.run.controls" />
 
-- **Pause loop** asks the loop to stop at its next safe point. A tag beside the controls
+- **Pause loop** asks the loop to stop at its next safe point: between two tool calls, never
+  in the middle of one, or between stages. A tag beside the controls
   follows the request — **Pause · sending**, **sent**, **received**, **acknowledged** — and
   once the loop has acknowledged, the button becomes **Resume**. If the loop does not answer,
   the tag reads **no response — run may be between stages**.
@@ -121,11 +135,14 @@ none.
   check out its branch (**Copy commands**), and links to the ticket and the transcript. Press
   **Resume** when you want the loop back. Nothing opens in your editor by itself.
 - **Abort run** stops the loop for good. It asks first — **Abort Loop #1847?** — and you type
-  the loop number to confirm. Work the loop has not committed is discarded; the run is marked
-  **canceled** and its branch is kept. This cannot be undone.
+  the loop number to confirm. The loop stops at its next safe point, between two tool calls,
+  and keeps the work it has done so far on its branch; the run is marked **canceled**. This
+  cannot be undone.
 
 **Steering** is open to owners, admins and members: type a note in **Steer the loop** under
-the transcript and choose **Send**. It nudges the current attempt without pausing it — for
+the transcript and choose **Send**. It nudges the current attempt without pausing it: the loop reads it before its next
+model turn, and the acknowledgement names the attempt it landed on, such as **steering applied
+to attempt 2** — for
 example, `prefer a fix inside the ISR; do not touch the test timeouts`. Your note appears in the
 transcript as a **USER** entry, with a tag that follows it to **acknowledged**. A note can be
 up to 4,096 characters. Viewers can read the transcript but not steer.
@@ -134,8 +151,7 @@ up to 4,096 characters. Viewers can read the transcript but not steer.
 
 A run that is waiting for a decision shows the status **needs human**: it has stopped, and the
 console offers no controls or steering. A run gets there when its workflow reaches a
-**hand it over for review** terminal, or when the guardrails find a change a person must
-look at. The question it is waiting on is in
+**hand it over for review** terminal, or when a blocking guardrail check fails. The question it is waiting on is in
 [Needs You](../inbox.mdx) — answer it there and the loop carries on. The console does not link
 to the question itself.
 

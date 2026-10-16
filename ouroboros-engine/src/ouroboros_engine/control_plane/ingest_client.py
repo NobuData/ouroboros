@@ -43,6 +43,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from ouroboros_engine.control_plane.client import ControlPlaneClient
+from ouroboros_engine.control_plane.contract import AckedControl, ControlsFetched
 from ouroboros_engine.control_plane.execution import (
     CheckpointRequest,
     CheckpointSaved,
@@ -316,6 +317,49 @@ class IngestClient:
         """
         answer = self._transport.send(self._client.finish_run_request(run, body))
         return self._client.read_run_finished(answer.status, answer.body)
+
+    # --- run controls (AP.4, #306; honoured by the interpreter since #315) -------------------
+
+    def fetch_controls(self, run: str) -> ControlsFetched:
+        """Claim a run's pending controls.
+
+        Args:
+            run: The run.
+
+        Returns:
+            The claimed controls, oldest first — now ``delivered`` and this worker's to
+            acknowledge.
+        """
+        answer = self._transport.send(self._client.fetch_controls_request(run))
+        return self._client.read_controls(answer.status, answer.body)
+
+    def ack_control(
+        self,
+        run: str,
+        control: str,
+        *,
+        effect: str | None = None,
+        attempt: int | None = None,
+    ) -> AckedControl:
+        """Acknowledge one control with the effect it had.
+
+        Args:
+            run: The run.
+            control: The control's id, as the fetch handed it over.
+            effect: What was done, in the engine's words, or ``None`` for the control
+                plane's own sentence.
+            attempt: For a steer, the attempt it landed on.
+
+        Returns:
+            The control, acknowledged. A refusal (``control_not_delivered`` carries the
+            control's state) is raised as for every other call.
+        """
+        answer = self._transport.send(
+            self._client.ack_control_request(
+                run, control, effect=effect, attempt=attempt
+            )
+        )
+        return self._client.read_ack(answer.status, answer.body)
 
     # --- harness credentials (DH.3, #1308) ---------------------------------------------------
 

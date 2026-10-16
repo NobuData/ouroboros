@@ -36,6 +36,37 @@ Some rules hold conditions too detailed for the card, or are custom rules. Those
 exactly as published and show a note; you can still switch them on and off. **Edit as code**,
 for editing the whole policy as a document, is marked **soon** and is not available yet.
 
+## Guardrail checks: block or warn
+
+Every change a live run makes is checked by four guardrails — **Allowed paths**, **CI
+configuration**, **Secrets** and **Review required** — each time the loop changes a file (see
+[the run console](../user-guide/runs/console.mdx#changes-resources-and-guardrails)). For each
+check the workspace chooses what a failure does:
+
+| Mode | What a failure does |
+| --- | --- |
+| `block` (the default) | The run stops right after the tool call that caused it. The stage fails, and the run waits in [Needs You](../user-guide/inbox.mdx) with the failed check and its evidence as the reason. |
+| `warn` | The run carries on. The failure stays on the run's Guardrails card, marked **warn — did not stop the run**. |
+
+Consider `warn` for the **Secrets** check if its pattern matches produce false alarms on your
+code; the scan looks for known credential formats and cannot be exact. Every check blocks
+until you change it.
+
+There is no screen for this setting yet. Anyone in the workspace can read it, and an owner or
+admin can change it, through the API:
+
+```bash
+# Read the four modes.
+curl -H "Cookie: $SESSION" https://ouroboros.example.com/api/v1/settings/guardrails
+
+# Let a secrets match warn instead of stopping the run (owner or admin).
+curl -X PATCH -H "Cookie: $SESSION" -H "Content-Type: application/json" \
+  -d '{"modes": {"secrets": "warn"}}' https://ouroboros.example.com/api/v1/settings/guardrails
+```
+
+A change applies to checks run from then on; a check already run keeps the mode it ran under.
+Each change is recorded in the audit log as `workspace.guardrail_modes_changed`.
+
 ## Publishing a change
 
 The policy is **versioned**: the card shows the version in force, such as **policy v7**, and every
@@ -92,15 +123,22 @@ a protected path?** appears in the [Needs-you inbox](../user-guide/inbox.mdx). S
 ## Spend guard
 
 - **Pause a loop when its run would cost more than** — a per-run cap, such as `$2.50`. It is
-  enforced now. When a route sets its own **Max cost per run**, the stricter of the two applies;
-  neither can loosen the other. The cap travels with every run to the executor, which stops the
-  run before it spends more, and says which cap stopped it.
+  enforced now. When a route sets its own **Max cost per run**, the stricter of the two
+  applies; neither can loosen the other. Ouroboros checks the cap before every model call a live run makes. A call that
+  would go over it is refused, and the run is **aborted** — not paused — at its next safe point,
+  with its branch kept. The abort is recorded in the audit log as `run.budget_exceeded`, naming
+  the cap, what was spent, the stage and the attempt.
 - **Monthly cap, per provider** — is stored with the policy but **not enforced yet**. It is
   separate from the monthly cap on a provider's card in
   [Model providers & keys](./providers.mdx#spend-and-the-monthly-cap), which makes model calls
   skip a provider once it is reached.
 
 Leave a field empty for no cap of that kind.
+
+A model stage's **Token budget**, set on the stage in the
+[Workflow Studio](../user-guide/workflows/studio.mdx), is enforced the same way: once one
+attempt of the stage has used its budget, its next model call is refused and the run is
+aborted, recorded as `run.budget_exceeded` with the token budget as the limit.
 
 ### The dry-run cap
 

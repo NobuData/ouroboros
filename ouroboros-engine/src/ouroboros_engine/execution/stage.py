@@ -9,8 +9,9 @@
   paths. **Enforcement is the policy's alone**: an executor asks
   :func:`~ouroboros_engine.execution.policy.evaluate` before every tool, and this module's
   only job is to hand it the right inputs.
+* :func:`with_notes` — a person's steering notes, appended after the untrusted block (#315).
 * :func:`drive` — consume the executor's events into the reporter, persist its live
-  checkpoint, and read its outcome.
+  checkpoint, report the change-set at each file boundary (#315), and read its outcome.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from typing import Final
 
 from ouroboros_engine.control_plane.execution import AcceptanceCriterion
-from ouroboros_engine.execution.events import StageEvent, ToolResultEvent
+from ouroboros_engine.execution.events import FileChange, StageEvent, ToolResultEvent
 from ouroboros_engine.execution.policy import ToolPolicy
 from ouroboros_engine.execution.reporter import RunLostError, RunReporter
 from ouroboros_engine.execution.spi import Checkpoint, StageExecutor, StageOutcome
@@ -93,6 +94,29 @@ def render_prompt(
     )
 
 
+#: The heading a person's steering notes travel under, after the untrusted block.
+OPERATOR_NOTES: Final = "Operator notes, from the person supervising this run:"
+
+
+def with_notes(prompt: str, notes: Sequence[str]) -> str:
+    """An attempt's prompt with the steering notes a person sent for it (#315).
+
+    The notes come from a workspace member through the control queue, not from the tracker,
+    so they follow the untrusted block rather than travelling inside it.
+
+    Args:
+        prompt: What :func:`render_prompt` returned.
+        notes: The notes, oldest first.
+
+    Returns:
+        The prompt, unchanged when there are no notes.
+    """
+    kept = [note.strip() for note in notes if note.strip()]
+    if not kept:
+        return prompt
+    return "\n\n".join([prompt, OPERATOR_NOTES, *(f"- {note}" for note in kept)])
+
+
 def stage_model(config: LlmConfig, run_model: str) -> str:
     """The model a stage asks for.
 
@@ -130,12 +154,16 @@ def stage_policy(
 #: Stores an executor's live checkpoint in the run checkpoint.
 CheckpointSink = Callable[[Checkpoint], Awaitable[None]]
 
+#: Reports the working tree's change-set after a file changed (#315).
+FileBoundary = Callable[[], Awaitable[None]]
+
 
 async def drive(
     executor: StageExecutor,
     stream: AsyncIterator[StageEvent],
     reporter: RunReporter,
     on_checkpoint: CheckpointSink | None = None,
+    on_file_change: FileBoundary | None = None,
 ) -> StageOutcome:
     """Report an attempt's events as they arrive, then read how it ended.
 
@@ -144,11 +172,16 @@ async def drive(
     (DH.3's session-id rule, ``docs/STAGE_EXECUTORS.md``), so an engine killed mid-attempt
     can resume it.
 
+    After each ``file_change`` — which an executor reports right after the ``tool_result``
+    of the write that made it — the transcript is flushed and ``on_file_change`` is awaited,
+    so the change-set is reported at the tool boundary, not only at the stage's end (#315).
+
     Args:
         executor: The attempt's executor.
         stream: What :meth:`~StageExecutor.run` or :meth:`~StageExecutor.resume` returned.
         reporter: Where the events go.
         on_checkpoint: Stores a live checkpoint, or ``None`` to ignore them.
+        on_file_change: Reports the change-set, or ``None`` to report it only at the end.
 
     Returns:
         The executor's outcome. An executor that raised, or ended without one, is
@@ -172,6 +205,9 @@ async def drive(
                     status="failed", error=f"{type(error).__name__}: {error}"
                 )
             await reporter.record(event)
+            if on_file_change is not None and isinstance(event, FileChange):
+                await reporter.flush()
+                await on_file_change()
             if on_checkpoint is None:
                 continue
             live = executor.live_checkpoint()

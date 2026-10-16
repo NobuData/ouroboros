@@ -1905,6 +1905,17 @@ export interface PrLoopReturnsTable {
  */
 export type GuardrailCheck = "allowed_paths" | "ci_config" | "secrets" | "review_required";
 
+/**
+ * Whether a failed guardrail check stops the run — `guardrail_modes.mode` and
+ * `guardrail_evaluations.mode` (V148, [#315](https://github.com/NobuData/ouroboros/issues/315),
+ * AR.1 decision 1).
+ *
+ * `block`: a fail sets `needsHuman` on the change-set answer and the executor halts the stage.
+ * `warn`: a fail is drawn on the Guardrails card in a warn tone and the run carries on. A check a
+ * workspace never chose a mode for is `block`.
+ */
+export type GuardrailMode = "block" | "warn";
+
 /** The four, in the order the card draws them and the CHECK declares them. */
 export const GUARDRAIL_CHECKS = [
   "allowed_paths",
@@ -2008,6 +2019,33 @@ export interface GuardrailEvaluationsTable {
    * question that can be answered before a run has changed a file.
    */
   change_set_seq: number | null;
+  /**
+   * The workspace's mode for this check when the verdict was made (V148, #315) — a snapshot, so
+   * a later change of mode does not rewrite history. Defaults to `block`, which is also what
+   * every row written before V148 reads.
+   */
+  mode: Generated<GuardrailMode>;
+}
+
+/**
+ * `ouroboros.guardrail_modes` — a workspace's block-or-warn choice for one guardrail check (V148,
+ * [#315](https://github.com/NobuData/ouroboros/issues/315), AR.1 decision 1).
+ *
+ * One row per check a workspace has chosen a mode for; **a check with no row is `block`**. Stored
+ * and re-stored by `PATCH /api/v1/settings/guardrails` (no `delete` grant), read by the guardrail
+ * evaluator, which stamps {@link GuardrailEvaluationsTable.mode}.
+ */
+export interface GuardrailModesTable {
+  /** The workspace. Cascades. */
+  organization_id: string;
+  /** Which check — V048's vocabulary. */
+  check: GuardrailCheck;
+  /** What a fail of it does. */
+  mode: Generated<GuardrailMode>;
+  /** Who last set it, or null (removed person, or a seeded row). */
+  updated_by: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
 }
 
 /**
@@ -2029,6 +2067,8 @@ export interface RunGuardrailsLatestView {
   policy_ref: number | null;
   evaluated_at: Date;
   change_set_seq: number | null;
+  /** The mode the latest verdict was made under (V148, #315). */
+  mode: GuardrailMode;
 }
 
 /**
@@ -8231,6 +8271,7 @@ export interface Database {
   pr_approvals: PrApprovalsTable;
   pr_loop_returns: PrLoopReturnsTable;
   guardrail_evaluations: GuardrailEvaluationsTable;
+  guardrail_modes: GuardrailModesTable;
   run_controls: RunControlsTable;
   run_ingest_receipts: RunIngestReceiptsTable;
   queue_items: QueueItemsTable;
@@ -8709,7 +8750,9 @@ export const TABLE_COLUMNS = {
     "policy_ref",
     "evaluated_at",
     "change_set_seq",
+    "mode",
   ],
+  guardrail_modes: ["organization_id", "check", "mode", "updated_by", "created_at", "updated_at"],
   run_controls: [
     "id",
     "run_id",
@@ -10640,6 +10683,7 @@ export const TABLE_COLUMNS = {
     "policy_ref",
     "evaluated_at",
     "change_set_seq",
+    "mode",
   ],
   guardrail_exceptions_live: [
     "id",

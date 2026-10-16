@@ -15,7 +15,13 @@
 import { Injectable } from "@nestjs/common";
 import { sql, type Kysely, type Transaction } from "kysely";
 
-import type { Database, EscalationThen, EscalationWhen, GuardrailCheck } from "../db/schema";
+import type {
+  Database,
+  EscalationThen,
+  EscalationWhen,
+  GuardrailCheck,
+  GuardrailMode,
+} from "../db/schema";
 import type { GuardrailExceptionGrant, GuardrailVerdictRow } from "./guardrails.checks";
 
 /** A connection or a transaction — always the caller's. */
@@ -309,6 +315,71 @@ export class GuardrailsRepository {
   }
 
   /**
+   * The workspace's block-or-warn choice per guardrail check (V148,
+   * [#315](https://github.com/NobuData/ouroboros/issues/315)) — only the checks it has chosen a
+   * mode for; an absent check is `block`.
+   *
+   * The one method here that takes an `organizationId`: the evaluator passes the one it read off
+   * the run ({@link runPolicy}), and the settings route the session's workspace.
+   *
+   * @param writer - The report's transaction, or the settings route's connection.
+   * @param organizationId - The workspace.
+   * @returns The stored modes by check.
+   */
+  async modes(
+    writer: Writer,
+    organizationId: string,
+  ): Promise<Partial<Record<GuardrailCheck, GuardrailMode>>> {
+    const rows = await writer
+      .selectFrom("guardrail_modes")
+      .select(["check", "mode"])
+      .where("organization_id", "=", organizationId)
+      .execute();
+
+    return Object.fromEntries(rows.map((row) => [row.check, row.mode]));
+  }
+
+  /**
+   * Store modes for some of a workspace's checks — an upsert per check, never a delete (V148
+   * grants none): setting `block` again is an update of the row.
+   *
+   * @param writer - The settings route's transaction.
+   * @param organizationId - The workspace.
+   * @param modes - The checks to store, each with its new mode. Empty writes nothing.
+   * @param userId - Who set them.
+   */
+  async saveModes(
+    writer: Writer,
+    organizationId: string,
+    modes: Readonly<Partial<Record<GuardrailCheck, GuardrailMode>>>,
+    userId: string,
+  ): Promise<void> {
+    const rows = (Object.entries(modes) as [GuardrailCheck, GuardrailMode | undefined][])
+      .filter((entry): entry is [GuardrailCheck, GuardrailMode] => entry[1] !== undefined)
+      .map(([check, mode]) => ({
+        organization_id: organizationId,
+        check,
+        mode,
+        updated_by: userId,
+      }));
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    await writer
+      .insertInto("guardrail_modes")
+      .values(rows)
+      .onConflict((conflict) =>
+        conflict.columns(["organization_id", "check"]).doUpdateSet((eb) => ({
+          mode: eb.ref("excluded.mode"),
+          updated_by: eb.ref("excluded.updated_by"),
+        })),
+      )
+      .execute();
+  }
+
+  /**
    * Append one evaluation's verdicts.
    *
    * An insert and never an update: `guardrail_evaluations` is append-only to this service by
@@ -319,6 +390,8 @@ export class GuardrailsRepository {
    * @param run - The run.
    * @param policyRef - The pinned version the policy was read from.
    * @param verdicts - The rows, evidence already screened.
+   * @param modes - The workspace's mode per check, stamped on each row as the mode the verdict was
+   *   made under (V148, #315). A check it does not name is written `block`.
    * @returns Each written row's id by its check — what a consumed grant is recorded against.
    */
   async appendVerdicts(
@@ -326,6 +399,7 @@ export class GuardrailsRepository {
     run: string,
     policyRef: number | null,
     verdicts: readonly GuardrailVerdictRow[],
+    modes: Readonly<Partial<Record<GuardrailCheck, GuardrailMode>>> = {},
   ): Promise<Map<GuardrailCheck, string>> {
     const rows = await writer
       .insertInto("guardrail_evaluations")
@@ -340,6 +414,7 @@ export class GuardrailsRepository {
           ruleset_version: verdict.rulesetVersion,
           policy_ref: policyRef,
           change_set_seq: verdict.changeSetSeq,
+          mode: modes[verdict.check] ?? "block",
         })),
       )
       .returning(["id", "check"])

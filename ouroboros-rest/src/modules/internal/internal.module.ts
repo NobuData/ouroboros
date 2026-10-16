@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 
 import { AuditModule } from "../audit/audit.module";
+import { ControlsModule } from "../controls/controls.module";
 import { DbModule } from "../db/db.module";
 import { PoliciesModule } from "../policies/policies.module";
 import { PricingModule } from "../pricing/pricing.module";
@@ -11,6 +12,7 @@ import { CredentialsController } from "./credentials.controller";
 import { InternalKeyGuard } from "./internal.guard";
 import { InternalRepository } from "./internal.repository";
 import { HarnessCredentialsController } from "./harness/harness.credentials.controller";
+import { HarnessBudgetGuard } from "./harness/harness.budget";
 import { HarnessCredentialsService } from "./harness/harness.credentials.service";
 import { HarnessFacadeController } from "./harness/harness.facade.controller";
 import { HarnessFacadeService } from "./harness/harness.facade.service";
@@ -78,6 +80,8 @@ import { LocalProviders } from "./local.providers";
     ConnectionOpenerModule,
     PricingModule,
     PoliciesModule,
+    // AR.1 (#315): the harness facade files a system abort when a run reaches its budget.
+    ControlsModule,
   ],
   controllers: [
     CredentialsController,
@@ -95,6 +99,7 @@ import { LocalProviders } from "./local.providers";
     HarnessRepository,
     HarnessCredentialsService,
     HarnessFacadeService,
+    HarnessBudgetGuard,
     { provide: APP_GUARD, useClass: InternalKeyGuard },
   ],
 })

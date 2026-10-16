@@ -416,8 +416,12 @@ class AttemptRecorder:
             # The harness's own words (an API error it narrates), not a model's: kept out
             # of the transcript, as the provenance rule says. The result carries the error.
             return False
-        model = message.model or self.ctx.model
+        # Provenance (#315): the model the facade reports answered, never the stage's alias.
+        # A message that names no model yields no model turn — nothing is synthesized.
+        model = message.model
         for block in message.content:
+            if not model and isinstance(block, (TextBlock, ThinkingBlock)):
+                continue
             if isinstance(block, TextBlock) and block.text.strip():
                 self._emit(ModelTurn, model_id=model, text=block.text)
             elif isinstance(block, ThinkingBlock) and block.thinking.strip():
