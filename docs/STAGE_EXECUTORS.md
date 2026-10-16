@@ -173,7 +173,9 @@ assert that the returned list of violations is empty:
 | `check_abort` | Abort after the first tool result: no tool request after it, and the outcome is `aborted` |
 
 The kit does not script the executor. A real harness is driven by its model, or in CI by a
-recorded provider fixture (roadmap infrastructure option 6). So every check is a property of
+recorded provider fixture (roadmap infrastructure option 6 — DI.5's
+`tests/e2e/fixtures/provider-fixture`, whose recording `tests/test_live_slice_recording.py`
+holds to the pinned SDK and drives through the real CLI). So every check is a property of
 whatever stream the executor produced. The fake passes the whole kit in both kinds. The
 rogue executor fails it for an out-of-vocabulary event, a verdict that disagrees with the
 policy, events for another stage, and a missing outcome.

@@ -100,6 +100,28 @@
 # needs to.
 #
 # ---------------------------------------------------------------------------
+# The recorded provider, and why *this* one is a seeded connection (issue #1314, DI.5).
+# ---------------------------------------------------------------------------
+#
+# `provider-fixture` is the one fixture a seed does point at — and the paragraph above still
+# holds, because it is not the seed it was about. `R__dev_seed_providers.sql`'s five cards are
+# `acme-robotics`' and keep their unreachable addresses; the health strip they draw is untouched.
+# `R__dev_seed_live_slice.sql` seeds a *sixth workspace*, `acme-live-slice`, whose single
+# connection carries `base_url: http://provider-fixture:8080` — the slice's provider, behind the
+# real Anthropic-format facade, the real adapter and the real routing, for the one leg (DI.6,
+# #1321) whose subject is a live run from an issue to a draft pull request. A recording at the
+# provider's socket is infrastructure option 6 of `docs/ROADMAP_OOE_LIVE_LOOP.md`: everything
+# above it is real, and a CI run spends nothing. The connection is seeded with **no credential**
+# (a seed cannot seal one); the leg sets a key through the ordinary rotate route, which the
+# fixture accepts by the same `ouro-e2e-` rule `provider-stub` applies.
+#
+# It replays what it recorded — `fixtures/provider-fixture/recordings/live-slice.json`, made
+# with a named Claude Agent SDK and CLI — and a harness that is not the one it was recorded
+# with is **told so** in the provider's own error shape rather than answered wrongly. The
+# port is published for the fixtures leg (`live-slice-fixtures.spec.ts`), which asks it
+# directly; `rest` does not depend on it, because nothing calls a provider until a live run.
+#
+# ---------------------------------------------------------------------------
 # The fourth line, and the sweep it holds still (issue #121, the issues leg).
 # ---------------------------------------------------------------------------
 #
@@ -470,6 +492,26 @@ services:
       # HEAD from the host before it submits — the commit it builds is the host's answer, never a
       # sha copied into the spec. Loopback only, as every port here is.
       - "127.0.0.1:4500:8080"
+    networks:
+      - ouroboros
+    profiles:
+      - full
+
+  provider-fixture:
+    build:
+      context: ./tests/e2e/fixtures/provider-fixture
+    healthcheck:
+      # busybox's wget, for `provider-stub`'s reason.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+      start_interval: 1s
+    ports:
+      # Published, because the fixtures leg replays a turn against it from the host and reads
+      # back what the fixture saw. Loopback only, as every port here is.
+      - "127.0.0.1:4600:8080"
     networks:
       - ouroboros
     profiles:

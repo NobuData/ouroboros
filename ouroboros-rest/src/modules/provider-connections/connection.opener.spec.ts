@@ -58,8 +58,28 @@ describe("ConnectionOpener", () => {
     const { opener: subject, vault } = opener({ envelope: "ouro.v1.sealed" });
     const opened = await subject.open(ORG, ID);
 
-    expect(opened.context).toEqual({ connectionId: ID, config: {}, secret: "sk-opened" });
+    expect(opened.context).toEqual({
+      connectionId: ID,
+      config: {},
+      secret: "sk-opened",
+      baseUrl: null,
+    });
     expect(vault.decryptText).toHaveBeenCalledWith(ORG, ID, "ouro.v1.sealed");
+  });
+
+  it("carries the row's base_url beside the config, for a kind whose schema has no address field (#1314)", async () => {
+    const seeded = opener({
+      row: {
+        id: ID,
+        kind: "anthropic",
+        monthly_cap_cents: null,
+        base_url: "http://provider-fixture:8080",
+      },
+    });
+
+    await expect(seeded.opener.open(ORG, ID)).resolves.toMatchObject({
+      context: { baseUrl: "http://provider-fixture:8080", config: {} },
+    });
   });
 
   it("opens a keyless connection with a null secret", async () => {

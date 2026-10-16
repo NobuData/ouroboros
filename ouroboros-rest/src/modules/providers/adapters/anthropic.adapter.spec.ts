@@ -20,6 +20,7 @@ import {
   AnthropicAdapter,
   PRIORITY_TIER,
   anthropicSupportsThinking,
+  baseOf,
   missingConfiguration,
   normalizeModel,
   priorityTierOf,
@@ -141,6 +142,21 @@ describe("validate's request", () => {
       "x-api-key": ANTHROPIC_SECRET,
       "anthropic-version": ANTHROPIC_VERSION,
     });
+  });
+
+  it("asks a stored address under the reserved baseUrl name, and the default otherwise (#1314)", async () => {
+    // No card field puts `baseUrl` in this config; a caller holding a seeded row's address
+    // may. Nothing else about the request changes, and a trailing slash does not double up.
+    const spy = recordResponses(recordedListing());
+
+    await new AnthropicAdapter().validate(
+      { baseUrl: "http://provider-fixture:8080/" },
+      ANTHROPIC_SECRET,
+    );
+
+    expect(recordedRequest(spy).url).toBe("http://provider-fixture:8080/v1/models?limit=1");
+    expect(baseOf(undefined)).toBe(ANTHROPIC_DEFAULT_BASE_URL);
+    expect(baseOf("")).toBe(ANTHROPIC_DEFAULT_BASE_URL);
   });
 
   it("carries a deadline, so a card cannot be held open by one slow vendor", async () => {
@@ -376,6 +392,19 @@ describe("discoverModels", () => {
     // A workspace's internal identifier is not a provider's business, and a recorded fixture
     // is where sending one would show up.
     expect(url).not.toContain("000000000217");
+  });
+
+  it("lists from the row's own address when the connection carries one (#1314)", async () => {
+    const spy = recordResponses(recordedListing());
+
+    await new AnthropicAdapter().discoverModels({
+      ...connection(),
+      baseUrl: "http://provider-fixture:8080",
+    });
+
+    expect(recordedRequest(spy).url).toBe(
+      `http://provider-fixture:8080/v1/models?limit=${ANTHROPIC_PAGE_SIZE.toString()}`,
+    );
   });
 
   it("falls back to the id when a model publishes no display name", async () => {

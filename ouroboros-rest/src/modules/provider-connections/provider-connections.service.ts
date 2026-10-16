@@ -65,7 +65,11 @@ import type {
 } from "../providers/provider.adapter";
 import { ProviderAdapterError } from "../providers/provider.errors";
 import { ModelPullTracker, type ModelPullRecord } from "../providers/provider.pulls";
-import { CAPABILITY_NOTE_FIELD, type ProviderConfigSchema } from "../providers/provider.config";
+import {
+  BASE_URL_FIELD,
+  CAPABILITY_NOTE_FIELD,
+  type ProviderConfigSchema,
+} from "../providers/provider.config";
 import {
   partitionSubmission,
   secretFieldName,
@@ -571,7 +575,7 @@ export class ProviderConnectionsService {
 
     refuseSubscriptionCredential(body.secret);
 
-    const config = Object.freeze(submissionOf(storedConfigSchema(schema), row));
+    const config = Object.freeze(storedConfigOf(schema, row));
     const validation = await this.checked(adapter, config, body.secret);
 
     const swapped = await this.connections.swapCredential(
@@ -1043,7 +1047,7 @@ export class ProviderConnectionsService {
     hasSecret: boolean;
   }> {
     const schema = adapter.configSchema();
-    const config = Object.freeze(submissionOf(storedConfigSchema(schema), row));
+    const config = Object.freeze(storedConfigOf(schema, row));
     const envelope = await this.connections.envelopeOf(organizationId, row.id);
     const secret =
       envelope === null || envelope === undefined
@@ -1430,6 +1434,33 @@ export class ProviderConnectionsService {
  * @returns The name, or null when the row names nobody or names somebody the map does not
  *   hold — a person deleted since, whose row keeps its provider (V015's set-null).
  */
+/**
+ * A stored connection's settings, as the adapter's `validate` reads them — with the row's
+ * address when the kind's schema declares no field for one.
+ *
+ * `submissionOf` carries across exactly the fields the schema names, so for a kind whose card
+ * has no address field (Anthropic) the row's `base_url` would be dropped and a rotation or a
+ * test would validate against the default endpoint while the facade relays to the seeded one
+ * (DI.5, [#1314](https://github.com/NobuData/ouroboros/issues/1314)). The health checks read
+ * `base_url` off the row already; this keeps the two in step.
+ *
+ * @param schema - The adapter's config schema.
+ * @param row - The connection as stored.
+ * @returns The settings, with `baseUrl` added from the row when the schema did not carry it.
+ */
+function storedConfigOf(
+  schema: ProviderConfigSchema,
+  row: ConnectionRow,
+): Readonly<Record<string, string>> {
+  const config = submissionOf(storedConfigSchema(schema), row);
+
+  if (row.base_url === null || BASE_URL_FIELD in config) {
+    return config;
+  }
+
+  return { ...config, [BASE_URL_FIELD]: row.base_url };
+}
+
 function adderNameOf(names: ReadonlyMap<string, string>, row: ConnectionRow): string | null {
   return row.added_by === null ? null : (names.get(row.added_by) ?? null);
 }

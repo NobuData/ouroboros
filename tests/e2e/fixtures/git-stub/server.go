@@ -1,17 +1,25 @@
 // The e2e suite's git host (#991, AG.7): smart HTTP over the fixture repositories, with one of
 // them behind basic auth.
 //
-// Three things it answers, and nothing else:
+// Four things it answers, and nothing else:
 //
 //	GET  /healthz                         compose's probe
 //	GET  /heads/<owner>/<name>            the repository's HEAD commit, forty hex characters —
 //	                                      what the build test submits as the commit to build
+//	GET  /refs/<owner>/<name>             the repository's branches, `<branch> <sha>` per line —
+//	                                      how a leg sees a pushed run branch without a clone (#1314)
 //	*    /<owner>/<name>.git/...          git's smart HTTP protocol, served by `git http-backend`
 //
 // A repository whose name is in `-private` requires `Authorization: Basic` with the configured
 // user and password; anything else gets a `401` with a `WWW-Authenticate` challenge, which is
 // what makes an anonymous clone of it fail the way GitHub fails one — so the runner's sentence
 // for that case is exercised by a real refusal.
+//
+// **Pushes are served, and judged by the repositories** (#1314, DI.5). Each bare repository is
+// built with `http.receivepack true` and an `update` hook (build-repos.sh) that accepts a ref
+// under `refs/heads/ouro/run-*` and refuses every other one — the default branch first — with a
+// sentence the client prints as a `remote:` line. The server adds nothing to that policy: a
+// push reaches `git http-backend` like a fetch does, and the hook is what decides.
 //
 // Stdlib only. `net/http/cgi` runs `git http-backend` per request, as every smart-HTTP server
 // does; `GIT_HTTP_EXPORT_ALL` lets it serve a bare repository without a `git-daemon-export-ok`
@@ -42,10 +50,14 @@ var repoPath = regexp.MustCompile(`^/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)\.git(/.
 // headPath is `/heads/<owner>/<name>`.
 var headPath = regexp.MustCompile(`^/heads/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)$`)
 
+// refsPath is `/refs/<owner>/<name>`.
+var refsPath = regexp.MustCompile(`^/refs/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)$`)
+
 func main() {
 	root := flag.String("root", "/srv/repos", "where the bare repositories live, as <owner>/<name>.git")
 	listen := flag.String("listen", ":8080", "the address to serve on")
-	private := flag.String("private", envOr("GIT_STUB_PRIVATE", "acme-robotics/helios-console"),
+	private := flag.String("private",
+		envOr("GIT_STUB_PRIVATE", "acme-robotics/helios-console,acme-robotics/helios-greeter"),
 		"comma-separated <owner>/<name> repositories that require basic auth")
 	user := flag.String("user", envOr("GIT_STUB_USER", "x-access-token"), "the basic-auth user")
 	password := flag.String("password", envOr("GIT_STUB_PASSWORD", ""), "the basic-auth password")
@@ -101,6 +113,9 @@ func (s *gitStub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case headPath.MatchString(r.URL.Path):
 		m := headPath.FindStringSubmatch(r.URL.Path)
 		s.head(w, r, m[1], m[2])
+	case refsPath.MatchString(r.URL.Path):
+		m := refsPath.FindStringSubmatch(r.URL.Path)
+		s.refs(w, r, m[1], m[2])
 	case repoPath.MatchString(r.URL.Path):
 		m := repoPath.FindStringSubmatch(r.URL.Path)
 		s.git(w, r, m[1], m[2])
@@ -125,7 +140,26 @@ func (s *gitStub) head(w http.ResponseWriter, r *http.Request, owner, name strin
 	_, _ = w.Write(out)
 }
 
-// git serves the smart HTTP protocol, behind basic auth for a guarded repository.
+// refs answers the repository's branches, one `<branch> <sha>` per line — so a leg can see that a
+// run branch landed (or that the default branch did not move) without cloning anything.
+func (s *gitStub) refs(w http.ResponseWriter, r *http.Request, owner, name string) {
+	dir := filepath.Join(s.root, owner, name+".git")
+	if _, err := os.Stat(dir); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	out, err := exec.Command("git", "--git-dir", dir, "for-each-ref",
+		"--format=%(refname:short) %(objectname)", "refs/heads").Output()
+	if err != nil {
+		http.Error(w, "for-each-ref failed", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	_, _ = w.Write(out)
+}
+
+// git serves the smart HTTP protocol — fetches and pushes alike; the repository's update hook
+// is the push policy — behind basic auth for a guarded repository.
 func (s *gitStub) git(w http.ResponseWriter, r *http.Request, owner, name string) {
 	if s.guarded[owner+"/"+name] && !s.authorized(r) {
 		w.Header().Set("WWW-Authenticate", `Basic realm="git-stub"`)

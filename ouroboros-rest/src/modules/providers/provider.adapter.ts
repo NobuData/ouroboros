@@ -347,6 +347,18 @@ export interface ProviderConnectionContext {
    * rather than an unfinished connection.
    */
   readonly secret: string | null;
+  /**
+   * The address `provider_connections.base_url` carries, or null when the row names none.
+   *
+   * For an adapter whose config schema declares no address field — the Anthropic one, whose
+   * card shows the endpoint as prose — this is the only road by which a stored address reaches
+   * a call, and only a seed writes one for that kind (the e2e suite's recorded provider
+   * fixture, DI.5 [#1314](https://github.com/NobuData/ouroboros/issues/1314)). An adapter with a
+   * `baseUrl` config field keeps reading `config`, where the same column already lands.
+   * Optional so a caller that assembles a context by hand — the conformance kit, a spec — is
+   * not made to say it.
+   */
+  readonly baseUrl?: string | null;
 }
 
 /**

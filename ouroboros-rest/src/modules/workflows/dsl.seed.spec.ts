@@ -36,7 +36,15 @@
  */
 
 import { readFixture } from "./dsl.golden.fixture";
-import { SEED_DOCUMENT_TAGS, seededDocuments, seedText } from "./dsl.seed.fixture";
+import {
+  LIVE_SLICE_DOCUMENT_TAGS,
+  LIVE_SLICE_SEED_PATH,
+  SEED_DOCUMENT_TAGS,
+  liveSliceDocuments,
+  seededDocuments,
+  seededTaskKinds,
+  seedText,
+} from "./dsl.seed.fixture";
 import { validateWorkflowDocument } from "./dsl.validator";
 
 describe("the development seed's workflow definitions", () => {
@@ -73,5 +81,59 @@ describe("the development seed's workflow definitions", () => {
     expect(seededDocuments("standard_fix_v14")[0]).toStrictEqual(
       readFixture("valid/standard-fix.json"),
     );
+  });
+});
+
+/**
+ * The live slice's workflow (DI.5, [#1314](https://github.com/NobuData/ouroboros/issues/1314)):
+ * `R__dev_seed_live_slice.sql` publishes `live-slice` in a workspace of its own, and that issue's
+ * first acceptance criterion is that the document validates. Its two model stages inherit task
+ * kinds the same seed writes, so the code view's `route.task` check resolves them there.
+ */
+describe("the live-slice seed's workflow definition", () => {
+  describe.each(LIVE_SLICE_DOCUMENT_TAGS)("%s — %s", (tag) => {
+    const documents = liveSliceDocuments(tag);
+
+    it("is written in the seed exactly once, or identically each time", () => {
+      expect(documents.length).toBeGreaterThan(0);
+      for (const document of documents.slice(1)) {
+        expect(document).toStrictEqual(documents[0]);
+      }
+    });
+
+    it("is a document this service accepts — schema and structure both", () => {
+      const verdict = validateWorkflowDocument(documents[0]);
+
+      expect(verdict.errors).toStrictEqual([]);
+      expect(verdict.warnings).toStrictEqual([]);
+      expect(verdict.valid).toBe(true);
+    });
+
+    it("inherits only task kinds the slice workspace routes", () => {
+      const kinds = seededTaskKinds(LIVE_SLICE_SEED_PATH);
+      const nodes = (
+        documents[0] as {
+          nodes: { type: string; config: { routing?: { inherit_task?: string } } }[];
+        }
+      ).nodes;
+      const inherited = nodes
+        .filter((node) => node.type === "llm")
+        .map((node) => node.config.routing?.inherit_task);
+
+      expect(kinds).toEqual(["plan", "implement"]);
+      expect(inherited).toEqual(["plan", "implement"]);
+    });
+
+    it("declares exactly the permissions decision L5 allows on every model stage", () => {
+      const nodes = (
+        documents[0] as {
+          nodes: { type: string; config: { permissions?: Record<string, boolean> } }[];
+        }
+      ).nodes;
+
+      for (const node of nodes.filter((candidate) => candidate.type === "llm")) {
+        expect(node.config.permissions).toStrictEqual({ push_fixup: false, touch_ci: false });
+      }
+    });
   });
 });

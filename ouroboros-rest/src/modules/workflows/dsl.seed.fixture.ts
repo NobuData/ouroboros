@@ -23,6 +23,11 @@
  * `V068__workflow_templates.sql` writes the four onboarding tiles' definitions the same way, and
  * `dsl.templates.spec.ts` holds them to the same validator.
  *
+ * **And the live slice** (DI.5, [#1314](https://github.com/NobuData/ouroboros/issues/1314)):
+ * `R__dev_seed_live_slice.sql` publishes `live-slice` in a workspace of its own and routes its two
+ * model stages through task kinds of that workspace's own, so the same two suites read that seed
+ * too — its document for the validator and the printer, its task kinds for the code view's check.
+ *
  * `*.fixture.ts` is left out of the build, so none of this ships.
  */
 
@@ -47,6 +52,12 @@ export const ROUTING_SEED_PATH = resolve(
   "../../../../ouroboros-db/migrations/R__dev_seed_routing.sql",
 );
 
+/** The live-slice seed migration, which publishes `live-slice` and routes its stages (#1314). */
+export const LIVE_SLICE_SEED_PATH = resolve(
+  __dirname,
+  "../../../../ouroboros-db/migrations/R__dev_seed_live_slice.sql",
+);
+
 /**
  * The dollar-quoted tag each document is written under, what it is, and the workflow slug it
  * belongs to.
@@ -61,6 +72,14 @@ export const SEED_DOCUMENT_TAGS = [
   ["deps_refresh_v1", "deps-refresh, the rail's one needs-review loop", "deps-refresh"],
   ["docs_loop_v1", "docs-loop, the rail's shortest", "docs-loop"],
   ["hotfix_p0_v1", "hotfix-p0, the paused loop behind the rail's err-dot", "hotfix-p0"],
+] as const;
+
+/**
+ * The dollar-quoted tag the live-slice seed writes its one document under, what it is, and its
+ * workflow slug — named for `SEED_DOCUMENT_TAGS`' reason.
+ */
+export const LIVE_SLICE_DOCUMENT_TAGS = [
+  ["live_slice_v1", "live-slice, the slice workspace's one published loop (#1314)", "live-slice"],
 ] as const;
 
 /** The migration that ships the onboarding workflow templates (#381). */
@@ -114,6 +133,17 @@ export function seededDocuments(tag: string): unknown[] {
 }
 
 /**
+ * Every document written under one dollar-quoted tag in `R__dev_seed_live_slice.sql`, parsed.
+ *
+ * @param tag - The tag, without its dollar signs.
+ * @returns One parsed document per block, in file order.
+ * @throws {SyntaxError} When a block is not JSON.
+ */
+export function liveSliceDocuments(tag: string): unknown[] {
+  return dollarQuotedDocuments(readFileSync(LIVE_SLICE_SEED_PATH, "utf8"), tag);
+}
+
+/**
  * Every shipped template definition written under one dollar-quoted tag in
  * `V068__workflow_templates.sql`, parsed.
  *
@@ -143,18 +173,20 @@ function dollarQuotedDocuments(sql: string, tag: string): unknown[] {
 }
 
 /**
- * The development workspace's task kinds, in routing-matrix order.
+ * A seeded workspace's task kinds, in routing-matrix order.
  *
- * Read out of the `values` list of `R__dev_seed_routing.sql`'s `insert into ouroboros.task_kinds`,
- * whose rows are `(sort_order, 'name', 'description')`, so a kind added to the seed changes what
- * the suites reading this expect.
+ * Read out of the `values` list of the seed's `insert into ouroboros.task_kinds`, whose rows are
+ * `(sort_order, 'name', 'description')`, so a kind added to the seed changes what the suites
+ * reading this expect. The development workspace's are `R__dev_seed_routing.sql`'s; the live-slice
+ * workspace's (#1314) are written in the same shape by `R__dev_seed_live_slice.sql`.
  *
+ * @param path - The seed migration to read; the routing seed by default.
  * @returns The names, by `sort_order`.
  * @throws {Error} When the statement, or any row of it, cannot be found — a reshaped seed, which is
  *   more useful raised here than read as a matrix with no kinds.
  */
-export function seededTaskKinds(): string[] {
-  const sql = readFileSync(ROUTING_SEED_PATH, "utf8");
+export function seededTaskKinds(path: string = ROUTING_SEED_PATH): string[] {
+  const sql = readFileSync(path, "utf8");
   const statement =
     /insert into ouroboros\.task_kinds\b[\s\S]*?\) as seed \(sort_order, name, description\)/.exec(
       sql,
@@ -162,9 +194,7 @@ export function seededTaskKinds(): string[] {
   const rows = [...(statement?.[0] ?? "").matchAll(/^\s*\((\d+),\s*'([^']+)',/gm)];
 
   if (rows.length === 0) {
-    throw new Error(
-      `No task_kinds rows found in ${ROUTING_SEED_PATH}; has the seed been reshaped?`,
-    );
+    throw new Error(`No task_kinds rows found in ${path}; has the seed been reshaped?`);
   }
 
   return rows

@@ -18,9 +18,12 @@
  * GET    /repos/{o}/{r}/contents/{path}                    one file — a rules-file import's read
  * GET    /repos/{o}/{r}/git/trees/{sha}?recursive=1        the tree — the repo-map generator's read
  * GET    /repos/{o}/{r}/languages                          bytes per language — the detection scan's `languages` probe
- * GET    /repos/{o}/{r}/pulls/{n}                          the merge executor's re-check; a PR sync
+ * GET    /repos/{o}/{r}/pulls · POST                       the draft publisher's look-then-open (#1314)
+ * GET    /repos/{o}/{r}/pulls/{n} · PATCH                  the merge executor's re-check; a PR sync; an edit
  * GET    /repos/{o}/{r}/pulls/{n}/files                    a PR sync whose head moved
  * PUT    /repos/{o}/{r}/pulls/{n}/merge                    the merge itself
+ * POST   /repos/{o}/{r}/git/refs                           a branch created through the API (#1314)
+ * GET    /repos/{o}/{r}/git/ref/heads/{branch}             … and read back
  * DELETE /repos/{o}/{r}/git/refs/heads/{branch}            the merged head branch
  * GET    /repos/{o}/{r}/issues/{n}/comments · POST         a keyed PR comment: look, then post
  * PATCH  /repos/{o}/{r}/issues/comments/{id}               … or edit the one already there
@@ -169,6 +172,10 @@ const SEEDED_REPOS = [
   "acme-robotics/helios-telemetry",
   "acme-robotics/atlas-scheduler",
   "acme-robotics/helios-bootloader",
+  // The live slice's repository (#1314, DI.5) — the same `helios-greeter` the git host serves,
+  // so a run's branch is pushed to one fixture and its pull request opened on this one. Last,
+  // for the fifth's reason: its numbers begin at 11500.
+  "acme-robotics/helios-greeter",
 ];
 
 /**
@@ -280,6 +287,16 @@ let nextCommentId = 1;
 const deletedRefs = new Map();
 
 /**
+ * Branches created through the API (#1314): `owner/repo` to a map of branch name to sha.
+ *
+ * A run's branch normally arrives by a `git push` to the git host, not here — but GitHub's refs
+ * route is what a publisher uses when it creates a branch without a working tree, and recording
+ * one lets a leg prove the creation it asked for. Nothing here checks a sha against a commit:
+ * this host holds no objects.
+ */
+const createdRefs = new Map();
+
+/**
  * The store's key for one PR or one conversation.
  *
  * @param {string} slug `owner/repo`.
@@ -370,6 +387,7 @@ function reset() {
   pulls.clear();
   comments.clear();
   deletedRefs.clear();
+  createdRefs.clear();
   nextCommentId = 1;
 
   const opened = new Date().toISOString();
@@ -667,7 +685,7 @@ function pullPayload(pull) {
     title: pull.title,
     body: pull.body,
     state: pull.state,
-    draft: false,
+    draft: pull.draft === true,
     merged: pull.merged,
     merged_at: pull.mergedAt,
     merged_by: pull.mergedBy === null ? null : { login: pull.mergedBy },
@@ -971,6 +989,84 @@ async function handle(request, response) {
   }
 
   // ------------------------------------------------------------------ pull requests
+  // GET /repos/{o}/{r}/pulls — the listing `createPR` looks at before it opens one, newest
+  // first, filtered as GitHub filters it: `state` (open by default, `all` for every one), `base`,
+  // and `head` spelled `owner:branch`.
+  if (rest[0] === "pulls" && rest.length === 1 && method === "GET") {
+    const state = url.searchParams.get("state") ?? "open";
+    const base = url.searchParams.get("base");
+    const head = url.searchParams.get("head");
+    const headRef = head === null ? null : head.slice(head.indexOf(":") + 1);
+    const listed = [...pulls.values()]
+      .filter((pull) => pull.slug === slug)
+      .filter((pull) => state === "all" || pull.state === state)
+      .filter((pull) => base === null || pull.baseRef === base)
+      .filter((pull) => headRef === null || pull.headRef === headRef)
+      .sort((a, b) => b.number - a.number);
+
+    json(response, 200, listed.map(pullPayload));
+    return;
+  }
+
+  // POST /repos/{o}/{r}/pulls — open one (#1314): the draft publisher's second call. GitHub's
+  // rules, as it states them: a head that is the base, or a head that already has an open PR,
+  // is `422 Validation Failed`; otherwise the PR takes the next number of the repository's one
+  // counter, which issues and pull requests share.
+  if (rest[0] === "pulls" && rest.length === 1 && method === "POST") {
+    const head = typeof body.head === "string" ? body.head.slice(body.head.indexOf(":") + 1) : "";
+    const base = typeof body.base === "string" ? body.base : "";
+    const title = typeof body.title === "string" ? body.title : "";
+    const duplicate = [...pulls.values()].some(
+      (pull) => pull.slug === slug && pull.state === "open" && pull.headRef === head,
+    );
+
+    if (head === "" || base === "" || title === "" || head === base || duplicate) {
+      json(response, 422, {
+        message: "Validation Failed",
+        errors: [
+          {
+            resource: "PullRequest",
+            code: duplicate ? "custom" : "invalid",
+            message: duplicate
+              ? `A pull request already exists for ${parts[1]}:${head}.`
+              : "head, base and title are required, and head may not be base",
+          },
+        ],
+      });
+      return;
+    }
+
+    const pull = {
+      slug,
+      number: repo.nextNumber,
+      title,
+      body: typeof body.body === "string" ? body.body : null,
+      headRef: head,
+      headSha:
+        createdRefs.get(slug)?.get(head) ??
+        createHash("sha1").update(`${slug}:${head}`).digest("hex"),
+      baseRef: base,
+      draft: body.draft === true,
+      files: [],
+      state: "open",
+      mergeable: true,
+      merged: false,
+      mergedAt: null,
+      mergedBy: null,
+      mergeCommitSha: null,
+      mergeMethod: null,
+      commitTitle: null,
+      commitMessage: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    repo.nextNumber += 1;
+    pulls.set(keyOf(slug, pull.number), pull);
+    json(response, 201, pullPayload(pull));
+    return;
+  }
+
   if (rest[0] === "pulls" && rest.length >= 2) {
     const pull = pulls.get(keyOf(slug, rest[1]));
 
@@ -981,6 +1077,23 @@ async function handle(request, response) {
 
     // GET /repos/{o}/{r}/pulls/{n} — the PR as it stands.
     if (rest.length === 2 && method === "GET") {
+      json(response, 200, pullPayload(pull));
+      return;
+    }
+
+    // PATCH /repos/{o}/{r}/pulls/{n} — an edit (#1314): the title, the body, a close or a reopen,
+    // and the draft flag. A merged PR is GitHub's `422`: nothing about it may change.
+    if (rest.length === 2 && method === "PATCH") {
+      if (pull.merged) {
+        json(response, 422, { message: "Validation Failed" });
+        return;
+      }
+
+      if (typeof body.title === "string") pull.title = body.title;
+      if (typeof body.body === "string" || body.body === null) pull.body = body.body;
+      if (body.state === "open" || body.state === "closed") pull.state = body.state;
+      if (typeof body.draft === "boolean") pull.draft = body.draft;
+      pull.updatedAt = now;
       json(response, 200, pullPayload(pull));
       return;
     }
@@ -1025,6 +1138,46 @@ async function handle(request, response) {
     return;
   }
 
+  // POST /repos/{o}/{r}/git/refs — a branch created through the API (#1314). GitHub's shape:
+  // `ref` is the full name, `sha` the commit; creating one that exists is `422 Reference already
+  // exists`. A branch a merge deleted may be created again.
+  if (rest[0] === "git" && rest[1] === "refs" && rest.length === 2 && method === "POST") {
+    const ref = typeof body.ref === "string" ? body.ref : "";
+    const sha = typeof body.sha === "string" ? body.sha : "";
+    const branch = ref.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : "";
+    const held = createdRefs.get(slug) ?? new Map();
+
+    if (branch === "" || sha === "") {
+      json(response, 422, { message: "Validation Failed" });
+      return;
+    }
+
+    if (held.has(branch)) {
+      json(response, 422, { message: "Reference already exists" });
+      return;
+    }
+
+    held.set(branch, sha);
+    createdRefs.set(slug, held);
+    deletedRefs.get(slug)?.delete(branch);
+    json(response, 201, { ref, object: { sha, type: "commit" } });
+    return;
+  }
+
+  // GET /repos/{o}/{r}/git/ref/heads/{branch} — one created branch read back, or `404 Not Found`.
+  if (rest[0] === "git" && rest[1] === "ref" && rest[2] === "heads" && rest.length > 3) {
+    const branch = rest.slice(3).map(decodeURIComponent).join("/");
+    const sha = createdRefs.get(slug)?.get(branch);
+
+    if (method !== "GET" || sha === undefined) {
+      json(response, 404, { message: "Not Found" });
+      return;
+    }
+
+    json(response, 200, { ref: `refs/heads/${branch}`, object: { sha, type: "commit" } });
+    return;
+  }
+
   // DELETE /repos/{o}/{r}/git/refs/heads/{branch} — a branch may hold slashes, so the rest of the
   // path is the name. Deleting one twice is GitHub's `422 Reference does not exist`.
   if (rest[0] === "git" && rest[1] === "refs" && rest[2] === "heads" && rest.length > 3) {
@@ -1043,6 +1196,7 @@ async function handle(request, response) {
 
     deleted.add(branch);
     deletedRefs.set(slug, deleted);
+    createdRefs.get(slug)?.delete(branch);
     response.writeHead(204, {
       "x-ratelimit-limit": RATE_LIMIT.toString(),
       "x-ratelimit-remaining": (RATE_LIMIT - 1).toString(),

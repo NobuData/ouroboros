@@ -97,9 +97,9 @@ interface Harness {
  *
  * @returns The service and every piece a test drives or inspects.
  */
-function harness(): Harness {
+function harness(schema = FAKE_CONFIG_SCHEMA): Harness {
   const { vault } = inMemoryVault();
-  const adapter = new FakeModelProviderAdapter({ kind: "anthropic" });
+  const adapter = new FakeModelProviderAdapter({ kind: "anthropic", schema });
   const registry = new ModelProviderRegistry([adapter]);
   // The fake counts its calls; what several assertions need is *what it was called with*, and
   // a spy over the real method records that without the fake growing a second memory.
@@ -823,6 +823,32 @@ describe("rotating a credential", () => {
     await expect(
       service.rotate(FIXTURE_WORKSPACE, FIXTURE_ACTOR, FIXTURE_CONNECTION, { secret: "x" }),
     ).rejects.toMatchObject({ response: { code: "provider_credential_absent" } });
+  });
+
+  it("validates at the row's address when the card declares no address field (#1314)", async () => {
+    // The Anthropic card has no Base URL field, so `submissionOf` carries no address across —
+    // and the e2e suite's seeded fixture connection (`R__dev_seed_live_slice.sql`) is reached
+    // only through the row's `base_url`. The new key must be checked where the facade will
+    // relay to, not at the default endpoint.
+    const keyOnly = {
+      ...FAKE_CONFIG_SCHEMA,
+      properties: { apiKey: FAKE_CONFIG_SCHEMA.properties.apiKey },
+      required: [],
+    };
+    const seeded = harness(keyOnly);
+    seeded.connections.find.mockResolvedValue(
+      connectionRow({ base_url: "http://provider-fixture:8080" }),
+    );
+    seeded.connections.envelopeOf.mockResolvedValue(null);
+    seeded.connections.swapCredential.mockResolvedValue(connectionRow());
+
+    await seeded.service.rotate(FIXTURE_WORKSPACE, FIXTURE_ACTOR, FIXTURE_CONNECTION, {
+      secret: "ouro-e2e-live-slice",
+    });
+
+    expect(seeded.adapter.calls.validate).toBe(1);
+    const [config] = seeded.validate.mock.calls[0];
+    expect(config).toEqual({ baseUrl: "http://provider-fixture:8080" });
   });
 
   it("rotates onto a connection whose optional credential was absent", async () => {

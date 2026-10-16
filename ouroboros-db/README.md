@@ -2249,7 +2249,7 @@ There is deliberately no `scripts/clean`.
 organizations and mockup 02's dashboard, number for number — so a UI has something to
 render and an e2e test has something to assert against by name.
 
-It is **fifteen migrations**, because they answer fifteen questions and change on different
+It is **sixteen migrations**, because they answer sixteen questions and change on different
 days:
 
 | File | Holds | Issue |
@@ -2269,6 +2269,7 @@ days:
 | [`R__dev_seed_verification.sql`](migrations/R__dev_seed_verification.sql) | *What the PR has to show before it merges* — mockup 12's PR `#514`, the outcome of `#482`: revision 1 at `3f9c2ae` blocked (test suite and HIL red on Build 3's `2.4%`) and revision 2 at `b7e41d0` live at `5 / 7` green, with `model_review` `unavailable` and `human_approval` `not_required`; seven gates from the `standard-fix@v14` pin, each verdict's line composed from the row its `evidence_ref` cites; a fourth test attempt (Build 4, `63/63`, overshoot `1.7%`) and two finished `forge-01` builds for those citations; five criteria (four verified with typed evidence, one waived against the AS.4 thermal waiver it seeds); three thread entries, both model rows `simulated`; the unarmed squash plan with V058's template message; and two ledger rows that bring the loop to `284k · $1.52`, `41k · $0.19` of it tagged `verify`. **Every figure is computed** — the aggregate by `pr_gate_aggregate()`, `+68 −15 · 3 files` from the snapshot, which is the console's change-set — and the header records the six places the PR's later chapter moves mockups 02, 08, 10 and 11 | [#356](https://github.com/NobuData/ouroboros/issues/356) |
 | [`R__dev_seed_workspace_knowledge.sql`](migrations/R__dev_seed_workspace_knowledge.sql) | *What it has learned* — mockup 14's Knowledge page: six skills (the `hil-safety` lock is `required = true`, the tinted `power-budget-checks` is `draft = true`, `repo-map` is `origin = generated` with sixty nightly versions), five facts (two confirmed, two proposed from run `#482` and PR `#514`, one expired on the *Zephyr 4.1 migration* with its whole transition history), three playbooks and the helios-firmware environment recipe at v3. **No usage figure is stored**: 51 `context_injections` rows are written instead, and `used 48×`, `61% of runs`, `every run`, `every PR`, `physical tests`, `—` and `was used 31×` (a `count(*)` snapshot taken in the expiring statement) are counted from them; `run 9×` / `14×` / `3×` are 26 launches, five of them older `CVE bump` runs inserted here beyond every dashboard window. **One finished launch carries its workflow pin** — `#471`, under its playbook's `standard-fix` v14 — because a playbook is learned from a *terminal* run's pin and the only pinned run was the live `#482` ([#422](https://github.com/NobuData/ouroboros/issues/422)). The header records the eight decisions taken on the two issues | [#409](https://github.com/NobuData/ouroboros/issues/409) |
 | [`R__dev_seed_onboarding.sql`](migrations/R__dev_seed_onboarding.sql) | *Where a team starts* — mockup 13's mid-wizard moment, in a **fourth workspace of its own**, `acme-onboarding`: an active GitHub source and an enabled `helios-firmware` (steps 1–2 derive *done*), `quick-fixes` selected with no workflow instantiated (step 3 *active*), `#488` picked and not queued (step 4 *todo*) — no step status is stored anywhere; one 38 s detection scan with BB.1's six rows and their evidence; `boot/**` and `keys/**` suggested; three merged runs so *Deep refactor* computes as locked at `3 of 10`; the intake seed's nine issues and estimates mirrored by query; and `dry_run` on | [#383](https://github.com/NobuData/ouroboros/issues/383) |
+| [`R__dev_seed_live_slice.sql`](migrations/R__dev_seed_live_slice.sql) | *The first live loop, end to end* — the thin vertical slice's workspace, a **fifth of its own**, `acme-live-slice`: the published `live-slice` workflow (plan → implement → build → gate → open a pull request, in DSL v1), `plan` and `implement` routed to a keyless Anthropic-format connection addressed at the e2e stack's recorded provider fixture, the git fixture's `helios-greeter` with its one XS issue and ticket, the slice as a tile of the workspace's own, and `dry_run` on. Nothing runs and nothing is queued: that is the acceptance leg's to do | [#1314](https://github.com/NobuData/ouroboros/issues/1314) |
 
 > **The names are load-bearing.** Flyway applies repeatable migrations in the order of
 > their *descriptions*, and every row the later seeds write finds its parent by natural key —
@@ -2590,7 +2591,9 @@ each id from the rail's ordinal and the version number, with `…0000000000` for
 which is a version a row does not have. The planning seed takes the seven after those —
 `5eed001d…` tickets, `5eed001e…` dependencies, `5eed001f…` epics, `5eed0020…` epic links,
 `5eed0021…` the batch, `5eed0022…` drafts and `5eed0023…` their estimates — suffixed by issue
-number, sort order or draft ordinal.
+number, sort order or draft ordinal. The live-slice seed (#1314) takes sixteen prefixes of its
+own, `5eed009e…` through `5eed00ad…`, one per table it writes, so that a count any other seed's
+assertions make over its prefix is not moved by a fifth workspace.
 
 **Neither can run against anything but a development database.** Each statement in either
 seed ends `and ${ouro_dev_seed}`, a Flyway placeholder that is `false` in
@@ -2781,6 +2784,35 @@ V067), so the seed writes the subsystem rows and the rail is what they add up to
 >
 > **The four tiles are not seeded.** They ship with V068 as global rows and are in every
 > migrated database.
+
+#### The first live loop, end to end
+
+[`R__dev_seed_live_slice.sql`](migrations/R__dev_seed_live_slice.sql)
+([#1314](https://github.com/NobuData/ouroboros/issues/1314), DI.5) is the thin vertical slice's
+workspace, and the second seed not drawn in `acme-robotics`. It creates a fifth workspace,
+`acme-live-slice`, owned by Ken, because V016 makes a route unique per task kind per workspace
+and `acme-robotics` already routes `plan` and `implement` to mockup 06's chains — the slice needs
+both to resolve to an alias on the e2e stack's recorded provider fixture, in a workspace whose
+rail, cards, registry and matrix no mockup or baseline is drawn from.
+
+| Row | Value |
+|---|---|
+| Workspace | `acme-live-slice` — *Acme Live Slice*, shared; Ken is its owner and only member |
+| GitHub | the account `acme-robotics` a third time, with `helios-greeter` enabled on `main` — the git fixture's third repository (`tests/e2e/fixtures/git-stub`) and the sandbox tracker's sixth; one `active` source, sealed placeholder credential |
+| Issue | `#1` *greet: the exclamation mark is missing*, open, labelled `live-slice`, sized XS over `bin/greet` with `live-slice` suggested; its canonical ticket, nothing queued, no run |
+| Provider | one `anthropic` connection, *Anthropic · recorded fixture*, `base_url` `http://provider-fixture:8080`, **no credential**, `unknown` and never checked — the e2e leg sets the fixture's key through the rotate route |
+| Routing | `slice-planner` → `claude-sonnet-4-5` and `slice-coder` → `claude-sonnet-4-5-20250929` on that connection; kinds `plan` and `implement` (V142's and V144's two arrive by trigger); `plan-primary` and `implement-primary`, one hop each |
+| Workflow | `live-slice` at v1, in force, no draft: `issue-queued` → `plan` (llm) → `implement` (llm) → `build` (infra, `pool-a`, `sh tests/check.sh`) → `gate` (`checks all_passed [build]`, loop edge back to `implement`) → `open-pr` (`open_pr_automerge`, squash) |
+| Tile | `live-slice` v1, **the workspace's own** (`organization_id` set), sort order 5 after the four shipped globals, definition read back from the version row |
+| Policy | `org_policies.dry_run = true`, nobody's name on it |
+
+> **The slice is written in the language as it stands** (DSL v1). `implement` is an `llm` stage
+> because the engine runs every model stage under the executor it registered — the Claude Agent
+> harness, which hard-codes decision L5 — so `push_fixup: false, touch_ci: false` is exactly the
+> permission set L5 allows. The gate is the build's exit status spelled as `checks`; the loop edge
+> with `max_retries: 1` is the one retry. The terminal is `open_pr_automerge` and the pull request
+> opens as a **draft** because the workspace's policy is dry-run, which live admission requires
+> (decision L7). The seed's header records all four decisions.
 
 #### Who may do what, and where the record goes
 
@@ -3950,6 +3982,7 @@ ouroboros-db/
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
 │   ├── R__dev_seed_farm.sql          # mockup 08's fleet, builds and live log, dev only — #249 (sorts after the above)
 │   ├── R__dev_seed_intake.sql        # mockup 03's backlog and its estimates, dev only — #103 (sorts after the above)
+│   ├── R__dev_seed_live_slice.sql    # the live slice's workspace acme-live-slice — the published live-slice workflow, routing to the recorded provider fixture, helios-greeter and its issue, the tile, dry-run on, dev only — #1314 (sorts after intake)
 │   ├── R__dev_seed_onboarding.sql    # mockup 13 mid-wizard, in its own workspace acme-onboarding, dev only — #383 (sorts after intake)
 │   ├── R__dev_seed_providers.sql     # mockup 07's connections and meters, dev only — #221
 │   ├── R__dev_seed_research.sql      # mockup 22 — RS-127, its 44-source ledger (five featured verbatim), brief v1 and its estimate vs actuals, dev only — #609, #622, #613

@@ -87,6 +87,76 @@ describe("relayMessages", () => {
       errorClass: "network",
     });
   });
+
+  it("relays to the row's own address when the connection carries one (#1314)", async () => {
+    // The e2e suite's recorded provider fixture is a seeded `anthropic` connection whose
+    // `base_url` is the fixture container; the facade must reach it through the same code
+    // path a real key takes. A trailing slash on the stored address must not double the path.
+    const spy = recordResponses(streamedResponse(ANTHROPIC_INVOCATION_STREAM));
+
+    await new AnthropicAdapter().relayMessages(
+      { ...CONTEXT, baseUrl: "http://provider-fixture:8080/" },
+      {
+        path: "/v1/messages",
+        body: { model: "claude-sonnet-4-5", stream: true },
+        headers: {},
+        signal: new AbortController().signal,
+      },
+    );
+
+    const { url, init } = recordedRequest(spy);
+    expect(url).toBe("http://provider-fixture:8080/v1/messages");
+    expect((init.headers as Record<string, string>)["x-api-key"]).toBe(ANTHROPIC_SECRET);
+  });
+
+  it("relays to api.anthropic.com when the row names no address", async () => {
+    const spy = recordResponses(streamedResponse(ANTHROPIC_INVOCATION_STREAM));
+
+    await new AnthropicAdapter().relayMessages(
+      { ...CONTEXT, baseUrl: null },
+      {
+        path: "/v1/messages",
+        body: { model: "m" },
+        headers: {},
+        signal: new AbortController().signal,
+      },
+    );
+
+    expect(recordedRequest(spy).url).toBe("https://api.anthropic.com/v1/messages");
+  });
+});
+
+describe("invoke", () => {
+  it("opens the stream at the row's own address when the connection carries one (#1314)", async () => {
+    const spy = recordResponses(streamedResponse(ANTHROPIC_INVOCATION_STREAM));
+
+    for await (const chunk of new AnthropicAdapter().invoke(
+      { ...CONTEXT, baseUrl: "http://provider-fixture:8080" },
+      {
+        modelId: "claude-sonnet-4-5",
+        payload: { messages: [{ role: "user", content: "hi" }] },
+        signal: new AbortController().signal,
+      },
+    )) {
+      void chunk;
+    }
+
+    expect(recordedRequest(spy).url).toBe("http://provider-fixture:8080/v1/messages");
+  });
+
+  it("opens the stream at api.anthropic.com otherwise", async () => {
+    const spy = recordResponses(streamedResponse(ANTHROPIC_INVOCATION_STREAM));
+
+    for await (const chunk of new AnthropicAdapter().invoke(CONTEXT, {
+      modelId: "claude-sonnet-4-5",
+      payload: { messages: [{ role: "user", content: "hi" }] },
+      signal: new AbortController().signal,
+    })) {
+      void chunk;
+    }
+
+    expect(recordedRequest(spy).url).toBe("https://api.anthropic.com/v1/messages");
+  });
 });
 
 describe("relayed", () => {
