@@ -53,11 +53,38 @@ The commits are not signed. The run console's commit list shows the same commits
 administrator can configure and what Ouroboros refuses to push, see
 [What Ouroboros writes to your repository](../administration/live-execution.mdx#what-ouroboros-writes-to-your-repository).
 
+### The draft pull request a loop opens
+
+When a live run reaches its pull-request stage, Ouroboros opens a pull request from the run's
+branch into your default branch, through the ticket source that holds the issue. It is
+**always a draft**: a draft cannot merge, and your host does not ask code owners to review it
+until someone marks it ready. Its title is the issue's title, and its description says:
+
+- *Opened by an Ouroboros loop under dry-run policy. This is a draft: nothing merges on its
+  own.*
+- **Run:** the loop, linked to its run console, with the workflow version and the model alias.
+- **Summary:** the issue's title, the stages that passed, and any correction rounds.
+- **Acceptance criteria:** each claim from the issue's plan, unchecked and marked *unverified,
+  no evidence yet* — or *No acceptance criteria were imported.*
+- **Build:** the run's latest farm job with its pool, status and exit code — or *Build: none
+  ran for this run.* — and a **Run console** link.
+- **Cost:** the run's spend and tokens.
+- `Refs #<issue>` — not a closing keyword, so merging the pull request does not close the issue
+  by itself.
+
+The pull request is mirrored into Ouroboros at once, linked to its run, and its criteria are
+imported into the [criteria matrix](#does-the-pr-do-what-the-ticket-says), where you attach the
+evidence. Its gates are the same gates any pull request has. If the run's last stage runs
+again, it finds the same pull request rather than opening a second one.
+
+<Screenshot id="user-guide.pr.loop-draft" />
+
 ## The header
 
 The header reads **PR Verification · PR #514 · Revision 2**, then the pull request's title,
 the loop and issue it came from, and its state with a gate count — such as
-**verifying — 5 of 7 gates green**. The state is one of:
+**verifying — 5 of 7 gates green**. A pull request your host holds as a draft also shows a
+**Draft** tag — every pull request a loop opens does. The state is one of:
 
 - **verifying** — gates are being evaluated on the latest revision.
 - **armed** — a merge is set to happen once every required gate is green.
@@ -241,3 +268,7 @@ The merge is made with your workspace's configured token, not a bot account.
   works while a required gate is red.
 - **"This pull request does not exist."** The link belongs to another workspace — check the
   workspace in the header.
+- **A live run failed at its pull-request stage.** The run console names why: the host refused
+  to open the pull request as a draft (its own message is quoted), no GitHub ticket source can
+  open pull requests for the issue, or the branch was never pushed. Ouroboros never falls back to a ready pull request. Fix the cause and run the
+  issue again.

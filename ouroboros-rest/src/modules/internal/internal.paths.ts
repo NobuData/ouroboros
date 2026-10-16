@@ -129,6 +129,12 @@ export const RUN_BUILD_ROUTE = ":id/builds/:jobId";
 /** Route segment of cancelling one of a run's builds, relative to {@link RUNS_PATH} (#265). */
 export const RUN_BUILD_CANCEL_ROUTE = ":id/builds/:jobId/cancel";
 
+/**
+ * Route segment of opening a run's draft pull request, relative to {@link RUNS_PATH} (DI.3,
+ * #1311): the refusals, then the PR — always a draft — linked to the run.
+ */
+export const RUN_PULL_REQUEST_ROUTE = ":id/pull-request";
+
 /** The lease, as the engine calls it: `/internal/credentials/lease`. */
 export const INTERNAL_LEASE_PATH = `/${CREDENTIALS_PATH}/${LEASE_ROUTE}`;
 
@@ -188,6 +194,9 @@ export const INTERNAL_RUN_BUILD_PATH = `/${RUNS_PATH}/${RUN_BUILD_ROUTE}`;
 
 /** Cancelling one of a run's builds: `/internal/runs/:id/builds/:jobId/cancel` (#265). */
 export const INTERNAL_RUN_BUILD_CANCEL_PATH = `/${RUNS_PATH}/${RUN_BUILD_CANCEL_ROUTE}`;
+
+/** Opening one run's draft pull request: `/internal/runs/:id/pull-request` (#1311). */
+export const INTERNAL_RUN_PULL_REQUEST_PATH = `/${RUNS_PATH}/${RUN_PULL_REQUEST_ROUTE}`;
 
 /**
  * The research tool surface's controller path (CL.1,
@@ -346,6 +355,7 @@ export const INTERNAL_PATHS = [
   INTERNAL_RUN_BUILDS_PATH,
   INTERNAL_RUN_BUILD_PATH,
   INTERNAL_RUN_BUILD_CANCEL_PATH,
+  INTERNAL_RUN_PULL_REQUEST_PATH,
   INTERNAL_RESEARCH_TOOL_PATH,
   INTERNAL_INVESTIGATION_START_PATH,
   INTERNAL_INVESTIGATION_CHECKPOINT_PATH,

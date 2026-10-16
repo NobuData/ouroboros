@@ -1812,7 +1812,7 @@ e2e: enroll ✓ · presence ✓ · drain ✓ · revoke ✓ · read-only ✓ · t
 > branch, submits the stage attempt through `POST /internal/runs/:id/builds` (pool from the
 > stage's `runner_pool`, command split into argv, commit as pushed; REST builds the run's own
 > repository at its own branch through `FarmJobsService.submitForRun`, writing `run_id`,
-> `stage_key` and `stage_attempt` — V152 — and reserving the job, so the run is `building`
+> `stage_key` and `stage_attempt` — V153 — and reserving the job, so the run is `building`
 > until the job completes). It reads the job's real lifecycle (`GET …/builds/:jobId`, followed
 > down the retry chain) into the transcript and the console's stepper, with a **Build log ↗**
 > that opens the farm's log sheet. The exit code is the stage's check; a `require` gate judges

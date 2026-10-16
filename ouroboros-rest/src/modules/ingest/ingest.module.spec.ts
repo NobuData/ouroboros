@@ -94,6 +94,8 @@ describe("the ingestion module", () => {
       "CodeModule",
       "GithubModule",
       "AuditModule",
+      "PullRequestsModule",
+      "TicketSourcesModule",
       "ScheduleModule",
     ]);
   });

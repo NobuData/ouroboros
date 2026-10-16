@@ -69,7 +69,9 @@ import { ProtectedPathEmitter } from "../guardrails/protected-path.emitter";
 import { EngineModule } from "../engine/engine.module";
 import { GithubModule } from "../github/github.module";
 import { GatesModule } from "../pull-requests/gates/gates.module";
+import { PullRequestsModule } from "../pull-requests/pull-requests.module";
 import { CodeModule } from "../research/code/code.module";
+import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
 import { IngestController } from "./ingest.controller";
 import { IngestRepository } from "./ingest.repository";
 import { IngestService } from "./ingest.service";
@@ -80,6 +82,9 @@ import { RunExecutionController } from "./run-execution.controller";
 import { RunExecutionRepository } from "./run-execution.repository";
 import { RunExecutionService } from "./run-execution.service";
 import { RunNeedsHumanEmitter } from "./run-needs-human.emitter";
+import { RunPullRequestController } from "./run-pull-request.controller";
+import { RunPullRequestRepository } from "./run-pull-request.repository";
+import { RunPullRequestService } from "./run-pull-request.service";
 import { RunPushController } from "./run-push.controller";
 import { RunPushRepository } from "./run-push.repository";
 import { RunPushService } from "./run-push.service";
@@ -103,9 +108,19 @@ import { SpendApprovalEmitter } from "./spend-approval.emitter";
     // protected-branch read through its client, and the push's audit rows.
     GithubModule,
     AuditModule,
+    // The draft PR publisher (DI.3, #1311): the PR plane's opener, sync and plan-criteria import,
+    // and the providers by kind — whether a source can open pull requests at all.
+    PullRequestsModule,
+    TicketSourcesModule,
     ScheduleModule.forRoot(),
   ],
-  controllers: [IngestController, QueueClaimController, RunExecutionController, RunPushController],
+  controllers: [
+    IngestController,
+    QueueClaimController,
+    RunExecutionController,
+    RunPushController,
+    RunPullRequestController,
+  ],
   providers: [
     IngestRepository,
     IngestService,
@@ -118,6 +133,8 @@ import { SpendApprovalEmitter } from "./spend-approval.emitter";
     RunExecutionService,
     RunPushRepository,
     RunPushService,
+    RunPullRequestRepository,
+    RunPullRequestService,
     RunSupervisor,
   ],
 })

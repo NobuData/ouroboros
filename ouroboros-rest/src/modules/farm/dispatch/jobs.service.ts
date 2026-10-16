@@ -15,7 +15,7 @@
  * build stage submits through it (`POST /internal/runs/:id/builds`, `runs/builds/`) rather than
  * through a second dispatch path. It takes the same request as the route, plus the loop run the
  * build belongs to, which it writes to `build_jobs.run_id` — V040's composite key then refuses a
- * run of any other workspace — and the stage and attempt it builds for (V152).
+ * run of any other workspace — and the stage and attempt it builds for (V153).
  * `jobs.service.spec.ts` holds it to the same rules as the route.
  *
  * **What a submission snapshots.** The pool's executor and image, and the command — the
@@ -113,7 +113,7 @@ export class FarmJobsService {
    * @param runId - The run the build belongs to, written to `build_jobs.run_id`.
    * @param request - As {@link submit}.
    * @param stage - The workflow stage and attempt it builds for, written to
-   *   `build_jobs.stage_key` and `stage_attempt` (V152); absent for a build tied to the run but
+   *   `build_jobs.stage_key` and `stage_attempt` (V153); absent for a build tied to the run but
    *   to no stage.
    * @returns The job, `queued`.
    * @throws As {@link submit}.

@@ -43,7 +43,7 @@ export class SubmitRunBuildDto extends FencedRequestDto {
 
   /**
    * The stage's attempt. With the run and the stage it names one submission
-   * (`build_jobs_run_stage_key`, V152): resending it answers the job it already created.
+   * (`build_jobs_run_stage_key`, V153): resending it answers the job it already created.
    */
   @Max(MAX_STAGE_ATTEMPT)
   @Min(1)

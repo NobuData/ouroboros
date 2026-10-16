@@ -1651,6 +1651,13 @@ export interface PullRequestsTable {
    * `never`.
    */
   origin: ColumnType<DataOrigin, DataOrigin | undefined, never>;
+  /**
+   * Whether the host holds it as a draft (V152, DI.3
+   * [#1311](https://github.com/NobuData/ouroboros/issues/1311)) — sync-owned, written from the
+   * host's PR on every sync, and set true by the draft publisher when it links a loop-opened PR to
+   * its run. `default false`.
+   */
+  draft: Generated<boolean>;
 }
 
 /**
@@ -2336,9 +2343,10 @@ export type RunIngestOperation =
   | "run.commits"
   | "run.resources"
   | "run.finish"
-  | "run.push_result";
+  | "run.push_result"
+  | "run.pull_request";
 
-/** The eight, in the order the contract performs them — what a DTO validates and a test iterates. */
+/** The nine, in the order the contract performs them — what a DTO validates and a test iterates. */
 export const RUN_INGEST_OPERATIONS = [
   "run.create",
   "run.stage_transition",
@@ -2348,6 +2356,7 @@ export const RUN_INGEST_OPERATIONS = [
   "run.resources",
   "run.finish",
   "run.push_result",
+  "run.pull_request",
 ] as const satisfies readonly RunIngestOperation[];
 
 /**
@@ -5614,12 +5623,12 @@ export interface BuildJobsTable {
    */
   origin: ColumnType<DataOrigin, DataOrigin | undefined, never>;
   /**
-   * The run's workflow stage this job builds for — `run_stages.stage_key` (V152, AJ.3
+   * The run's workflow stage this job builds for — `run_stages.stage_key` (V153, AJ.3
    * [#265](https://github.com/NobuData/ouroboros/issues/265)). Null for every job no build stage
    * submitted; copied onto an automatic retry.
    */
   stage_key: ColumnType<string | null, string | null | undefined, never>;
-  /** The attempt of `stage_key` it builds for, 1-based; set with `stage_key` or not at all (V152). */
+  /** The attempt of `stage_key` it builds for, 1-based; set with `stage_key` or not at all (V153). */
   stage_attempt: ColumnType<number | null, number | null | undefined, never>;
 }
 

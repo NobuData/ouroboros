@@ -101,6 +101,8 @@ export interface PrHeadRow {
   readonly syncedAt: Date | null;
   /** `pull_requests.origin` (V141). */
   readonly origin: DataOrigin;
+  /** `pull_requests.draft` (V152, #1311) — the host holds it as a draft. */
+  readonly draft: boolean;
   readonly run: PrRunRow | null;
   readonly ticket: PrTicketRow | null;
 }
@@ -571,6 +573,7 @@ export class PageRepository implements PageStore {
         "p.updated_at",
         "p.synced_at",
         "p.origin",
+        "p.draft",
         "r.id as run_id",
         "r.loop_seq",
         "r.issue_number",
@@ -609,6 +612,7 @@ export class PageRepository implements PageStore {
           updatedAt: row.updated_at,
           syncedAt: row.synced_at,
           origin: row.origin,
+          draft: row.draft,
           run:
             row.run_id === null
               ? null

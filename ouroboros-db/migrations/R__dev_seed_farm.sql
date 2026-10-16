@@ -77,7 +77,7 @@
 -- deliberately shared: **`#479`**, the live build on `forge-01`, is the same story as the
 -- dashboard seed's run `#479` — same title, same repository — because both seeds are drawn from
 -- one universe (the coordination #328 extends). Since AJ.3 (#265) the two are **linked**: the
--- job is that run's `build` stage on the farm (`run_id`, `stage_key`, `stage_attempt`, V152),
+-- job is that run's `build` stage on the farm (`run_id`, `stage_key`, `stage_attempt`, V153),
 -- which is what backs the dashboard's `building` and the run console's *#479 · building on
 -- forge-01*. Decision **B6** made loop attribution AJ.3's; AJ.3 is now the product's path to
 -- this state, so the seed may show it.
@@ -645,7 +645,7 @@ on conflict do nothing;
 --
 -- The LIVE card's build and the dashboard's `building` loop are one story, and since AJ.3 the
 -- product links them the way a workflow's build stage does: the job names the run, the stage
--- (`build`, the dashboard seed's `Build farm · 5/7`, active) and the stage's attempt (V152).
+-- (`build`, the dashboard seed's `Build farm · 5/7`, active) and the stage's attempt (V153).
 -- R__dev_seed_run_console.sql writes the run's half — its reservation of this job — because it
 -- sorts after this file. An update, not part of the insert above, so the insert's one
 -- `run_id` column list stays the reservation's; it is idempotent, writing the values already

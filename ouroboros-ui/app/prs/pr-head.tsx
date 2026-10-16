@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 import { Chip, Eyebrow, Tag } from "@/app/ui";
 
-import type { PrHeadView, TagLink } from "./view";
+import { DRAFT_LABEL, type PrHeadView, type TagLink } from "./view";
 
 /** What separates the tag's two halves — the mockup's `loop #1847 · issue #482`. */
 const TAG_SEPARATOR = " · ";
@@ -35,7 +35,8 @@ function TagHalf({ link }: Readonly<{ link: TagLink }>) {
  *
  * The meta row is the mockup's four elements in the mockup's order: the loop and issue tag, both
  * halves linked so the page is never a dead end; the aggregate pill, coloured by the PR's state;
- * the branches; and the counts. Every value is `view.ts`'s; this file only draws.
+ * the branches; and the counts. A draft PR adds a neutral **Draft** chip after the tag (#1311).
+ * Every value is `view.ts`'s; this file only draws.
  *
  * The headline links to the PR on its host when the payload's URL is one a link may carry, and
  * is plain text otherwise.
@@ -81,6 +82,7 @@ export function PrHead({
               </span>
             </Tag>
           )}
+          {view.draft && <Chip tone="neutral">{DRAFT_LABEL}</Chip>}
           <Chip dot={view.pill.dot} tone={view.pill.tone}>
             {view.pill.label}
           </Chip>

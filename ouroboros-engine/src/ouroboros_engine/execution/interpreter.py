@@ -24,8 +24,8 @@ flow ``gate``        passes → the default edge; fails → its ``loop`` edge, b
                      ``require`` is judged on this round's checks — build exit codes and
                      succeeded model stages — with ccache results as evidence
 term                 ``needs_review`` → ``needs_human``; ``open_pr_automerge`` → the run
-                     branch is pushed (DI.2), then ``review``; ``back_to_queue`` →
-                     ``back_to_queue``
+                     branch is pushed (DI.2), its draft pull request opened (DI.3), then
+                     ``review``; ``back_to_queue`` → ``back_to_queue``
 ==================== =======================================================================
 
 **It keeps nothing it cannot lose** (A.1). The position is checkpointed to the control plane
@@ -1075,12 +1075,16 @@ class Interpreter:
             await asyncio.to_thread(run.workspace.checkpoint, node.id)
             if not await self._publish(run, node.id):
                 return
-            await run.reporter.finish(
-                "review",
+            reason = (
                 f"The workflow reached `{node.id}`; the branch is ready for its pull "
-                "request.",
-                node.id,
+                "request."
             )
+            if self._publisher is not None:
+                opened = await self._open_pull_request(run, node.id)
+                if opened is None:
+                    return
+                reason = f"The workflow reached `{node.id}`; {opened}."
+            await run.reporter.finish("review", reason, node.id)
             if self._publisher is not None and run.workspace.published() is not None:
                 workspace, run.workspace = run.workspace, None
                 await asyncio.to_thread(workspace.finish, "pushed")
@@ -1128,6 +1132,64 @@ class Interpreter:
             await asyncio.to_thread(workspace.close)
             return False
         return True
+
+    async def _open_pull_request(self, run: _Run, stage_key: str) -> str | None:
+        """Open the run branch's draft pull request, after the branch was pushed (DI.3).
+
+        Called only with a publisher: without one nothing reached the host to open a pull
+        request from, and the run finishes ``review`` as before. ``ouroboros-rest``
+        composes and opens the pull request, always as a draft, and answers the one already
+        open for the run when there is one — so a resumed terminal asks again and opens no
+        second pull request.
+
+        A refusal (``not_pushed``, ``pr_source_unavailable``, ``draft_refused``,
+        ``pr_create_failed``, or anything else) finishes the run ``failed`` with the code and
+        the host's message, and **keeps the tree**, as a failed publish does. ``fenced`` and
+        ``run_not_executable`` raise :class:`RunLostError` and take the stop path.
+
+        Args:
+            run: The execution.
+            stage_key: The terminal the pull request is opened at.
+
+        Returns:
+            The clause naming the pull request for the ``review`` reason, or ``None`` when
+            the run was finished ``failed``.
+        """
+        try:
+            opened = await run.reporter.open_pull_request()
+        except ControlPlaneError as refused:
+            return await self._pull_request_failed(
+                run,
+                stage_key,
+                f"ouroboros-rest refused the draft pull request ({refused.code}): "
+                f"{_refusal_text(refused)}",
+            )
+        if not opened.draft:
+            return await self._pull_request_failed(
+                run,
+                stage_key,
+                f"ouroboros-rest answered pull request #{opened.number} as not a draft: "
+                f"{opened.url}",
+            )
+        state = "opened" if opened.created else "already open"
+        return f"draft pull request #{opened.number} {state}: {opened.url}"
+
+    async def _pull_request_failed(
+        self, run: _Run, stage_key: str, reason: str
+    ) -> None:
+        """Finish the run ``failed`` over its pull request, keeping the tree (DI.3).
+
+        Args:
+            run: The execution.
+            stage_key: The terminal.
+            reason: Why, naming the cause and the host's message.
+
+        """
+        _log.warning("run %s: %s", run.started.run_id, reason)
+        await run.reporter.finish("failed", reason[:500], stage_key)
+        assert run.workspace is not None  # noqa: S101
+        workspace, run.workspace = run.workspace, None
+        await asyncio.to_thread(workspace.close)
 
     async def _end(
         self,
@@ -1197,6 +1259,23 @@ def _publish_run(run: _Run) -> PublishRun:
         aliases=aliases,
         started_by=started.started_by,
     )
+
+
+def _refusal_text(refused: ControlPlaneError) -> str:
+    """A refusal's sentence, followed by what its details name — the host's message or url.
+
+    Args:
+        refused: The control plane's refusal.
+
+    Returns:
+        ``<message>`` or ``<message> (<key>: <value>, …)`` over the scalar details.
+    """
+    named = ", ".join(
+        f"{key}: {value}"
+        for key, value in refused.details.items()
+        if isinstance(value, str | int | float) and not isinstance(value, bool)
+    )
+    return f"{refused} ({named})" if named else str(refused)
 
 
 def _limit(run: _Run, stage_key: str) -> int:

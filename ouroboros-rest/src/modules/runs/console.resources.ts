@@ -609,7 +609,7 @@ export interface RouteCap {
   readonly maxCostCentsPerRun: number | null;
 }
 
-/** One run-linked build job with a stage, as the repository reads it (V152). */
+/** One run-linked build job with a stage, as the repository reads it (V153). */
 export interface StageBuildRow {
   readonly id: string;
   readonly number: number;

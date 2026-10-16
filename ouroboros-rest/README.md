@@ -7012,13 +7012,25 @@ engine ── POST /internal/runs {…, queueItem: {id, claimToken}}
   {idempotencyKey, epoch?, stageKey, attempt, pool, commit, command?}`
   (`src/modules/run-builds/`) submits through `FarmJobsService.submitForRun` with the run's own
   repository and `refs/heads/<runs.branch_name>`, writing `build_jobs.run_id`, `stage_key` and
-  `stage_attempt` (V152 — unique per first submission, so a resend answers the same job). A
+  `stage_attempt` (V153 — unique per first submission, so a resend answers the same job). A
   job no runner can take is cancelled and refused `409 build_no_eligible_runner`; the farm's
   own refusals pass through. A submitted job is reserved by the run, and a `coding` run becomes
   `building` until `JobCompletions` reports the job finished (`run-builds.status.ts`). `GET
   …/builds/{jobId}` answers the job's phase, runner, exit code and ccache result, followed down
   the retry chain; `POST …/builds/{jobId}/cancel` gives up on it. The console's timeline
   carries each build stage's job as `stages[].build`.
+- **Opening a run's draft pull request (DI.3, #1311).** `POST /internal/runs/{id}/pull-request
+  {epoch, idempotency_key}` (`src/modules/ingest/run-pull-request.*`) is called at the
+  `open_pr_automerge` terminal. A run with a linked PR answers it (`created: false`). Otherwise it
+  refuses `not_pushed` (no successful `run.branch_pushed`) and `pr_source_unavailable` (no GitHub
+  ticket source mirrors the issue, `pr.create` is off, or no default branch), composes the body
+  (`run-pull-request.body.ts`: summary, plan claims as unverified, latest farm job or "Build: none
+  ran for this run", console link, alias, cost, dry-run line, `Refs #N`), and calls
+  `PrSyncService.create` with the literal `draft: true`. A host answer that is not a draft is `409
+  draft_refused` and is not linked; any other refusal is `502 pr_create_failed`. It then syncs the
+  mirror, links `pull_requests.run_id`/`draft` and `runs.pr_number`, writes
+  `run.pull_request_opened` (receipt operation `run.pull_request`, V152) and imports the plan's
+  criteria (`CriteriaService.importPlan`).
 - **The run supervisor.** `RunSupervisor` (`src/modules/ingest/run-supervisor.ts`) ticks every
   `OURO_RUN_SUPERVISOR_TICK_SECONDS` (5): a live `coding`/`building` run whose heartbeat is older
   than `OURO_RUN_HEARTBEAT_STALE_SECONDS` (30) — or never started and opened that long ago — is

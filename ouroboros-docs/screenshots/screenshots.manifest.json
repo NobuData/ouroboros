@@ -644,6 +644,18 @@
       "seedRef": "d99f80084fc24397f66aea98c83b9915cb4f175d"
     },
     {
+      "id": "user-guide.pr.loop-draft",
+      "route": "/prs/5eed007c-0000-4000-8000-000000000504",
+      "workspace": "acme-robotics",
+      "ready": "section.prv-gates",
+      "clip": ".prv-head",
+      "caption": "A pull request a loop opened: always a draft, linked to the loop that opened it.",
+      "alt": "The header of PR #504, telemetry: allocate frame buffers from a fixed pool, at Revision 1: the tag loop #1830 · issue #465, a Draft chip, verifying — 13 of 14 gates green, the branch loop/465-telemetry-buffer-pool into main and +214 −180 across 6 files, beside the Request human review, Return to loop and Merge when all gates green buttons and the note Loop #1830 has finished, so it cannot take a correction round.",
+      "capturedAt": "2026-10-16T22:38:44.426Z",
+      "uiVersion": "0.169.9",
+      "seedRef": "3e0f7d83c0ccb6adba45908bdb83986fe9a94ad7"
+    },
+    {
       "id": "user-guide.pr.criteria",
       "route": "/prs/5eed003a-0000-4000-8000-000000000514?from=dashboard",
       "workspace": "acme-robotics",

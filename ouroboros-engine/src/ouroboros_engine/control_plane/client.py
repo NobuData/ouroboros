@@ -85,6 +85,7 @@ from ouroboros_engine.control_plane.execution import (
     RUN_CHECKPOINT_PATH,
     RUN_FINISH_PATH,
     RUN_HEARTBEAT_PATH,
+    RUN_PULL_REQUEST_PATH,
     RUN_PUSH_PATH,
     RUN_PUSH_RESULT_PATH,
     RUN_START_PATH,
@@ -93,6 +94,8 @@ from ouroboros_engine.control_plane.execution import (
     FinishRunRequest,
     HeartbeatAccepted,
     HeartbeatRequest,
+    PullRequestOpened,
+    PullRequestRequest,
     PushGrant,
     PushRecorded,
     PushRequest,
@@ -926,6 +929,41 @@ class ControlPlaneClient:
             ControlPlaneError: On any status but ``200``.
         """
         return _read(status, body, PushRecorded)
+
+    # --- the run's draft pull request (DI.3, #1311) ----------------------------------------
+
+    def pull_request_request(
+        self, run: str, body: PullRequestRequest
+    ) -> ControlPlaneRequest:
+        """Build the request that opens the run branch's draft pull request.
+
+        Args:
+            run: The run.
+            body: The epoch, keyed.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", RUN_PULL_REQUEST_PATH.format(id=run), body)
+
+    def read_pull_request_opened(
+        self, status: int, body: dict[str, Any]
+    ) -> PullRequestOpened:
+        """Read the answer to a pull-request request.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            The draft pull request — opened by this call, or found already open.
+
+        Raises:
+            ControlPlaneError: On any status but ``200`` — one of
+                :data:`~ouroboros_engine.control_plane.execution.PULL_REQUEST_REFUSALS`, or
+                the run no longer this worker's.
+        """
+        return _read(status, body, PullRequestOpened)
 
     # --- harness credentials (DH.2 #1303, first called by DH.3 #1308) ------------------------
 

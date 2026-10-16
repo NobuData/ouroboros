@@ -12,6 +12,10 @@ it:
 * ``checkpoint`` stores the interpreter's opaque state, and the base commit once.
 * ``finish`` ends the run with one of four outcomes.
 
+DI.2 (#1310) adds ``push`` and ``push/result`` for the run branch, and DI.3 (#1311)
+``pull-request``, which opens that branch's draft pull request — or answers the one already
+open — at the ``open_pr_automerge`` terminal.
+
 Every engine write — these and AP.1's reports in
 :mod:`~ouroboros_engine.control_plane.ingest` — carries the epoch, and a write under a stale
 one is refused ``409 fenced``. That is what keeps a zombie worker from writing after a
@@ -50,6 +54,9 @@ RUN_PUSH_PATH = "/internal/runs/{id}/push"
 #: ``POST``: what the push did — the audit row and the console's record of it (DI.2).
 RUN_PUSH_RESULT_PATH = "/internal/runs/{id}/push/result"
 
+#: ``POST``: open the run branch's draft pull request, or answer the one already open (DI.3).
+RUN_PULL_REQUEST_PATH = "/internal/runs/{id}/pull-request"
+
 #: Every execution path, in the order a run meets them.
 EXECUTION_PATHS: tuple[str, ...] = (
     RUN_START_PATH,
@@ -57,6 +64,7 @@ EXECUTION_PATHS: tuple[str, ...] = (
     RUN_CHECKPOINT_PATH,
     RUN_PUSH_PATH,
     RUN_PUSH_RESULT_PATH,
+    RUN_PULL_REQUEST_PATH,
     RUN_FINISH_PATH,
 )
 
@@ -96,6 +104,18 @@ PUSH_REFUSALS: tuple[str, ...] = (
     "github_not_configured",
     "protected_branch",
     "branch_check_failed",
+)
+
+#: Why ``ouroboros-rest`` refuses to open the run's draft pull request (DI.3, #1311), in
+#: the order it checks them after ``fenced`` and ``run_not_executable``: the branch was never
+#: pushed, the ticket has no source that can open a pull request, the host would not open it
+#: as a draft (or an open non-draft one already holds the branch), or the host failed
+#: (``pr_create_failed`` is the one ``502``).
+PULL_REQUEST_REFUSALS: tuple[str, ...] = (
+    "not_pushed",
+    "pr_source_unavailable",
+    "draft_refused",
+    "pr_create_failed",
 )
 
 #: The codes after which a worker must stop writing: it no longer holds the run.
@@ -404,3 +424,40 @@ class PushRecorded(_Response):
     """
 
     recorded: bool
+
+
+class PullRequestRequest(_SnakeRequest):
+    """The body of ``POST /internal/runs/{id}/pull-request`` — open the run's draft PR (DI.3).
+
+    The engine names nothing about the pull request: ``ouroboros-rest`` composes the title,
+    the body, the base and the head from what it already holds, and always asks the host for
+    a **draft**. Sending the same run twice answers the pull request already open, so a
+    resumed terminal can ask again safely.
+
+    Attributes:
+        idempotency_key: This submission's name.
+        epoch: The epoch this worker holds.
+    """
+
+    idempotency_key: IdempotencyKey
+    epoch: int = Field(ge=1)
+
+
+class PullRequestOpened(_Response):
+    """The answer to a pull-request request: the run's draft pull request.
+
+    Attributes:
+        pull_request_id: The control plane's id for the pull request's row.
+        number: The pull request's number on the host.
+        url: Its page on the host.
+        draft: Whether the host holds it as a draft — always ``True`` from a control plane
+            that keeps its contract.
+        created: ``True`` when this call opened it; ``False`` when it was already open for
+            the run (the idempotent path a resumed terminal takes).
+    """
+
+    pull_request_id: str
+    number: int = Field(ge=1)
+    url: str
+    draft: bool
+    created: bool

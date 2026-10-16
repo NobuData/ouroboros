@@ -75,7 +75,7 @@ export interface BuildJobRequest {
   readonly artifacts?: readonly string[];
 }
 
-/** The workflow stage of a run a build is submitted for (V152, AJ.3 #265). */
+/** The workflow stage of a run a build is submitted for (V153, AJ.3 #265). */
 export interface RunBuildStage {
   /** `run_stages.stage_key` — the workflow node id. */
   readonly key: string;

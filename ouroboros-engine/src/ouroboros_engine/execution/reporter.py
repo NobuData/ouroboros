@@ -34,6 +34,8 @@ from ouroboros_engine.control_plane.execution import (
     FinishOutcome,
     FinishRunRequest,
     HeartbeatAccepted,
+    PullRequestOpened,
+    PullRequestRequest,
     PushGrant,
     PushOutcome,
     PushRecorded,
@@ -135,6 +137,10 @@ class RunControl(Protocol):
 
     def push_result(self, run: str, body: PushResultRequest) -> PushRecorded:
         """Record a push. See :meth:`IngestClient.push_result`."""
+        ...
+
+    def pull_request(self, run: str, body: PullRequestRequest) -> PullRequestOpened:
+        """Open the run's draft pull request. See :meth:`IngestClient.pull_request`."""
         ...
 
     def resources(self, run: str, body: ReportResourcesRequest) -> ResourcesReported:
@@ -538,6 +544,28 @@ class RunReporter:
             reason=None if reason is None else reason[:500],
         )
         await self._send(self._control.push_result, self.run_id, body)
+
+    async def open_pull_request(self) -> PullRequestOpened:
+        """Ask ``ouroboros-rest`` to open the run branch's draft pull request (DI.3, #1311).
+
+        The control plane composes and opens it, always as a draft, and answers the pull
+        request already open for the run when there is one — so asking again after a
+        restart opens no second pull request.
+
+        Returns:
+            The draft pull request, and whether this call created it.
+
+        Raises:
+            RunLostError: The run is no longer this worker's (``fenced`` /
+                ``run_not_executable``).
+            ControlPlaneError: The pull request was refused — one of
+                :data:`~ouroboros_engine.control_plane.execution.PULL_REQUEST_REFUSALS`.
+        """
+        body = PullRequestRequest(
+            idempotency_key=self._control.key("run.pull_request"),
+            epoch=self.epoch,
+        )
+        return await self._send(self._control.pull_request, self.run_id, body)
 
     async def checkpoint(
         self, state: dict[str, Any], base_commit: str | None = None

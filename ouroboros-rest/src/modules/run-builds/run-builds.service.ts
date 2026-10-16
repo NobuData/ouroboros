@@ -20,7 +20,7 @@
  * pool, the command and the commit; it cannot name a repository or a workspace. The workspace is
  * the run's, and V040's composite key refuses a run of any other.
  *
- * **One job per stage attempt.** `(run, stage, attempt)` is unique over first submissions (V152),
+ * **One job per stage attempt.** `(run, stage, attempt)` is unique over first submissions (V153),
  * so a resent submission answers the job it already created instead of building twice.
  *
  * **A build no runner can take is refused, not left to wait.** When the submitted job is
@@ -55,7 +55,7 @@ import { noEligibleRunner, runBranchMissing, runBuildNotFound } from "./run-buil
 import { RunBuildsRepository } from "./run-builds.repository";
 import { runBuildResource, type RunBuildResource, type RunBuildView } from "./run-builds.resources";
 
-/** V152's unique index — a second first-submission of one stage attempt. */
+/** V153's unique index — a second first-submission of one stage attempt. */
 const STAGE_KEY_INDEX = "build_jobs_run_stage_key";
 
 /** What every build route answers. */
