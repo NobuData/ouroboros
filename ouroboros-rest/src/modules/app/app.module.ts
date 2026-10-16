@@ -22,6 +22,7 @@ import { GithubModule } from "../github/github.module";
 import { HealthModule } from "../health/health.module";
 import { FarmModule } from "../farm/farm.module";
 import { FarmArtifactsModule } from "../farm/artifacts/artifacts.module";
+import { FarmSourceModule } from "../farm/source/source.module";
 import { FarmDispatchModule } from "../farm/dispatch/dispatch.module";
 import { FarmGatewayModule } from "../farm/gateway/gateway.module";
 import { FarmConfigModule } from "../farm/config/farm-config.module";
@@ -633,6 +634,12 @@ export class AppModule {
         // `farm/artifacts/upload.controller.ts` argues it. After `TestResultsModule`, whose parsers
         // an upload's result files are read by.
         FarmArtifactsModule,
+        // AG.7 ([#991](https://github.com/NobuData/ouroboros/issues/991)) — the source credential
+        // a runner checks a private repository out with: `POST /api/v1/farm/jobs/:id/source-credential`
+        // redeems the single-use ticket dispatch mints with every offer, for the workspace's own
+        // GitHub token, once. Before `FarmDispatchModule`, which imports it for that ticket. Its one
+        // route is `@AllowAnonymous()` and authenticates on the ticket, as the artifact upload does.
+        FarmSourceModule,
         // AH.4 ([#252](https://github.com/NobuData/ouroboros/issues/252)) — build dispatch:
         // `POST /api/v1/farm/jobs` and its cancel, and the loop that offers queued jobs to
         // connected runners. After `FarmGatewayModule`, whose sessions it offers through and whose

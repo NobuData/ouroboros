@@ -177,6 +177,14 @@ export class AppConfigService {
   }
 
   /**
+   * Where a build job's repository is cloned from — `OURO_GITHUB_CLONE_BASE_URL`, github.com
+   * unless set (AG.7, #991). The dispatcher's `offer.ts` builds `<base>/<owner>/<name>.git`.
+   */
+  get githubCloneBaseUrl(): string {
+    return this.config.getOrThrow<string>("githubCloneBaseUrl");
+  }
+
+  /**
    * Seconds between provider health sweeps — `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS`.
    *
    * The nominal interval. `src/modules/provider-health/` jitters every delay by ±25% around
@@ -701,6 +709,7 @@ export class AppConfigService {
       githubClientId: this.githubClientId,
       githubClientSecret: this.githubClientSecret,
       githubApiBaseUrl: this.githubApiBaseUrl,
+      githubCloneBaseUrl: this.githubCloneBaseUrl,
       vaultMasterKey: this.vaultMasterKey,
       corsOrigins: this.corsOrigins,
       dashboardPollSeconds: this.dashboardPollSeconds,

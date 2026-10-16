@@ -101,8 +101,9 @@ Usage:
       Connect outbound over mTLS and stay connected: heartbeat, reconnect with
       jittered backoff, renew the certificate before it expires, say bye on SIGTERM.
       Run the jobs it is offered — in a container when a Docker or Podman daemon
-      answers, and on this machine directly unless --no-shell — and decline the
-      ones it cannot run.
+      answers, and on this machine directly unless --no-shell — checking out each
+      job's repository at its pinned commit first when git is on PATH, and decline
+      the ones it cannot run.
 
   ouroboros-runner version   Print the build, the protocol range and this machine.
   ouroboros-runner hello [--no-shell]
@@ -134,6 +135,14 @@ not at all. See docs/RUNNER_PROTOCOL.md for the wire contract.
 `
 
 func main() {
+	// Run by git as GIT_ASKPASS during a checkout ([#991]): answer the prompt and nothing
+	// else. Before the flags, because git's prompt is this process's only argument.
+	//
+	// [#991]: https://github.com/NobuData/ouroboros/issues/991
+	if os.Getenv(exec.EnvAskpass) == "1" {
+		os.Exit(askpass(os.Args[1:], os.Getenv, os.Stdout))
+	}
+
 	// Parsing an empty set is what gives `ouroboros-runner -h` the usage text rather
 	// than Go's default one-line report of no flags at all.
 	flag.Usage = func() { fmt.Fprint(os.Stderr, usage) }
@@ -147,6 +156,36 @@ func main() {
 		stop()
 		os.Exit(1) // stop has run; nothing deferred is left to lose
 	}
+}
+
+// askpass is this executable as git's GIT_ASKPASS, during a source checkout ([#991]). Git
+// runs it once for the username and once for the password, with the prompt as the one
+// argument; the answers are in the two variables the checkout put in git's environment —
+// and only there: not on any command line, not in a file, not in the job's own environment.
+// Anything that is not one of those two prompts is answered with a non-zero exit, which git
+// reads as "no credential", and nothing is ever logged.
+//
+// [#991]: https://github.com/NobuData/ouroboros/issues/991
+func askpass(args []string, getenv func(string) string, out io.Writer) int {
+	if len(args) != 1 {
+		return 1
+	}
+	var answer string
+	switch prompt := strings.ToLower(args[0]); {
+	case strings.HasPrefix(prompt, "username"):
+		answer = orDefault(getenv(exec.EnvAskpassUsername), "x-access-token")
+	case strings.HasPrefix(prompt, "password"):
+		answer = getenv(exec.EnvAskpassPassword)
+		if answer == "" {
+			return 1
+		}
+	default:
+		return 1
+	}
+	if _, err := io.WriteString(out, answer+"\n"); err != nil {
+		return 1
+	}
+	return 0
 }
 
 // signalContext is cancelled by SIGTERM or SIGINT, with the signal as its cause — which
@@ -384,9 +423,22 @@ func runCommand(ctx context.Context, args []string, stderr io.Writer, getenv fun
 		return err
 	}
 	logger := newLogger(stderr)
+	// The checkout hands git this executable as its askpass program (#991). A machine on
+	// which the executable cannot be found keeps git and loses nothing but private
+	// repositories' credentials — and says so, rather than claiming a checkout it cannot do.
+	git := exec.Git{}
+	if machine.capabilities.Git {
+		if self, err := os.Executable(); err == nil {
+			git.Askpass = self
+		} else {
+			logger.Warn("this executable's own path cannot be resolved, so private repositories cannot be "+
+				"checked out; the hello reports git: false", "error", err)
+			machine.capabilities.Git = false
+		}
+	}
 	logger.Info("executors", "container", machine.capabilities.Docker, "docker_socket", machine.dockerSocket,
-		"shell", machine.capabilities.Shell, "keep_workspace_on_failure", jobs.keepOnFailure,
-		"log_cap_bytes", jobs.logCapBytes)
+		"shell", machine.capabilities.Shell, "git", machine.capabilities.Git,
+		"keep_workspace_on_failure", jobs.keepOnFailure, "log_cap_bytes", jobs.logCapBytes)
 
 	// The heartbeat's measurements are taken in the background for as long as the agent
 	// runs, so a beat reads the newest sample rather than waiting a window for one.
@@ -405,6 +457,7 @@ func runCommand(ctx context.Context, args []string, stderr io.Writer, getenv fun
 		Capabilities:   machine.capabilities,
 		Executors:      machine.executors(),
 		Workspaces:     &exec.Workspaces{Root: filepath.Join(common.stateDir, workDir), KeepOnFailure: jobs.keepOnFailure},
+		Git:            git,
 		LogCapBytes:    jobs.logCapBytes,
 		CacheRoot:      filepath.Join(common.stateDir, cacheDir),
 		Telemetry:      monitor,
@@ -523,7 +576,10 @@ func (m machine) executors() map[string]exec.Executor {
 // `docker` is a daemon answering its ping — and the socket that answered is the one the
 // container executor uses. `shell` is the operator's answer rather than a probe: true
 // unless --no-shell, because a machine that holds signing keys can refuse shell jobs while
-// still taking container ones.
+// still taking container ones. `git` is a binary on PATH ([#991]): what checks out a job's
+// repository, and without which the agent declines any job that names one.
+//
+// [#991]: https://github.com/NobuData/ouroboros/issues/991
 func describe(ctx context.Context, noShell bool) (telemetry.Host, machine, error) {
 	host, err := telemetry.Describe()
 	if err != nil {
@@ -537,6 +593,7 @@ func describe(ctx context.Context, noShell bool) (telemetry.Host, machine, error
 			Ccache:   telemetry.CcacheOnPath(),
 			CPUs:     host.CPUs,
 			MemoryMB: host.MemoryMB,
+			Git:      telemetry.GitOnPath(),
 		},
 		dockerSocket: socket,
 	}, nil

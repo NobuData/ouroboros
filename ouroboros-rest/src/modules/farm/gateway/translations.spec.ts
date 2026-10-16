@@ -37,6 +37,8 @@ describe("capabilities", () => {
       cpu_count: 8,
       memory_mb: 16384,
       executors: ["container", "shell"],
+      // The fixture hello predates source checkout (#991): no `git`, stored as false.
+      git: false,
     });
   });
 

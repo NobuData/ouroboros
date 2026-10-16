@@ -37,15 +37,16 @@
  *
  * ## Three deliberate divergences from the ticket's own words, and why
  *
- * **The build → live log → stats test is parked.** `job.offer` always names a repository
- * (`ouroboros-rest`'s `dispatch/offer.ts`) and today's agent declines every offer that does —
- * source checkout was never assigned (the roadmap's AH.4 note), and is now
- * [#991](https://github.com/NobuData/ouroboros/issues/991). A build submitted to a real runner
- * therefore waits rather than runs, and there is no honest way to stream its log: the ticket's
- * own words are that the leg must fail *if streaming is faked*. So the test is written down,
- * carries `test.fixme` with this reason, and its failure-mode pair is registered as parked
- * (`scripts/verify-failure-modes.sh`). The **seeded** log is still asserted, in reading order,
- * by the parity group — which is the offset fetch and the renderer, against rows.
+ * **The build → live log → stats test runs against the suite's own git host.** `job.offer` always
+ * names a repository, and since [#991](https://github.com/NobuData/ouroboros/issues/991) the
+ * agent checks it out before the command runs — so the test submits a build of
+ * `fixtures/git-stub`'s **private** repository, with the workspace's GitHub token set to that
+ * repository's password: a log that streams is proof that the credential hand-over worked end to
+ * end (the ticket on the offer, the redemption through the gateway, one authenticated fetch), and
+ * the page is checked for never showing the token or a ticket. The test enrols a runner of its
+ * own, because the chain below kills its machine. Its failure-mode pair stops the git host
+ * (`scripts/verify-failure-modes.sh`): the checkout fails and nothing after the agent's first
+ * line streams. The **seeded** log is still asserted, in reading order, by the parity group.
  *
  * **The chain runs in a workspace it creates, not in `acme-robotics`.** The seed's farm CA is a
  * placeholder envelope on purpose, so nothing can enrol there; `support/farm.ts` § *Two
@@ -79,9 +80,13 @@ import {
   SEEDED_POOLS,
   SEEDED_RUNNERS,
   SEEDED_STATS,
+  BUILD_REPOSITORY,
+  GIT_STUB_INTERNAL_URL,
+  createFreshWorkspace,
   enrollCommandStatusFor,
   enterFreshWorkspace,
   enterSeededFarm,
+  headOfFixtureRepository,
 } from "../support/farm";
 import {
   BUILD_MACHINE_NAME,
@@ -89,7 +94,8 @@ import {
   pasteIntoBuildMachine,
   resetBuildMachine,
 } from "../support/farm-runner";
-import { quietly } from "../support/rest";
+import { SANDBOX_GITHUB_TOKEN } from "../support/planning";
+import { quietly, requestAs } from "../support/rest";
 import { SEED_MEMBER, SEED_OWNER, SEED_TENANT } from "../support/seed";
 import {
   FONT_SCALE_ATTRIBUTE,
@@ -100,6 +106,7 @@ import {
 import { PANE_SELECTOR, chromeBoxes, scrollPaneTo } from "../support/shell";
 import { UI_URL } from "../support/stack";
 import { pinTheme } from "../support/theme";
+import { recordRepository } from "../support/wizard";
 
 /**
  * The window the parity pair is photographed through.
@@ -129,6 +136,12 @@ const PRESENCE_FLIP_MS = 60_000;
  */
 const HEARTBEAT_MS = 30_000;
 
+/** The title the build test submits — what the LIVE card's heading names beside the number. */
+const BUILD_TITLE = "Print the console README";
+
+/** The first line of the private fixture repository's README — what `cat README.md` prints. */
+const README_FIRST_LINE = "# Helios console";
+
 /**
  * A stat tile, by its caption.
  *
@@ -138,6 +151,19 @@ const HEARTBEAT_MS = 30_000;
  */
 function tile(page: Page, label: string): Locator {
   return page.getByRole("region", { name: label });
+}
+
+/**
+ * The *Builds today* tile's count.
+ *
+ * @param page - The farm page.
+ * @returns The number the tile prints.
+ */
+async function buildsToday(page: Page): Promise<number> {
+  const text = await tile(page, "Builds today").innerText();
+  const match = /\d+/.exec(text);
+
+  return match === null ? 0 : Number(match[0]);
 }
 
 /**
@@ -467,18 +493,118 @@ test.describe("a fresh workspace, and a real machine", () => {
     await expect(page.locator(".farm-fleet")).toContainText(FLEET_WARNING.onlyRunnerOffline);
   });
 
-  test("streams a real build: submit → dispatch → live log → terminal state → stats", () => {
-    // PARKED — see this file's header, § *The build → live log → stats test is parked*.
-    //
-    // `job.offer` always names a repository and today's agent declines every offer that does;
-    // agent source checkout is #991. Until it lands a build submitted to the chain's runner
-    // waits rather than runs, and a log that was not streamed by an agent is exactly what the
-    // ticket says this test must not accept. What it will do, on the commit that removes this
-    // line: submit a build to `pool-e2e` from the head's **Submit build**, require the LIVE card
-    // to bind to it and grow by offset fetches while the job is `running` (the marker
-    // `scripts/verify-failure-modes.sh` looks for is *the log streamed*), require the pill to
-    // swap on the terminal state, and require **Builds today** to move by exactly one.
-    test.fixme(true, "agent source checkout is #991 — a real runner cannot run a build yet");
+  test("streams a real build: submit → dispatch → live log → terminal state → stats", async ({
+    context,
+    page,
+  }) => {
+    // Its own enrolment, so the test stands alone: the chain above kills its machine, and a
+    // build has to run on a live one. Slow for the chain's reason — the agent's heartbeat and
+    // the dispatcher's tick are the product's own clocks.
+    test.slow();
+
+    await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: UI_URL });
+
+    const workspace = await createFreshWorkspace(context, page, "build");
+
+    // --- what a build needs: a repository, a credential for it, and a pool -----------------
+    // The repository is the git host's PRIVATE one (#991, decision L9): the token stored here is
+    // what the control plane hands the runner, once, for this checkout — so a build that streams
+    // is a build whose credential hand-over worked, and an anonymous clone would have failed.
+    await recordRepository(context, workspace.id, BUILD_REPOSITORY.owner, BUILD_REPOSITORY.name);
+    await requestAs(
+      context,
+      "PUT",
+      "/api/v1/settings/github-token",
+      { token: SANDBOX_GITHUB_TOKEN },
+      "storing the git host's private-repository token as the workspace's GitHub token",
+    );
+    await requestAs(
+      context,
+      "POST",
+      "/api/v1/farm/pools",
+      { name: CHAIN_POOL, executor: "shell" },
+      `creating the pool ${CHAIN_POOL}`,
+    );
+    await page.reload();
+
+    // --- a live runner, by the pasted line -------------------------------------------------
+    const installed = await pasteIntoBuildMachine(await copyEnrollCommand(page));
+
+    expect(
+      installed.status,
+      `the enroll command did not install a runner:\n${installed.transcript}`,
+    ).toBe(0);
+    await expect(runnerRow(page, BUILD_MACHINE_NAME)).toContainText("idle", {
+      timeout: HEARTBEAT_MS,
+    });
+
+    const before = await buildsToday(page);
+    const commit = await headOfFixtureRepository(BUILD_REPOSITORY.owner, BUILD_REPOSITORY.name);
+
+    // --- submit: the exact commit, as the dialog would send it -------------------------------
+    const job = await requestAs<{ id: string; number: number }>(
+      context,
+      "POST",
+      "/api/v1/farm/jobs",
+      {
+        pool: CHAIN_POOL,
+        repository: `${BUILD_REPOSITORY.owner}/${BUILD_REPOSITORY.name}`,
+        ref: "refs/heads/main",
+        commit,
+        command: ["cat", "README.md"],
+        title: BUILD_TITLE,
+      },
+      "submitting a build",
+    );
+
+    expect(job?.number, "the submission should answer the build's number").toBeGreaterThan(0);
+
+    // --- dispatch → live log: the LIVE card binds to it and grows while it runs --------------
+    const live = page.getByRole("region", {
+      name: new RegExp(`#${String(job?.number)} ${BUILD_TITLE}`),
+    });
+
+    await expect(live, "the LIVE card should bind to the submitted build").toBeVisible({
+      timeout: HEARTBEAT_MS,
+    });
+
+    const log = live.getByRole("region", { name: "Build log" });
+
+    // Two lines the agent alone can write, in this order: its own checkout line, and then what
+    // the command printed from the tree it checked out. The messages carry the marker
+    // `scripts/verify-failure-modes.sh` looks for: with the git host stopped, the checkout
+    // fails and nothing after the first line ever streams.
+    await expect(
+      log,
+      "the log streamed from the agent should begin with its checkout",
+    ).toContainText(
+      `checking out ${GIT_STUB_INTERNAL_URL}/${BUILD_REPOSITORY.owner}/${BUILD_REPOSITORY.name}.git at ${commit}`,
+      { timeout: HEARTBEAT_MS },
+    );
+    await expect(
+      log,
+      "the log streamed from the agent should grow with the command's output from the checked-out tree",
+    ).toContainText(README_FIRST_LINE, { timeout: HEARTBEAT_MS });
+
+    const printed = await log.innerText();
+
+    expect(
+      printed.indexOf("checking out"),
+      "the checkout should be printed before the command's output — the offset fetch reads in order",
+    ).toBeLessThan(printed.indexOf(README_FIRST_LINE));
+    // No credential in anything the page shows: neither the workspace's token nor a ticket.
+    expect(printed).not.toContain(SANDBOX_GITHUB_TOKEN);
+    expect(printed).not.toContain("ouro_src_");
+
+    // --- terminal state: the pill swaps, and the stat row moves by one -----------------------
+    await expect(
+      live.getByText("finished", { exact: true }),
+      "the pill should swap on the terminal state",
+    ).toBeVisible({ timeout: HEARTBEAT_MS });
+    await expect(
+      tile(page, "Builds today"),
+      "the stat row should count the build that just finished",
+    ).toContainText(String(before + 1), { timeout: HEARTBEAT_MS });
   });
 
   test.afterEach(async () => {

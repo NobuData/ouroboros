@@ -620,6 +620,68 @@ those rows. A difference is stored and logged, never averaged away.
 a canary provider key. It asserts the key is in none of the harness's environment, arguments,
 stderr, config directory or working tree.
 
+### 4.8 The source credential
+
+> **Status: Shipped** — AG.7 ([#991](https://github.com/NobuData/ouroboros/issues/991)),
+> roadmap decision **L9** (`ROADMAP_OOE_LIVE_LOOP.md`).
+> [`ouroboros-rest/src/modules/farm/source/`](../ouroboros-rest/src/modules/farm/source) ·
+> [`ouroboros-runner/internal/exec/checkout.go`](../ouroboros-runner/internal/exec/checkout.go) ·
+> [`RUNNER_PROTOCOL.md` § 4.3](RUNNER_PROTOCOL.md#the-source-credential)
+
+A build runner checks the job's repository out before the command runs. A public repository
+clones anonymously. A private one — which is what a customer's repository usually is, and where
+the live loop's branch lives — needs a credential, on a machine in somebody's lab. Decision **L9**
+says what kind: *a short-lived, repository-scoped credential for one checkout, by a one-call
+hand-over*. This section is what that means and what it does not.
+
+```mermaid
+flowchart LR
+    D["dispatch"] -->|"job.offer · repository.credential = {path, token, expires_at}<br/>the TICKET, never the credential"| A["runner"]
+    A -->|"POST /api/v1/farm/jobs/{id}/source-credential<br/>Authorization: Bearer ouro_src_…<br/>(through the farm gateway, mTLS)"| R["ouroboros-rest"]
+    R -->|"redeemed_at set in one statement<br/>vault: open the workspace token in request scope"| R
+    R -->|"{username: x-access-token, password, expires_at} · once"| A
+    A -->|"GIT_ASKPASS = its own binary · one fetch"| G["git"]
+    G -->|"HTTPS basic"| H["GitHub / GHES"]
+```
+
+**What is handed over is the workspace's own GitHub token** — the credential the workspace stores
+for its backlog (§ 2, decision K1). GitHub issues nothing narrower on demand for a classic personal
+access token, and minting a credential of our own that GitHub would honour is not possible. So the
+scope L9 asks for is enforced by **the hand-over**, not by GitHub:
+
+| Property | How |
+|---|---|
+| **A ticket travels, not the credential** | The offer is a recorded frame — fixtures, transcripts, both sides' logs. It carries `ouro_src_…` (32 random bytes), minted with the offer, stored only as its SHA-256 (`build_job_source_credentials`, V150), re-minted on a re-offer so the runner that did not take the job holds a dead one |
+| **One job, one repository** | The ticket is checked against the ledger of the job in the path, and only that one; the job names exactly one repository, and the credential buys one fetch of it |
+| **Single use** | The redemption is one statement — `update … set redeemed_at = now() where … and redeemed_at is null returning …` — so two presentations at the same instant get one credential and one refusal, and a redeemed row is frozen by trigger |
+| **Short-lived** | The ticket expires fifteen minutes after the offer's answer window: the checkout starts within moments of the accept, and a ticket not redeemed by then was never going to be |
+| **Only while the job is being run** | A ticket for a job that is not `offered` or `running` is refused, whatever else is true of it |
+| **Opened in request scope** | The token is unwrapped by the vault for the redemption's own request (§ 2.3's binding) and answered once; it is never written to the ledger or anywhere else here |
+| **Never logged** | Neither side logs the ticket or the credential; the audit row (`runner.source_credential_redeemed`, subject the build job, no actor) names the repository and nothing derived from the token — not a mask, not a length |
+| **Never at rest on the runner** | The agent hands the password to `git` through an askpass program — its own binary in askpass mode, with the password in the environment of the `git` process alone — with no credential helper, no system or user git configuration, and `GIT_TERMINAL_PROMPT=0`. It is written to no file, is in no `.git/config`, is in no part of the job's own environment, and is dropped when the fetch returns. The agent's own suite asserts all of that with a canary |
+| **Outbound-only** | The offer names a *path*; the agent resolves it against the control plane it already dials, as it does the upload's, so a dispatch cannot aim the ticket at another host. The route is allow-listed on the farm gateway beside the artifact upload (`administration/deploy/farm-gateway`) |
+
+**Every ticket failure is one `401 farm_source_credential_refused`** with no detail — missing,
+wrong, another job's, expired, redeemed, or a job not being run — on § 7.1's argument. A runner
+refused is `errored` / `workspace.checkout_failed` with *the control plane refused the source
+credential*, and the farm retries the build once elsewhere, as it does any infrastructure failure.
+
+**A workspace with no GitHub token is offered no ticket.** Its public repositories clone
+anonymously as before; a private one fails on the runner with *the repository refused the clone:
+it is private and this workspace has no GitHub token to check it out with — connect one under
+Settings › Sources*. The sentence is the product's, not git's, so an operator reading a build log
+is told what to do rather than shown a `401`.
+
+**What this is not.** It is not a credential narrower than the one GitHub issued: a classic PAT
+that can read every repository the person can is still that token for the seconds the fetch
+takes, and a runner compromised in exactly that window holds it. What bounds that window is the
+single use, the TTL and the job-state check above, and what makes it visible is the audit row. The
+narrowing GitHub *does* offer — an installation token scoped to chosen repositories — is O.1
+([#122](https://github.com/NobuData/ouroboros/issues/122)); when a workspace's stored credential is
+one, this same call answers it, and the hand-over is then as narrow as the token. Until then, the
+clone base (`OURO_GITHUB_CLONE_BASE_URL`) is the one place a deployment names where its code is
+fetched from, and it is validated to carry no credential of its own.
+
 ---
 
 ## 5. What is written down when somebody touches a key
@@ -1250,6 +1312,11 @@ under `/internal/` — the engine's surface, which a farm host must never expose
 
 ### 7.9 What this section does not cover
 
+- **The source credential** a runner checks a private repository out with — a ticket minted with
+  the offer and redeemed once for the workspace's GitHub token — is
+  [§ 4.8](#48-the-source-credential), beside the other things a worker is given, because that is
+  what it is: the one credential a farm machine is ever handed, bounded by the hand-over rather
+  than by the certificate authority this section describes.
 - **The gateway itself** — sessions, presence, heartbeat ingest — is AH.3
   ([#251](https://github.com/NobuData/ouroboros/issues/251)), shipped in
   [`ouroboros-rest`'s `farm/gateway/`](../ouroboros-rest/src/modules/farm/gateway). The revocation

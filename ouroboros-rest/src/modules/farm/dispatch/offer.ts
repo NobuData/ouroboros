@@ -17,6 +17,7 @@
  * ```
  */
 
+import { DEFAULT_GITHUB_CLONE_BASE_URL } from "../../config/configuration";
 import type { BuildJob } from "../../db/schema";
 import type { JobOfferPayload } from "../protocol/protocol.messages";
 import { wireId } from "../protocol/ulid";
@@ -55,12 +56,15 @@ export function undispatchable(job: Pick<BuildJob, "command" | "commit_sha">): s
 /**
  * The clone URL of a repository the workspace mirrors from GitHub.
  *
+ * @param base - Where repositories are cloned from — `OURO_GITHUB_CLONE_BASE_URL`, with no
+ *   trailing slash (the configuration drops one). github.com unless a deployment says
+ *   otherwise: a GitHub Enterprise Server host, or the e2e suite's git fixture (AG.7, #991).
  * @param owner - The owner, as V003 stores it.
  * @param name - The repository.
- * @returns `https://github.com/<owner>/<name>.git`.
+ * @returns `<base>/<owner>/<name>.git`.
  */
-export function cloneUrl(owner: string, name: string): string {
-  return `https://github.com/${owner}/${name}.git`;
+export function cloneUrl(base: string, owner: string, name: string): string {
+  return `${base}/${owner}/${name}.git`;
 }
 
 /**
@@ -85,10 +89,16 @@ export function envOf(column: unknown): Record<string, string> {
  *
  * @param source - The placed job and the names it needs.
  * @param expiresAt - When the offer stops being answerable.
- * @returns The payload — still to be held to the contract by `AgentSessions.offer`.
+ * @param cloneBase - Where the repository is cloned from (`OURO_GITHUB_CLONE_BASE_URL`).
+ * @returns The payload — still to be held to the contract by `AgentSessions.offer`. Its
+ *   `repository` carries no credential: the dispatcher adds the single-use ticket (#991).
  * @throws {TypeError} If the job is {@link undispatchable}; the dispatcher checks first.
  */
-export function offerPayload(source: OfferSource, expiresAt: Date): JobOfferPayload {
+export function offerPayload(
+  source: OfferSource,
+  expiresAt: Date,
+  cloneBase: string = DEFAULT_GITHUB_CLONE_BASE_URL,
+): JobOfferPayload {
   const { job } = source;
   const argv = parseCommand(job.command);
 
@@ -105,7 +115,7 @@ export function offerPayload(source: OfferSource, expiresAt: Date): JobOfferPayl
     workdir: job.executor === "container" ? CONTAINER_WORKDIR : SHELL_WORKDIR,
     env: envOf(job.env),
     repository: {
-      url: cloneUrl(source.repoOwner, source.repoName),
+      url: cloneUrl(cloneBase, source.repoOwner, source.repoName),
       ref: job.git_ref,
       commit: job.commit_sha,
     },

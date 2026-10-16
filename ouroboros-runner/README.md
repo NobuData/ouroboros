@@ -240,7 +240,7 @@ presenting the token, so that mistake costs nothing.
 | | |
 |---|---|
 | Connect | `wss://<server>/api/v1/farm/agent` on 443, presenting the client certificate. The gateway's own certificate is verified against the system's roots, or `--server-ca` |
-| Hello | version, protocol range, arch, hostname, pool, capabilities — **docker** answered by pinging the daemon, **shell** unless `--no-shell`, **ccache** by `PATH` — and `security_mode` |
+| Hello | version, protocol range, arch, hostname, pool, capabilities — **docker** answered by pinging the daemon, **shell** unless `--no-shell`, **ccache** and **git** by `PATH` — and `security_mode` |
 | Heartbeat | every `ack.limits.heartbeat_interval_ms` ± its jitter (the gateway's 10 s ± 2 s), carrying the telemetry below |
 | Reconnect | exponential backoff with **full jitter** (1s doubling to 60s), so a fleet dropped together does not come back together; a gateway's `reconnect_after_ms` or `retry_after_ms` is a floor, spread past |
 | Resume | `hello.resume` names the last session, and every terminal frame not yet receipted is re-sent **byte for byte** from the outbox before anything else — the gateway deduplicates on the envelope id |
@@ -286,12 +286,36 @@ build failure that is really a farm fact.
 | one whose `expires_at` has passed | `expired` |
 | a container job, and no Docker or Podman daemon answered | `unsupported_executor` — the same fact the hello's `docker: false` reported |
 | a shell job, and the agent was started with `--no-shell` | `unsupported_executor` — the hello's `shell: false` |
-| one naming a `repository` — this build does not check out source yet | `unsupported_executor` |
+| one naming a `repository`, on a machine with no `git` on `PATH` | `unsupported_executor` — the hello's `git: false` |
 | a job this runner already holds, or one past the pool's `max_concurrency` | `busy` |
 
 The hello's capabilities and the executors are built from the same probe, and the agent refuses
 to start with a configuration where they disagree — so `docker: true` is never a claim the
 agent cannot keep.
+
+**Source checkout** ([#991](https://github.com/NobuData/ouroboros/issues/991)). An offer that
+names a `repository` is checked out into the job's workspace before anything else happens to it,
+for both executors: an empty repository, one shallow fetch of the pinned commit (or of the ref,
+when the remote will not serve an unadvertised object), a detached checkout, and `HEAD` verified
+to be the offered commit — so a ref that moved after the offer cannot change what is built. Git's
+output goes to the job's log under a `ouroboros-runner: checking out …` line, and the heartbeat
+reports the job in the `fetch` phase while it runs. A private repository's offer carries
+`repository.credential`: not the git credential but a **single-use ticket**, which the agent
+redeems once — `POST` to the ticket's path on the control plane's own origin, over the socket's
+own mTLS — for the credential of this one checkout. The credential reaches git through
+`GIT_ASKPASS` and nothing else: the program git asks is this executable in askpass mode
+(`OUROBOROS_RUNNER_ASKPASS=1`), answering from two variables that exist only in the git
+process's environment. It is never on a command line, never in the clone URL, never in
+`.git/config` (checked after the fetch), never in the job's environment, and never logged.
+
+A checkout that fails is `errored` under `workspace.checkout_failed` — the farm's retry policy
+applies — and the command never runs in an empty tree. The job's log and the finish carry the
+same sentence: *the repository refused the clone: it is private and this workspace has no GitHub
+token to check it out with — connect one under Settings › Sources* for an anonymous clone a
+remote refused; *the repository refused the clone: the workspace's GitHub token was refused* for
+a credential the remote rejected; *the ref … no longer points at …; the build is pinned to the
+commit and was not run* for a commit the remote no longer has; and *the control plane refused the
+source credential* for a ticket the control plane would not redeem.
 
 **How a job ends** is one of the protocol's five outcomes: exit 0 is `succeeded` and anything
 else `failed` (`executor.exit`); `timeout_s` running out is `timed_out`, and the budget runs

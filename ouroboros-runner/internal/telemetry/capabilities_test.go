@@ -137,6 +137,22 @@ func TestDockerSocketsHonoursDockerHost(t *testing.T) {
 	}
 }
 
+// TestGitOnPathLooksAtPath asserts the git probe (#991) answers from PATH, as the
+// checkout itself will find the binary.
+func TestGitOnPathLooksAtPath(t *testing.T) {
+	bin := t.TempDir()
+	t.Setenv("PATH", bin)
+	if GitOnPath() {
+		t.Fatal("found a git on an empty PATH")
+	}
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\n"), 0o700); err != nil { // #nosec G306 -- an executable fixture
+		t.Fatal(err)
+	}
+	if !GitOnPath() {
+		t.Error("expected the git on PATH to be found")
+	}
+}
+
 // TestCcacheOnPathLooksAtPath asserts the answer comes from PATH, as an operator's shell
 // would find it.
 func TestCcacheOnPathLooksAtPath(t *testing.T) {

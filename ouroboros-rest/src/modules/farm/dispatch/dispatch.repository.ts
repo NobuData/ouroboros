@@ -236,8 +236,10 @@ export class DispatchRepository {
    * (V040 leaves that resolution to dispatch, and a union is what makes two overlapping windows
    * harmless); `desired_state = 'active'`, so a drain is honoured whatever the pill says; a live
    * status; the job's executor among the ones its `hello` reported, so a container job is never
-   * offered to a machine without docker; and room under its cap. Whether it is connected *to this
-   * process* is the dispatcher's to ask, of the session registry.
+   * offered to a machine without docker; `git` among its capabilities, because every job names a
+   * repository to check out and an agent without git — or older than source checkout, which is
+   * the same absence (#991) — would only decline it; and room under its cap. Whether it is
+   * connected *to this process* is the dispatcher's to ask, of the session registry.
    *
    * @param job - The job.
    * @param at - Now, for the pool windows.
@@ -259,6 +261,7 @@ export class DispatchRepository {
                  and r.desired_state = 'active'
                  and r.status in ('online', 'building')
                  and (r.capabilities -> 'executors') @> jsonb_build_array(${job.executor}::text)
+                 and (r.capabilities -> 'git') = 'true'::jsonb
                  and (r.pool_id = ${job.pool_id}
                       or exists (
                         select 1

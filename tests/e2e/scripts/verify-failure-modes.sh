@@ -59,9 +59,9 @@
 #   farm-     farm.spec.ts        the enrolment really goes through the TLS gateway to the
 #   gateway                       control plane: with it stopped the pasted command cannot
 #                                 even download the installer, and says so (#262)
-#   farm-     farm.spec.ts        PARKED — the build → live log → stats test, which waits on
-#   gateway   (the build test)    agent source checkout; registered so that the day it runs,
-#                                 this script starts checking it (#262)
+#   git-stub  farm.spec.ts        the build → live log → stats test checks a repository out of
+#             (the build test)    the suite's git host: with it stopped the checkout fails, and
+#                                 the log never streams past the agent's first line (#991)
 #   db        runs.spec.ts        the run the console controls is opened through the real
 #                                 ingestion contract, rows and all: with the database stopped
 #                                 the driver cannot open one, and says so (#310)
@@ -307,15 +307,13 @@
 # instead. The marker is curl's. Parity, the states, the member and the shell stay green: none of
 # them needs a machine, which is what makes the red about the gateway and not about the page.
 #
-# **The build test is parked**, and it is the README's rule in action (§ *Adding a leg*: *a pair
-# whose leg is parked is registered anyway*). `job.offer` always names a repository
-# (`ouroboros-rest`'s `dispatch/offer.ts`) and today's agent declines every offer that does
-# (`ouroboros-runner`'s `agent/jobs.go` — source checkout is unassigned work), so a build
-# submitted to a real runner waits instead of running and the test carries `test.fixme` with
-# that reason. Its pair names the test with `--grep`, finds that it executed nothing, and reports
-# `--` — and starts scoring it, with nobody having to remember, on the commit that removes the
-# `fixme`. The ticket's other two hand breakages — *the dispatcher* and *the log ingest* — are
-# owed with it, because both are only observable through a build that runs.
+# **The build test was parked** until agent source checkout landed (#991), and it was the README's
+# rule in action (§ *Adding a leg*: *a pair whose leg is parked is registered anyway*): its pair
+# reported `--` and started scoring, with nobody having to remember, on the commit that removed
+# the `fixme`. It scores against `git-stub` — the suite's git host, where the repository the build
+# checks out lives — because that is the layer only a build that runs can break. The ticket's other
+# two hand breakages — *the dispatcher* and *the log ingest* — are observable through it now and
+# were done by hand at #991 (see tests/e2e/README.md, leg 16).
 #
 # The three breakages inside `rest` that **can** be seen today were done by hand at the ticket —
 # each stubbed in `ouroboros-rest`, the image rebuilt, the leg re-run — and are recorded here
@@ -706,8 +704,11 @@ expect_red db farm.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 # unresolvable on a compose network whose container stopped, refused on one that kept the name.
 expect_red farm-gateway farm.spec.ts "Could not resolve host|Failed to connect to farm-gateway|curl: \((6|7)\)"
 
-# …and the parked build test, by name. Reported `--` until agent source checkout lands.
-expect_red farm-gateway farm.spec.ts "the log streamed" "streams a real build"
+# …and the build test, by name, against the git host (#991). The repository the build checks out
+# lives in `git-stub`; with it stopped the agent's checkout fails and the test's own assertion
+# says the log never streamed. Not against the gateway: with that stopped the test cannot even
+# enrol, and the marker would be curl's, which the chain pair above already scores.
+expect_red git-stub farm.spec.ts "the log streamed" "streams a real build"
 
 # The run console leg (#310). Its run is opened by the simulated-run driver through
 # `ouroboros-rest`'s ingestion contract, so with the database stopped there is no run to

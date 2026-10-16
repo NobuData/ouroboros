@@ -200,6 +200,7 @@ bearer secret out of every session log that will ever be captured.
 | `capabilities.ccache` | boolean | yes | A `ccache` on `PATH` |
 | `capabilities.cpus` | integer ≥ 1 | yes | Usable cores, after any operator limit |
 | `capabilities.memory_mb` | integer ≥ 1 | yes | Usable memory, MiB, after any operator limit |
+| `capabilities.git` | boolean | no | A `git` on `PATH` — what checks out `job.offer.repository` ([#991](https://github.com/NobuData/ouroboros/issues/991)). Optional only because it was added inside line 1 (§ 3): an agent that omits it is older than source checkout, and the dispatcher offers it no job that names a repository — [`valid/hello-git.json`](../schemas/runner-protocol/fixtures/valid/hello-git.json) |
 | `security_mode` | `mtls` · `bearer_fallback` | no | How this connection was authenticated. Optional only because it was added inside line 1 (§ 3): every agent that connects sends it |
 | `resume` | session id | no | The session this agent wants back. Absent on a first connection |
 
@@ -450,6 +451,10 @@ sleep mid-handshake from holding a job nobody is running.
 | `repository.url` | string (1–1024) | yes | Clone URL |
 | `repository.ref` | string (1–256) | yes | Ref to fetch |
 | `repository.commit` | 40 lowercase hex | yes | The exact commit, so a moving ref cannot change what was built after the fact |
+| `repository.credential` | object | no | How to obtain a private repository's credential ([#991](https://github.com/NobuData/ouroboros/issues/991), decision **L9**) — see [the source credential](#the-source-credential). Absent for a repository cloned anonymously. Optional only because it was added inside line 1 |
+| `repository.credential.path` | string (2–512), `/`-rooted, never `//` | yes | The redemption's path on the control plane's own origin |
+| `repository.credential.token` | string (32–256), header-safe | yes | The single-use ticket, sent as `Authorization: Bearer <token>` |
+| `repository.credential.expires_at` | timestamp | yes | When the ticket stops being honoured |
 | `timeout_s` | integer 1–86400 | yes | Wall-clock budget. On expiry: cancel, and finish `timed_out` |
 | `expires_at` | timestamp | yes | When this offer stops being answerable |
 | `attempt` | integer ≥ 1 | no | Which attempt of the build this job is: 2 for the automatic retry of an infrastructure failure ([#252](https://github.com/NobuData/ouroboros/issues/252)). Absent means 1, and the gateway omits it on a first attempt. Optional only because it was added inside line 1 (§ 3) |
@@ -571,6 +576,56 @@ the parse — is `ouroboros-rest`'s
 
 A shell job on the `hil-rigs` pool, with an upload:
 [`valid/job-offer-upload.json`](../schemas/runner-protocol/fixtures/valid/job-offer-upload.json).
+
+#### The source credential
+
+**The agent checks the repository out before the command runs**
+([#991](https://github.com/NobuData/ouroboros/issues/991)): `git init`, a shallow fetch of
+`repository.commit` from `repository.url`, a detached checkout, and `HEAD` verified to be that
+commit — a ref that moved on the host does not change what is built. The checkout's output goes
+to the job's log; a failure is `job.finish` with `outcome: errored` and `error.code:
+workspace.checkout_failed`, and the command never runs in an empty tree. An agent without `git`
+says so in `hello.capabilities.git` and declines a repository job `unsupported_executor`.
+
+**A private repository needs a credential, and the offer does not carry it.** The offer is a
+recorded frame — fixtures, transcripts, both sides' logs — and the credential is the workspace's
+own GitHub token. So, as the upload carries a token for *its* one call, the offer carries a
+**ticket** for this one: `repository.credential`, redeemed once, on the control plane's own origin:
+
+```
+POST <control plane>/<repository.credential.path>   e.g. /api/v1/farm/jobs/<build job uuid>/source-credential
+Authorization: Bearer <repository.credential.token>
+Accept: application/json
+→ 200 {"username": "x-access-token", "password": "<the workspace's GitHub token>", "expires_at": "…"}
+→ 401 {"code": "farm_source_credential_refused", …}     missing · wrong · expired · redeemed · job not running
+```
+
+Four rules, each one the upload's turned around:
+
+- **The ticket is minted with the offer** (`ouro_src_…`, 32 random bytes), stored only as its
+  hash, re-minted on a re-offer so the runner that did not take the job holds a dead one, and
+  expires minutes after the offer's answer window. **Redeeming it is single use**: the redemption
+  is one statement on the control plane, so two presentations at the same instant get one
+  credential and one `401`. Every failure is that one `401`, with no detail.
+- **The path is a path**, resolved against the control-plane URL the agent already dials, exactly
+  as the upload's is; `//host` is refused by the schema
+  ([`invalid/job-offer-credential-path.json`](../schemas/runner-protocol/fixtures/invalid/job-offer-credential-path.json))
+  and by the agent again.
+- **The credential is used once and never kept.** The agent hands it to `git` through an askpass
+  program — its own binary, in askpass mode — for the one fetch, with no credential helper, no
+  system or user git configuration, and the password in the environment of the `git` process
+  alone. It is written to no file, appears in no `.git/config`, is in no part of the job's own
+  environment, and is logged by neither side. A `401` from the control plane is `errored` /
+  `workspace.checkout_failed` with *the control plane refused the source credential*.
+- **No credential means an anonymous clone.** A workspace with no GitHub token is offered no
+  ticket, its public repositories clone as before, and a private one fails on the runner with a
+  sentence that says so: *the repository refused the clone: it is private and this workspace has
+  no GitHub token to check it out with*. What the control plane hands over, and why it is the
+  workspace's token rather than something narrower, is
+  [`SECURITY_MODEL.md` § 4.8](SECURITY_MODEL.md#48-the-source-credential).
+
+A container job on a private repository, with its ticket:
+[`valid/job-offer-credential.json`](../schemas/runner-protocol/fixtures/valid/job-offer-credential.json).
 
 #### `job.accept`
 
@@ -749,7 +804,7 @@ record, and re-sends the frame **byte for byte** until a `receipt` comes back. S
 | `ccache.hit_rate_pct` | number 0–100 | yes | — |
 | `ccache.size_mb` · `max_size_mb` | integer ≥ 0 | yes | — |
 | `error` | object or `null` | yes | Why the agent could not run it, or the executor's last word |
-| `error.code` | string (1–64) | yes | A stable, greppable token — `executor.exit`, `image.pull_failed` |
+| `error.code` | string (1–64) | yes | A stable, greppable token — `executor.exit`, `image.pull_failed`, `workspace.checkout_failed` |
 | `error.detail` | string (1–1024) | yes | One sentence. Never a credential |
 
 The five outcomes are five *different things*, and conflating any two of them produces a
@@ -761,7 +816,7 @@ control plane that retries the wrong jobs:
 | `failed` | The command ran and exited non-zero | integer, required |
 | `cancelled` | The agent was stopped, or a [`job.cancel`](#jobcancel) told it to stop | integer or `null` |
 | `timed_out` | `timeout_s` expired | integer or `null` |
-| `errored` | **The agent could not run the job at all** — an image that would not pull, a workspace it could not create | integer or `null` |
+| `errored` | **The agent could not run the job at all** — an image that would not pull, a workspace it could not create, a repository it could not check out | integer or `null` |
 
 `errored` is the one worth insisting on. A build that failed is information about the code; an
 agent that could not start is information about the *farm*, and a retry elsewhere is the right
@@ -1154,6 +1209,7 @@ Named here so that nobody looks for it and concludes it was forgotten:
 | How logs are chunked, throttled and stored | [#247](https://github.com/NobuData/ouroboros/issues/247), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md#build-output)'s `internal/logship` (the chunker, the throttle, the agent's cap and its ccache statistics); [#253](https://github.com/NobuData/ouroboros/issues/253), shipped — `ouroboros-rest`'s [`farm/logs/`](../ouroboros-rest/src/modules/farm/logs) (ingest in `seq` order, the caps, retention, and the offset read) |
 | Packaging, `install.sh`, systemd and launchd units | [#248](https://github.com/NobuData/ouroboros/issues/248), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md#install)'s `install.sh`, `make release` and `ci/runner`'s `release/runner`; served by `ouroboros-rest`'s [`farm/installer/`](../ouroboros-rest/src/modules/farm/installer) |
 | The artifact upload's control-plane half: the store, the quota, checksums, the receipt and the parse | [#330](https://github.com/NobuData/ouroboros/issues/330), shipped — `ouroboros-rest`'s [`farm/artifacts/`](../ouroboros-rest/src/modules/farm/artifacts); the agent's collection and upload are [`ouroboros-runner`](../ouroboros-runner/README.md)'s `internal/artifacts` |
+| The source credential's control-plane half: the ticket ledger, the redemption, what is handed over and why | [#991](https://github.com/NobuData/ouroboros/issues/991), shipped — `ouroboros-rest`'s [`farm/source/`](../ouroboros-rest/src/modules/farm/source) and [`SECURITY_MODEL.md` § 4.8](SECURITY_MODEL.md#48-the-source-credential); the agent's checkout is [`ouroboros-runner`](../ouroboros-runner/README.md)'s `internal/exec/checkout.go` |
 | A remote shared cache, and the untrusted-code isolation question | [#264](https://github.com/NobuData/ouroboros/issues/264), [#267](https://github.com/NobuData/ouroboros/issues/267) |
 
 The agent's own configuration — the control plane's URL, the pool, where the certificate lives —

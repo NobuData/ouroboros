@@ -139,6 +139,8 @@ var specs = map[Type]*messageSpec{
 			{name: "ccache", kinds: kindBool},
 			{name: "cpus", kinds: kindInteger, min: num(1)},
 			{name: "memory_mb", kinds: kindInteger, min: num(1)},
+			// Added inside line 1 (#991): absent on an agent older than source checkout.
+			{name: "git", kinds: kindBool, optional: true},
 		}},
 		// Optional only because it was added inside line 1 (§ 3). The gateway reads the
 		// transport for a hello that omits it.
@@ -213,6 +215,13 @@ var specs = map[Type]*messageSpec{
 				{name: "url", kinds: kindString, minLen: 1, maxLen: 1024},
 				{name: "ref", kinds: kindString, minLen: 1, maxLen: 256},
 				{name: "commit", kinds: kindString, pattern: commitRe},
+				// Added inside line 1 (#991): absent for a repository cloned anonymously. The
+				// same shapes as the upload's path and token, for the same reasons.
+				{name: "credential", kinds: kindObject, optional: true, fields: []field{
+					{name: "path", kinds: kindString, pattern: uploadPathRe, minLen: 2, maxLen: 512},
+					{name: "token", kinds: kindString, pattern: uploadTokenRe, minLen: 32, maxLen: 256},
+					timestampField("expires_at"),
+				}},
 			}},
 			{name: "timeout_s", kinds: kindInteger, min: num(1), max: num(86400)},
 			timestampField("expires_at"),

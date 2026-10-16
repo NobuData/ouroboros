@@ -185,7 +185,8 @@ describe("build dispatch", () => {
     agents.push(agent);
 
     const hello = fixtureFrame("valid/hello.json");
-    Object.assign(hello.payload.capabilities as object, capabilities);
+    // A current agent reports `git` (#991); a case that wants an older one says `git: false`.
+    Object.assign(hello.payload.capabilities as object, { git: true }, capabilities);
     agent.send(hello);
     await agent.next("ack");
 
@@ -890,7 +891,7 @@ describe("build dispatch", () => {
       await api.sql.query(
         `update ouroboros.runners
             set status = 'online', last_seen_at = now(),
-                capabilities = '{"executors": ["container"], "docker": true}'
+                capabilities = '{"executors": ["container"], "docker": true, "git": true}'
           where id = $1`,
         [runner.runnerId],
       );

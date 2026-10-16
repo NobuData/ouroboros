@@ -2,8 +2,11 @@ package exec
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
+
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/secret"
 )
 
 // DefaultGrace is how long a job's processes are given between SIGTERM and SIGKILL — the
@@ -19,6 +22,12 @@ const (
 	CodeWorkspaceInvalid = "workspace.invalid"
 	// CodeWorkspaceCreateFailed is a workspace the agent could not create.
 	CodeWorkspaceCreateFailed = "workspace.create_failed"
+	// CodeCheckoutFailed is a repository that could not be checked out at the offered commit
+	// ([#991]): the clone was refused, the commit is not what the ref points at any more, or
+	// the credential could not be obtained. The command never ran.
+	//
+	// [#991]: https://github.com/NobuData/ouroboros/issues/991
+	CodeCheckoutFailed = "workspace.checkout_failed"
 	// CodeImagePullFailed is an image that could not be found or pulled.
 	CodeImagePullFailed = "image.pull_failed"
 	// CodeStartFailed is a command that never started: no such program, or a container
@@ -61,6 +70,38 @@ type Job struct {
 	//
 	// [#247]: https://github.com/NobuData/ouroboros/issues/247
 	Mounts []Mount
+	// Source is the repository to check out into the workspace before the command runs
+	// ([#991]), or nil for a job that needs no source.
+	//
+	// [#991]: https://github.com/NobuData/ouroboros/issues/991
+	Source *Source
+}
+
+// Source is `job.offer.repository` as the checkout needs it ([#991]): the clone URL, the ref
+// it was taken from, the exact commit to build — and, for a private repository, the
+// credential the agent redeemed for this one checkout.
+//
+// [#991]: https://github.com/NobuData/ouroboros/issues/991
+type Source struct {
+	// URL is the clone URL, https:// or http://, with no userinfo of its own.
+	URL string
+	// Ref is the ref the commit was taken from — `refs/heads/main` — fetched only when the
+	// remote will not serve the commit directly.
+	Ref string
+	// Commit is the exact commit: forty lowercase hex. HEAD is verified to be it.
+	Commit string
+	// Credential is what git presents over HTTP, or nil for an anonymous clone. It reaches
+	// git through GIT_ASKPASS and nothing else: never the URL, never the tree, never the
+	// job's environment.
+	Credential *SourceCredential
+}
+
+// SourceCredential is one checkout's git credential — used for its fetches and dropped.
+type SourceCredential struct {
+	// Username is what GitHub expects beside a token: `x-access-token`.
+	Username string
+	// Password is the token. Redacted wherever it is printed.
+	Password secret.Secret
 }
 
 // Mount is a host directory a container job sees at Target.
@@ -102,6 +143,12 @@ func ShareOf(cpus, memoryMB, maxConcurrency int) Limits {
 type Output struct {
 	Stdout io.Writer
 	Stderr io.Writer
+	// Runner is where the agent's own lines about the job go — the `runner` stream the
+	// console renders apart from the build's output ([#330]): what the checkout did, say.
+	// Nil falls back to Stderr.
+	//
+	// [#330]: https://github.com/NobuData/ouroboros/issues/330
+	Runner io.Writer
 }
 
 // stdout is the writer for standard output, or a discard.
@@ -109,6 +156,20 @@ func (o Output) stdout() io.Writer { return orDiscard(o.Stdout) }
 
 // stderr is the writer for standard error, or a discard.
 func (o Output) stderr() io.Writer { return orDiscard(o.Stderr) }
+
+// runner is the writer for the agent's own lines: Runner, else Stderr, else a discard.
+func (o Output) runner() io.Writer {
+	if o.Runner != nil {
+		return o.Runner
+	}
+	return o.stderr()
+}
+
+// runnerLine writes one line of the agent's own to the job's log, under the prefix the
+// console recognises.
+func runnerLine(w io.Writer, format string, args ...any) {
+	_, _ = fmt.Fprintf(w, "ouroboros-runner: "+format+"\n", args...)
+}
 
 // orDiscard is a writer, or io.Discard in place of nil.
 func orDiscard(w io.Writer) io.Writer {

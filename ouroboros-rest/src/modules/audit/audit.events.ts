@@ -266,6 +266,15 @@ export const RUNNER_POOL_DELETED_EVENT = "runner.pool_deleted";
 export const RUNNER_JOB_SUBMITTED_EVENT = "runner.job_submitted";
 
 /**
+ * A build runner redeemed its single-use ticket for a private repository's checkout credential
+ * (AG.7, [#991](https://github.com/NobuData/ouroboros/issues/991), decision **L9**). Subject
+ * `build_job`; no actor — a runner is not a person. The detail is flat: `repository`
+ * (`owner/name`), and nothing derived from the credential — not a mask, not a length.
+ * **In the `runner` family**, for {@link RUNNER_JOB_SUBMITTED_EVENT}'s reason.
+ */
+export const RUNNER_SOURCE_CREDENTIAL_REDEEMED_EVENT = "runner.source_credential_redeemed";
+
+/**
  * A runner was flagged with a farm health note because a failure it ran was classified
  * `infra_rig` (AT.4, [#332](https://github.com/NobuData/ouroboros/issues/332)). In the `runner`
  * family, so *what has happened to our fleet* stays one question. The note itself is on the
@@ -887,6 +896,7 @@ export const AUDIT_ACTIONS = [
   WORKSPACE_LIVE_CEILING_CHANGED_EVENT,
   WORKSPACE_GUARDRAIL_MODES_CHANGED_EVENT,
   RUN_BUDGET_EXCEEDED_EVENT,
+  RUNNER_SOURCE_CREDENTIAL_REDEEMED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

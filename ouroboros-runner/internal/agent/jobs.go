@@ -25,7 +25,7 @@ import (
 // The deciding is CAPABILITY HONESTY. A runner without docker cannot run a container job,
 // and accepting one to fail it at execution would burn a dispatch cycle and show somebody
 // a build failure that is really a farm fact. So every offer this runner cannot satisfy —
-// no executor for its kind, a repository this build cannot check out, no room under the
+// no executor for its kind, a repository this machine cannot check out, no room under the
 // pool's cap — is declined immediately, with a reason, and dispatch ([#252]) finds a
 // runner that can.
 //
@@ -188,9 +188,8 @@ func (a *Agent) decline(offer conn.JobOfferPayload) (reason, detail string) {
 		return conn.DeclineDraining, "this agent is draining: " + why
 	case !expires.IsZero() && !a.config.Now().Before(expires):
 		return conn.DeclineExpired, "the offer expired before it arrived"
-	case offer.Repository != nil:
-		return conn.DeclineUnsupportedExecutor, fmt.Sprintf(
-			"this agent build (%s) does not check out repositories yet; the job names one", a.config.Version)
+	case offer.Repository != nil && !a.config.Capabilities.Git:
+		return conn.DeclineUnsupportedExecutor, "this runner has no git on PATH, so it cannot check out repositories"
 	case a.config.Executors[offer.Executor] == nil:
 		return conn.DeclineUnsupportedExecutor, a.unsupported(offer.Executor)
 	case a.workload.Holds(offer.Job):
@@ -238,6 +237,11 @@ func (a *Agent) launch(ctx context.Context, offer conn.JobOfferPayload) {
 		Timeout: time.Duration(offer.TimeoutS) * time.Second,
 		Limits:  exec.ShareOf(a.config.Capabilities.CPUs, a.config.Capabilities.MemoryMB, maxConcurrency),
 	}
+	if offer.Repository != nil {
+		// The credential, when there is one, is redeemed by run — just before the checkout,
+		// so it is held for as short a time as possible.
+		job.Source = &exec.Source{URL: offer.Repository.URL, Ref: offer.Repository.Ref, Commit: offer.Repository.Commit}
+	}
 	executor := a.config.Executors[offer.Executor]
 	attempt := attemptOf(offer)
 	jobCtx, cancel := context.WithCancelCause(ctx)
@@ -248,7 +252,7 @@ func (a *Agent) launch(ctx context.Context, offer conn.JobOfferPayload) {
 	go func() {
 		defer a.jobs.Done()
 		defer cancel(nil)
-		a.run(jobCtx, executor, job, offer.Pool, attempt, offer.Upload)
+		a.run(jobCtx, executor, job, offer.Pool, attempt, offer.Upload, sourceTicket(offer.Repository))
 		a.cancels.remove(job.ID)
 	}()
 }
@@ -281,11 +285,18 @@ func (a *Agent) cancelJob(cancel conn.JobCancelPayload) {
 // artifacts are collected and uploaded when its offer carried an upload ([#330]), so a job's
 // finish always follows its closed manifest.
 //
+// And before the job runs at all, when its repository is private, the source credential is
+// redeemed ([#991]): one call to the control plane with the offer's ticket, answered with
+// the credential the checkout presents and then drops. A ticket the control plane refuses
+// is a job that never starts — `errored`, `workspace.checkout_failed` — and says so in the
+// job's own log.
+//
 // [#247]: https://github.com/NobuData/ouroboros/issues/247
 // [#253]: https://github.com/NobuData/ouroboros/issues/253
 // [#330]: https://github.com/NobuData/ouroboros/issues/330
+// [#991]: https://github.com/NobuData/ouroboros/issues/991
 func (a *Agent) run(ctx context.Context, executor exec.Executor, job exec.Job, pool string, attempt int,
-	upload *conn.JobUpload) {
+	upload *conn.JobUpload, ticket *conn.JobSourceCredential) {
 	a.log.Info("running a job", "job", job.ID, "attempt", attempt, "executor", job.Kind, "image", job.Image,
 		"timeout", job.Timeout)
 	cache, err := a.caches.Prepare(pool, job.ID, job.Kind)
@@ -302,12 +313,21 @@ func (a *Agent) run(ctx context.Context, executor exec.Executor, job exec.Job, p
 
 	output := a.shipper.Open(job.ID)
 	events := &jobEvents{agent: a, job: job, attempt: attempt}
-	runner := exec.Runner{Workspaces: a.config.Workspaces, Now: a.config.Now,
-		// Its results leave before its workspace does, and before its finish is queued (#330).
-		BeforeCleanup: func(workspace string, result exec.Result) {
-			a.uploadArtifacts(ctx, upload, job, workspace, result, output.Runner())
-		}}
-	result := runner.Run(ctx, executor, job, exec.Output{Stdout: output.Stdout(), Stderr: output.Stderr()}, events)
+	var result exec.Result
+	if credential, refusal := a.redeemSource(ctx, job, ticket, output.Runner()); refusal != nil {
+		result = a.neverRan(refusal)
+	} else {
+		if job.Source != nil {
+			job.Source.Credential = credential
+		}
+		runner := exec.Runner{Workspaces: a.config.Workspaces, Now: a.config.Now, Git: a.config.Git,
+			// Its results leave before its workspace does, and before its finish is queued (#330).
+			BeforeCleanup: func(workspace string, result exec.Result) {
+				a.uploadArtifacts(ctx, upload, job, workspace, result, output.Runner())
+			}}
+		result = runner.Run(ctx, executor, job,
+			exec.Output{Stdout: output.Stdout(), Stderr: output.Stderr(), Runner: output.Runner()}, events)
+	}
 	shipped := output.Close()
 	a.report(job, attempt, result, shipped, cache.Stats(job.Env))
 	a.workload.Finished(job.ID)
@@ -386,6 +406,17 @@ type jobEvents struct {
 	agent   *Agent
 	job     exec.Job
 	attempt int
+}
+
+// Fetching is the source checkout ([#991]) as a job.progress in the `fetch` phase: the job
+// has not started, and this is what keeps a slow clone from reading as a stall.
+//
+// [#991]: https://github.com/NobuData/ouroboros/issues/991
+func (e *jobEvents) Fetching(pct int, note string) {
+	e.agent.log.Info("checking out a job's source", "job", e.job.ID, "pct", pct, "note", note)
+	e.agent.notify(conn.NewFrame(conn.NewID(), conn.TypeJobProgress, conn.JobProgressPayload{
+		Job: e.job.ID, Phase: conn.PhaseFetch, Pct: min(max(pct, 0), 100), Note: truncateNote(note),
+	}))
 }
 
 // Progress is preparation progress — an image pull — as a job.progress in the `prepare`

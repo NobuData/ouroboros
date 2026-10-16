@@ -17,6 +17,7 @@
 import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
 
+import { AppConfigService } from "../../config/config.service";
 import { DatabaseService } from "../../db/db.service";
 import type { CodeRepositoryRef, DepStack } from "../../engine/engine.code.contract";
 import { cloneUrl } from "../../farm/dispatch/offer";
@@ -60,9 +61,15 @@ export class CodeWorkspace {
    * @param database - The tenancy database.
    * @param credentials - The workspace's GitHub token, opened per call.
    */
+  /**
+   * @param database - The typed connection.
+   * @param credentials - The workspace's GitHub token.
+   * @param config - The clone base every remote is built on (`OURO_GITHUB_CLONE_BASE_URL`, #991).
+   */
   constructor(
     private readonly database: DatabaseService,
     private readonly credentials: GithubCredentialsService,
+    private readonly config: AppConfigService,
   ) {}
 
   /**
@@ -131,7 +138,7 @@ export class CodeWorkspace {
     return {
       workspace: organizationId,
       slug: repository.slug,
-      remote: cloneUrl(owner, name),
+      remote: cloneUrl(this.config.githubCloneBaseUrl, owner, name),
       token: await this.token(organizationId),
     };
   }

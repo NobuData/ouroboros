@@ -28,6 +28,7 @@ import {
   DEFAULT_DASHBOARD_POLL_SECONDS,
   DEFAULT_FARM_LOG_BUDGET_BYTES,
   DEFAULT_GITHUB_API_BASE_URL,
+  DEFAULT_GITHUB_CLONE_BASE_URL,
   DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS,
   DEFAULT_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
   DEFAULT_SLACK_API_BASE_URL,
@@ -111,6 +112,7 @@ describe("the development defaults", () => {
       // The template writes the public API out explicitly (#288) and writes exactly this
       // address, so this fixture — which omits it — and a real checkout agree.
       githubApiBaseUrl: DEFAULT_GITHUB_API_BASE_URL,
+      githubCloneBaseUrl: DEFAULT_GITHUB_CLONE_BASE_URL,
       vaultMasterKey: "b3Vyb2Jvcm9zLWRldi12YXVsdC1tYXN0ZXIta2V5ISE=",
       corsOrigins: ["http://localhost:3000"],
       dashboardPollSeconds: DEFAULT_DASHBOARD_POLL_SECONDS,
@@ -271,6 +273,35 @@ describe("the shape of a configuration", () => {
     expect(() =>
       loadConfiguration(testEnvironment({ OURO_GITHUB_API_BASE_URL: "tracker-stub" })),
     ).toThrow(VARIABLES.githubApiBaseUrl);
+  });
+
+  // #991's sibling: where a build job's repository is cloned from. An address with no room for
+  // a credential, because the clone base reaches every offer and every log.
+  it("takes a clone base, drops its trailing slash, and refuses credentials, queries and fragments", () => {
+    expect(loadConfiguration(testEnvironment()).githubCloneBaseUrl).toBe(
+      DEFAULT_GITHUB_CLONE_BASE_URL,
+    );
+    expect(
+      loadConfiguration(testEnvironment({ OURO_GITHUB_CLONE_BASE_URL: "http://git-stub:8080/" }))
+        .githubCloneBaseUrl,
+    ).toBe("http://git-stub:8080");
+    expect(
+      loadConfiguration(
+        testEnvironment({ OURO_GITHUB_CLONE_BASE_URL: "https://ghe.example.com/git" }),
+      ).githubCloneBaseUrl,
+    ).toBe("https://ghe.example.com/git");
+
+    for (const bad of [
+      "git-stub",
+      "https://user:secret@github.com",
+      "https://github.com/?x=1",
+      "https://github.com/#frag",
+      "ssh://git@github.com",
+    ]) {
+      expect(() => loadConfiguration(testEnvironment({ OURO_GITHUB_CLONE_BASE_URL: bad }))).toThrow(
+        VARIABLES.githubCloneBaseUrl,
+      );
+    }
   });
 });
 

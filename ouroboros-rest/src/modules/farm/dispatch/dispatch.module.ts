@@ -48,6 +48,7 @@ import { LifecycleStateModule } from "../../lifecycle/lifecycle-state.module";
 import { FarmArtifactsModule } from "../artifacts/artifacts.module";
 import { FarmAudit } from "../farm.audit";
 import { FarmGatewayModule } from "../gateway/gateway.module";
+import { FarmSourceModule } from "../source/source.module";
 import { FARM_DISPATCH_GATE } from "./dispatch.gate";
 import { DispatchRepository } from "./dispatch.repository";
 import { DispatchService } from "./dispatcher";
@@ -56,7 +57,15 @@ import { FarmJobsController } from "./jobs.controller";
 import { FarmJobsService } from "./jobs.service";
 
 @Module({
-  imports: [DbModule, AuditModule, FarmGatewayModule, FarmArtifactsModule, LifecycleStateModule],
+  imports: [
+    DbModule,
+    AuditModule,
+    FarmGatewayModule,
+    FarmArtifactsModule,
+    // AG.7 (#991): every offer of a private repository carries a single-use checkout ticket.
+    FarmSourceModule,
+    LifecycleStateModule,
+  ],
   controllers: [FarmJobsController],
   providers: [
     DispatchRepository,

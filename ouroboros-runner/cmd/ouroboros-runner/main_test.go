@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/conn"
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/exec"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/farmtest"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/logship"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/state"
@@ -103,6 +104,64 @@ func TestHelloReportsShellUnlessRefused(t *testing.T) {
 				t.Errorf("%s with %s=maybe: %v", command, variable, err)
 			}
 		}
+	}
+}
+
+// TestAskpassAnswersGitAndNothingElse is the executable as GIT_ASKPASS (#991): the username
+// and the password, each from its variable and only for its prompt; anything else refused;
+// nothing printed that git did not ask for.
+func TestAskpassAnswersGitAndNothingElse(t *testing.T) {
+	credential := env(map[string]string{exec.EnvAskpassUsername: "x-access-token",
+		exec.EnvAskpassPassword: "ghp_fixtureSecret0000000000000000000004"})
+	for name, c := range map[string]struct {
+		args []string
+		env  func(string) string
+		code int
+		out  string
+	}{
+		"the username":               {[]string{"Username for 'https://github.com': "}, credential, 0, "x-access-token\n"},
+		"the password":               {[]string{"Password for 'https://x-access-token@github.com': "}, credential, 0, "ghp_fixtureSecret0000000000000000000004\n"},
+		"a default username":         {[]string{"Username for 'https://github.com': "}, env(nil), 0, "x-access-token\n"},
+		"a password nobody set":      {[]string{"Password for 'https://github.com': "}, env(nil), 1, ""},
+		"a prompt that is not git's": {[]string{"Passphrase for key: "}, credential, 1, ""},
+		"no prompt":                  {nil, credential, 1, ""},
+		"two prompts":                {[]string{"Username", "Password"}, credential, 1, ""},
+	} {
+		out := &bytes.Buffer{}
+		if code := askpass(c.args, c.env, out); code != c.code || out.String() != c.out {
+			t.Errorf("%s: exit %d %q, want %d %q", name, code, out.String(), c.code, c.out)
+		}
+	}
+}
+
+// TestHelloReportsGit is `capabilities.git` answered from PATH (#991).
+func TestHelloReportsGit(t *testing.T) {
+	git := func() bool {
+		t.Helper()
+		printed, _, err := runCommandLine(t, env(nil), "hello", "--state-dir", t.TempDir())
+		if err != nil {
+			t.Fatalf("hello: %v", err)
+		}
+		var hello conn.HelloPayload
+		frame, diags := conn.Decode([]byte(printed))
+		if len(diags) > 0 {
+			t.Fatalf("an illegal hello: %v", diags)
+		}
+		if err := frame.Into(&hello); err != nil {
+			t.Fatal(err)
+		}
+		return hello.Capabilities.Git
+	}
+	bin := t.TempDir()
+	t.Setenv("PATH", bin)
+	if git() {
+		t.Error("a machine with no git on PATH claims git: true")
+	}
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\n"), 0o700); err != nil { // #nosec G306 -- an executable fixture
+		t.Fatal(err)
+	}
+	if !git() {
+		t.Error("a machine with git on PATH claims git: false")
 	}
 }
 

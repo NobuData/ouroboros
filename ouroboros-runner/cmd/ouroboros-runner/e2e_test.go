@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/conn"
+	runnerexec "github.com/NobuData/ouroboros/ouroboros-runner/internal/exec"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/farmtest"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/logship"
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/state"
@@ -32,7 +34,9 @@ const mainMarker = "OUROBOROS_RUNNER_TEST_MAIN"
 
 // TestMain runs main() instead of the suite when the marker is set.
 func TestMain(m *testing.M) {
-	if os.Getenv(mainMarker) == "1" {
+	// As the command — and as the command run by git as GIT_ASKPASS (#991), which inherits
+	// the checkout's environment and not the agent's, so the marker is not there.
+	if os.Getenv(mainMarker) == "1" || os.Getenv(runnerexec.EnvAskpass) == "1" {
 		main()
 		os.Exit(0)
 	}
@@ -544,4 +548,106 @@ func TestTheRunningAgentRunsAShellJob(t *testing.T) {
 	if !strings.Contains(agent.output.String(), "dropped=[HOME]") {
 		t.Errorf("the dropped variable was not logged:\n%s", agent.output)
 	}
+}
+
+// TestTheRunningAgentChecksOutAPrivateRepository is the source checkout (#991) through the
+// command as a process — the one place the askpass mode is exercised for real, because the
+// program git runs for the credential is this very binary. The job's command reads the tree
+// it was given and writes its environment and git's configuration where the test can read
+// them; the credential and the ticket are in none of it, nor in anything the agent printed.
+func TestTheRunningAgentChecksOutAPrivateRepository(t *testing.T) {
+	const password = "ghp_fixtureSecret0000000000000000000005"            // #nosec G101 -- a fixture, not a credential
+	const ticket = "ouro_src_Hq2vN8mZkT4wRa6LpY3sD9fJ1cB5eU0gXiKoMt7PyVz" // #nosec G101 -- a fixture
+	host := farmtest.NewGitHost(t, "x-access-token", password)
+	farm, serverCA := farmFiles(t)
+	farm.SetSourceCredential("x-access-token", password)
+	farm.SetPool(&conn.AckPool{MaxConcurrency: 1, EnvAllowlist: []string{"CI"}})
+	stateDir := filepath.Join(t.TempDir(), "state")
+	output, code := execute(t, "enroll", "--server", farm.URL, "--tenant", "acme-robotics", "--pool", "pool-b",
+		"--token", farm.MintToken("pool-b", 1), "--name", "anvil-mac", "--state-dir", stateDir, "--server-ca", serverCA)
+	if code != 0 {
+		t.Fatalf("enroll exited %d:\n%s", code, output)
+	}
+
+	agent := spawnWith(t, []string{envKeep + "=true"}, "run", "--state-dir", stateDir, "--server-ca", serverCA)
+	observed := awaitFarm(t, farm, "the connection", agent.output, func(o farmtest.Observed) bool {
+		return len(o.Hellos) == 1 && len(o.Heartbeats) >= 1
+	})
+	if !observed.Hellos[0].Capabilities.Git {
+		t.Fatalf("the runner does not advertise git: %+v", observed.Hellos[0].Capabilities)
+	}
+
+	job := "job_01KE7EWKB1TJFC3BXKZPY4FRD3"
+	if err := farm.Send(conn.NewFrame(conn.NewID(), conn.TypeJobOffer, map[string]any{
+		"job": job, "pool": "pool-b", "executor": "shell",
+		// Exit 3 so the workspace is kept, and the test can read what the job saw.
+		"command": []string{"sh", "-c", "cat README.md; env > env.txt; git config --list --show-origin > cfg.txt; exit 3"},
+		"workdir": "/", "env": map[string]string{"CI": "true"},
+		"repository": map[string]any{
+			"url": host.URL, "ref": host.Ref, "commit": host.Commit,
+			"credential": map[string]any{
+				"path":       "/api/v1/farm/jobs/0199a1f2-6b3c-7d4e-8f50-61a2b3c4d5e6/source-credential",
+				"token":      ticket,
+				"expires_at": "2026-09-18T12:15:15.000Z",
+			},
+		},
+		"timeout_s": 60, "expires_at": conn.Timestamp(time.Now().Add(time.Minute)),
+	})); err != nil {
+		t.Fatal(err)
+	}
+	observed = awaitFarm(t, farm, "the job's finish", agent.output, func(o farmtest.Observed) bool {
+		return len(o.Finishes) == 1
+	})
+	envelope, diags := conn.Decode(observed.FinishFrames[0])
+	if len(diags) > 0 {
+		t.Fatalf("an illegal finish: %v", diags)
+	}
+	var finish conn.JobFinishPayload
+	if err := envelope.Into(&finish); err != nil {
+		t.Fatal(err)
+	}
+	if finish.Outcome != conn.OutcomeFailed || finish.ExitCode == nil || *finish.ExitCode != 3 {
+		t.Fatalf("finish: %+v %+v\n%s", finish, finish.Error, agent.output)
+	}
+	if len(observed.Sources) != 1 || observed.Sources[0].Authorization != "Bearer "+ticket {
+		t.Errorf("the ticket was redeemed as %+v", observed.Sources)
+	}
+
+	workspace := filepath.Join(stateDir, "work", job)
+	var everything strings.Builder
+	everything.WriteString(agent.output.String())
+	for _, chunk := range observed.Chunks {
+		everything.WriteString(decodeChunk(t, chunk))
+	}
+	for _, name := range []string{"env.txt", "cfg.txt"} {
+		body, err := os.ReadFile(filepath.Join(workspace, name)) // kept: the job failed
+		if err != nil {
+			t.Fatalf("the failed job's workspace was not kept: %v\n%s", err, agent.output)
+		}
+		everything.Write(body)
+	}
+	if !strings.Contains(everything.String(), "# helios") {
+		t.Errorf("the command did not read the checked-out README:\n%s", everything.String())
+	}
+	if !strings.Contains(everything.String(), "ouroboros-runner: checking out "+host.URL) {
+		t.Error("the job's log does not say what was checked out")
+	}
+	for _, secretText := range []string{password, ticket} {
+		if strings.Contains(everything.String(), secretText) {
+			t.Errorf("a secret reached the agent's output, the job's log, the job's environment or git's configuration")
+		}
+	}
+	if code := agent.signal(syscall.SIGTERM); code != 0 {
+		t.Errorf("SIGTERM exited %d:\n%s", code, agent.output)
+	}
+}
+
+// decodeChunk is a chunk's output.
+func decodeChunk(t *testing.T, chunk conn.LogChunkPayload) string {
+	t.Helper()
+	data, err := base64.StdEncoding.DecodeString(chunk.Data)
+	if err != nil {
+		t.Fatalf("chunk %d is not base64: %v", chunk.Seq, err)
+	}
+	return string(data)
 }

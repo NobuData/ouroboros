@@ -156,9 +156,44 @@ export const MEMBER_PAGE = {
 /** The pool the chain creates — through the page, by the no-pools state's own button. */
 export const CHAIN_POOL = "pool-e2e";
 
-/** What the plugin answers a create with — the one field this leg reads. */
-interface CreatedOrganization {
+/** What the plugin answers a create with: the id the tenancy API is addressed by, and the slug. */
+export interface CreatedOrganization {
+  readonly id: string;
   readonly slug: string;
+}
+
+/**
+ * The suite's git host (`fixtures/git-stub`, #991), on the loopback port the compose override
+ * publishes — where the build test reads the fixture repository's HEAD from.
+ */
+export const GIT_STUB_URL = "http://127.0.0.1:4500";
+
+/** The same host as the compose network names it — `OURO_GITHUB_CLONE_BASE_URL`, what an offer's URL starts with. */
+export const GIT_STUB_INTERNAL_URL = "http://git-stub:8080";
+
+/** The repository the build test checks out: the git host's **private** one, behind basic auth. */
+export const BUILD_REPOSITORY = { owner: "acme-robotics", name: "helios-console" } as const;
+
+/**
+ * The fixture repository's HEAD, as the git host answers it — the commit the build test submits.
+ *
+ * @param owner - The repository's owner.
+ * @param name - The repository.
+ * @returns Forty hex characters.
+ * @throws {Error} If the git host is not answering, naming it — so a stack without the fixture
+ *   fails at this step rather than at a build that never starts.
+ */
+export async function headOfFixtureRepository(owner: string, name: string): Promise<string> {
+  const response = await fetch(`${GIT_STUB_URL}/heads/${owner}/${name}`).catch((error: unknown) => {
+    throw new Error(`the git host is not answering at ${GIT_STUB_URL}: ${String(error)}`);
+  });
+  const sha = (await response.text()).trim();
+
+  if (!response.ok || !/^[0-9a-f]{40}$/.test(sha)) {
+    throw new Error(`the git host answered ${String(response.status)} ${sha} for ${owner}/${name}`);
+  }
+
+  return sha;
 }
 
 /**
@@ -179,6 +214,24 @@ export async function enterFreshWorkspace(
   page: Page,
   label: string,
 ): Promise<string> {
+  return (await createFreshWorkspace(context, page, label)).slug;
+}
+
+/**
+ * {@link enterFreshWorkspace}, answering the workspace's id as well — what the tenancy API's
+ * writes (a recorded repository, #991) are addressed by.
+ *
+ * @param context - The context to act for.
+ * @param page - The page to open the farm in.
+ * @param label - A short word for the slug.
+ * @returns The new workspace's id and slug.
+ * @throws {Error} If the service refused the create, with what it answered.
+ */
+export async function createFreshWorkspace(
+  context: BrowserContext,
+  page: Page,
+  label: string,
+): Promise<CreatedOrganization> {
   await signIn(context, SEED_OWNER.id);
 
   const slug = ephemeralSlug(`farm-${label}`);
@@ -197,7 +250,7 @@ export async function enterFreshWorkspace(
   await selectWorkspace(context, slug);
   await page.goto(FARM_PATH);
 
-  return slug;
+  return created;
 }
 
 /**

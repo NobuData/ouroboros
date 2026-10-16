@@ -44997,6 +44997,77 @@ select pg_temp.must_hold(
 
 delete from ouroboros."user" where "id" in ('user-v149-a', 'user-v149-d');
 
+-- ===========================================================================
+-- V150 — the source credential a build runner redeems for one checkout (#991, AG.7).
+-- ===========================================================================
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v150',  'Checkout Works',       'checkout-works-v150',       now()),
+  ('org-v150b', 'Other Checkout Works', 'other-checkout-works-v150', now());
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a1500000-0000-0000-0000-00000000000a', 'org-v150', 'checkout-works', true);
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a150f000-0000-0000-0000-00000000000a', 'a1500000-0000-0000-0000-00000000000a', 'helios-firmware', true, 'main');
+insert into ouroboros.runner_pools (id, organization_id, name, executor) values
+  ('a1507000-0000-0000-0000-00000000000a', 'org-v150', 'build-pool', 'shell');
+insert into ouroboros.build_jobs
+    (id, organization_id, number, pool_id, github_repo_id, git_ref, commit_sha, label,
+     title, executor, command, status)
+  values
+    ('a1508000-0000-0000-0000-000000000001', 'org-v150', 1,
+     'a1507000-0000-0000-0000-00000000000a', 'a150f000-0000-0000-0000-00000000000a',
+     'refs/heads/main', repeat('c', 40), 'Build', 'Build the firmware', 'shell', 'make all', 'queued'),
+    ('a1508000-0000-0000-0000-000000000002', 'org-v150', 2,
+     'a1507000-0000-0000-0000-00000000000a', 'a150f000-0000-0000-0000-00000000000a',
+     'refs/heads/main', repeat('c', 40), 'Build', 'Build the firmware again', 'shell', 'make all', 'queued');
+
+insert into ouroboros.build_job_source_credentials (build_job_id, organization_id, token_hash, expires_at)
+  values ('a1508000-0000-0000-0000-000000000001', 'org-v150', repeat('a', 64), now() + interval '20 minutes');
+
+select pg_temp.must_hold(
+  (select redeemed_at is null from ouroboros.build_job_source_credentials
+    where build_job_id = 'a1508000-0000-0000-0000-000000000001'),
+  'a minted ticket starts unredeemed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.build_job_source_credentials (build_job_id, organization_id, token_hash, expires_at)
+      values ('a1508000-0000-0000-0000-000000000001', 'org-v150', repeat('b', 64), now() + interval '20 minutes')$$,
+  'a job has exactly one source-credential ledger', 'build_job_source_credentials_pkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.build_job_source_credentials (build_job_id, organization_id, token_hash, expires_at)
+      values ('a1508000-0000-0000-0000-000000000002', 'org-v150b', repeat('b', 64), now() + interval '20 minutes')$$,
+  'a ledger belongs to a job of its own workspace', 'build_job_source_credentials_job_fk');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_job_source_credentials set token_hash = 'ouro_src_plaintext'
+     where build_job_id = 'a1508000-0000-0000-0000-000000000001'$$,
+  'the ledger holds a sha-256, never the ticket', 'build_job_source_credentials_token_hash_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_job_source_credentials set expires_at = minted_at - interval '1 second'
+     where build_job_id = 'a1508000-0000-0000-0000-000000000001'$$,
+  'a ticket expires after it was minted', 'build_job_source_credentials_expires_after_minted');
+
+-- A re-mint over an unredeemed row is the one update allowed.
+update ouroboros.build_job_source_credentials
+   set token_hash = repeat('d', 64), minted_at = now(), expires_at = now() + interval '20 minutes'
+ where build_job_id = 'a1508000-0000-0000-0000-000000000001';
+
+update ouroboros.build_job_source_credentials set redeemed_at = now()
+ where build_job_id = 'a1508000-0000-0000-0000-000000000001' and redeemed_at is null;
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_job_source_credentials set redeemed_at = null
+     where build_job_id = 'a1508000-0000-0000-0000-000000000001'$$,
+  'a redemption cannot be undone', 'build_job_source_credentials_lifecycle');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_job_source_credentials set token_hash = repeat('e', 64)
+     where build_job_id = 'a1508000-0000-0000-0000-000000000001'$$,
+  'a redeemed ticket cannot be re-minted', 'build_job_source_credentials_lifecycle');
+
+delete from ouroboros.organization where "id" in ('org-v150', 'org-v150b');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

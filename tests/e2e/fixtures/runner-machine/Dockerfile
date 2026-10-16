@@ -22,8 +22,10 @@
 # `/bin/sh` is dash — the strictest shell `install.sh` promises to run under.
 FROM debian:12-slim
 
+# `git` because a build machine has one, and the agent checks out `job.offer.repository` with it
+# (#991): a machine without it says so in its `hello` and is offered no build.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl procps \
+  && apt-get install -y --no-install-recommends ca-certificates curl git procps \
   && rm -rf /var/lib/apt/lists/*
 
 # Ahead of /usr/bin on root's PATH, and Debian's slim image ships no systemctl to shadow.

@@ -126,6 +126,8 @@ export const SHIPPED_PUBLIC_SURFACE: readonly string[] = [
   // is the single-use token its `job.offer` carried, scoped to the one job in the path and
   // useless after the upload closes. Every token failure is one opaque 401.
   `POST ${API_BASE_PATH}/farm/jobs/:id/artifacts`,
+  // AG.7 (#991): the runner's redemption of its checkout ticket; the ticket is the credential.
+  `POST ${API_BASE_PATH}/farm/jobs/:id/source-credential`,
   // The runner installer and its release files (#248, AG.6). The reader is `curl` on a machine
   // about to become a runner, piping the script into a shell: it holds no session and could not
   // be given one. What they hand out is public by construction — a released script and binaries

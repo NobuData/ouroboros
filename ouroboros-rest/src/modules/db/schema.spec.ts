@@ -543,7 +543,9 @@ describe("TABLE_COLUMNS", () => {
     // The hundred-and-eighty-fifth is AR.1's (#315): V148's `guardrail_modes`.
     // The hundred-and-eighty-sixth and -seventh are account approval's: V149's
     // `app_preapproved_emails` and `app_account_events`, deployment-level and organization-free.
-    expect(TABLE_NAMES).toHaveLength(187);
+    // The hundred-and-eighty-eighth is AG.7's (#991): V150's `build_job_source_credentials`, the
+    // ticket ledger a build runner redeems for its checkout credential.
+    expect(TABLE_NAMES).toHaveLength(188);
   });
 
   it("mirrors what V136 made of a command typed in the console", () => {

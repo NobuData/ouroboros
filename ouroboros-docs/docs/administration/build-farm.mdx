@@ -233,4 +233,14 @@ those machines to a certificate — **Remove** them and enroll them again withou
 - **Remove is not offered.** The runner is connected and not draining. **Drain** it first.
 - **A pool cannot be deleted.** Runners or builds still name it. Switch it off instead.
 - **Builds wait in the queue.** No runner in the build's pool is online, or every one is busy or
-  draining.
+  draining — or no online runner has `git`. Every build checks its repository out first, so a
+  runner whose [`hello`](../cli/runner/hello.mdx) says `"git": false` is offered no build.
+- **A build of a private repository fails at once with *the repository refused the clone: it is
+  private and this workspace has no GitHub token to check it out with*.** Runners clone with the
+  workspace's GitHub token; without one, only public repositories build. Connect a token under
+  <UiPath path="Settings > Sources" />. The token never reaches the runner in the offer or a log:
+  the deployment hands it over once, for that checkout, and records the hand-over in the audit
+  log as `runner.source_credential_redeemed`.
+- **Builds clone from the wrong host.** The deployment clones from `https://github.com` unless
+  <EnvVar name="OURO_GITHUB_CLONE_BASE_URL" /> names another host — set it for GitHub Enterprise
+  Server, beside `OURO_GITHUB_API_BASE_URL`. See [Containers](./deploy/containers.mdx).

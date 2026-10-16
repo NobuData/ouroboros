@@ -19,7 +19,11 @@ const REPOS: EnabledRepository[] = [
 ];
 
 function workspace(token: () => Promise<string>) {
-  const subject = new CodeWorkspace({} as never, { tokenFor: token } as never);
+  const subject = new CodeWorkspace(
+    {} as never,
+    { tokenFor: token } as never,
+    { githubCloneBaseUrl: "https://github.com" } as never,
+  );
   jest.spyOn(subject, "enabled").mockResolvedValue(REPOS);
   return subject;
 }

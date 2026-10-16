@@ -8003,6 +8003,23 @@ export interface BuildJobArtifactUploadsTable {
 }
 
 /**
+ * `ouroboros.build_job_source_credentials` — the ledger of the single-use ticket a build runner
+ * redeems for its checkout's git credential (V150, [#991](https://github.com/NobuData/ouroboros/issues/991),
+ * decision **L9**). The credential it answers — the workspace's GitHub token — is never stored
+ * here. Frozen once `redeemed_at` is set (`build_job_source_credentials_lifecycle`).
+ */
+export interface BuildJobSourceCredentialsTable {
+  build_job_id: string;
+  organization_id: string;
+  /** SHA-256 of the single-use ticket, lowercase hex. The ticket itself is never stored. */
+  token_hash: string;
+  minted_at: Generated<Date>;
+  expires_at: Date;
+  /** When the ticket was redeemed — set once; a redeemed row refuses every later presentation. */
+  redeemed_at: Date | null;
+}
+
+/**
  * `ouroboros.test_run_coverage` — one row per attempt with a coverage artifact (V059,
  * [#328](https://github.com/NobuData/ouroboros/issues/328)): the summed line counts, the
  * percentage to one decimal and the delta against the previous attempt with coverage. Read-only.
@@ -8388,6 +8405,7 @@ export interface Database {
   hil_measurements: HilMeasurementsTable;
   test_artifacts: TestArtifactsTable;
   build_job_artifact_uploads: BuildJobArtifactUploadsTable;
+  build_job_source_credentials: BuildJobSourceCredentialsTable;
   failure_classifications: FailureClassificationsTable;
   run_pr_intents: RunPrIntentsTable;
   pr_waivers: PrWaiversTable;
@@ -9733,6 +9751,14 @@ export const TABLE_COLUMNS = {
     "manifest",
     "warnings",
     "stored_bytes",
+  ],
+  build_job_source_credentials: [
+    "build_job_id",
+    "organization_id",
+    "token_hash",
+    "minted_at",
+    "expires_at",
+    "redeemed_at",
   ],
   failure_classifications: [
     "id",

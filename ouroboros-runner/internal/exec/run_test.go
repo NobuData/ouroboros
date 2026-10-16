@@ -39,8 +39,15 @@ func (s *scripted) Execute(ctx context.Context, _ Job, _ string, _ Output) (int,
 type recorder struct {
 	mu        sync.Mutex
 	progress  []int
+	fetching  []int
 	workspace string
 	started   time.Time
+}
+
+func (r *recorder) Fetching(pct int, _ string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.fetching = append(r.fetching, pct)
 }
 
 func (r *recorder) Progress(pct int, _ string) {

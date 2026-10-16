@@ -12041,6 +12041,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/farm/jobs/{id}/source-credential": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redeem a build job's source-credential ticket — the runner's one call for a private repository's checkout credential
+         * @description How a runner checks a **private** repository out (AG.7,
+         *     [#991](https://github.com/NobuData/ouroboros/issues/991), decision **L9**). Every `job.offer`
+         *     names a repository; when the workspace has a GitHub token, the offer also carries
+         *     `repository.credential` — a **single-use ticket**, never the credential itself, because the
+         *     offer is a recorded frame and the credential must not be. The runner presents the ticket
+         *     here, once, as `Authorization: Bearer ouro_src_…`, and is answered the workspace's own
+         *     GitHub token as a git credential (`username: x-access-token`). It uses it for one fetch and
+         *     drops it: the credential never reaches the workspace tree, `.git/config`, the job's
+         *     environment or any log.
+         *
+         *     **No session.** The caller is the runner, and what authenticates it is the ticket: scoped
+         *     to the job in the path, expiring minutes after the offer's answer window, re-minted if the
+         *     job is offered again, and **redeemed exactly once** — the redemption is one statement, so
+         *     two presentations at the same instant get one credential and one refusal. **Every ticket
+         *     failure is one opaque `401`**: missing, wrong, for another job, expired, already redeemed,
+         *     or a job that is not being run. A replay learns nothing.
+         *
+         *     **What is handed over is scoped by the hand-over, not by GitHub**: GitHub issues no
+         *     narrower token for a classic personal access token, so the control plane bounds the
+         *     credential's exposure instead — one job, one repository, one redemption, an audit row
+         *     (`runner.source_credential_redeemed`, naming the repository and nothing of the token). A
+         *     workspace with **no** GitHub token mints no ticket; its repositories are cloned
+         *     anonymously, and a private one fails on the runner with a sentence that says so.
+         *     `docs/SECURITY_MODEL.md` § 4.8 is the decision.
+         */
+        post: operations["redeemBuildJobSourceCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/farm/registrations": {
         parameters: {
             query?: never;
@@ -32666,6 +32709,23 @@ export interface components {
             code: "artifact_quota_exceeded" | "artifact_truncated" | "artifact_skipped";
             file: string;
             message: string;
+        };
+        /**
+         * SourceCredential
+         * @description A git credential for one checkout (AG.7, #991): what `POST /api/v1/farm/jobs/{id}/source-credential`
+         *     answers a runner's single-use ticket with. Shown once; the runner uses it for one fetch and
+         *     drops it.
+         */
+        SourceCredential: {
+            /** @description Always `x-access-token` — the user name GitHub expects beside a token over HTTPS. */
+            username: string;
+            /** @description The workspace's GitHub token. Never stored by the runner, never logged by either side. */
+            password: string;
+            /**
+             * Format: date-time
+             * @description When the ticket that bought it would have expired — a hint to drop the credential, not a lease.
+             */
+            expires_at: string;
         };
         /**
          * ArtifactUploadReceipt
@@ -90552,6 +90612,49 @@ export interface operations {
              *     deliberately.
              */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    redeemBuildJobSourceCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The build job's id — the path the offer's `repository.credential.path` names. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The credential, once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "username": "x-access-token",
+                     *       "password": "ghp_exampleWorkspaceToken0123456789abcdef",
+                     *       "expires_at": "2026-10-16T12:15:15.000Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SourceCredential"];
+                };
+            };
+            /**
+             * @description `farm_source_credential_refused` — the ticket is missing, wrong, for another job,
+             *     expired, already redeemed, or the job is not being run. One answer for all of them,
+             *     with no detail.
+             */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
