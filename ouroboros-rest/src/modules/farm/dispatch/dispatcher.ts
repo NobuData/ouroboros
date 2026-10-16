@@ -57,6 +57,11 @@ import type { Envelope } from "../protocol/protocol";
 import type { CancelReason } from "../protocol/protocol.messages";
 import { uuidOf, wireId } from "../protocol/ulid";
 import { FARM_OFFER_UPLOADS, type OfferUploads } from "../artifacts/upload.service";
+import {
+  FARM_OFFER_SOURCE_CREDENTIALS,
+  type OfferSourceCredentials,
+} from "../source/source-credential.service";
+import { AppConfigService } from "../../config/config.service";
 import { FARM_DISPATCH_GATE, type DispatchGate } from "./dispatch.gate";
 import {
   DECLINE_COOLDOWN_MS,
@@ -156,6 +161,8 @@ export class DispatchService implements OnApplicationBootstrap, OnApplicationShu
    * @param scheduler - Nest's registry, so the timer has a name.
    * @param now - The gateway's clock — the one `last_seen_at` is written with.
    * @param uploads - Where an offer's single-use artifact upload token is minted (#330).
+   * @param sources - Where an offer's single-use source-credential ticket is minted (#991).
+   * @param config - The clone base every offer's repository URL is built on (#991).
    */
   constructor(
     private readonly repository: DispatchRepository,
@@ -165,6 +172,8 @@ export class DispatchService implements OnApplicationBootstrap, OnApplicationShu
     private readonly scheduler: SchedulerRegistry,
     @Inject(GATEWAY_CLOCK) private readonly now: GatewayClock,
     @Inject(FARM_OFFER_UPLOADS) private readonly uploads: OfferUploads,
+    @Inject(FARM_OFFER_SOURCE_CREDENTIALS) private readonly sources: OfferSourceCredentials,
+    private readonly config: AppConfigService,
   ) {}
 
   /** Listen to the agents' answers, and start the loop. */
@@ -385,6 +394,10 @@ export class DispatchService implements OnApplicationBootstrap, OnApplicationShu
    * that cannot be minted is an offer that cannot be sent: results with nowhere to go would be
    * dropped silently, so the job waits for the next pass instead.
    *
+   * It carries the repository's checkout credential the same way (#991, decision L9): a
+   * single-use ticket on `repository.credential` when the workspace has a GitHub token, and
+   * nothing when it has none — that repository is cloned anonymously.
+   *
    * @param placed - The job, offered in the database.
    * @param at - When it was placed.
    * @returns Whether the offer is in the runner's session.
@@ -395,14 +408,25 @@ export class DispatchService implements OnApplicationBootstrap, OnApplicationShu
     let sent: string | undefined;
 
     try {
-      const payload = offerPayload(placed, new Date(at.getTime() + OFFER_ACK_MS));
-      const upload = await this.uploads.forOffer(job, at, OFFER_ACK_MS + payload.timeout_s * 1000);
-
-      sent = this.sessions.offer(
-        job.organization_id,
-        runnerId,
-        upload ? { ...payload, upload } : payload,
+      const payload = offerPayload(
+        placed,
+        new Date(at.getTime() + OFFER_ACK_MS),
+        this.config.githubCloneBaseUrl,
       );
+      const [upload, credential] = await Promise.all([
+        this.uploads.forOffer(job, at, OFFER_ACK_MS + payload.timeout_s * 1000),
+        this.sources.forOffer(job, at, OFFER_ACK_MS),
+      ]);
+      const repository =
+        credential && payload.repository
+          ? { ...payload.repository, credential }
+          : payload.repository;
+
+      sent = this.sessions.offer(job.organization_id, runnerId, {
+        ...payload,
+        repository,
+        ...(upload ? { upload } : {}),
+      });
     } catch (error) {
       // An offer this gateway would refuse to send is a record it cannot dispatch; the log is
       // where it surfaces, and the job goes back to wait for somebody to look.

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.41.49",
+    "version": "0.41.50",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -44447,6 +44447,56 @@
           },
           "500": {
             "description": "`internal_error` — the service itself failed, the artifact store included. Nothing\nfrom the upload is kept. The message is a constant and `details` is empty,\ndeliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/farm/jobs/{id}/source-credential": {
+      "post": {
+        "tags": [
+          "farm"
+        ],
+        "summary": "Redeem a build job's source-credential ticket — the runner's one call for a private repository's checkout credential",
+        "description": "How a runner checks a **private** repository out (AG.7,\n[#991](https://github.com/NobuData/ouroboros/issues/991), decision **L9**). Every `job.offer`\nnames a repository; when the workspace has a GitHub token, the offer also carries\n`repository.credential` — a **single-use ticket**, never the credential itself, because the\noffer is a recorded frame and the credential must not be. The runner presents the ticket\nhere, once, as `Authorization: Bearer ouro_src_…`, and is answered the workspace's own\nGitHub token as a git credential (`username: x-access-token`). It uses it for one fetch and\ndrops it: the credential never reaches the workspace tree, `.git/config`, the job's\nenvironment or any log.\n\n**No session.** The caller is the runner, and what authenticates it is the ticket: scoped\nto the job in the path, expiring minutes after the offer's answer window, re-minted if the\njob is offered again, and **redeemed exactly once** — the redemption is one statement, so\ntwo presentations at the same instant get one credential and one refusal. **Every ticket\nfailure is one opaque `401`**: missing, wrong, for another job, expired, already redeemed,\nor a job that is not being run. A replay learns nothing.\n\n**What is handed over is scoped by the hand-over, not by GitHub**: GitHub issues no\nnarrower token for a classic personal access token, so the control plane bounds the\ncredential's exposure instead — one job, one repository, one redemption, an audit row\n(`runner.source_credential_redeemed`, naming the repository and nothing of the token). A\nworkspace with **no** GitHub token mints no ticket; its repositories are cloned\nanonymously, and a private one fails on the runner with a sentence that says so.\n`docs/SECURITY_MODEL.md` § 4.8 is the decision.",
+        "operationId": "redeemBuildJobSourceCredential",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The build job's id — the path the offer's `repository.credential.path` names.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The credential, once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceCredential"
+                },
+                "example": {
+                  "username": "x-access-token",
+                  "password": "ghp_exampleWorkspaceToken0123456789abcdef",
+                  "expires_at": "2026-10-16T12:15:15.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`farm_source_credential_refused` — the ticket is missing, wrong, for another job,\nexpired, already redeemed, or the job is not being run. One answer for all of them,\nwith no detail.",
             "content": {
               "application/json": {
                 "schema": {
@@ -96681,6 +96731,32 @@
           },
           "message": {
             "type": "string"
+          }
+        }
+      },
+      "SourceCredential": {
+        "type": "object",
+        "title": "SourceCredential",
+        "description": "A git credential for one checkout (AG.7, #991): what `POST /api/v1/farm/jobs/{id}/source-credential`\nanswers a runner's single-use ticket with. Shown once; the runner uses it for one fetch and\ndrops it.",
+        "additionalProperties": false,
+        "required": [
+          "username",
+          "password",
+          "expires_at"
+        ],
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "Always `x-access-token` — the user name GitHub expects beside a token over HTTPS."
+          },
+          "password": {
+            "type": "string",
+            "description": "The workspace's GitHub token. Never stored by the runner, never logged by either side."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the ticket that bought it would have expired — a hint to drop the credential, not a lease."
           }
         }
       },

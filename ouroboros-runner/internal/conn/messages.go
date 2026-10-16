@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/NobuData/ouroboros/ouroboros-runner/internal/secret"
 )
 
 // The typed views of the messages the connection loop writes and reads.
@@ -226,11 +228,30 @@ const (
 	ExecutorShell     = "shell"
 )
 
-// JobRepository is what an offer asks to be checked out.
+// JobRepository is what an offer asks to be checked out ([#991]): the clone URL, the ref,
+// the exact commit — and, for a private repository, how to obtain the credential.
+//
+// [#991]: https://github.com/NobuData/ouroboros/issues/991
 type JobRepository struct {
 	URL    string `json:"url"`
 	Ref    string `json:"ref"`
 	Commit string `json:"commit"`
+	// Credential is the single-use ticket the agent redeems for this checkout's git
+	// credential — nil for a repository it clones anonymously. The ticket is itself a
+	// credential: never log it.
+	Credential *JobSourceCredential `json:"credential,omitempty"`
+}
+
+// JobSourceCredential is `job.offer.repository.credential` (decision L9): a ticket, redeemed
+// once on the control plane's own origin for the git credential of one checkout. The frame
+// carries the ticket, never the credential — the frame is recorded, the credential is not.
+type JobSourceCredential struct {
+	// Path is the redemption's path on the control plane's origin; the agent resolves it
+	// against the URL it already dials, so a dispatch cannot send the ticket anywhere else.
+	Path string `json:"path"`
+	// Token is sent as `Authorization: Bearer <token>`. Redacted wherever it is printed.
+	Token     secret.Secret `json:"token"`
+	ExpiresAt string        `json:"expires_at"`
 }
 
 // JobOfferPayload is a job.offer, as the connection loop answers it and the executors

@@ -106,6 +106,7 @@ import {
   WORKSPACE_LIVE_CEILING_CHANGED_EVENT,
   WORKSPACE_GUARDRAIL_MODES_CHANGED_EVENT,
   RUN_BUDGET_EXCEEDED_EVENT,
+  RUNNER_SOURCE_CREDENTIAL_REDEEMED_EVENT,
   ROADMAP_SUGGESTION_DISMISSED_EVENT,
 } from "./audit.events";
 
@@ -270,6 +271,7 @@ describe("the vocabulary", () => {
       "workspace.live_ceiling_changed",
       "workspace.guardrail_modes_changed",
       "run.budget_exceeded",
+      "runner.source_credential_redeemed",
     ]);
   });
 
@@ -449,6 +451,7 @@ describe("the vocabulary", () => {
       WORKSPACE_LIVE_CEILING_CHANGED_EVENT,
       WORKSPACE_GUARDRAIL_MODES_CHANGED_EVENT,
       RUN_BUDGET_EXCEEDED_EVENT,
+      RUNNER_SOURCE_CREDENTIAL_REDEEMED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

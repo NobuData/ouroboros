@@ -197,7 +197,8 @@
             "shell": { "description": "Whether this agent will run shell jobs at all. An operator can refuse them on a machine that holds signing keys.", "type": "boolean" },
             "ccache": { "description": "A ccache binary on PATH, which is what makes the cache statistics in `job.finish` possible.", "type": "boolean" },
             "cpus": { "description": "Usable cores, after any operator-set limit.", "type": "integer", "minimum": 1 },
-            "memory_mb": { "description": "Usable memory in mebibytes, after any operator-set limit.", "type": "integer", "minimum": 1 }
+            "memory_mb": { "description": "Usable memory in mebibytes, after any operator-set limit.", "type": "integer", "minimum": 1 },
+            "git": { "description": "A git binary on PATH, which is what checks out `job.offer.repository` into the job's workspace (#991). Optional only because it was added inside line 1 (docs/RUNNER_PROTOCOL.md section 3): an agent that omits it is older than source checkout, and the dispatcher offers it no job that names a repository.", "type": "boolean" }
           }
         },
         "security_mode": {
@@ -377,7 +378,18 @@
           "properties": {
             "url": { "description": "The clone URL.", "type": "string", "minLength": 1, "maxLength": 1024 },
             "ref": { "description": "The ref to fetch.", "type": "string", "minLength": 1, "maxLength": 256 },
-            "commit": { "description": "The exact commit, so a moving ref cannot change what was built after the fact.", "type": "string", "pattern": "^[0-9a-f]{40}$" }
+            "commit": { "description": "The exact commit, so a moving ref cannot change what was built after the fact.", "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "credential": {
+              "description": "How the agent obtains the credential for a private repository (#991, decision L9): a single-use ticket it redeems once, on the control plane's own origin, for the git credential of this one checkout -- which it uses for one fetch and drops. Never the git credential itself: this frame is recorded and logged, and the credential is not. Absent for a repository the agent clones anonymously. Optional only because it was added inside line 1 (docs/RUNNER_PROTOCOL.md section 3).",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "token", "expires_at"],
+              "properties": {
+                "path": { "description": "The redemption's path on the control plane's own origin -- the agent resolves it against the URL it already dials, so a dispatch cannot send the ticket to any other host. Absolute, and never `//`-prefixed.", "type": "string", "minLength": 2, "maxLength": 512, "pattern": "^/[A-Za-z0-9._~%-][A-Za-z0-9._~%/-]*$" },
+                "token": { "description": "The single-use ticket, sent as `Authorization: Bearer <token>` to `path`. Redeeming it answers the git credential once; a second redemption is refused.", "type": "string", "minLength": 32, "maxLength": 256, "pattern": "^[A-Za-z0-9._~-]+$" },
+                "expires_at": { "$ref": "#/$defs/timestamp" }
+              }
+            }
           }
         },
         "timeout_s": { "description": "Wall-clock budget. On expiry the agent cancels and finishes with `timed_out`.", "type": "integer", "minimum": 1, "maximum": 86400 },

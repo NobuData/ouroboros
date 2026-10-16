@@ -189,6 +189,18 @@ OURO_GITHUB_API_BASE_URL=https://ghe.example.com/api/v3
 
 It moves the address and nothing else. The credential is still the workspace's or the source's own token, the rate-limit rules are unchanged, and every failure is classified by the same code. The one other thing that sets it is the e2e suite's compose override, which points it at the sandbox tracker a planning push may create issues in — see tests/e2e/README.md.
 
+### `OURO_GITHUB_CLONE_BASE_URL`
+
+**Development default:** `https://github.com`
+
+Where a build job's repository is cloned from. github.com, written out so the template and the code state the same address. A build runner's offer names &lt;base>/&lt;owner>/&lt;name>.git; change it for a GitHub Enterprise Server installation:
+
+```text
+OURO_GITHUB_CLONE_BASE_URL=https://ghe.example.com
+```
+
+An absolute http:// or https:// URL, an optional path, and nothing else — no credentials (the clone base reaches every offer and every log; a private repository is cloned with the workspace's own GitHub token, handed to the runner for one checkout), no query, no fragment. The e2e suite's compose override points it at the suite's git fixture.
+
 ## Credential vault — ouroboros-rest
 
 ### `OURO_VAULT_MASTER_KEY`

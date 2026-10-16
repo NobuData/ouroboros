@@ -40,6 +40,8 @@ export interface HelloPayload {
     readonly ccache: boolean;
     readonly cpus: number;
     readonly memory_mb: number;
+    /** A git binary on PATH — absent on an agent older than source checkout (#991). */
+    readonly git?: boolean;
   };
   readonly security_mode?: SecurityMode;
   readonly resume?: string;
@@ -123,17 +125,38 @@ export interface JobOfferPayload {
   readonly command: readonly string[];
   readonly workdir: string;
   readonly env: Readonly<Record<string, string>>;
-  readonly repository: {
-    readonly url: string;
-    readonly ref: string;
-    readonly commit: string;
-  } | null;
+  readonly repository: JobRepository | null;
   readonly timeout_s: number;
   readonly expires_at: string;
   /** Which attempt of the build this job is — absent on a first attempt (#252). */
   readonly attempt?: number;
   /** Where the job's results leave by — absent for a job with nowhere to upload to (#330). */
   readonly upload?: JobUpload;
+}
+
+/** `job.offer.repository` — what to check out (#991). */
+export interface JobRepository {
+  readonly url: string;
+  readonly ref: string;
+  readonly commit: string;
+  /**
+   * How the agent obtains a private repository's credential — absent for an anonymous clone
+   * (#991, decision L9). A ticket, never the credential: the frame is recorded, the credential
+   * is not.
+   */
+  readonly credential?: JobSourceCredential;
+}
+
+/**
+ * `job.offer.repository.credential` — a single-use ticket the agent redeems once, on the
+ * control plane's own origin, for the git credential of one checkout (#991).
+ */
+export interface JobSourceCredential {
+  /** The redemption's path on the control plane's origin — the agent resolves it itself. */
+  readonly path: string;
+  /** Sent as `Authorization: Bearer <token>`. Never logged. */
+  readonly token: string;
+  readonly expires_at: string;
 }
 
 /**

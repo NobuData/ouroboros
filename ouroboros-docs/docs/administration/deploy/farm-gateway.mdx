@@ -45,6 +45,7 @@ this gateway and from nowhere else.
 | `/api/v1/farm/registrations*` | Enrollment, and certificate renewal | — |
 | `/api/v1/farm/agent` | The agent's WebSocket connection | The upgrade headers, and a read timeout well above the 10-second heartbeat |
 | `POST /api/v1/farm/jobs/<id>/artifacts` | A finished job's artifact upload | A body limit above the per-job cap (nginx's 1 MiB default refuses every real upload), unbuffered streaming, and a read timeout of minutes |
+| `POST /api/v1/farm/jobs/<id>/source-credential` | A runner redeeming its single-use ticket for a private repository's checkout credential | — |
 
 ## `proxy/farm.conf`
 
@@ -82,6 +83,9 @@ server {
     proxy_read_timeout 120s;
     proxy_pass http://rest:4000;
   }
+
+  # The checkout credential a runner redeems its ticket for: a small JSON answer.
+  location ~ ^/api/v1/farm/jobs/[0-9a-f-]+/source-credential$ { proxy_pass http://rest:4000; }
 
   # Artifact uploads: the per-job cap (256 MiB by default) plus multipart framing.
   location ~ ^/api/v1/farm/jobs/[0-9a-f-]+/artifacts$ {

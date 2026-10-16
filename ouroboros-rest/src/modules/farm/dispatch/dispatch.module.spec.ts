@@ -19,6 +19,7 @@ describe("the dispatch module", () => {
       "AuditModule",
       "FarmGatewayModule",
       "FarmArtifactsModule",
+      "FarmSourceModule",
       "LifecycleStateModule",
     ]);
     expect(

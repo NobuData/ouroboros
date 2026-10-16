@@ -38,6 +38,12 @@ export interface RunnerCapabilities {
   readonly memory_mb: number;
   /** The executors this runner can take a job under. What dispatch eligibility reads. */
   readonly executors: readonly BuildExecutor[];
+  /**
+   * A `git` on `PATH` — what checks out `job.offer.repository` (AG.7, #991). `false` for an
+   * agent older than source checkout, whose hello did not say; dispatch offers such a runner
+   * no job, since every job names a repository.
+   */
+  readonly git: boolean;
 }
 
 /**
@@ -59,6 +65,7 @@ export function capabilitiesOf(reported: HelloPayload["capabilities"]): RunnerCa
     cpu_count: reported.cpus,
     memory_mb: reported.memory_mb,
     executors,
+    git: reported.git === true,
   };
 }
 

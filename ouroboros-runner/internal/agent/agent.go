@@ -110,6 +110,13 @@ type Config struct {
 	// Workspaces is where jobs run, and whether a failed job's workspace is kept. Required
 	// when there are executors.
 	Workspaces *exec.Workspaces
+	// Git is how a job's source is checked out ([#991]): where git is, and the askpass
+	// program — this agent's own executable — that hands git a private repository's
+	// credential. Held to Capabilities: `git: true` needs an askpass program, or a private
+	// repository would be accepted and then fail.
+	//
+	// [#991]: https://github.com/NobuData/ouroboros/issues/991
+	Git exec.Git
 	// Telemetry is where each heartbeat's measurements come from — a running
 	// *telemetry.Monitor. Nil sends every measurement as null: an agent that cannot say
 	// how loaded it is says so, rather than reporting an idle machine.
@@ -293,6 +300,9 @@ func checkExecutors(config Config) error {
 	}
 	if len(config.Executors) > 0 && config.Workspaces == nil {
 		return errors.New("an agent with executors needs a workspace root")
+	}
+	if config.Capabilities.Git && config.Git.Askpass == "" {
+		return errors.New("the hello would say git: true, but no askpass program is configured for a private repository's credential")
 	}
 	return nil
 }

@@ -259,6 +259,12 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
       ? `stopped a run at ${what}`
       : `stopped a run at ${what} in ${stage}`;
   },
+  "runner.source_credential_redeemed": (f) => {
+    const repository = text(f, "repository");
+    return repository === undefined
+      ? "handed a runner the credential to check out a repository"
+      : `handed a runner the credential to check out ${repository}`;
+  },
 };
 
 /**

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
 
 	"github.com/NobuData/ouroboros/ouroboros-runner/internal/artifacts"
@@ -103,14 +102,12 @@ func (a *Agent) reportUpload(jobID string, collection artifacts.Collection, outc
 // the gateway verified against the configured roots and, in mTLS mode, this runner's
 // certificate presented — read fresh, so an upload after a renewal presents the new one.
 func (a *Agent) uploader() (*artifacts.Uploader, error) {
-	identity, err := a.config.Dir.LoadIdentity()
+	client, err := a.httpClient()
 	if err != nil {
-		return nil, fmt.Errorf("the runner's identity cannot be loaded: %w", err)
+		return nil, err
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.TLSClientConfig = a.tlsConfig(identity)
 	return &artifacts.Uploader{
-		Client:     &http.Client{Transport: transport},
+		Client:     client,
 		Server:     a.config.Server,
 		UserAgent:  "ouroboros-runner/" + a.config.Version,
 		Attempts:   a.config.UploadAttempts,

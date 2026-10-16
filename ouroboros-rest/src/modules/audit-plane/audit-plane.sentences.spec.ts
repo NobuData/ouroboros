@@ -241,6 +241,17 @@ describe("composing the audit card's lines", () => {
       "stopped a run at a budget",
     );
   });
+  it("names the repository a runner was handed the checkout credential for (#991)", () => {
+    expect(
+      eventSentence({
+        action: "runner.source_credential_redeemed",
+        detail: { repository: "acme-robotics/helios-firmware" },
+      }),
+    ).toBe("handed a runner the credential to check out acme-robotics/helios-firmware");
+    expect(eventSentence({ action: "runner.source_credential_redeemed", detail: {} })).toBe(
+      "handed a runner the credential to check out a repository",
+    );
+  });
 });
 
 describe("the actor column", () => {

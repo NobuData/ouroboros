@@ -1,13 +1,15 @@
 import { Logger } from "@nestjs/common";
 import { SchedulerRegistry } from "@nestjs/schedule";
 
+import type { AppConfigService } from "../../config/config.service";
 import type { OfferUploads } from "../artifacts/upload.service";
+import type { OfferSourceCredentials } from "../source/source-credential.service";
 import { AgentSessions, type FrameContext } from "../gateway/agent.sessions";
 import { FakeSocket, drain, fixtureFrame } from "../gateway/gateway.fixture";
 import { GatewayMetrics } from "../gateway/gateway.metrics";
 import { OFFER_ACK_MS } from "../gateway/gateway.policy";
 import { decode, type Envelope, type MessageType } from "../protocol/protocol";
-import type { JobUpload } from "../protocol/protocol.messages";
+import type { JobSourceCredential, JobUpload } from "../protocol/protocol.messages";
 import { uuidOf, wireId } from "../protocol/ulid";
 import { JOB, ORG, OTHER_RUNNER, RUNNER, buildJob } from "./dispatch.fixture";
 import type { DispatchGate } from "./dispatch.gate";
@@ -68,6 +70,13 @@ function candidate(id: string, held = 0): Candidate {
  * @param attempt - Which attempt.
  * @returns The placement.
  */
+/** A source-credential ticket, as the minter answers one (#991). */
+const CREDENTIAL: JobSourceCredential = {
+  path: `/api/v1/farm/jobs/${JOB}/source-credential`,
+  token: "ouro_src_Hq2vN8mZkT4wRa6LpY3sD9fJ1cB5eU0gXiKoMt7PyVz",
+  expires_at: "2026-09-19T12:15:05.000Z",
+};
+
 function placed(runnerId: string, attempt = 1): Placement {
   return {
     kind: "placed",
@@ -127,6 +136,8 @@ describe("the dispatcher", () => {
   let completed: JobCompleted[];
   let gate: jest.Mocked<DispatchGate>;
   let uploads: jest.Mocked<OfferUploads>;
+  let sources: jest.Mocked<OfferSourceCredentials>;
+  let config: { githubCloneBaseUrl: string };
   let dispatcher: DispatchService;
 
   beforeEach(() => {
@@ -153,6 +164,9 @@ describe("the dispatcher", () => {
     gate = { admits: jest.fn().mockResolvedValue(true) };
     // A job attributed to no run has nowhere to upload to — the fixture's default.
     uploads = { forOffer: jest.fn().mockResolvedValue(undefined) };
+    // A workspace with no GitHub token clones anonymously — the fixture's default (#991).
+    sources = { forOffer: jest.fn().mockResolvedValue(undefined) };
+    config = { githubCloneBaseUrl: "https://github.com" };
     dispatcher = new DispatchService(
       repository as unknown as DispatchRepository,
       sessions,
@@ -161,6 +175,8 @@ describe("the dispatcher", () => {
       new SchedulerRegistry(),
       () => now,
       uploads,
+      sources,
+      config as AppConfigService,
     );
     dispatcher.onApplicationBootstrap();
   });
@@ -236,6 +252,45 @@ describe("the dispatcher", () => {
       await other.session.flushed();
 
       expect(uploads.forOffer).toHaveBeenCalledTimes(2);
+    });
+
+    it("names the repository on the deployment's clone base, with no credential for an anonymous clone (#991)", async () => {
+      config.githubCloneBaseUrl = "http://git-stub:8080";
+      const { session, socket } = connect();
+
+      await dispatcher.kick();
+      await session.flushed();
+
+      const { repository } = socket.last("job.offer").payload;
+      expect(repository?.url).toBe("http://git-stub:8080/acme-robotics/helios-firmware.git");
+      expect(repository).not.toHaveProperty("credential");
+    });
+
+    it("mints the job's source-credential ticket with the offer, valid for the answer window (#991)", async () => {
+      const { session, socket } = connect();
+      sources.forOffer.mockResolvedValue(CREDENTIAL);
+
+      await dispatcher.kick();
+      await session.flushed();
+
+      expect(sources.forOffer).toHaveBeenCalledWith(
+        expect.objectContaining({ id: JOB, runner_id: RUNNER }),
+        now,
+        OFFER_ACK_MS,
+      );
+      const { repository } = socket.last("job.offer").payload;
+      expect(repository?.credential).toEqual(CREDENTIAL);
+      expect(repository?.url).toBe("https://github.com/acme-robotics/helios-firmware.git");
+    });
+
+    it("puts the job back rather than offer it without a ticket it meant to carry", async () => {
+      const { socket } = connect();
+      sources.forOffer.mockRejectedValue(new Error("the database went away"));
+
+      await dispatcher.kick();
+
+      expect(repository.release).toHaveBeenCalledWith(ORG, RUNNER, JOB);
+      expect(socket.sent).toHaveLength(0);
     });
 
     it("puts the job back rather than offer it without somewhere for its results to go", async () => {

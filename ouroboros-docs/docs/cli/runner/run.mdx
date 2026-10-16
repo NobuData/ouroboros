@@ -52,6 +52,20 @@ enrollment.
 - **Renews its certificate** before it expires, over the connection it already has. No new token
   is needed.
 - **Runs jobs.** It answers every offer at once, accepting it or declining it with a reason:
+  - **Checks out the source first.** Every job names a repository, a ref and the exact commit.
+    Before the command runs, the agent clones `repository.url` into the job's workspace with
+    `git`, checks out the pinned commit and verifies that `HEAD` is that commit — a ref that
+    moved on the host does not change what is built. The checkout's output is the first thing
+    in the job's log. If it fails, the job ends `errored` with the code
+    `workspace.checkout_failed` and the command never runs in an empty tree; the deployment
+    retries the build once on another runner, as it does any infrastructure failure.
+  - **A private repository** is cloned with the workspace's GitHub token. The agent never
+    receives it in the offer: the offer carries a single-use ticket, which the agent redeems
+    once with the deployment for the credential, uses for that one fetch, and drops. The
+    credential is handed to `git` through an askpass program — never written to disk, never in
+    the job's environment, never in a log. A private repository in a workspace with no GitHub
+    token fails with *the repository refused the clone: it is private and this workspace has no
+    GitHub token to check it out with — connect one under Settings › Sources*.
   - **Container jobs** run in the pool's image through the Docker or Podman daemon on this
     machine.
   - **Shell jobs** run directly on the machine as the service's account, unless you passed
@@ -64,7 +78,10 @@ enrollment.
 
 An offer is declined when the runner is draining, the offer has expired, the runner is full, or
 the job needs something this machine cannot do. A container job is declined with no Docker or
-Podman daemon. A shell job is declined under `--no-shell`.
+Podman daemon. A shell job is declined under `--no-shell`. A job that names a repository is
+declined with *this runner has no git on PATH, so it cannot check out repositories* on a machine
+without `git` — and the deployment offers such a machine no build at all, because every build
+names one.
 
 ## Example
 
@@ -105,6 +122,13 @@ so the reason stays at the end of `journalctl -u ouroboros-runner`.
   point `--state-dir` at the directory you enrolled into.
 - **`no such command: --log-cap-bytes is …; it must be between 65536 and 268435456`** — choose a
   value in the range.
+- **`workspace.checkout_failed` in a build's log** — the agent could not check the repository out.
+  The log's `ouroboros-runner: checkout failed —` line says why: the repository is private and the
+  workspace has no GitHub token (connect one under **Settings › Sources**), the token was refused
+  by the host, or the ref no longer points at the pinned commit. The build is retried once on
+  another runner; fix the cause and submit again.
+- **No build is ever offered to this machine, and `hello` shows `"git": false`** — `git` is not
+  on the service account's `PATH`. Install it and restart the agent.
 - **Container jobs are declined** — no Docker or Podman daemon answered when the agent started.
   Start the daemon, make sure the service's account can reach its socket, then restart the agent.
   `hello` shows `"docker": false` until it can.

@@ -96,7 +96,7 @@ describe("a placed job as its job.offer", () => {
   });
 
   it("builds a clone URL from the mirror's owner and name", () => {
-    expect(cloneUrl("acme-robotics", "helios-firmware")).toBe(
+    expect(cloneUrl("https://github.com", "acme-robotics", "helios-firmware")).toBe(
       "https://github.com/acme-robotics/helios-firmware.git",
     );
   });

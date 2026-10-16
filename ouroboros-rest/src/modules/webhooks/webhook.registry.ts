@@ -294,6 +294,11 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
     // AR.1 (#315): a workspace's guardrail modes changed; a live run was stopped at its budget.
     adds: ["audit.workspace.guardrail_modes_changed", "audit.run.budget_exceeded"],
   },
+  {
+    version: 19,
+    // AG.7 (#991): a build runner redeemed its ticket for a private repository's checkout credential.
+    adds: ["audit.runner.source_credential_redeemed"],
+  },
 ];
 
 /** The newest registry version — what a new endpoint subscribes under. */

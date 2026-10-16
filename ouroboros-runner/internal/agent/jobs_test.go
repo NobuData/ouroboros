@@ -234,7 +234,8 @@ func TestOffersTheRunnerCannotSatisfyAreDeclined(t *testing.T) {
 		t.Errorf("an offer the runner cannot satisfy was accepted: %+v", observed.Accepts)
 	}
 
-	// A runner WITH a container executor still declines an offer naming a repository.
+	// A runner WITH a container executor but without git declines an offer naming a
+	// repository — the hello's `git: false` (#991).
 	farm2 := farmtest.NewFarm(t)
 	h2 := start(t, farm2, enrolled(t, farm2, false), nil)
 	h2.until("the connection", func(o farmtest.Observed) bool { return len(o.Heartbeats) >= 1 })
@@ -245,8 +246,8 @@ func TestOffersTheRunnerCannotSatisfyAreDeclined(t *testing.T) {
 		}
 	})
 	observed = h2.until("the decline", func(o farmtest.Observed) bool { return len(o.Declines) == 1 })
-	if d := observed.Declines[0]; d.Reason != conn.DeclineUnsupportedExecutor || !strings.Contains(d.Detail, "repositories") {
-		t.Errorf("an offer naming a repository: %+v", d)
+	if d := observed.Declines[0]; d.Reason != conn.DeclineUnsupportedExecutor || !strings.Contains(d.Detail, "no git on PATH") {
+		t.Errorf("an offer naming a repository, to a runner without git: %+v", d)
 	}
 }
 
@@ -548,6 +549,7 @@ func TestNewRefusesDishonestCapabilities(t *testing.T) {
 		"a shell executor, shell denied": func(c *Config) {
 			c.Executors[conn.ExecutorShell] = &exec.Shell{}
 		},
+		"git claimed, no askpass program": func(c *Config) { c.Capabilities.Git = true },
 		"an executor filed under another kind": func(c *Config) {
 			c.Executors[conn.ExecutorContainer] = &exec.Shell{}
 		},

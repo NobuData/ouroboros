@@ -13,6 +13,11 @@ import (
 // prepared, and the moment its command is handed over. The agent turns them into
 // `job.progress` and `job.start` frames and into the heartbeat's account of the job.
 type Events interface {
+	// Fetching is the source checkout ([#991]) under way — before preparation, before the
+	// job has started: once as it begins and once as it ends, with a line for the console.
+	//
+	// [#991]: https://github.com/NobuData/ouroboros/issues/991
+	Fetching(pct int, note string)
 	// Progress is preparation progress — an image pull — before the job has started.
 	Progress(pct int, note string)
 	// Started is the job's command handed to the executor, in the given workspace.
@@ -57,24 +62,32 @@ type Runner struct {
 	//
 	// [#330]: https://github.com/NobuData/ouroboros/issues/330
 	BeforeCleanup func(workspace string, result Result)
+	// Git is how a job's source is checked out ([#991]). Its zero value finds git on PATH and
+	// has no askpass program, so it checks out public repositories only.
+	//
+	// [#991]: https://github.com/NobuData/ouroboros/issues/991
+	Git Git
 }
 
 // Run runs one job to its end and reports how it ended. It never returns early: when it
 // returns, the job's processes are gone and its workspace has been dealt with.
 //
-// The sequence is the protocol's: the workspace is created, the executor prepares (an image
-// pull, with progress), `Started` is reported only once the command is being handed over,
-// and then it runs. Its ending is classified into one of the five outcomes:
+// The sequence is the protocol's: the workspace is created, the job's source is checked out
+// into it when it names one ([#991]), the executor prepares (an image pull, with progress),
+// `Started` is reported only once the command is being handed over, and then it runs. Its ending is classified into one of the five outcomes:
 //
 //   - `succeeded` and `failed` are the command's own verdict — exit 0, or anything else.
 //   - `timed_out` is the job's `timeout_s` running out. The budget runs from this call, so a
 //     pull that eats it times the job out too: it is the job's wall clock.
 //   - `cancelled` is ctx ending for any other reason — the agent being told to stop.
 //   - `errored` is the agent failing to run the job at all: a workspace it could not create,
-//     an image that would not pull, a command that would not start. A retry elsewhere is the
-//     right answer to that and the wrong answer to a failed build, which is why they differ.
+//     a source it could not check out, an image that would not pull, a command that would
+//     not start. A retry elsewhere is the right answer to that and the wrong answer to a
+//     failed build, which is why they differ.
 //
 // Then the workspace is removed, unless the cleanup policy keeps it.
+//
+// [#991]: https://github.com/NobuData/ouroboros/issues/991
 func (r *Runner) Run(ctx context.Context, executor Executor, job Job, output Output, events Events) Result {
 	now := r.Now
 	if now == nil {
@@ -91,6 +104,20 @@ func (r *Runner) Run(ctx context.Context, executor Executor, job Job, output Out
 		return r.errored(result, now, failure(CodeWorkspaceCreateFailed, err.Error()))
 	}
 	result.Workspace, result.ReplacedWorkspace = workspace, replaced
+
+	// The source, before anything else touches the workspace: a command never runs in an
+	// empty tree because its checkout failed, and a job stopped mid-fetch never starts.
+	if job.Source != nil {
+		events.Fetching(0, fmt.Sprintf("checking out %s", shortCommit(job.Source.Commit)))
+		if err := Checkout(budget, r.Git, workspace, *job.Source, output); err != nil {
+			if ended := r.stoppedBy(budget, job, nil); ended != nil {
+				result.Outcome, result.Error = ended.outcome, ended.failure
+				return r.finish(result, now)
+			}
+			return r.errored(result, now, asFailure(err, CodeCheckoutFailed))
+		}
+		events.Fetching(100, fmt.Sprintf("checked out %s", shortCommit(job.Source.Commit)))
+	}
 
 	if err := executor.Prepare(budget, job, workspace, events.Progress); err != nil {
 		if ended := r.stoppedBy(budget, job, nil); ended != nil {
@@ -178,6 +205,14 @@ func (r *Runner) finish(result Result, now func() time.Time) Result {
 	}
 	result.Kept, result.CleanupErr = r.Workspaces.Finish(result.Workspace, result.Outcome)
 	return result
+}
+
+// shortCommit is a commit as a console line abbreviates it.
+func shortCommit(commit string) string {
+	if len(commit) > 12 {
+		return commit[:12]
+	}
+	return commit
 }
 
 // exitDetail is an exit status, as one sentence.

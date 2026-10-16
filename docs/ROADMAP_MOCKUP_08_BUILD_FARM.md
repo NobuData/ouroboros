@@ -246,7 +246,7 @@ filing; every issue assigned. Complexity chips: **XS · S · M · L**.
 | AG.4 | #246 | 🟢 Done | ouroboros-runner: [AG.4] Job executors (container & shell) | Per-pool executor kinds, workspace lifecycle, cancellation | mvp, build-farm | N (after AG.2) | Y | L | ouroboros-runner |
 | AG.5 | #247 | 🟢 Done | ouroboros-runner: [AG.5] Log shipping & ccache stats | Bounded chunk streaming, ccache stat parsing, truncation honesty | mvp, build-farm | N (after AG.4) | Y | M | ouroboros-runner |
 | AG.6 | #248 | 🟢 Done | ouroboros-runner: [AG.6] Packaging, install script & daemonization | Cross-compiled releases, `install.sh`, systemd/launchd units | mvp, build-farm, infra | N (after AG.2) | Y | M | ouroboros-runner, .github |
-| AG.7 | #991 | 🟡 Open | ouroboros-runner: [AG.7] Source checkout — run a submitted build on a real runner | Check out the offered commit before the command runs; clone base setting; un-parks AI.7's build test | mvp, build-farm, rest | N (after AG.4, AH.4) | Y | M | ouroboros-runner, ouroboros-rest, tests/e2e |
+| AG.7 | ✅ #991 | 🟢 Done | ouroboros-runner: [AG.7] Source checkout — run a submitted build on a real runner | Check out the offered commit before the command runs; clone base setting; un-parks AI.7's build test | mvp, build-farm, rest | N (after AG.4, AH.4) | Y | M | ouroboros-runner, ouroboros-rest, tests/e2e |
 
 ### Issue AG.1 — ouroboros-runner: [AG.1] Module scaffold & agent protocol spec
 
@@ -598,7 +598,7 @@ install.sh: detect platform ─▶ fetch+verify binary ─▶ enroll(flags) ─�
 
 ### Issue AG.7 — ouroboros-runner: [AG.7] Source checkout — run a submitted build on a real runner
 
-> **GitHub issue:** #991 · **Status:** 🟡 Open · **Parent epic:** #239
+> **GitHub issue:** #991 · **Status:** 🟢 Done · **Parent epic:** #239
 
 
 - **Problem Statement:** A real runner cannot run a build. Every `job.offer` names a

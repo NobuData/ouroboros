@@ -52,7 +52,8 @@ $ ouroboros-runner hello
       "shell": true,
       "ccache": false,
       "cpus": 16,
-      "memory_mb": 29853
+      "memory_mb": 29853,
+      "git": true
     }
   }
 }
@@ -68,6 +69,7 @@ Once the machine is enrolled, the payload also names its `pool` and its `securit
 | `capabilities.docker` | Whether a Docker or Podman daemon answered. Without one, container jobs are declined. |
 | `capabilities.shell` | Whether shell jobs may run directly on this machine: `false` under `--no-shell`. |
 | `capabilities.ccache` | Whether `ccache` is on the `PATH`. |
+| `capabilities.git` | Whether `git` is on the `PATH`. Every build checks its repository out first, so a machine without it is offered no build. |
 | `capabilities.cpus`, `capabilities.memory_mb` | The cores and installed memory. |
 
 The `id` is all zeros on purpose. The real connection gives every message a fresh id, so a printed
@@ -75,6 +77,9 @@ one cannot be replayed.
 
 ## What can go wrong
 
+- **`"git": false` on a machine with git** — it is not on the service account's `PATH`. Run
+  `hello` as that account to see the `PATH` the agent has; install `git` where the account finds
+  it, then restart the agent.
 - **`"docker": false` on a machine with Docker** — the daemon did not answer this account. Check
   that the daemon is running and that the account can reach its socket. Run `hello` as the
   service's account to see what the agent sees.

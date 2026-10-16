@@ -91,6 +91,13 @@ type Capabilities struct {
 	Ccache   bool `json:"ccache"`
 	CPUs     int  `json:"cpus"`
 	MemoryMB int  `json:"memory_mb"`
+	// Git is a git binary on PATH — what checks out `job.offer.repository` ([#991]). Optional
+	// on the wire because it was added inside line 1, and omitted when false, so a hello from
+	// a machine without git is the frame an older gateway already accepts; a gateway offers
+	// an agent that omits it no job that names a repository.
+	//
+	// [#991]: https://github.com/NobuData/ouroboros/issues/991
+	Git bool `json:"git,omitempty"`
 }
 
 // SecurityMode is how this agent authenticated the connection a hello is written on —

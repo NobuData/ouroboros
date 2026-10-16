@@ -246,6 +246,14 @@ export const MAX_PROVIDER_HEALTH_SECONDS = 86400;
 export const DEFAULT_GITHUB_API_BASE_URL = "https://api.github.com";
 
 /**
+ * Where a repository is cloned from when `OURO_GITHUB_CLONE_BASE_URL` is not set — github.com
+ * (AG.7, [#991](https://github.com/NobuData/ouroboros/issues/991)). A build job's offer names
+ * `<base>/<owner>/<name>.git`; a GitHub Enterprise Server deployment sets its own host, and
+ * the e2e suite's compose override points it at the suite's git fixture.
+ */
+export const DEFAULT_GITHUB_CLONE_BASE_URL = "https://github.com";
+
+/**
  * Where Slack's Web API is when `OURO_SLACK_API_BASE_URL` is not set — Slack itself.
  *
  * Written down for the reason {@link DEFAULT_GITHUB_API_BASE_URL} is: the template and the code
@@ -959,6 +967,19 @@ export interface Configuration {
    */
   readonly githubApiBaseUrl: string;
   /**
+   * Where a build job's repository is cloned from. From `OURO_GITHUB_CLONE_BASE_URL`,
+   * {@link DEFAULT_GITHUB_CLONE_BASE_URL} when unset (AG.7,
+   * [#991](https://github.com/NobuData/ouroboros/issues/991)).
+   *
+   * {@link githubApiBaseUrl}'s sibling, and it exists for the same two callers: a GitHub
+   * Enterprise Server installation, whose clone host is not github.com, and the e2e compose
+   * override, which points it at the suite's git fixture so a build on a real runner never
+   * reaches the public internet. An origin with an optional path, never userinfo, a query or
+   * a fragment; a trailing slash is dropped. **It moves the address and nothing else**: the
+   * credential a private clone uses is still the workspace's own GitHub token.
+   */
+  readonly githubCloneBaseUrl: string;
+  /**
    * The vault's key-encryption key, base64. From `OURO_VAULT_MASTER_KEY`.
    *
    * The KEK of the envelope-encryption service — roadmap decision **P2**,
@@ -1539,6 +1560,7 @@ export const VARIABLES = {
   githubClientId: "OURO_GITHUB_CLIENT_ID",
   githubClientSecret: "OURO_GITHUB_CLIENT_SECRET",
   githubApiBaseUrl: "OURO_GITHUB_API_BASE_URL",
+  githubCloneBaseUrl: "OURO_GITHUB_CLONE_BASE_URL",
   vaultMasterKey: "OURO_VAULT_MASTER_KEY",
   corsOrigins: "OURO_CORS_ORIGINS",
   dashboardPollSeconds: "OURO_DASHBOARD_POLL_SECONDS",
@@ -1674,6 +1696,20 @@ function isAbsoluteUrl(value: string, protocols: readonly string[]): boolean {
   }
 
   return protocols.includes(url.protocol) && url.hostname !== "";
+}
+
+/**
+ * Is this a clone base (#991) — an absolute http(s) URL with an optional path and nothing a
+ * clone URL has no place for: no userinfo, no query, no fragment?
+ *
+ * @param value - The candidate.
+ * @returns Whether it is.
+ */
+function isCloneBase(value: string): boolean {
+  if (!isAbsoluteUrl(value, ["http:", "https:"])) return false;
+
+  const url = new URL(value);
+  return url.username === "" && url.password === "" && url.search === "" && url.hash === "";
 }
 
 /**
@@ -1975,6 +2011,20 @@ const environmentShape = z.object({
       "expected an absolute http:// or https:// URL, such as https://ghe.example.com/api/v3",
     )
     .default(DEFAULT_GITHUB_API_BASE_URL),
+
+  // Where a build job's repository is cloned from (#991): an origin with an optional path.
+  // Userinfo is refused rather than carried — a credential in the clone base would reach
+  // every offer, every agent log and every job log — and so are a query and a fragment,
+  // which `<base>/<owner>/<name>.git` has no place for. A trailing slash is dropped so the
+  // offer's URL has exactly one between the base and the owner.
+  OURO_GITHUB_CLONE_BASE_URL: z
+    .string()
+    .refine(
+      (value) => isCloneBase(value),
+      "expected an absolute http:// or https:// URL with no credentials, query or fragment, such as https://ghe.example.com",
+    )
+    .transform((value) => value.replace(/\/+$/, ""))
+    .default(DEFAULT_GITHUB_CLONE_BASE_URL),
 
   // The vault's KEK (#222). Not validated by `secret` above, and the difference is the
   // whole of this ticket's "boot fails cleanly on a bad master key" criterion: the others
@@ -2773,6 +2823,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     githubClientId: values.OURO_GITHUB_CLIENT_ID,
     githubClientSecret: values.OURO_GITHUB_CLIENT_SECRET,
     githubApiBaseUrl: values.OURO_GITHUB_API_BASE_URL,
+    githubCloneBaseUrl: values.OURO_GITHUB_CLONE_BASE_URL,
     vaultMasterKey: values.OURO_VAULT_MASTER_KEY,
     corsOrigins: Object.freeze(values.OURO_CORS_ORIGINS),
     dashboardPollSeconds: values.OURO_DASHBOARD_POLL_SECONDS,

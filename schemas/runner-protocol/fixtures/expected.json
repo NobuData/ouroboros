@@ -28,12 +28,18 @@
     "change to it is a change to the contract, and every suite has to be green on the new",
     "one."
   ],
-
   "cases": [
     {
       "name": "hello",
       "about": "The first message. Identity is the TLS client certificate (#250), so no token travels here.",
       "document": "valid/hello.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
+      "name": "hello-git",
+      "about": "A hello whose agent has git on PATH (#991): `capabilities.git` is optional only because it was added inside line 1, and an agent that reports it is one the dispatcher may offer a job that names a repository.",
+      "document": "valid/hello-git.json",
       "valid": true,
       "diagnostics": []
     },
@@ -136,6 +142,13 @@
       "diagnostics": []
     },
     {
+      "name": "job-offer-credential",
+      "about": "A job on a private repository (#991, decision L9): `repository.credential` is a single-use ticket the agent redeems once on the control plane's own origin for the git credential of this one checkout. The frame never carries the credential itself.",
+      "document": "valid/job-offer-credential.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
       "name": "job-accept",
       "about": "Taken -- naming the offer envelope, so a re-offer cannot be answered twice.",
       "document": "valid/job-accept.json",
@@ -226,174 +239,293 @@
       "valid": true,
       "diagnostics": []
     },
-
     {
       "name": "envelope-not-object",
       "about": "A frame that is not an object at all.",
       "document": "invalid/envelope-not-object.json",
       "valid": false,
-      "diagnostics": [{ "code": "envelope.malformed", "path": "" }]
+      "diagnostics": [
+        {
+          "code": "envelope.malformed",
+          "path": ""
+        }
+      ]
     },
     {
       "name": "envelope-version-missing",
       "about": "The version is present from message one, which is the one thing that cannot be retrofitted.",
       "document": "invalid/envelope-version-missing.json",
       "valid": false,
-      "diagnostics": [{ "code": "envelope.field.missing", "path": "/v" }]
+      "diagnostics": [
+        {
+          "code": "envelope.field.missing",
+          "path": "/v"
+        }
+      ]
     },
     {
       "name": "envelope-version-type",
       "about": "`v` is an integer. A string that looks like one is not one.",
       "document": "invalid/envelope-version-type.json",
       "valid": false,
-      "diagnostics": [{ "code": "envelope.field.type", "path": "/v" }]
+      "diagnostics": [
+        {
+          "code": "envelope.field.type",
+          "path": "/v"
+        }
+      ]
     },
     {
       "name": "envelope-version-unsupported",
       "about": "A line this implementation does not speak. Rejected as a version, not as a bad field.",
       "document": "invalid/envelope-version-unsupported.json",
       "valid": false,
-      "diagnostics": [{ "code": "envelope.version.unsupported", "path": "/v" }]
+      "diagnostics": [
+        {
+          "code": "envelope.version.unsupported",
+          "path": "/v"
+        }
+      ]
     },
     {
       "name": "envelope-type-missing",
       "about": "No type, so there is no payload contract to apply.",
       "document": "invalid/envelope-type-missing.json",
       "valid": false,
-      "diagnostics": [{ "code": "envelope.field.missing", "path": "/type" }]
+      "diagnostics": [
+        {
+          "code": "envelope.field.missing",
+          "path": "/type"
+        }
+      ]
     },
     {
       "name": "envelope-type-unknown",
       "about": "A type outside the enum. The walk stops rather than guessing what was meant.",
       "document": "invalid/envelope-type-unknown.json",
       "valid": false,
-      "diagnostics": [{ "code": "envelope.type.unknown", "path": "/type" }]
+      "diagnostics": [
+        {
+          "code": "envelope.type.unknown",
+          "path": "/type"
+        }
+      ]
     },
     {
       "name": "envelope-id-missing",
       "about": "Without an id a terminal frame cannot be deduplicated, so every frame carries one.",
       "document": "invalid/envelope-id-missing.json",
       "valid": false,
-      "diagnostics": [{ "code": "envelope.field.missing", "path": "/id" }]
+      "diagnostics": [
+        {
+          "code": "envelope.field.missing",
+          "path": "/id"
+        }
+      ]
     },
     {
       "name": "envelope-id-malformed",
       "about": "An id that is not a ULID. The shape is fixed so ids sort by the time they were minted.",
       "document": "invalid/envelope-id-malformed.json",
       "valid": false,
-      "diagnostics": [{ "code": "envelope.id.malformed", "path": "/id" }]
+      "diagnostics": [
+        {
+          "code": "envelope.id.malformed",
+          "path": "/id"
+        }
+      ]
     },
     {
       "name": "envelope-payload-missing",
       "about": "A payload is always present, even when it is empty.",
       "document": "invalid/envelope-payload-missing.json",
       "valid": false,
-      "diagnostics": [{ "code": "envelope.field.missing", "path": "/payload" }]
+      "diagnostics": [
+        {
+          "code": "envelope.field.missing",
+          "path": "/payload"
+        }
+      ]
     },
     {
       "name": "envelope-payload-type",
       "about": "The payload is an object. An array is not an object.",
       "document": "invalid/envelope-payload-type.json",
       "valid": false,
-      "diagnostics": [{ "code": "envelope.field.type", "path": "/payload" }]
+      "diagnostics": [
+        {
+          "code": "envelope.field.type",
+          "path": "/payload"
+        }
+      ]
     },
     {
       "name": "envelope-field-unknown",
       "about": "The envelope is frozen across every version, so a fifth key is an error rather than an extension point.",
       "document": "invalid/envelope-field-unknown.json",
       "valid": false,
-      "diagnostics": [{ "code": "envelope.field.unknown", "path": "/sent_at" }]
+      "diagnostics": [
+        {
+          "code": "envelope.field.unknown",
+          "path": "/sent_at"
+        }
+      ]
     },
     {
       "name": "hello-arch-enum",
       "about": "An architecture outside the three the fleet builds for.",
       "document": "invalid/hello-arch-enum.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.enum", "path": "/payload/arch" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.enum",
+          "path": "/payload/arch"
+        }
+      ]
     },
     {
       "name": "hello-protocol-range",
       "about": "There is no protocol 0. The advertised range starts at 1.",
       "document": "invalid/hello-protocol-range.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.range", "path": "/payload/agent/protocol_min" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.range",
+          "path": "/payload/agent/protocol_min"
+        }
+      ]
     },
     {
       "name": "hello-hostname-missing",
       "about": "An agent with no hostname is a row nobody can identify in the runners table.",
       "document": "invalid/hello-hostname-missing.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.missing", "path": "/payload/hostname" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.missing",
+          "path": "/payload/hostname"
+        }
+      ]
     },
     {
       "name": "hello-field-unknown",
       "about": "An enrollment token does NOT travel in `hello` (#250). A frame that carries one is refused, which is what keeps a bearer secret out of every session log.",
       "document": "invalid/hello-field-unknown.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.unknown", "path": "/payload/token" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.unknown",
+          "path": "/payload/token"
+        }
+      ]
     },
     {
       "name": "hello-security-mode-enum",
       "about": "A security mode outside decision B3's two. There is no third way to authenticate, and a frame claiming one is refused rather than recorded.",
       "document": "invalid/hello-security-mode-enum.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.enum", "path": "/payload/security_mode" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.enum",
+          "path": "/payload/security_mode"
+        }
+      ]
     },
     {
       "name": "ack-pool-concurrency-range",
       "about": "A pool that lets a runner hold no jobs at all. `max_concurrency` is 1-64, the bounds `runner_pools` holds it to (#249); zero is a pool that could never run anything.",
       "document": "invalid/ack-pool-concurrency-range.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.range", "path": "/payload/pool/max_concurrency" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.range",
+          "path": "/payload/pool/max_concurrency"
+        }
+      ]
     },
     {
       "name": "heartbeat-cpu-range",
       "about": "A percentage above 100.",
       "document": "invalid/heartbeat-cpu-range.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.range", "path": "/payload/cpu_pct" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.range",
+          "path": "/payload/cpu_pct"
+        }
+      ]
     },
     {
       "name": "heartbeat-cpu-missing",
       "about": "Null, not absent: a measurement this machine cannot take is sent as null, and a heartbeat without the key has two shapes for one message.",
       "document": "invalid/heartbeat-cpu-missing.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.missing", "path": "/payload/cpu_pct" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.missing",
+          "path": "/payload/cpu_pct"
+        }
+      ]
     },
     {
       "name": "heartbeat-state-enum",
       "about": "A state the control plane has no column for.",
       "document": "invalid/heartbeat-state-enum.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.enum", "path": "/payload/state" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.enum",
+          "path": "/payload/state"
+        }
+      ]
     },
     {
       "name": "job-offer-image-conflict",
       "about": "An image on a shell job. Not merely ignored -- refused, because a dispatcher that sent one meant a container.",
       "document": "invalid/job-offer-image-conflict.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.conflict", "path": "/payload/image" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.conflict",
+          "path": "/payload/image"
+        }
+      ]
     },
     {
       "name": "job-offer-image-missing",
       "about": "A container job with nothing to run in.",
       "document": "invalid/job-offer-image-missing.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.missing", "path": "/payload/image" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.missing",
+          "path": "/payload/image"
+        }
+      ]
     },
     {
       "name": "job-offer-command-type",
       "about": "The command is an argv array, never a shell string -- there is no shell to split it.",
       "document": "invalid/job-offer-command-type.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.type", "path": "/payload/command" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.type",
+          "path": "/payload/command"
+        }
+      ]
     },
     {
       "name": "job-offer-attempt-range",
       "about": "Attempts count from one -- a zeroth attempt is a dispatcher that lost count.",
       "document": "invalid/job-offer-attempt-range.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.range", "path": "/payload/attempt" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.range",
+          "path": "/payload/attempt"
+        }
+      ]
     },
     {
       "name": "job-offer-upload-path",
@@ -408,53 +540,100 @@
       ]
     },
     {
+      "name": "job-offer-credential-path",
+      "about": "A credential path that is scheme-relative (`//host/...`). Refused for the upload path's reason: the agent resolves the path against the origin it already dials, and a path that names another host would hand it the ticket.",
+      "document": "invalid/job-offer-credential-path.json",
+      "valid": false,
+      "diagnostics": [
+        {
+          "code": "payload.field.type",
+          "path": "/payload/repository/credential/path"
+        }
+      ]
+    },
+    {
       "name": "job-cancel-reason-enum",
       "about": "A cancellation reason outside the two the agent can log.",
       "document": "invalid/job-cancel-reason-enum.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.enum", "path": "/payload/reason" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.enum",
+          "path": "/payload/reason"
+        }
+      ]
     },
     {
       "name": "job-finish-exit-missing",
       "about": "An outcome that ran has an exit code.",
       "document": "invalid/job-finish-exit-missing.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.missing", "path": "/payload/exit_code" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.missing",
+          "path": "/payload/exit_code"
+        }
+      ]
     },
     {
       "name": "job-finish-outcome-enum",
       "about": "An outcome outside the five the control plane records.",
       "document": "invalid/job-finish-outcome-enum.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.enum", "path": "/payload/outcome" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.enum",
+          "path": "/payload/outcome"
+        }
+      ]
     },
     {
       "name": "job-finish-exit-null",
       "about": "`succeeded` with a null exit code. Not a missing field -- the key is there, and it says the command never ran, which the outcome contradicts.",
       "document": "invalid/job-finish-exit-null.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.conflict", "path": "/payload/exit_code" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.conflict",
+          "path": "/payload/exit_code"
+        }
+      ]
     },
     {
       "name": "log-chunk-data-not-base64",
       "about": "A `data` that is not base64. Reported as a type error rather than a range one: it is not a chunk of the wrong size, it is not a chunk.",
       "document": "invalid/log-chunk-data-not-base64.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.type", "path": "/payload/data" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.type",
+          "path": "/payload/data"
+        }
+      ]
     },
     {
       "name": "log-chunk-seq-range",
       "about": "Sequence numbers are 0-based and contiguous, which is what makes ordering checkable.",
       "document": "invalid/log-chunk-seq-range.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.range", "path": "/payload/seq" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.range",
+          "path": "/payload/seq"
+        }
+      ]
     },
     {
       "name": "log-chunk-encoding-enum",
       "about": "base64 is the only encoding. A build log is bytes, and not every byte sequence is text.",
       "document": "invalid/log-chunk-encoding-enum.json",
       "valid": false,
-      "diagnostics": [{ "code": "payload.field.enum", "path": "/payload/encoding" }]
+      "diagnostics": [
+        {
+          "code": "payload.field.enum",
+          "path": "/payload/encoding"
+        }
+      ]
     },
     {
       "name": "two-mistakes",
@@ -462,12 +641,17 @@
       "document": "invalid/two-mistakes.json",
       "valid": false,
       "diagnostics": [
-        { "code": "payload.field.range", "path": "/payload/cpu_pct" },
-        { "code": "payload.field.enum", "path": "/payload/state" }
+        {
+          "code": "payload.field.range",
+          "path": "/payload/cpu_pct"
+        },
+        {
+          "code": "payload.field.enum",
+          "path": "/payload/state"
+        }
       ]
     }
   ],
-
   "transcripts": [
     {
       "name": "enroll",

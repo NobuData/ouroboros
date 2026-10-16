@@ -316,6 +316,8 @@ export const SPECS: Readonly<Record<string, MessageSpec>> = {
           { name: "ccache", kinds: Kind.Bool },
           { name: "cpus", kinds: Kind.Integer, min: 1 },
           { name: "memory_mb", kinds: Kind.Integer, min: 1 },
+          // Added inside line 1 (#991): absent on an agent older than source checkout.
+          { name: "git", kinds: Kind.Bool, optional: true },
         ],
       },
       // Optional only because it was added inside line 1 (§ 3). The gateway reads the transport
@@ -430,6 +432,30 @@ export const SPECS: Readonly<Record<string, MessageSpec>> = {
           { name: "url", kinds: Kind.String, minLen: 1, maxLen: 1024 },
           { name: "ref", kinds: Kind.String, minLen: 1, maxLen: 256 },
           { name: "commit", kinds: Kind.String, pattern: PATTERNS.commit },
+          // Added inside line 1 (#991): absent for a repository cloned anonymously. The same
+          // shapes as the upload's path and token, for the same reasons.
+          {
+            name: "credential",
+            kinds: Kind.Object,
+            optional: true,
+            fields: [
+              {
+                name: "path",
+                kinds: Kind.String,
+                pattern: PATTERNS.uploadPath,
+                minLen: 2,
+                maxLen: 512,
+              },
+              {
+                name: "token",
+                kinds: Kind.String,
+                pattern: PATTERNS.uploadToken,
+                minLen: 32,
+                maxLen: 256,
+              },
+              timestamp("expires_at"),
+            ],
+          },
         ],
       },
       { name: "timeout_s", kinds: Kind.Integer, min: 1, max: 86400 },

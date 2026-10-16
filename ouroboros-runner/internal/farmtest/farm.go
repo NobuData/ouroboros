@@ -76,6 +76,10 @@ type Farm struct {
 	ttl           time.Duration
 	lead          time.Duration
 	uploadAnswers []UploadAnswer
+	// The source credential (#991): what a granted redemption hands over, and how the next
+	// redemptions are answered.
+	sourceUsername, sourcePassword string
+	sourceAnswers                  []SourceAnswer
 }
 
 // token is one enrollment token's row.
@@ -135,6 +139,8 @@ type Observed struct {
 	Refused []string
 	// Uploads is every artifact upload (#330), in the order they arrived.
 	Uploads []Upload
+	// Sources is every source-credential redemption (#991), in the order they arrived.
+	Sources []SourceRedemption
 }
 
 // NewFarm starts a farm on a loopback port and stops it at the end of the test.
@@ -174,6 +180,7 @@ func NewFarm(tb interface {
 	mux.HandleFunc("POST "+RenewalPath, farm.renew)
 	mux.HandleFunc("GET "+GatewayPath, farm.gateway)
 	mux.HandleFunc("POST "+ArtifactsPathPrefix+"{id}/artifacts", farm.artifacts)
+	mux.HandleFunc("POST "+ArtifactsPathPrefix+"{id}/source-credential", farm.sourceCredential)
 
 	farm.server = httptest.NewUnstartedServer(mux)
 	farm.server.TLS = &tls.Config{
@@ -410,6 +417,7 @@ func (f *Farm) snapshotLocked() Observed {
 	observed.Violations = append([]string(nil), f.observed.Violations...)
 	observed.Refused = append([]string(nil), f.observed.Refused...)
 	observed.Uploads = append([]Upload(nil), f.observed.Uploads...)
+	observed.Sources = append([]SourceRedemption(nil), f.observed.Sources...)
 	observed.Recorded = f.ledger.Len()
 	return observed
 }
@@ -437,6 +445,11 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 func writeJSON(w http.ResponseWriter, resource any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	writeBody(w, resource)
+}
+
+// writeBody encodes a resource onto an answer whose status is already written.
+func writeBody(w http.ResponseWriter, resource any) {
 	_ = json.NewEncoder(w).Encode(resource)
 }
 

@@ -112,3 +112,13 @@ func CcacheOnPath() bool {
 	_, err := exec.LookPath("ccache")
 	return err == nil
 }
+
+// GitOnPath reports whether a `git` binary is on PATH — which is what checks out
+// `job.offer.repository` into a job's workspace ([#991]). An agent without one reports
+// `git: false` and is offered no job that names a repository.
+//
+// [#991]: https://github.com/NobuData/ouroboros/issues/991
+func GitOnPath() bool {
+	_, err := exec.LookPath("git")
+	return err == nil
+}
