@@ -103,7 +103,10 @@ export class ConnectionOpener {
 
     return {
       adapter,
-      context: { connectionId: row.id, config, secret },
+      // The row's address travels beside `config` because a kind whose schema has no address
+      // field (Anthropic) drops it from `submissionOf`, and a seeded fixture address must still
+      // reach the relay (#1314).
+      context: { connectionId: row.id, config, secret, baseUrl: row.base_url ?? null },
       monthlyCapCents: row.monthly_cap_cents,
     };
   }

@@ -1082,7 +1082,7 @@ The issues here are what the chain assumes and nothing filed provides.
 | DI.2 | #1310 | 🟡 Open | ouroboros-engine: [DI.2] Branch publisher — attributed commits & single-branch push | Commit the tree's changes with honest authorship; push one branch with a one-call credential | mvp, live-loop, engine, rest, pr | N (after DI.1) | Y | M | ouroboros-engine, ouroboros-rest, ouroboros-docs |
 | DI.3 | #1311 | 🟡 Open | ouroboros-rest: [DI.3] Draft pull-request publisher under dry-run policy | `createPR` as a draft with the run summary and criteria; `run_id` linked; idempotent | mvp, live-loop, rest, pr, runs | N (after DI.2) | Y | M | ouroboros-rest, ouroboros-docs |
 | DI.4 | ✅ #1312 | 🟢 Done | ouroboros-rest: [DI.4] Live-run admission — dry-run required, pause honoured, concurrency ceiling | The one gate a queue item passes before the engine may claim it | mvp, live-loop, rest, runs, workflow | Y | Y | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| DI.5 | #1314 | 🟡 Open | ouroboros-db: [DI.5] Slice workflow, seeds & the e2e sandbox fixture | A published `live-slice` workflow, a fixture repository that accepts a push and a pull request, a recorded provider exchange | mvp, live-loop, db, ci, workflow | Y | Y | M | ouroboros-db, tests/e2e, docker-compose.e2e.yml |
+| DI.5 | ✅ #1314 | 🟢 Done | ouroboros-db: [DI.5] Slice workflow, seeds & the e2e sandbox fixture | A published `live-slice` workflow, a fixture repository that accepts a push and a pull request, a recorded provider exchange | mvp, live-loop, db, ci, workflow | Y | Y | M | ouroboros-db, tests/e2e, docker-compose.e2e.yml |
 | DI.6 | #1321 | 🟡 Open | ouroboros: [DI.6] Live-slice acceptance — e2e leg & real-provider run | The MVP gate: issue to draft pull request from cold compose, plus a scripted run against a real provider | mvp, live-loop, ci, runs, pr | N (after all MVP) | Y | L | tests/e2e, .github, docs |
 | DI.7 | #1323 | 🟡 Open | ouroboros-engine: [DI.7] Best-of-n attempts | Several attempts at one stage in separate trees; the gate chooses | v2, live-loop, engine, workflow, routing | Y | N | L | ouroboros-engine, ouroboros-rest, ouroboros-ui, ouroboros-docs |
 | DI.8 | #1324 | 🟡 Open | ouroboros-engine: [DI.8] Coordinator & child runs | One run that plans and delegates to child runs with their own branches | v2, live-loop, engine, workflow, runs | N (after DI.7) | N | L | ouroboros-engine, ouroboros-rest, ouroboros-db, ouroboros-ui, ouroboros-docs |
@@ -1360,7 +1360,32 @@ flowchart TB
 
 ### Issue DI.5 — ouroboros-db: [DI.5] Slice workflow, seeds & the e2e sandbox fixture
 
-> **GitHub issue:** #1314 · **Status:** 🟡 Open · **Parent epic:** #1295
+> **GitHub issue:** #1314 · **Status:** 🟢 Done · **Parent epic:** #1295
+>
+> **Delivered (#1314):** a fifth seeded workspace, `acme-live-slice`
+> (`R__dev_seed_live_slice.sql`), holding the published `live-slice@v1`, its org-scoped wizard
+> template, `plan`/`implement` routes to two aliases on one `anthropic` connection whose
+> `base_url` is the e2e stack's new `provider-fixture`, the fixture repository
+> `acme-robotics/helios-greeter` with its one issue, and `dry_run` on — every row behind
+> `${ouro_dev_seed}`. Four decisions were taken against the codebase as found: **(1)** the
+> workflow is encoded in DSL v1 — `implement` is an `llm` stage with `push_fixup:false,
+> touch_ci:false` (the engine runs every model stage under the registered harness, which
+> hard-codes L5), the gate is `checks all_passed ["build"]` with a loop edge and
+> `max_retries 1`, and the terminal is `open_pr_automerge`, the draft being DI.3's under the
+> required dry-run policy; **(2)** the rows live in their own workspace because routes are one
+> per task kind per workspace and `acme-robotics` is the mockup-parity workspace; **(3)** the
+> REST Anthropic adapter now honours `provider_connections.base_url` when a row carries one
+> (only a seed can set it for that kind; the health checks already did), which is how the
+> facade reaches the fixture; **(4)** the seeded connection carries no credential (a seed cannot
+> seal one) — the e2e leg sets `ouro-e2e-…` through the rotate route
+> (`tests/e2e/support/live-slice.ts`). The git fixture accepts pushes to `ouro/run-*` only;
+> `tracker-stub` creates refs and draft pull requests and lists them; `provider-fixture`
+> replays `recordings/live-slice.json` — the harness's requests captured from
+> `claude-agent-sdk 0.2.167` / CLI 2.1.300 around scripted turns, one `Edit` that fails and
+> is corrected — and refuses, naming that version, a harness whose `anthropic-beta` set or
+> tool results differ. `ouroboros-engine/tests/test_live_slice_recording.py` holds the
+> recording to the pinned SDK and drives both sessions through the fixture with the real CLI.
+> Not done here: the DI.6 leg itself, and the engine's `OURO_REST_URL` in compose.
 
 - **Problem Statement:** #160's and #315's criteria run "the seeded
   `docs-loop`" against "a sandbox repository" that each issue assumes someone

@@ -37,17 +37,26 @@
  * every one of them was.
  *
  * ---------------------------------------------------------------------------
- * **Why there is no Base URL field.**
+ * **Why there is no Base URL field — and what a stored address does.**
  *
- * The endpoint is fixed at {@link ANTHROPIC_DEFAULT_BASE_URL} and the card shows it as prose
- * — mockup 07's capability line reads *api.anthropic.com · primary coding lane*, which is
- * `provider_connections.capability_note` (V017) rather than a setting. The one thing this
- * card asks anybody for is a key, which is exactly what `card.shapes.fixture.ts` recorded
- * before this adapter existed, and `anthropic.adapter.spec.ts` asserts the two still agree.
+ * The card shows the endpoint as prose — mockup 07's capability line reads *api.anthropic.com
+ * · primary coding lane*, which is `provider_connections.capability_note` (V017) rather than a
+ * setting. The one thing this card asks anybody for is a key, which is exactly what
+ * `card.shapes.fixture.ts` recorded before this adapter existed, and `anthropic.adapter.spec.ts`
+ * asserts the two still agree. No request body is accepted with an address for this kind,
+ * and the add-form never shows one. A configurable address is what AC.3
+ * ([#218](https://github.com/NobuData/ouroboros/issues/218)) is for.
  *
- * A configurable address is what AC.3 ([#218](https://github.com/NobuData/ouroboros/issues/218))
- * is for. Adding one here would also mean owning an SSRF policy for a field that exists to
- * hold one hostname.
+ * A row that *carries* a `base_url` is honoured all the same, by every call this file makes:
+ * {@link baseOf} takes the context's address when the opener found one on the row and
+ * {@link ANTHROPIC_DEFAULT_BASE_URL} otherwise — which is what the health checks have always
+ * done (`checkUrl`, `provider-health/checks.ts`). Only a seed writes that column for this
+ * kind: the e2e suite's recorded provider fixture (DI.5,
+ * [#1314](https://github.com/NobuData/ouroboros/issues/1314)) is a seeded `anthropic`
+ * connection whose address is the fixture container, and the Messages facade relays through
+ * it exactly as it would through api.anthropic.com. That is not an SSRF surface: nothing a
+ * request can say reaches the column, so the policy the field would need is still AC.3's
+ * to own, not this file's.
  *
  * ---------------------------------------------------------------------------
  * **Where the credential is, and where it is not.**
@@ -89,6 +98,7 @@ import type {
   ProviderValidation,
 } from "../provider.adapter";
 import {
+  BASE_URL_FIELD,
   PLACEHOLDER_ANNOTATION,
   PROVIDER_CONFIG_DIALECT,
   SECRET_ANNOTATION,
@@ -350,22 +360,39 @@ function requestHeaders(apiKey: string): Record<string, string> {
 }
 
 /**
+ * Where this connection's API lives.
+ *
+ * The row's address when it carries one, {@link ANTHROPIC_DEFAULT_BASE_URL} otherwise — see
+ * the header. A trailing slash is stripped rather than tolerated, for `checkUrl`'s reason:
+ * every path this file appends begins with one, so this is the only place the two halves
+ * could disagree.
+ *
+ * @param address - `provider_connections.base_url`, as the opener handed it over (the
+ *   context's `baseUrl`, or the `baseUrl` entry of a config for a caller that only has one).
+ * @returns The origin, with no trailing slash.
+ */
+export function baseOf(address: string | null | undefined): string {
+  const base = address === undefined || address === null || address === "" ? null : address;
+
+  return (base ?? ANTHROPIC_DEFAULT_BASE_URL).replace(/\/+$/, "");
+}
+
+/**
  * Where a listing lives.
  *
+ * @param base - The connection's origin, from {@link baseOf}.
  * @param limit - How many models to ask for.
  * @param after - The cursor from a previous page, or null for the first.
- * @returns The absolute URL. Built from {@link ANTHROPIC_DEFAULT_BASE_URL} rather than from
- *   anything a caller supplied — this adapter has no address field, so there is no path by
- *   which a request could be sent somewhere else.
+ * @returns The absolute URL.
  */
-function listingUrl(limit: number, after: string | null): string {
+function listingUrl(base: string, limit: number, after: string | null): string {
   const params = new URLSearchParams({ limit: limit.toString() });
 
   if (after !== null) {
     params.set("after_id", after);
   }
 
-  return `${ANTHROPIC_DEFAULT_BASE_URL}/v1/models?${params.toString()}`;
+  return `${base}/v1/models?${params.toString()}`;
 }
 
 /**
@@ -586,9 +613,10 @@ export class AnthropicAdapter implements MessagesRelayAdapter {
       throw new ProviderAdapterError("config", `${missing.join(", ")} required`);
     }
 
+    const base = baseOf(connection.baseUrl);
     const response = await postProvider({
-      url: `${ANTHROPIC_DEFAULT_BASE_URL}${request.path}`,
-      host: new URL(ANTHROPIC_DEFAULT_BASE_URL).host,
+      url: `${base}${request.path}`,
+      host: new URL(base).host,
       headers: {
         "anthropic-version": ANTHROPIC_VERSION,
         ...request.headers,
@@ -613,10 +641,12 @@ export class AnthropicAdapter implements MessagesRelayAdapter {
         throw new ProviderAdapterError("config", `${missing.join(", ")} required`);
       }
 
+      const base = baseOf(connection.baseUrl);
+
       return openInvocation(
         {
-          url: `${ANTHROPIC_DEFAULT_BASE_URL}${ANTHROPIC_MESSAGES_PATH}`,
-          host: new URL(ANTHROPIC_DEFAULT_BASE_URL).host,
+          url: `${base}${ANTHROPIC_MESSAGES_PATH}`,
+          host: new URL(base).host,
           headers: { ...requestHeaders(connection.secret), accept: "text/event-stream" },
           body: anthropicBody(call.modelId, call.payload),
           signal: call.signal,
@@ -680,7 +710,10 @@ export class AnthropicAdapter implements MessagesRelayAdapter {
     let response: Response;
 
     try {
-      response = await fetch(listingUrl(1, null), {
+      // `validate` is handed a config rather than a context, so a stored address can only
+      // arrive under the reserved `baseUrl` name (`provider.config.ts`) when a caller puts it
+      // there; absent, the default — which is every card's case.
+      response = await fetch(listingUrl(baseOf(config[BASE_URL_FIELD]), 1, null), {
         // Stated rather than defaulted. The default *is* GET, and writing it here is what puts
         // "this adapter cannot send a completion" on the one line that could ever break it.
         method: "GET",
@@ -743,7 +776,7 @@ export class AnthropicAdapter implements MessagesRelayAdapter {
     let after: string | null = null;
 
     for (let page = 0; page < ANTHROPIC_PAGE_LIMIT; page += 1) {
-      const listing = await this.listPage(secret, after);
+      const listing = await this.listPage(baseOf(connection.baseUrl), secret, after);
 
       for (const entry of listing.entries) {
         const model = normalizeModel(entry, listing.tier);
@@ -773,19 +806,24 @@ export class AnthropicAdapter implements MessagesRelayAdapter {
   /**
    * One page of the listing.
    *
+   * @param base - The connection's origin, from {@link baseOf}.
    * @param apiKey - The opened credential.
    * @param after - The cursor from the previous page, or null for the first.
    * @returns What the page said.
    * @throws {ProviderAdapterError} For a refusal, a transport failure, or a body that is not
    *   a listing. The last of those is `upstream` rather than `config`: the address is this
-   *   file's own constant, so a `200` that is not JSON is the provider misbehaving and there
-   *   is no setting anybody could correct.
+   *   file's constant or a seeded one, so a `200` that is not JSON is the provider
+   *   misbehaving and there is no setting a card could correct.
    */
-  private async listPage(apiKey: string, after: string | null): Promise<ModelListingPage> {
+  private async listPage(
+    base: string,
+    apiKey: string,
+    after: string | null,
+  ): Promise<ModelListingPage> {
     let response: Response;
 
     try {
-      response = await fetch(listingUrl(ANTHROPIC_PAGE_SIZE, after), {
+      response = await fetch(listingUrl(base, ANTHROPIC_PAGE_SIZE, after), {
         method: "GET",
         headers: requestHeaders(apiKey),
         signal: AbortSignal.timeout(ANTHROPIC_TIMEOUT_MS),

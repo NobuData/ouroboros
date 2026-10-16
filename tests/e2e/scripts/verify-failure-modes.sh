@@ -92,6 +92,16 @@
 #   engine-   knowledge.spec.ts   the estimator assertion really reads the wire: with the tap
 #   tap       (the chain)         stopped there is nothing to read it from, and the leg says so
 #                                 rather than passing on an injection record (#422)
+#   git-stub  live-slice-fixtures the live slice's repository accepts a push to a run branch and
+#             .spec.ts            refuses one to the default branch — on the suite's git host,
+#                                 not on a mock of one: with it stopped the clone fails, and
+#                                 the test says which host (#1314)
+#   tracker-  live-slice-fixtures a branch and a draft pull request are recorded by the
+#   stub      .spec.ts            sandbox tracker and read back from it: with it stopped the
+#                                 test says the sandbox tracker is not answering (#1314)
+#   provider- live-slice-fixtures the recorded exchange is replayed by the provider fixture,
+#   fixture   .spec.ts            and a different harness is reported as such: with it stopped
+#                                 the test says the provider fixture is not answering (#1314)
 #   engine    knowledge.spec.ts   the fact reaches the estimator *through the engine call*: with
 #             (the chain)         the engine stopped the sandbox issue is never sized, and the
 #                                 leg stops at that hop (#422)
@@ -830,6 +840,13 @@ expect_red engine copilot.spec.ts "reading the dry run's safety strip answered 5
 # every model stage waits on the invocation gateway (AF.2, #235) (the copilot's route is seeded
 # since #1748, and a blank draft publishes since #1744). The spec's header says what is asserted meanwhile.
 parked copilot.spec.ts engine "the chain"
+
+# The live slice's fixtures (#1314, DI.5): three services the DI.6 leg will stand on, each
+# proven against the real thing rather than a switch. Stopping one must fail exactly the test
+# that uses it, in that test's own words — the first line of each failure names the host.
+expect_red git-stub live-slice-fixtures.spec.ts "git host" "accepts a push to a run branch and refuses the default branch"
+expect_red tracker-stub live-slice-fixtures.spec.ts "sandbox tracker" "records a branch and a draft pull request and answers reads"
+expect_red provider-fixture live-slice-fixtures.spec.ts "provider fixture" "replays the recorded exchange and reports a different harness"
 
 printf '\n'
 if check_summary; then

@@ -5127,8 +5127,8 @@ select pg_temp.must_hold(
   'acme-onboarding is seeded, exactly once, and is not a personal workspace');
 
 select pg_temp.must_hold(
-  (select count(*) = 4 from ouroboros.organization where "id" like '5eed%'),
-  'four seeded organizations in all: mockup 01 Step 2''s three and the onboarding workspace');
+  (select count(*) = 5 from ouroboros.organization where "id" like '5eed%'),
+  'five seeded organizations in all: mockup 01 Step 2''s three, the onboarding workspace and the live-slice workspace (#1314)');
 
 select pg_temp.must_hold(
   (select count(*) = 1 and bool_and(person."email" = 'ken@acme-robotics.dev' and m."role" = 'owner')
@@ -5379,7 +5379,7 @@ select pg_temp.must_hold(
       and row.row_key = 'protected_paths'),
   'the protected-path policies are exactly the globs the scan''s protected_paths row suggested');
 
--- --- dry-run is on here, and only here ---------------------------------------------------------------
+-- --- dry-run is on here, and in the live-slice workspace (#1314) -----------------------------------------
 select pg_temp.must_hold(
   (select policy.dry_run and policy.is_explicit and policy.updated_by is null
      from ouroboros.org_policies_effective policy
@@ -5389,7 +5389,7 @@ select pg_temp.must_hold(
 -- acme-robotics holds a policy handle since #484 seeded its published versions, but a handle a
 -- publish created answers nothing about dry-run (V092: `dry_run` null), so it still reads off.
 select pg_temp.must_hold(
-  (select count(*) = 1 from ouroboros.org_policies
+  (select count(*) = 2 from ouroboros.org_policies
     where organization_id like '5eed%' and dry_run is not null)
   and (select not policy.dry_run and not policy.is_explicit
          from ouroboros.org_policies_effective policy
@@ -5551,6 +5551,233 @@ select pg_temp.must_hold(
   and (select count(*) = 0 from ouroboros.protected_path_policies
         where organization_id <> '5eed0049-0000-4000-8000-000000000001' and organization_id like '5eed%'),
   'the wizard''s rows live in the onboarding workspace and in no other seeded one');
+
+-- ===========================================================================
+-- R__dev_seed_live_slice.sql — the thin vertical slice's workspace (#1314, DI.5)
+-- ===========================================================================
+--
+-- A fifth workspace, `acme-live-slice`, holding exactly what DI.6's acceptance leg needs and
+-- nothing it does not: one published `live-slice` workflow, routing for its two model stages to a
+-- keyless Anthropic-format connection at the e2e stack's provider fixture, the fixture repository
+-- `helios-greeter` and its one issue, the slice as a tile of the workspace's own, and dry-run on.
+-- The seed file's header records the four decisions this block holds it to.
+
+-- --- the workspace: a fifth, and Ken's ---------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.organization
+    where "id" = '5eed009e-0000-4000-8000-000000000001'
+      and "slug" = 'acme-live-slice'
+      and "name" = 'Acme Live Slice'
+      and "metadata" is null),
+  'acme-live-slice is seeded, exactly once, and is not a personal workspace');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(person."email" = 'ken@acme-robotics.dev' and m."role" = 'owner')
+     from ouroboros.member m
+     join ouroboros."user" person on person."id" = m."userId"
+    where m."organizationId" = '5eed009e-0000-4000-8000-000000000001'),
+  'Ken is its one member, as owner — the person a live run is started by');
+
+-- --- the repository and the issue ----------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from ouroboros.github_orgs gh
+     join ouroboros.github_repos repo on repo.org_id = gh.id
+    where gh.organization_id = '5eed009e-0000-4000-8000-000000000001'
+      and gh.login = 'acme-robotics' and gh.enabled and gh.installed_at is null
+      and repo.id = '5eed00a1-0000-4000-8000-000000000001'
+      and repo.name = 'helios-greeter' and repo.enabled and repo.default_branch = 'main'),
+  'the account acme-robotics connects one enabled repository, helios-greeter, on main — the git fixture''s third');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.ticket_sources
+    where organization_id = '5eed009e-0000-4000-8000-000000000001'
+      and kind = 'github' and status = 'active'
+      and config = '{"login": "acme-robotics", "repos": ["helios-greeter"]}'::jsonb
+      and credentials_encrypted ~ '^ouro\.v1\.'),
+  'one active GitHub source lists the repository, with a sealed placeholder credential');
+
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from ouroboros.github_issues issue
+     join ouroboros.issue_estimates est on est.github_issue_id = issue.id
+    where issue.id = '5eed00a3-0000-4000-8000-000000000001'
+      and issue.github_repo_id = '5eed00a1-0000-4000-8000-000000000001'
+      and issue.number = 1 and issue.state = 'open' and issue.sizing_status = 'sized'
+      and issue.title = 'greet: the exclamation mark is missing'
+      and issue.labels = '["live-slice"]'::jsonb
+      and est.version = 1 and est.effort = 'xs' and est.suggested_workflow = 'live-slice'
+      and est.breakdown -> 'files' = '["bin/greet"]'::jsonb),
+  'issue #1 is the greeter''s one bug, sized XS with one file and the slice as its suggested workflow');
+
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from ouroboros.tickets t
+     join ouroboros.github_issues issue on issue.title = t.title
+    where t.id = '5eed00a5-0000-4000-8000-000000000001'
+      and t.organization_id = '5eed009e-0000-4000-8000-000000000001'
+      and issue.id = '5eed00a3-0000-4000-8000-000000000001'
+      and t.external_key = '#1' and t.sizing_status = issue.sizing_status
+      and t.meta = '{"github": {"owner": "acme-robotics", "repo": "helios-greeter"}}'::jsonb),
+  'the canonical ticket mirrors the issue and names its repository, so the queue can pin it');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.tickets
+    where organization_id = '5eed009e-0000-4000-8000-000000000001')
+  and (select count(*) = 0 from ouroboros.queue_items
+        where organization_id = '5eed009e-0000-4000-8000-000000000001')
+  and (select count(*) = 0 from ouroboros.runs
+        where organization_id = '5eed009e-0000-4000-8000-000000000001'),
+  'one ticket, nothing queued and no run — the leg queues it, the seed does not');
+
+-- --- the provider: the fixture, by address, without a key ---------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.provider_connections
+    where id = '5eed00a6-0000-4000-8000-000000000001'
+      and organization_id = '5eed009e-0000-4000-8000-000000000001'
+      and kind = 'anthropic' and display_name = 'Anthropic · recorded fixture'
+      and base_url = 'http://provider-fixture:8080'
+      and credentials_encrypted is null
+      and status = 'unknown' and last_checked_at is null and health = '{}'::jsonb
+      and enabled and monthly_cap_cents is null),
+  'the fixture connection is Anthropic-format, addressed at provider-fixture, keyless, enabled and never checked');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.provider_connections
+    where organization_id = '5eed009e-0000-4000-8000-000000000001'),
+  'and it is the workspace''s only connection');
+
+-- --- the routing: two aliases, two kinds, two routes of one hop ----------------------------------
+select pg_temp.must_hold(
+  (select array_agg(a.alias || '→' || a.model_id order by a.id)
+          = array['slice-planner→claude-sonnet-4-5', 'slice-coder→claude-sonnet-4-5-20250929']
+     from ouroboros.model_aliases a
+    where a.organization_id = '5eed009e-0000-4000-8000-000000000001'
+      and a.provider_connection_id = '5eed00a6-0000-4000-8000-000000000001'
+      and a.enabled),
+  'two enabled aliases bind the fixture — one per model stage, told apart by model id');
+
+select pg_temp.must_hold(
+  (select array_agg(k.name order by k.sort_order)
+          = array['plan', 'implement', 'copilot-workflow', 'estimate']
+     from ouroboros.task_kinds k
+    where k.organization_id = '5eed009e-0000-4000-8000-000000000001'),
+  'the workspace''s kinds are the seed''s plan and implement, then V142''s and V144''s two');
+
+select pg_temp.must_hold(
+  (select array_agg(r.tag || ':' || k.name || ':' || a.alias order by r.id)
+          = array['plan-primary:plan:slice-planner', 'implement-primary:implement:slice-coder']
+     from ouroboros.routes r
+     join ouroboros.task_kinds k on k.id = r.task_kind_id
+     join ouroboros.route_hops h on h.route_id = r.id and h.position = 1
+     join ouroboros.model_aliases a on a.id = h.model_alias_id
+    where r.organization_id = '5eed009e-0000-4000-8000-000000000001'
+      and r.allow_local_fallback and r.floor_hop_index is null and r.max_cost_cents_per_run is null)
+  and (select count(*) = 2 from ouroboros.route_hops
+        where organization_id = '5eed009e-0000-4000-8000-000000000001'),
+  'each stage''s kind routes to one hop on the fixture, and there is no second hop');
+
+-- --- the workflow: live-slice, published once --------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from ouroboros.workflows wf
+     join ouroboros.workflow_versions v on v.workflow_id = wf.id
+    where wf.id = '5eed00ab-0000-4000-8000-000000000001'
+      and wf.organization_id = '5eed009e-0000-4000-8000-000000000001'
+      and wf.slug = 'live-slice' and wf.status = 'active' and wf.current_version = 1
+      and v.id = '5eed00ac-0000-4000-8000-000000000001'
+      and v.version = 1 and v.published_at is not null
+      and v.change_note = 'First publish of the live slice.')
+  and (select count(*) = 1 from ouroboros.workflow_versions
+        where workflow_id = '5eed00ab-0000-4000-8000-000000000001'),
+  'live-slice is published at v1, that version is in force, and there is no draft');
+
+select pg_temp.must_hold(
+  (select v.definition ->> 'dsl_version' = '1.0'
+      and (select array_agg(node ->> 'id' order by ordinality)
+             from jsonb_array_elements(v.definition -> 'nodes') with ordinality as n (node, ordinality))
+          = array['issue-queued', 'plan', 'implement', 'build', 'gate', 'open-pr']
+      and (select array_agg(node ->> 'type' order by ordinality)
+             from jsonb_array_elements(v.definition -> 'nodes') with ordinality as n (node, ordinality))
+          = array['trigger', 'llm', 'llm', 'infra', 'flow', 'term']
+     from ouroboros.workflow_versions v
+    where v.id = '5eed00ac-0000-4000-8000-000000000001'),
+  'the document is plan → implement → build → gate → open a pull request');
+
+select pg_temp.must_hold(
+  (select bool_and(node -> 'config' -> 'permissions' = '{"push_fixup": false, "touch_ci": false}'::jsonb
+                   and node -> 'config' -> 'limits' ->> 'max_retries' = '1')
+     from ouroboros.workflow_versions v,
+          jsonb_array_elements(v.definition -> 'nodes') node
+    where v.id = '5eed00ac-0000-4000-8000-000000000001'
+      and node ->> 'type' = 'llm'),
+  'both model stages declare exactly the permissions L5 allows, and one retry');
+
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from ouroboros.workflow_versions v,
+          jsonb_array_elements(v.definition -> 'edges') edge
+    where v.id = '5eed00ac-0000-4000-8000-000000000001'
+      and edge ->> 'kind' = 'loop' and edge ->> 'from' = 'gate' and edge ->> 'to' = 'implement'),
+  'a failed build loops back to implement');
+
+-- --- the tile: the workspace's own, after the four shipped ones -------------------------------
+select pg_temp.must_hold(
+  (select array_agg(tile.slug || ':' || tile.tier || ':' || (tile.organization_id is null)::text
+                    order by tile.sort_order)
+          = array['quick-fixes:starter:true', 'feature-builder:starter:true',
+                  'docs-chores:starter:true', 'deep-refactor:advanced:true',
+                  'live-slice:starter:false']
+     from ouroboros.workflow_templates_for('5eed009e-0000-4000-8000-000000000001') tile),
+  'the wizard offers five tiles here: the four shipped globals, then live-slice as the workspace''s own');
+
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from ouroboros.workflow_templates t
+     join ouroboros.workflow_versions v on v.id = '5eed00ac-0000-4000-8000-000000000001'
+    where t.id = '5eed00ad-0000-4000-8000-000000000001'
+      and t.organization_id = '5eed009e-0000-4000-8000-000000000001'
+      and t.slug = 'live-slice' and t.version = 1 and t.name = 'Live slice'
+      and t.stage_dots = '["plan", "implement", "build", "gate", "PR"]'::jsonb
+      and t.effort_range = array['xs', 's']
+      and t.caption = 'the first live loop, end to end'
+      and t.definition = v.definition),
+  'the tile is the published document, read back, so what the wizard offers is what the workspace runs');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workflow_templates
+    where organization_id is not null
+      and organization_id <> '5eed009e-0000-4000-8000-000000000001'),
+  'no other seeded workspace carries a tile of its own');
+
+-- --- dry-run is on ------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select policy.dry_run and policy.is_explicit and policy.updated_by is null
+     from ouroboros.org_policies_effective policy
+    where policy.organization_id = '5eed009e-0000-4000-8000-000000000001'),
+  'dry-run is on in the live-slice workspace — the policy a live run is admitted under, with nobody''s name on it');
+
+-- --- and, applied twice, nothing more ----------------------------------------------------------
+select pg_temp.must_hold(
+  (select array[
+     (select count(*) from ouroboros.organization where "id" like '5eed009e-%'),
+     (select count(*) from ouroboros.member where "id" like '5eed009f-%'),
+     (select count(*) from ouroboros.github_orgs where id::text like '5eed00a0-%'),
+     (select count(*) from ouroboros.github_repos where id::text like '5eed00a1-%'),
+     (select count(*) from ouroboros.ticket_sources where id::text like '5eed00a2-%'),
+     (select count(*) from ouroboros.github_issues where id::text like '5eed00a3-%'),
+     (select count(*) from ouroboros.issue_estimates where id::text like '5eed00a4-%'),
+     (select count(*) from ouroboros.tickets where id::text like '5eed00a5-%'),
+     (select count(*) from ouroboros.provider_connections where id::text like '5eed00a6-%'),
+     (select count(*) from ouroboros.model_aliases where id::text like '5eed00a7-%'),
+     (select count(*) from ouroboros.task_kinds where id::text like '5eed00a8-%'),
+     (select count(*) from ouroboros.routes where id::text like '5eed00a9-%'),
+     (select count(*) from ouroboros.route_hops where id::text like '5eed00aa-%'),
+     (select count(*) from ouroboros.workflows where id::text like '5eed00ab-%'),
+     (select count(*) from ouroboros.workflow_versions where id::text like '5eed00ac-%'),
+     (select count(*) from ouroboros.workflow_templates where id::text like '5eed00ad-%')]
+   = array[1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 1, 1]::bigint[]),
+  'the live-slice seed wrote its twenty fixed-id rows — and, applied twice, no twenty-first');
 
 -- ===========================================================================
 -- R__dev_seed_workspace_interventions.sql — mockup 15's "where loops still need humans" (#434)

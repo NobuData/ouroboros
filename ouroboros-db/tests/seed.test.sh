@@ -3,7 +3,7 @@
 # seed.test.sh — tests for the development seeds: migrations/R__dev_seed.sql,
 # migrations/R__dev_seed_audit.sql, migrations/R__dev_seed_dashboard.sql,
 # migrations/R__dev_seed_farm.sql, migrations/R__dev_seed_intake.sql,
-# migrations/R__dev_seed_onboarding.sql,
+# migrations/R__dev_seed_live_slice.sql, migrations/R__dev_seed_onboarding.sql,
 # migrations/R__dev_seed_providers.sql, migrations/R__dev_seed_research.sql,
 # migrations/R__dev_seed_workspace_copilot.sql, migrations/R__dev_seed_workspace_research.sql,
 # migrations/R__dev_seed_workspace_replay.sql,
@@ -34,6 +34,7 @@
 # merges*, R__dev_seed_workflows.sql (#136) is *what it does with it*,
 # R__dev_seed_workspace_knowledge.sql (#409) is *what it has learned*, and
 # R__dev_seed_onboarding.sql (#383) is *where a team starts*,
+# R__dev_seed_live_slice.sql (#1314) is *the first live loop, end to end*,
 # R__dev_seed_workspace_interventions.sql (#434) is *where people still had to step in*,
 # R__dev_seed_workspace_metrics.sql (#436) is *what it all added up to*,
 # R__dev_seed_workspace_metrics_analyzer.sql (#509) is *what it could have done better*,
@@ -97,6 +98,7 @@ PLANNING_SEED="$MODULE_DIR/migrations/R__dev_seed_ticket_planning.sql"
 WORKFLOWS_SEED="$MODULE_DIR/migrations/R__dev_seed_workflows.sql"
 KNOWLEDGE_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_knowledge.sql"
 ONBOARDING_SEED="$MODULE_DIR/migrations/R__dev_seed_onboarding.sql"
+LIVE_SLICE_SEED="$MODULE_DIR/migrations/R__dev_seed_live_slice.sql"
 INTERVENTIONS_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_interventions.sql"
 METRICS_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_metrics.sql"
 ANALYZER_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_metrics_analyzer.sql"
@@ -148,6 +150,7 @@ PLANNING_BODY="$work/seed-body-ticket-planning.sql"
 WORKFLOWS_BODY="$work/seed-body-workflows.sql"
 KNOWLEDGE_BODY="$work/seed-body-workspace-knowledge.sql"
 ONBOARDING_BODY="$work/seed-body-onboarding.sql"
+LIVE_SLICE_BODY="$work/seed-body-live-slice.sql"
 INTERVENTIONS_BODY="$work/seed-body-workspace-interventions.sql"
 METRICS_BODY="$work/seed-body-workspace-metrics.sql"
 ANALYZER_BODY="$work/seed-body-workspace-metrics-analyzer.sql"
@@ -173,6 +176,7 @@ seed_body "$PLANNING_SEED" "$PLANNING_BODY"
 seed_body "$WORKFLOWS_SEED" "$WORKFLOWS_BODY"
 seed_body "$KNOWLEDGE_SEED" "$KNOWLEDGE_BODY"
 seed_body "$ONBOARDING_SEED" "$ONBOARDING_BODY"
+seed_body "$LIVE_SLICE_SEED" "$LIVE_SLICE_BODY"
 seed_body "$INTERVENTIONS_SEED" "$INTERVENTIONS_BODY"
 seed_body "$METRICS_SEED" "$METRICS_BODY"
 seed_body "$ANALYZER_SEED" "$ANALYZER_BODY"
@@ -214,6 +218,7 @@ check_exists "$PLANNING_SEED" 'migrations/R__dev_seed_ticket_planning.sql exists
 check_exists "$WORKFLOWS_SEED" 'migrations/R__dev_seed_workflows.sql exists'
 check_exists "$KNOWLEDGE_SEED" 'migrations/R__dev_seed_workspace_knowledge.sql exists'
 check_exists "$ONBOARDING_SEED" 'migrations/R__dev_seed_onboarding.sql exists'
+check_exists "$LIVE_SLICE_SEED" 'migrations/R__dev_seed_live_slice.sql exists'
 check_exists "$INTERVENTIONS_SEED" 'migrations/R__dev_seed_workspace_interventions.sql exists'
 check_exists "$METRICS_SEED" 'migrations/R__dev_seed_workspace_metrics.sql exists'
 check_exists "$ANALYZER_SEED" 'migrations/R__dev_seed_workspace_metrics_analyzer.sql exists'
@@ -230,7 +235,7 @@ check_exists "$CHAT_SEED" 'migrations/R__dev_seed_workspace_triage_slack.sql exi
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_SEED" \
                  "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
                  "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED" \
-                 "$KNOWLEDGE_SEED" "$ONBOARDING_SEED" "$INTERVENTIONS_SEED" "$METRICS_SEED" \
+                 "$KNOWLEDGE_SEED" "$ONBOARDING_SEED" "$LIVE_SLICE_SEED" "$INTERVENTIONS_SEED" "$METRICS_SEED" \
                  "$ANALYZER_SEED" "$SETTINGS_SEED" "$INBOX_SEED" "$RESEARCH_SEED" "$COPILOT_SEED" \
                  "$WORKSPACE_RESEARCH_SEED" "$REPLAY_SEED" "$CHAT_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
@@ -278,6 +283,8 @@ knowledge_description=$(basename -- "$KNOWLEDGE_SEED" .sql)
 knowledge_description=${knowledge_description#R__}
 onboarding_description=$(basename -- "$ONBOARDING_SEED" .sql)
 onboarding_description=${onboarding_description#R__}
+live_slice_description=$(basename -- "$LIVE_SLICE_SEED" .sql)
+live_slice_description=${live_slice_description#R__}
 interventions_description=$(basename -- "$INTERVENTIONS_SEED" .sql)
 interventions_description=${interventions_description#R__}
 metrics_description=$(basename -- "$METRICS_SEED" .sql)
@@ -389,6 +396,10 @@ chat_description=${chat_description#R__}
 # the wizard with no ticket to pick. `dev_seed_onboarding` sorts sixth, straight after it. It
 # reads no other seed: its workspace is its own.
 #
+# The live-slice seed (#1314) only needs to sort after the first, for Ken: its workspace, its
+# repository, its provider and its workflow are all its own. `dev_seed_live_slice` sorts between
+# `dev_seed_intake` and `dev_seed_onboarding`, neither of which it reads.
+#
 # The replay seed (#561) **must** sort after the Build Analyzer seed, whose builds are the history
 # its row is computed from, and after the copilot seed, whose dry run it finishes. It is named
 # `workspace_replay` for that: `dev_seed_workspace_dry_run` would sort before
@@ -413,10 +424,10 @@ chat_description=${chat_description#R__}
 # The chat seed (#532) writes cards about the inbox's decision items, the metrics seed's merged
 # loop and the verification seed's pull request, so it sorts after all three and last of all:
 # `dev_seed_workspace_triage_slack` follows `dev_seed_workspace_triage_inbox`.
-check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$research_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$copilot_description" "$interventions_description" "$knowledge_description" "$metrics_description" "$analyzer_description" "$replay_description" "$workspace_research_description" "$settings_description" "$inbox_description" "$chat_description")" \
-  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$research_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$copilot_description" "$interventions_description" "$knowledge_description" "$metrics_description" "$analyzer_description" "$replay_description" "$workspace_research_description" "$settings_description" "$inbox_description" "$chat_description" |
+check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$live_slice_description" "$onboarding_description" "$providers_description" "$research_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$copilot_description" "$interventions_description" "$knowledge_description" "$metrics_description" "$analyzer_description" "$replay_description" "$workspace_research_description" "$settings_description" "$inbox_description" "$chat_description")" \
+  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$live_slice_description" "$onboarding_description" "$providers_description" "$research_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$copilot_description" "$interventions_description" "$knowledge_description" "$metrics_description" "$analyzer_description" "$replay_description" "$workspace_research_description" "$settings_description" "$inbox_description" "$chat_description" |
      LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
-  'the twenty-five seeds sort in the order their rows depend on, so Flyway applies them in it'
+  'the twenty-six seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -437,7 +448,7 @@ check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_SEED" \
                  "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
                  "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED" \
-                 "$KNOWLEDGE_SEED" "$ONBOARDING_SEED" "$INTERVENTIONS_SEED" "$METRICS_SEED" \
+                 "$KNOWLEDGE_SEED" "$ONBOARDING_SEED" "$LIVE_SLICE_SEED" "$INTERVENTIONS_SEED" "$METRICS_SEED" \
                  "$ANALYZER_SEED" "$SETTINGS_SEED" "$INBOX_SEED" "$RESEARCH_SEED" "$COPILOT_SEED" \
                  "$WORKSPACE_RESEARCH_SEED" "$REPLAY_SEED" "$CHAT_SEED"; do
   name=$(basename -- "$seed_file")
@@ -456,6 +467,7 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
   [ "$seed_file" = "$WORKFLOWS_SEED" ] && body=$WORKFLOWS_BODY
   [ "$seed_file" = "$KNOWLEDGE_SEED" ] && body=$KNOWLEDGE_BODY
   [ "$seed_file" = "$ONBOARDING_SEED" ] && body=$ONBOARDING_BODY
+  [ "$seed_file" = "$LIVE_SLICE_SEED" ] && body=$LIVE_SLICE_BODY
   [ "$seed_file" = "$INTERVENTIONS_SEED" ] && body=$INTERVENTIONS_BODY
   [ "$seed_file" = "$METRICS_SEED" ] && body=$METRICS_BODY
   [ "$seed_file" = "$ANALYZER_SEED" ] && body=$ANALYZER_BODY
@@ -1527,6 +1539,96 @@ check_absent "$ONBOARDING_BODY" '5eed0001-0000-4000-8000|5eed0003-0000-4000-8000
   'the workspace is found by slug and Ken by email, not by the base seed'"'"'s ids'
 
 # ---------------------------------------------------------------------------
+# R__dev_seed_live_slice.sql — the thin vertical slice's workspace (#1314, DI.5)
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_live_slice.sql — the live-slice workspace\n'
+
+# Sixteen prefixes of its own, one per table it writes — the workspace's census rows included,
+# so no count another seed's assertions make over its prefix is moved by this file.
+for prefix in '5eed009e' '5eed009f' '5eed00a0' '5eed00a1' '5eed00a2' '5eed00a3' '5eed00a4' \
+              '5eed00a5' '5eed00a6' '5eed00a7' '5eed00a8' '5eed00a9' '5eed00aa' '5eed00ab' \
+              '5eed00ac' '5eed00ad'; do
+  check_contains "$LIVE_SLICE_BODY" "'$prefix-0000-4000-8000-" \
+    "the live-slice seed builds its ids from the $prefix… prefix"
+done
+
+# The tables a workspace that can run the slice is made of, and nothing else: no run, no queue
+# item, no scan, no wizard state — the leg queues the ticket, the seed does not.
+live_slice_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$LIVE_SLICE_BODY" |
+  sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
+check_equals 'github_issues github_orgs github_repos issue_estimates member model_aliases org_policies organization provider_connections route_hops routes task_kinds ticket_sources tickets workflow_templates workflow_versions workflows ' \
+  "$live_slice_tables" \
+  'the live-slice seed writes its workspace, repository, issue, provider, routing, workflow, tile and policy — and nothing else'
+check_absent "$LIVE_SLICE_BODY" 'ouroboros\.(runs|queue_items|onboarding_state|repo_detection_scans)' \
+  'the live-slice seed runs nothing and queues nothing — that is the leg'"'"'s to do'
+
+# **The one update is the workflow pointer**, for R__dev_seed_workflows.sql's reason, and it
+# carries the clause that keeps a second pass from touching a timestamp.
+check_equals 1 "$(count_lines '^update ouroboros\.' "$LIVE_SLICE_BODY")" \
+  'the live-slice seed has exactly one update — the version pointer the two tables'"'"' cycle forces out of the insert'
+check_contains "$LIVE_SLICE_BODY" 'current_version is distinct from' \
+  'and it only writes a pointer that is actually moving'
+
+# Three BEFORE triggers raise before a conflict is seen, so three inserts carry the guard.
+check_equals 3 "$(count_lines 'not exists \(select 1' "$LIVE_SLICE_BODY")" \
+  'the estimate, the version and the tile hold their density triggers off a row that already exists'
+
+# The one document, under its own dollar-quoted tag, written once; the tile reads it back from
+# the version row rather than restating it. Named here as well as in ouroboros-rest's
+# dsl.seed.spec.ts and code.seed.spec.ts, which validate and round-trip it.
+check_equals 2 "$(count_lines '\$live_slice_v1\$' "$LIVE_SLICE_BODY")" \
+  'the live_slice_v1 document is written once, opened and closed by its own tag'
+check_contains "$LIVE_SLICE_BODY" '^       .the first live loop, end to end., v\.definition, .starter., null, 5$' \
+  'the tile'"'"'s definition is the published version'"'"'s, read back'
+check_contains "$LIVE_SLICE_SEED" 'schemas/workflow-dsl/v1\.json' \
+  'the seed says which schema the document is written against'
+
+# **The slice is encoded in the language as it stands** (#1314's first decision): implement is an
+# llm stage declaring exactly the permissions L5 allows, the gate is the build's checks, and the
+# terminal is the one terminal that opens a pull request.
+check_equals 2 "$(grep -Ec '"permissions": \{ "push_fixup": false, "touch_ci": false \}' "$LIVE_SLICE_BODY" || true)" \
+  'both model stages declare push_fixup off and touch_ci off — the whole of what L5 allows'
+check_contains "$LIVE_SLICE_BODY" '"predicate": \{ "kind": "checks", "op": "all_passed", "names": \["build"\] \}' \
+  'the gate is the build stage'"'"'s exit status'
+check_contains "$LIVE_SLICE_BODY" '"kind": "loop",' \
+  'and a failure loops back — one retry, because implement allows one'
+check_contains "$LIVE_SLICE_BODY" '"action": "open_pr_automerge"' \
+  'the terminal opens a pull request; the draft is the dry-run policy'"'"'s'
+
+# **The provider is the fixture, reachable by address and keyless** (the fourth decision).
+check_contains "$LIVE_SLICE_BODY" "'anthropic',$" \
+  'the fixture connection is an Anthropic-format one, which is what the harness facade relays'
+check_contains "$LIVE_SLICE_BODY" "'http://provider-fixture:8080', null,$" \
+  'its address is the compose service provider-fixture, and it stores no credential'
+check_contains "$LIVE_SLICE_BODY" "^       'unknown', null, '\{\}'::jsonb, null, person\.\"id\", null,$" \
+  'it has never been checked, so routing keeps the hop'
+check_absent "$LIVE_SLICE_BODY" 'sk-ant' \
+  'the live-slice seed carries no Anthropic key, real or shaped like one'
+
+# The one credential is an envelope, as R__dev_seed_sources.sql's are — the GitHub source's.
+check_equals 1 "$(grep -Eoc "'ouro\.v1\.[0-9]+\." "$LIVE_SLICE_BODY" || true)" \
+  'the live-slice seed writes exactly one sealed credential, for its GitHub source'
+
+# Dry-run is on: the policy a live run is admitted under (decision L7).
+check_contains "$LIVE_SLICE_BODY" '^insert into ouroboros\.org_policies \(organization_id, dry_run\)$' \
+  'the workspace'"'"'s dry-run policy is written'
+check_contains "$LIVE_SLICE_BODY" '^select org\."id", true$' \
+  'and it is on'
+
+# The routing seed's reader in ouroboros-rest finds the task kinds by this exact shape.
+check_contains "$LIVE_SLICE_BODY" '\) as seed \(sort_order, name, description\)$' \
+  'the task kinds are written in the routing seed'"'"'s shape, so dsl.seed.spec.ts can read them'
+
+# Every instant is relative to the clock, for #68's reason.
+check_absent "$LIVE_SLICE_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
+  'the live-slice seed carries no literal date'
+
+# Parents are found by natural key, never by restating another seed's id.
+check_absent "$LIVE_SLICE_BODY" '5eed0001-0000-4000-8000|5eed0003-0000-4000-8000' \
+  'the workspace is its own and Ken is found by email, not by the base seed'"'"'s ids'
+
+# ---------------------------------------------------------------------------
 # R__dev_seed_workspace_interventions.sql — mockup 15's "where loops still need humans" (#434)
 # ---------------------------------------------------------------------------
 
@@ -2042,6 +2144,7 @@ check_contains "$README" 'R__dev_seed_test_results\.sql' 'README.md documents th
 check_contains "$README" 'R__dev_seed_verification\.sql' 'README.md documents the verification seed'
 check_contains "$README" 'R__dev_seed_workspace_knowledge\.sql' 'README.md documents the knowledge seed'
 check_contains "$README" 'R__dev_seed_onboarding\.sql' 'README.md documents the onboarding seed'
+check_contains "$README" 'R__dev_seed_live_slice\.sql' 'README.md documents the live-slice seed'
 check_contains "$README" 'R__dev_seed_workspace_interventions\.sql' 'README.md documents the interventions seed'
 check_contains "$README" 'R__dev_seed_workspace_metrics\.sql' 'README.md documents the insights seed'
 check_contains "$README" 'R__dev_seed_workspace_metrics_analyzer\.sql' 'README.md documents the Build Analyzer seed'
@@ -2053,6 +2156,7 @@ check_contains "$README" 'R__dev_seed_workspace_replay\.sql' 'README.md document
 check_contains "$README" 'R__dev_seed_workspace_triage_slack\.sql' 'README.md documents the chat seed'
 check_contains "$README" 'R__dev_seed_workspace_research\.sql' 'README.md documents the research workspace seed'
 check_contains "$README" 'acme-onboarding' 'README.md names the onboarding workspace a developer will find'
+check_contains "$README" 'acme-live-slice' 'README.md names the live-slice workspace a developer will find'
 check_contains "$README" 'resolution_snapshots' 'README.md documents the snapshot table the routing seed fills for mockup 21'
 check_contains "$README" 'V024' 'README.md documents the migration that adds it'
 check_contains "$README" 'flyway\.seed\.toml' 'README.md documents the overlay that enables it'

@@ -24,7 +24,12 @@ import {
   syntaxErrors,
   validDocument,
 } from "./code.recover.fixture";
-import { SEED_DOCUMENT_TAGS, seededDocuments } from "./dsl.seed.fixture";
+import {
+  LIVE_SLICE_DOCUMENT_TAGS,
+  SEED_DOCUMENT_TAGS,
+  liveSliceDocuments,
+  seededDocuments,
+} from "./dsl.seed.fixture";
 
 describe.each(SEED_DOCUMENT_TAGS)("%s — %s", (tag, _about, slug) => {
   const document = validDocument(seededDocuments(tag)[0]);
@@ -62,4 +67,42 @@ it("prints every one of the five workflows the seed creates", () => {
   expect(new Set(SEED_DOCUMENT_TAGS.map(([, , slug]) => slug))).toEqual(
     new Set(["standard-fix", "feature-loop", "deps-refresh", "docs-loop", "hotfix-p0"]),
   );
+});
+
+/**
+ * The live slice's workflow (DI.5, [#1314](https://github.com/NobuData/ouroboros/issues/1314)):
+ * `R__dev_seed_live_slice.sql`'s `live-slice`, held to the same round trip as the rail's five —
+ * that issue's first acceptance criterion is that it validates, publishes and round-trips through
+ * the code DSL, and this is the round trip.
+ */
+describe.each(LIVE_SLICE_DOCUMENT_TAGS)("%s — %s", (tag, _about, slug) => {
+  const document = validDocument(liveSliceDocuments(tag)[0]);
+  const printed = printWorkflowCode(slug, document);
+
+  it("prints as TypeScript the compiler reads without a syntax error", () => {
+    expect(syntaxErrors(printed.text)).toEqual([]);
+  });
+
+  it("prints byte-identical output every time", () => {
+    expect(printWorkflowCode(slug, document)).toStrictEqual(printed);
+  });
+
+  it("carries its positions and its edges' kinds, conditions, labels and order", () => {
+    expect(recoverGraph(printed.text)).toStrictEqual(graphOf(document));
+  });
+
+  it("names its workflow and carries its trigger", () => {
+    const recovered = recoverWorkflowCode(printed.text);
+
+    expect(recovered.slug).toBe(slug);
+    expect(recovered.trigger).toStrictEqual(document.trigger);
+  });
+
+  it("parses back into exactly the document the seed stores", () => {
+    expect(parseWorkflowCode(printed.text)).toStrictEqual({
+      slug,
+      document: liveSliceDocuments(tag)[0],
+      errors: [],
+    });
+  });
 });
