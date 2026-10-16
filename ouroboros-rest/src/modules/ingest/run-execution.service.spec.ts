@@ -23,6 +23,11 @@ const REPO = "5eed0003-0000-4000-8000-000000000001";
 const AT = new Date("2026-10-15T14:25:00.000Z");
 const BASE = "a".repeat(40);
 const DOCUMENT = { dsl_version: "1.0", nodes: [], edges: [] };
+const TICKET = "5eed0010-0000-4000-8000-000000000482";
+const CRITERIA = [
+  { id: "c-1", text: "Telemetry frames arrive in ISR order" },
+  { id: "c-2", text: "No regression in e-stop response" },
+];
 const REF = {
   workspace: ORG,
   slug: "acme-robotics/helios-firmware",
@@ -86,6 +91,7 @@ function rig(
     requeued?: string | null;
     emitter?: jest.Mock;
     estimate?: { effort: string; estMinutes: number | null } | undefined;
+    criteria?: { id: string; text: string }[];
   } = {},
 ) {
   const row = "row" in options ? options.row : run();
@@ -122,9 +128,13 @@ function rig(
           : { id: REPO, slug: REF.slug, name: "helios-firmware", defaultBranch: "main" },
       ),
     ticketOf: jest.fn().mockResolvedValue({
+      id: TICKET,
       body: "The CAN-bus test flakes.",
       labels: ["flaky", "telemetry"],
     }),
+    acceptanceCriteriaOf: jest
+      .fn()
+      .mockResolvedValue("criteria" in options ? options.criteria : CRITERIA),
     latestEstimate: jest
       .fn()
       .mockResolvedValue(
@@ -199,6 +209,7 @@ describe("the run-execution service (#160)", () => {
         issue_body: "The CAN-bus test flakes.",
         labels: ["flaky", "telemetry"],
         effort: "m",
+        acceptance_criteria: CRITERIA,
         model: "coder-max",
         branch_name: `ouro/run-${RUN}-482`,
         workflow: { tag: "docs-loop", version: 1, document: DOCUMENT },
@@ -208,6 +219,26 @@ describe("the run-execution service (#160)", () => {
         checkpoint: null,
         status: "coding",
       });
+    });
+
+    it("reads the acceptance criteria of the run's canonical ticket", async () => {
+      const { service, execution } = rig();
+
+      await service.start(RUN, { worker: "w" });
+
+      expect(execution.acceptanceCriteriaOf).toHaveBeenCalledWith(
+        "trx",
+        expect.objectContaining({ id: RUN }),
+        TICKET,
+      );
+    });
+
+    it("answers [] for an issue without imported acceptance criteria", async () => {
+      const { service } = rig({ criteria: [] });
+
+      await expect(service.start(RUN, { worker: "w" })).resolves.toEqual(
+        expect.objectContaining({ acceptance_criteria: [] }),
+      );
     });
 
     it("answers a null effort for an issue never sized", async () => {

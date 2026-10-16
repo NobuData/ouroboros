@@ -86,6 +86,15 @@ from ouroboros_engine.control_plane.execution import (
     RunStarted,
     StartRunRequest,
 )
+from ouroboros_engine.control_plane.harness import (
+    HARNESS_CREDENTIAL_PATH,
+    HARNESS_CREDENTIALS_PATH,
+    HARNESS_RECONCILE_PATH,
+    HarnessCredential,
+    HarnessCredentialRequest,
+    HarnessReconcileRequest,
+    HarnessReconciliation,
+)
 from ouroboros_engine.control_plane.ingest import (
     QUEUE_CLAIM_PATH,
     RUN_COMMITS_PATH,
@@ -780,6 +789,99 @@ class ControlPlaneClient:
                 ``run_not_executable``.
         """
         return _read(status, body, RunFinished)
+
+    # --- harness credentials (DH.2 #1303, first called by DH.3 #1308) ------------------------
+
+    def mint_harness_credential_request(
+        self, body: HarnessCredentialRequest
+    ) -> ControlPlaneRequest:
+        """Build the request that mints a run-scoped harness credential.
+
+        Args:
+            body: The run, stage, alias and attempt it is bound to.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", HARNESS_CREDENTIALS_PATH, body)
+
+    def read_harness_credential(
+        self, status: int, body: dict[str, Any]
+    ) -> HarnessCredential:
+        """Read the answer to a mint.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            The credential, its token held as a secret.
+
+        Raises:
+            ControlPlaneError: On any status but ``201`` — ``run_not_found``,
+                ``run_finished``, ``validation_failed``.
+        """
+        return _read(status, body, HarnessCredential, expected=HTTPStatus.CREATED)
+
+    def revoke_harness_credential_request(self, credential: str) -> ControlPlaneRequest:
+        """Build the request that revokes a harness credential.
+
+        Args:
+            credential: The credential's id.
+
+        Returns:
+            The request to send.
+        """
+        return ControlPlaneRequest(
+            method="DELETE",
+            url=self._url(HARNESS_CREDENTIAL_PATH.format(id=credential)),
+            headers=self._headers(JSON_MEDIA_TYPE),
+            json={},
+        )
+
+    def read_harness_revoked(self, status: int, body: dict[str, Any]) -> None:
+        """Read the answer to a revoke.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Raises:
+            ControlPlaneError: On any status but ``204`` — ``credential_not_found``.
+        """
+        if status != HTTPStatus.NO_CONTENT:
+            raise _refusal(status, body)
+
+    def reconcile_harness_credential_request(
+        self, credential: str, body: HarnessReconcileRequest
+    ) -> ControlPlaneRequest:
+        """Build the request that reports the harness's own usage totals.
+
+        Args:
+            credential: The credential's id.
+            body: The SDK's per-model totals.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", HARNESS_RECONCILE_PATH.format(id=credential), body)
+
+    def read_harness_reconciliation(
+        self, status: int, body: dict[str, Any]
+    ) -> HarnessReconciliation:
+        """Read the answer to a reconcile.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            The facade's comparison.
+
+        Raises:
+            ControlPlaneError: On any status but ``200`` — ``credential_not_found``.
+        """
+        return _read(status, body, HarnessReconciliation)
 
     def _write(self, method: str, path: str, body: BaseModel) -> ControlPlaneRequest:
         """Build one ingestion request.

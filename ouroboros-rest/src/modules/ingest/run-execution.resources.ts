@@ -35,6 +35,14 @@ export interface ExecutionRepositoryResource {
   readonly ref: CodeRepositoryRef;
 }
 
+/** One imported acceptance criterion of the run's issue (#1308). */
+export interface ExecutionCriterionResource {
+  /** `pr_criteria.id`. */
+  readonly id: string;
+  /** The quoted claim. */
+  readonly text: string;
+}
+
 /** `POST /internal/runs/:id/start` → `200`. */
 export interface RunStartedResource {
   readonly run_id: string;
@@ -55,6 +63,11 @@ export interface RunStartedResource {
    * backlog and queue show — or `null` when it was never sized. Judged by `effort` predicates.
    */
   readonly effort: QueueEffort | null;
+  /**
+   * The issue's imported acceptance criteria (AX.3's `pr_criteria`, #359) in their stored order,
+   * `[]` when none — handed to the model as untrusted data, never as instructions (#1308).
+   */
+  readonly acceptance_criteria: ExecutionCriterionResource[];
   /** `runs.model`, as the run was opened with it. */
   readonly model: string;
   /** `runs.branch_name` — `ouro/run-<id>-<issue>` unless the run was opened with one. */

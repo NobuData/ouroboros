@@ -1,10 +1,12 @@
 """`/v0/status` — the version and uptime of the process behind the internal boundary."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from ouroboros_engine import __version__
 from ouroboros_engine.api.v0 import V0_PREFIX
 from ouroboros_engine.core.uptime import Uptime
+from ouroboros_engine.execution.executors.claude_agent_env import bundled_cli
 
 STATUS_PATH = f"{V0_PREFIX}/status"
 
@@ -92,9 +94,21 @@ def test_the_status_response_is_documented_by_schema(client: TestClient) -> None
     }
 
 
-def test_status_reports_no_executor_until_one_is_registered(client: TestClient) -> None:
+def test_status_reports_no_executor_until_one_is_registered(
+    client_without_harness: TestClient,
+) -> None:
     # #160: REST's admission (#1312) refuses every claim `no_executor` while this is empty.
-    assert client.get(STATUS_PATH).json()["executors"] == []
+    assert client_without_harness.get(STATUS_PATH).json()["executors"] == []
+
+
+@pytest.mark.skipif(
+    bundled_cli() is None, reason="the bundled Claude Agent CLI is absent"
+)
+def test_status_reports_the_harness_wherever_its_cli_is_installed(
+    client: TestClient,
+) -> None:
+    # DH.3 (#1308): the composition root registers the Claude Agent executor.
+    assert client.get(STATUS_PATH).json()["executors"] == ["harness"]
 
 
 def test_status_reports_the_registered_executor_kinds_sorted(

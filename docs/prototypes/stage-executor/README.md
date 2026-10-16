@@ -21,6 +21,7 @@ the kit's `check_stream`.
 | `run.sh` | Runs `prototype.py` in the engine's environment, with `claude-agent-sdk==0.2.167` overlaid for this run only. The lockfile is not touched |
 | `facade_compat.py`, `facade_compat.sh` | DH.2's (#1303) compatibility run: the same pinned SDK through `ouroboros-rest`'s **real** Messages facade, with a canary provider key — see [The facade compatibility run](#the-facade-compatibility-run) |
 | `anthropic-redirect.mjs` | A Node preload for that run's recorded mode: it sends REST's calls to `api.anthropic.com` to the stub instead. Test-only |
+| `harness_sandbox.py`, `harness_sandbox.sh` | DH.3's (#1308) **manual** real-model check of the shipped executor — see [The real-model sandbox run](#the-real-model-sandbox-run-dh3) |
 | `results/` | The figures the ADR quotes, as measured. `<scenario>.json` uses the SDK's default permission mode and `<scenario>.dontAsk.json` uses `permission_mode="dontAsk"` |
 
 ## Scenarios
@@ -86,6 +87,31 @@ puts the harness version above through it. Re-run it whenever DH.3 moves the pin
 
 Recorded on 2026-10-14 with SDK 0.2.167: 3 turns and 3 upstream calls, all six checks passed.
 The SDK's own totals (7,242 in, 90 out) equal the sum of the three usage rows.
+
+## The real-model sandbox run (DH.3)
+
+DH.3 ([#1308](https://github.com/NobuData/ouroboros/issues/1308)) ships the executor this
+prototype measured: `ouroboros-engine/src/ouroboros_engine/execution/executors/claude_agent.py`.
+Its automated tests run the real bundled CLI against a copy of `stub_facade.py`
+(`ouroboros-engine/tests/harness_stub_facade.py`). `harness_sandbox.sh` is the one check that
+uses a **real model**. It is manual, never CI, and it spends tokens.
+
+1. Start `ouroboros-rest` with an Anthropic connection that holds a real provider key, bound to
+   the alias you pass (`model_aliases.provider_connection_id`). The key stays in REST's vault.
+2. Find a live, non-terminal run to bind the credential to. Minting refuses a finished run.
+3. Run it from the repository root, in the engine's environment (the SDK is a pinned engine
+   dependency now):
+
+   ```bash
+   OURO_ENGINE_SHARED_SECRET=… docs/prototypes/stage-executor/harness_sandbox.sh \
+     --rest http://127.0.0.1:4000 --run <a live run> --alias coder-max
+   ```
+
+It runs one `implement` attempt on a throwaway sandbox repository, printing every event. It
+checks four things: the attempt completed, a file changed, the stream passes DH.1's
+`check_stream`, and nothing outside the tree changed. It exits non-zero if any check fails.
+REST's side (the usage rows, the stored reconciliation and the revoked credential) is in
+REST's database.
 
 ## What it does not show
 

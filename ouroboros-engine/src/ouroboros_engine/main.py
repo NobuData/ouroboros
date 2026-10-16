@@ -60,6 +60,7 @@ from ouroboros_engine.estimation.model import (
     GatewaySizingCaller,
     ModelEstimator,
 )
+from ouroboros_engine.execution.compose import register_executors
 from ouroboros_engine.execution.interpreter import Interpreter
 from ouroboros_engine.execution.registry import ExecutorRegistry
 from ouroboros_engine.execution.worker import ExecutionWorker
@@ -242,16 +243,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         idle_seconds=resolved.run_idle_hours * 3600.0,
     )
 
-    # The execution bridge (#160): the stage executors this process can run — none until
-    # DH.3 (#1308) / DH.5 (#1309) register one, so `/v0/status` reports `executors: []` and
-    # nothing is claimed or executed — and the worker that turns the supervisor's calls into
-    # interpreter runs over `ouroboros-rest`'s internal run surface. A test installs its own
-    # registry or worker the same way.
+    # The execution bridge (#160): the stage executors this process can run, and the worker
+    # that turns the supervisor's calls into interpreter runs over `ouroboros-rest`'s internal
+    # run surface. The composition root (DH.3, #1308) registers the Claude Agent executor
+    # (`harness`) when the CLI bundled with the SDK wheel is installed; without it the registry
+    # is empty, `/v0/status` reports `executors: []` and nothing is claimed or executed. A test
+    # installs its own registry or worker the same way.
     app.state.executors = ExecutorRegistry()
     ingest = IngestClient(
         ControlPlaneClient(resolved.rest_url, resolved.shared_secret),
         HttpTransport(),
         IdempotencyKeys("".join(resolved.engine_worker_id.split())[:64] or "engine"),
+    )
+    register_executors(
+        app.state.executors, rest_url=resolved.rest_url, credentials=ingest
     )
     app.state.execution = ExecutionWorker(
         ingest,

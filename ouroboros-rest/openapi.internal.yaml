@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.41.46"
+  version: "0.41.47"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -1793,8 +1793,8 @@ paths:
         run has none. The answer is everything the interpreter needs: the epoch, the pinned
         workflow document as stored, the repository and a `ref` to fetch it with (the
         workspace's GitHub token opened for this call, never stored), the workspace's effective
-        protected-path globs, the ticket's body, labels and size, and — for a restart — the base
-        commit and checkpoint to resume from.
+        protected-path globs, the ticket's body, labels and size, its imported acceptance
+        criteria (#1308), and — for a restart — the base commit and checkpoint to resume from.
 
         **Every later write carries the epoch.** Heartbeats, checkpoints, the finish and the six
         AP.1 reports refuse a superseded one with `409 fenced`, so a second start fences the
@@ -1832,6 +1832,11 @@ paths:
                 issue_body: The CAN-bus telemetry test fails about one run in twenty.
                 labels: [flaky, telemetry]
                 effort: m
+                acceptance_criteria:
+                  - id: 5eed0057-0000-4000-8000-000000000001
+                    text: Telemetry frames arrive in ISR order under load
+                  - id: 5eed0057-0000-4000-8000-000000000002
+                    text: No regression in the e-stop response envelope
                 model: coder-max
                 branch_name: ouro/run-5eed0009-0000-4000-8000-000000000482-482
                 workflow:
@@ -4702,6 +4707,23 @@ components:
           pattern: "^\\S(.*\\S)?$"
           description: The worker starting the run, as it names itself — the shape of the queue claim's `worker`.
 
+    ExecutionCriterion:
+      type: object
+      title: ExecutionCriterion
+      description: One imported acceptance criterion of a run's issue (#1308).
+      additionalProperties: false
+      required: [id, text]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The criterion's id.
+        text:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          description: The quoted claim, as stored.
+
     RunStarted:
       type: object
       title: RunStarted
@@ -4709,7 +4731,7 @@ components:
       additionalProperties: false
       required:
         [run_id, epoch, organization_id, issue_number, issue_title, issue_body, labels, effort,
-         model, branch_name, workflow, repository, protected_paths, base_commit, checkpoint,
+         acceptance_criteria, model, branch_name, workflow, repository, protected_paths, base_commit, checkpoint,
          status]
       properties:
         run_id:
@@ -4739,6 +4761,16 @@ components:
           description: |-
             The issue's current size estimate — its latest estimate's effort, the chip the backlog
             and queue show — or null when it was never sized. Judged by `effort` decision predicates.
+        acceptance_criteria:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExecutionCriterion"
+          description: |-
+            The issue's imported acceptance criteria (#1308) — the AX.3 criteria (#359) of one pull
+            request: the run's own when it carries any, else the most recently created one closing
+            the run's canonical ticket. In their stored order (the matrix's `sort_order`, then
+            creation, then id); empty when none. The interpreter hands them to the model as
+            untrusted data, never as instructions.
         model:
           type: string
           description: "`runs.model`, as the run was opened with it."

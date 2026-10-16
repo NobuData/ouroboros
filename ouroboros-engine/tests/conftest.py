@@ -184,6 +184,27 @@ def client(settings: Settings) -> Iterator[TestClient]:
     yield from _serve(settings, headers={INTERNAL_KEY_HEADER: INTERNAL_KEY})
 
 
+@pytest.fixture
+def client_without_harness(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[TestClient]:
+    """:fixture:`client`, for an application built where the harness CLI is absent.
+
+    The composition root registers the Claude Agent executor whenever the CLI bundled with
+    the SDK wheel is installed (DH.3, #1308) — which it is wherever the dependencies are —
+    so a test of the engine *without* an executor hides the binary from it.
+
+    Args:
+        settings: Configuration the application under test is built from.
+        monkeypatch: Hides the binary.
+
+    Yields:
+        A client whose application registered no executor.
+    """
+    monkeypatch.setattr("ouroboros_engine.execution.compose.bundled_cli", lambda: None)
+    yield from _serve(settings, headers={INTERNAL_KEY_HEADER: INTERNAL_KEY})
+
+
 # ---------------------------------------------------------------------------
 # Estimation — the mockup's issue, and the mockup's estimate
 # ---------------------------------------------------------------------------

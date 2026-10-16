@@ -374,6 +374,21 @@ def test_the_healthcheck_installs_nothing_to_make_its_request() -> None:
     assert "ProxyHandler({})" in check[1]
 
 
+def test_the_healthcheck_fails_when_the_stage_executor_runtime_is_absent() -> None:
+    # DH.3 (#1308): the CLI bundled in the claude-agent-sdk wheel is the harness executor's
+    # runtime. Its version is asked for on every check — found without importing the SDK
+    # and run with nothing but PATH — so an image without a runnable binary is unhealthy.
+    check = re.search(r"^HEALTHCHECK[\s\S]*?^\s*CMD (.+)$", _INSTRUCTIONS, re.MULTILINE)
+
+    assert check is not None
+    command = check[1]
+    assert "find_spec('claude_agent_sdk')" in command
+    assert "'_bundled','claude'),'--version'" in command
+    assert "check=True" in command
+    assert "env={'PATH':os.environ['PATH']}" in command
+    assert "import claude_agent_sdk" not in command
+
+
 def test_it_serves_with_uvicorn_on_every_interface_and_no_reloader() -> None:
     # A process bound to loopback inside a container is a process nothing outside it can
     # reach — the opposite of dev.py, which binds loopback on purpose. `exec` is what

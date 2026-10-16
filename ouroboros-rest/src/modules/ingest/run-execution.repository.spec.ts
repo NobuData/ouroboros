@@ -13,6 +13,7 @@ import { REQUEUE_FALLBACK_EFFORT, RunExecutionRepository } from "./run-execution
 const RUN = "5eed0009-0000-4000-8000-000000000482";
 const WORKSPACE = "acme-robotics-id";
 const AT = new Date("2026-10-15T14:25:00.000Z");
+const TICKET = "5eed0010-0000-4000-8000-000000000482";
 
 /** A live, coding run. */
 function run(overrides: Partial<Run> = {}): Run {
@@ -136,19 +137,63 @@ describe("the run-execution repository", () => {
   });
 
   it("reads the issue body and labels from the canonical GitHub ticket, or none", async () => {
-    database.answers({ rows: [{ body: "The CAN-bus test flakes.", labels: ["flaky"] }] });
+    database.answers({
+      rows: [{ id: TICKET, body: "The CAN-bus test flakes.", labels: ["flaky"] }],
+    });
 
     await expect(execution.ticketOf(service.db, run())).resolves.toEqual({
+      id: TICKET,
       body: "The CAN-bus test flakes.",
       labels: ["flaky"],
     });
     await expect(execution.ticketOf(service.db, run())).resolves.toEqual({
+      id: null,
       body: null,
       labels: [],
     });
+    expect(database.statements[0].sql).toContain('"tickets"."id"');
     expect(database.statements[0].sql).toContain('"tickets"."labels"');
     expect(database.statements[0].sql).toContain('"ticket_sources"."kind" = $');
     expect(database.statements[0].parameters).toContain("482");
+  });
+
+  describe("the issue's acceptance criteria (#1308)", () => {
+    it("reads one PR's criteria as id and text, in the matrix's stored order", async () => {
+      database.answers({
+        rows: [
+          { id: "c-1", text: "Telemetry frames arrive in ISR order" },
+          { id: "c-2", text: "No regression in e-stop response" },
+        ],
+      });
+
+      await expect(execution.acceptanceCriteriaOf(service.db, run(), TICKET)).resolves.toEqual([
+        { id: "c-1", text: "Telemetry frames arrive in ISR order" },
+        { id: "c-2", text: "No regression in e-stop response" },
+      ]);
+
+      const [statement] = database.statements;
+
+      expect(statement.sql).toContain('"pr_criteria"."claim" as "text"');
+      expect(statement.sql).toMatch(
+        /order by "(?:ouroboros"\.")?pr_criteria"\."sort_order", "(?:ouroboros"\.")?pr_criteria"\."created_at", "(?:ouroboros"\.")?pr_criteria"\."id"$/,
+      );
+      expect(statement.sql).toContain('"pull_requests"."organization_id" = $');
+      expect(statement.sql).toContain('"pull_requests"."run_id" = $');
+      expect(statement.sql).toContain('"pull_requests"."ticket_id" = $');
+      expect(statement.sql).toContain("exists (select 1");
+      expect(statement.sql).toContain("is not distinct from");
+      expect(statement.sql).toContain('"pull_requests"."created_at" desc');
+      expect(statement.parameters).toEqual(expect.arrayContaining([WORKSPACE, RUN, TICKET]));
+    });
+
+    it("considers only the run's own PR when no source mirrored the issue, and answers []", async () => {
+      await expect(execution.acceptanceCriteriaOf(service.db, run(), null)).resolves.toEqual([]);
+
+      const [statement] = database.statements;
+
+      expect(statement.sql).toContain('"pull_requests"."run_id" = $');
+      expect(statement.sql).not.toContain('"pull_requests"."ticket_id"');
+    });
   });
 
   it("reads the issue's latest size estimate", async () => {

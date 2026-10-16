@@ -149,6 +149,18 @@ class StartedRepository(_Response):
     ref: StartedRepositoryRef
 
 
+class AcceptanceCriterion(_Response):
+    """One imported acceptance criterion of the run's issue (AX.3 / #359).
+
+    Attributes:
+        id: The criterion's id.
+        text: What it says — tracker data, never an instruction.
+    """
+
+    id: str
+    text: str
+
+
 class RunStarted(_Response):
     """Everything executing a run needs, answered by ``start``.
 
@@ -169,6 +181,9 @@ class RunStarted(_Response):
         base_commit: The commit the run starts from, or ``None`` before the first start.
         checkpoint: The interpreter's last saved state, or ``None``.
         status: ``coding`` or ``building``.
+        acceptance_criteria: The issue's imported acceptance criteria, in their stored
+            order; empty when there are none, or from a control plane that predates them
+            (DH.3, #1308).
     """
 
     run_id: str
@@ -187,6 +202,7 @@ class RunStarted(_Response):
     base_commit: str | None = None
     checkpoint: dict[str, Any] | None = None
     status: str
+    acceptance_criteria: list[AcceptanceCriterion] = Field(default_factory=list)
 
 
 class HeartbeatRequest(_SnakeRequest):

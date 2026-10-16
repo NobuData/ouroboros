@@ -184,8 +184,13 @@ EXPOSE 8000
 #
 # Shell form, which is what expands $PORT — so the check follows the port the container
 # was actually given rather than the one baked above.
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD python -c "import os,urllib.request as u;u.build_opener(u.ProxyHandler({})).open('http://127.0.0.1:'+os.environ['PORT']+'/healthz',timeout=3)" || exit 1
+#
+# It also asks the stage-executor runtime (DH.3, #1308) for its version: the CLI bundled in
+# the pinned claude-agent-sdk wheel (about 255 MB of this image), found without importing
+# the SDK and run with nothing but PATH. An image whose runtime is missing or cannot execute
+# is unhealthy, rather than an engine that registers no executor and claims nothing.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import os,subprocess as s,importlib.util as i,urllib.request as u;u.build_opener(u.ProxyHandler({})).open('http://127.0.0.1:'+os.environ['PORT']+'/healthz',timeout=3);s.run([os.path.join(i.find_spec('claude_agent_sdk').submodule_search_locations[0],'_bundled','claude'),'--version'],check=True,capture_output=True,timeout=2,env={'PATH':os.environ['PATH']})" || exit 1
 
 # uvicorn directly, not `uv run dev`: no reloader, no file watching, and the host is
 # 0.0.0.0 rather than the loopback the development entry point binds — a process bound to

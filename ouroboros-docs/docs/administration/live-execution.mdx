@@ -84,6 +84,46 @@ The abort goes through the run's control queue like any other abort. The engine 
 what a run may spend is set separately, by the route and the policy's spend guard — see
 [Policies & guardrails](./policies.mdx).
 
+## Stage executors
+
+A live run's model stages are carried out by a **stage executor**. This version has one: the
+**Claude Agent** executor, which runs a stage as an agent that reads the repository, edits
+files and iterates until the stage is done.
+
+**It runs on your workspace's own API key.** The agent never holds a provider key. For each
+stage attempt the engine mints a short-lived credential for that run and stage, and the agent
+sends every model call through Ouroboros. Ouroboros routes the call to an Anthropic connection
+under <UiPath path="Models > Providers & keys" />, applies the run's spend cap, and records the
+usage against the run. When the attempt ends, the credential is revoked. A stage whose routed
+model has no Anthropic connection cannot run on this executor.
+
+**What it cannot do:**
+
+- **Only file tools.** It may read, search, edit and write files. It has no shell, no web
+  access, no sub-agents and no MCP servers. A request for any other tool is refused.
+- **Only the run's working tree.** Every path is checked before the tool runs. A path outside
+  the tree, through `.git`, onto a protected path, or into CI configuration without the
+  stage's **May touch CI config** permission is refused, the tool does not run, and the stage
+  stops. See [Policies & guardrails](./policies.mdx).
+- **Nothing from the repository configures it.** Settings, hooks and skills in the
+  repository's `.claude/` directory are not loaded.
+- **The issue is data, not instructions.** The issue's title, body and acceptance criteria are
+  passed to the agent as untrusted data. Its instructions come only from the stage's prompt in
+  the workflow. This limits prompt injection but cannot rule it out, which is why the agent has
+  nothing else to use.
+- **It fails closed.** If the permission check itself fails or takes too long, the tool is not
+  run and the stage stops.
+
+**When it is available.** The executor is part of the engine image. The engine registers it at
+startup, and `GET /v0/status` on the engine lists it under `executors` as `harness`. An image
+without it fails its health check. Live runs still need the deployment's switch,
+<EnvVar name="OURO_LIVE_EXECUTION_ENABLED" />; see [The admission check](#the-admission-check).
+
+**After an engine restart** a stage on this executor continues its agent session from where it
+was stopped, using session files kept beside the run's working tree under
+<EnvVar name="OURO_ENGINE_RUN_DIR" />. If the session cannot be continued, the stage starts
+again as its next attempt. See [Recovery after an engine restart](#recovery-after-an-engine-restart).
+
 ## Recovery after an engine restart
 
 A live run survives the engine stopping part-way through:

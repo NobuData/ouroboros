@@ -56,12 +56,24 @@ def test_an_adapter_may_import_its_sdk() -> None:
     assert result.returncode == 0, result.stdout
 
 
-def test_no_core_module_imports_an_adapter_today() -> None:
+#: The composition root (DH.3, #1308): the one core module that registers adapters.
+COMPOSITION_ROOT = ROOT / "src" / "ouroboros_engine" / "execution" / "compose.py"
+
+
+@pytest.mark.skipif(
+    not RUFF.exists(), reason="ruff is not installed beside this python"
+)
+def test_the_composition_root_may_import_an_adapter() -> None:
+    result = _ruff("src/ouroboros_engine/execution/compose.py")
+    assert result.returncode == 0, result.stdout
+
+
+def test_no_core_module_but_the_composition_root_imports_an_adapter() -> None:
     """The same rule without ruff, so a container without dev tools still checks it."""
     package = ROOT / "src" / "ouroboros_engine"
     adapters = package / "execution" / "executors"
     for module in package.rglob("*.py"):
-        if module.is_relative_to(adapters):
+        if module.is_relative_to(adapters) or module == COMPOSITION_ROOT:
             continue
         for node in ast.walk(ast.parse(module.read_text())):
             names: list[str] = []
