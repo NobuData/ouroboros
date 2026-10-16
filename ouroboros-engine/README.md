@@ -608,6 +608,39 @@ the run executes on a background thread (`execution/worker.py`).
   title, body and imported acceptance criteria (`acceptance_criteria` in the start answer)
   follow as one `<untrusted-issue-data>` block the model is told never to take instructions
   from (`execution/stage.py`). The Knowledge context manifest is not in it yet (a follow-up).
+  A person's steering notes for an attempt follow the block under "Operator notes".
+- **Controls** (AR.1, [#315](https://github.com/NobuData/ouroboros/issues/315);
+  `execution/controls.py`, `execution/poller.py`). The run's AP.4 controls are claimed with
+  `POST /internal/runs/{id}/controls/fetch` while a stage runs (every
+  `OURO_ENGINE_HEARTBEAT_SECONDS`), when an attempt ends, between stages and before every
+  finish, and acknowledged as the simulator does (`control_not_delivered` with state `acked`
+  counts; an expired control is logged and dropped):
+  - `steer` → `executor.steer(text)` when the executor steers, acked with the attempt; between
+    stages (or on an executor that cannot) it is appended to the next attempt's prompt. With
+    `retryStage` it is a correction round: the stage runs again as attempt N+1 with the note,
+    acked "correction round queued: <stage> attempt N+1" (refused past the stage's attempts).
+  - `pause` → `executor.pause()`; at the executor's safe boundary the checkpoint is stored, the
+    pause acked "paused at a safe boundary: <stage> attempt N", and the run **holds** —
+    heartbeating and polling — until `resume` continues the same attempt from its checkpoint
+    ("resumed at …") or `abort`. Between stages it holds right there. A `resume` outside a
+    hold has nothing to resume.
+  - `abort` → `executor.abort()`; the tree is committed on the run branch, the control acked
+    with no effect (REST writes "aborted — branch preserved" and sets `canceled`), and the
+    worker stops **without** `/finish`, closing — not finishing — the tree, which the
+    sweeper's idle rule reclaims later.
+  - **Budget.** The harness facade refuses a call over the run's cost cap or the attempt's
+    `token_budget` (`cost_cap_exceeded` / `token_budget_exceeded`) and files a system abort.
+    Because controls are polled after the attempt and before every finish, the failed attempt
+    goes down the abort path, not a retry or `failed`.
+- **Guardrails at tool boundaries** (#315). After every `file_change` the whole change-set is
+  reported (`PUT /internal/runs/{id}/files`), so the Changes card moves as the work happens; the
+  stage-end report stays. An answer with `needsHuman` — a `block`-mode failure; `warn` failures
+  arrive in `guardrailWarnings` and change nothing — stops the executor at that boundary (an
+  internal abort), fails the stage and finishes the run `needs_human` with the block verdicts
+  rendered from `guardrailVerdicts` (`execution/guardrails.py`), e.g. `guardrail allowed_paths
+  failed: boot/rollback_flag.c (boot/**)`, joined with `; `, at most 500 characters.
+- **Commits are not reported.** The tree checkpoints are local commits on the run branch; the
+  engine never sends them to `POST /internal/runs/{id}/commits` — DI.2 reports the real ones.
 
 ## The Claude Agent executor
 
@@ -638,6 +671,8 @@ DH.2's facade:
   offered (`Bash`) never reaches the hook; it is recorded from the assistant message, denied
   and halts. Pause and abort take effect there; `steer(text)` delivers guidance as the next
   user turn.
+- **Provenance.** A model turn carries the model the facade's answer names, never the alias;
+  a message naming none yields no model turn.
 - **The outcome** comes from the result's `terminal_reason` (never `subtype`): `completed`,
   else `failed` with the reason (`max_turns`, `api_error`, …); `halted`/`paused`/`aborted`
   when the hook stopped it. A pause checkpoints `{session_id}`; `resume()` continues that

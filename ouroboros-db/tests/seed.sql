@@ -6870,8 +6870,8 @@ select pg_temp.must_hold(
      (select count(*) from ouroboros.decision_snooze_events where item_id::text like '5eed0082-%'),
      -- Every decision row in the database is this seed's.
      (select count(*) from ouroboros.decision_items        where id::text not like '5eed0082-%')]
-   = array[4, 9, 1, 1, 1, 14, 14, 3, 3, 16, 8, 11, 1, 0]::bigint[]),
-  'the inbox seed wrote 4 tickets, 9 files, 1 stop, PR #504 with 1 revision, 14 gates, 3 criteria, and 16 items, 8 blocks, 11 answers, 1 snooze — once');
+   = array[4, 9, 2, 1, 1, 14, 14, 3, 3, 16, 8, 11, 1, 0]::bigint[]),
+  'the inbox seed wrote 4 tickets, 9 files, 1 stop and 1 warn-mode fail, PR #504 with 1 revision, 14 gates, 3 criteria, and 16 items, 8 blocks, 11 answers, 1 snooze — once');
 
 -- V133 (#537): the database numbered them — the seed supplies no short number. Dense from 1,
 -- whether the items were filed after V133 (the allocator) or were already there (its back-fill).

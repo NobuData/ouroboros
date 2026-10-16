@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest (internal)",
-    "version": "0.41.47",
+    "version": "0.41.48",
     "summary": "What ouroboros-engine may ask the control plane for — and what it is never given.",
     "description": "The **engine-facing** surface of\n[Ouroboros](https://github.com/NobuData/ouroboros)' communications layer. Two\noperations, one caller, and one idea holding both of them together — roadmap decision\n**P3**, [#224](https://github.com/NobuData/ouroboros/issues/224):\n\n> **A worker never holds a provider credential.**\n\nMockup 07's page subline promises something weaker — *\"keys never leave the control\nplane — workers only ever see short-lived tokens\"* — and this document is where the\nfirst clause is made literal and the second is **improved on**. There is no token. A\nfifteen-minute credential is still a credential: it genuinely reaches the worker,\nrevocation is bounded only by its TTL, and the audit surface widens to every process\nthat ever held one. It is also, for most LLM providers, fiction — almost none support\nderiving short-lived scoped keys, so such a token would in practice be a full API key\nwith a timer bolted on by us.\n\nSo the two operations divide the world:\n\n| Operation | For | Hands over |\n|---|---|---|\n| `POST /internal/llm/invoke` | every **cloud** provider | nothing — the control plane makes the call and streams back the answer |\n| `POST /internal/credentials/lease` | **local** providers only | an address, TTL-bounded and audited |\n\nThe exception is narrow and is not a compromise. An engine worker calling an Ollama\ndaemon on the same box gains nothing from proxying its traffic through this service,\nbecause there is no key on that path to protect — so it is told the address and nothing\nelse, and a lease naming a cloud provider is a `403` by policy, enforced here rather\nthan trusted to the caller.\n\n**What is built.** The lease and the proxy are both implemented. The proxy was\n*specified* by this document first (AD.3) so that AF.1\n([#234](https://github.com/NobuData/ouroboros/issues/234)) could choose an executor\n**against** it, and AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235))\nimplemented it — a custom chain executor inside this service, with no sidecar.\n\n**Authentication is the #51 pattern, in the other direction.** Every operation requires\n`X-Ouro-Internal-Key`, carrying `OURO_ENGINE_SHARED_SECRET` — the same header and the\nsame variable `ouroboros-rest` sends when *it* calls the engine\n([#51](https://github.com/NobuData/ouroboros/issues/51)). The comparison is constant\ntime, a missing header takes the same path as a wrong one, and the rejection is one\nconstant body: `401` with `code: \"unauthenticated\"` and nothing else. A session cookie\nis not accepted here, whoever it belongs to.\n\n**These paths are outside `/api`, and unversioned.** `/api` is the browser's boundary;\nthe only caller of these two is deployed alongside this service and upgraded with it, so\na version in the path would be one nobody could ever be on a different side of. That is\nthe same argument `/health/live` and `ouroboros-engine`'s `/healthz` are written under.\n\n**Every error has the shape every other error in this system has** — `{code, message,\ndetails}`, `docs/ARCHITECTURE.md` § 5.3 — so a worker parses one envelope whether it\nwas refused at the boundary or inside a handler.\n\n**The naming convention changes at this boundary, once.** This service writes\n`camelCase` in its contracts and `ouroboros-engine` writes `snake_case` in its own; each\nside translates in exactly one file — `src/modules/engine/engine.contract.ts` here,\n`ouroboros_engine/control_plane/contract.py` there — so no code on either side carries\nthe other's spelling.",
     "license": {
@@ -493,7 +493,7 @@
           "harness"
         ],
         "summary": "The Anthropic Messages API, as a harness calls it",
-        "description": "`POST /v1/messages` in the Anthropic Messages format, authenticated by the run-scoped\ncredential in `x-api-key` (or `Authorization: Bearer`) — **not** by\n`X-Ouro-Internal-Key`. `model` must be the credential's alias.\n\n- The alias is resolved as `/internal/llm/invoke` resolves it, under the credential's\n  stage. Hops that are not Anthropic-format are skipped and named in\n  `x-ouroboros-skipped-hops`; a chain with none left is `400 no_anthropic_hop`.\n- The run's cost cap is checked **before every call**; a breach is\n  `400 cost_cap_exceeded`, naming the cap, and the stage halts.\n- A hop that answers `5xx`, `429`, an auth refusal or a model-specific refusal before any\n  byte is relayed hands over to the next. When every hop fails, the last provider's error\n  is returned **unmodified**.\n- A success is relayed **byte for byte**, server-sent events and `ping` frames\n  included, as they arrive. `anthropic-version` and `anthropic-beta` are forwarded\n  unchanged and every other request field passes through.\n- One usage row per call, attributed to run, stage, attempt, provider, model and\n  credential.",
+        "description": "`POST /v1/messages` in the Anthropic Messages format, authenticated by the run-scoped\ncredential in `x-api-key` (or `Authorization: Bearer`) — **not** by\n`X-Ouro-Internal-Key`. `model` must be the credential's alias.\n\n- The alias is resolved as `/internal/llm/invoke` resolves it, under the credential's\n  stage. Hops that are not Anthropic-format are skipped and named in\n  `x-ouroboros-skipped-hops`; a chain with none left is `400 no_anthropic_hop`.\n- The run's cost cap is checked **before every call**; a breach is\n  `400 cost_cap_exceeded`, naming the cap, and the stage halts.\n- So is the stage attempt's token budget (the pinned node's `limits.token_budget`\n  against the input + output tokens the run, stage and attempt have already spent); a\n  breach is `400 token_budget_exceeded`, carrying `ouroboros.attemptBudget`\n  ([#315](https://github.com/NobuData/ouroboros/issues/315)).\n- Either breach also **stops the run**: a system `abort` is filed through the control\n  queue (the branch is kept; the run becomes `canceled` when the engine acks it) and\n  `run.budget_exceeded` is audited — once per run, so a retried call while that abort\n  is pending is refused again without a second abort. A provider's monthly cap is not\n  the run's budget and aborts nothing.\n- A hop that answers `5xx`, `429`, an auth refusal or a model-specific refusal before any\n  byte is relayed hands over to the next. When every hop fails, the last provider's error\n  is returned **unmodified**.\n- A success is relayed **byte for byte**, server-sent events and `ping` frames\n  included, as they arrive. `anthropic-version` and `anthropic-beta` are forwarded\n  unchanged and every other request field passes through.\n- One usage row per call, attributed to run, stage, attempt, provider, model and\n  credential.",
         "operationId": "harnessMessages",
         "security": [
           {
@@ -1240,7 +1240,7 @@
           "runs"
         ],
         "summary": "Report the change-set, and trigger the guardrails",
-        "description": "Report the run's change-set **as it stands**, and judge it.\n\n**A `PUT`, and the verb is the semantics.** The reported set replaces the stored one:\na file's counts are its state against the run's base, not the delta since the last\nreport, and a file the run reverted leaves the change-set rather than lingering at\n`+0 −0`. An ingestion path that added instead of replacing would produce counts that\nclimb for ever.\n\n**Every report triggers guardrail evaluation** (AP.3,\n[#305](https://github.com/NobuData/ouroboros/issues/305)) and carries its own\n`changeSetSeq`, so re-evaluation history reads as a sequence rather than as a pile.\nA report naming **no files** is not a change-set: it allocates no number and\nschedules no checks, and `guardrailChecks` is `0`.\n\nThe four checks — `allowed_paths`, `ci_config`, `secrets`, `review_required` — are\njudged against the run's pinned policy inside the report's own transaction, and the\nanswer names the ones that failed. A failure sets `needsHuman`; it does **not** stop the\nstage or move the run's status — enforcement is AR.1\n([#315](https://github.com/NobuData/ouroboros/issues/315)).\n\n**Send `hunks` to have the content scanned.** The secrets check reads each file's added\nhunk lines with the embedded ruleset (`v3`) and records a path, a line and a rule id —\nnever the matched text. Hunks are read in memory and stored nowhere. A report whose\nfiles carry no hunks is judged `not_applicable` for secrets rather than clean.",
+        "description": "Report the run's change-set **as it stands**, and judge it.\n\n**A `PUT`, and the verb is the semantics.** The reported set replaces the stored one:\na file's counts are its state against the run's base, not the delta since the last\nreport, and a file the run reverted leaves the change-set rather than lingering at\n`+0 −0`. An ingestion path that added instead of replacing would produce counts that\nclimb for ever.\n\n**Every report triggers guardrail evaluation** (AP.3,\n[#305](https://github.com/NobuData/ouroboros/issues/305)) and carries its own\n`changeSetSeq`, so re-evaluation history reads as a sequence rather than as a pile.\nA report naming **no files** is not a change-set: it allocates no number and\nschedules no checks, and `guardrailChecks` is `0`.\n\nThe four checks — `allowed_paths`, `ci_config`, `secrets`, `review_required` — are\njudged against the run's pinned policy inside the report's own transaction, and the\nanswer names the ones that failed. **Block or warn** (AR.1,\n[#315](https://github.com/NobuData/ouroboros/issues/315)): each verdict is judged under the\nworkspace's mode for its check (`GET /api/v1/settings/guardrails`; `block` unless a\nworkspace chose `warn`). Only a `block` failure sets `needsHuman`, which the executor acts\non by halting the stage at that boundary and finishing the run `needs_human`; a `warn`\nfailure is listed in `guardrailWarnings` and stops nothing. `guardrailVerdicts` repeats\nevery failure with its mode and evidence, which is what a halt's reason is rendered from.\nEvaluation itself never moves the run's status.\n\n**Send `hunks` to have the content scanned.** The secrets check reads each file's added\nhunk lines with the embedded ruleset (`v3`) and records a path, a line and a rule id —\nnever the matched text. Hunks are read in memory and stored nowhere. A report whose\nfiles carry no hunks is judged `not_applicable` for secrets rather than clean.",
         "operationId": "reportRunFiles",
         "parameters": [
           {
@@ -1300,14 +1300,61 @@
                 "schema": {
                   "$ref": "#/components/schemas/ChangeSet"
                 },
-                "example": {
-                  "changeSetSeq": 3,
-                  "files": 2,
-                  "additions": 59,
-                  "deletions": 12,
-                  "guardrailChecks": 4,
-                  "guardrailFailures": [],
-                  "needsHuman": false
+                "examples": {
+                  "clean": {
+                    "summary": "Every check passed or did not apply",
+                    "value": {
+                      "changeSetSeq": 3,
+                      "files": 2,
+                      "additions": 59,
+                      "deletions": 12,
+                      "guardrailChecks": 4,
+                      "guardrailFailures": [],
+                      "guardrailWarnings": [],
+                      "guardrailVerdicts": [],
+                      "needsHuman": false
+                    }
+                  },
+                  "blocked": {
+                    "summary": "A block-mode failure beside a warn-mode one — the stage halts",
+                    "value": {
+                      "changeSetSeq": 1,
+                      "files": 3,
+                      "additions": 41,
+                      "deletions": 7,
+                      "guardrailChecks": 4,
+                      "guardrailFailures": [
+                        "allowed_paths",
+                        "secrets"
+                      ],
+                      "guardrailWarnings": [
+                        "secrets"
+                      ],
+                      "guardrailVerdicts": [
+                        {
+                          "check": "allowed_paths",
+                          "mode": "block",
+                          "evidence": {
+                            "path": "boot/rollback_flag.c",
+                            "glob": "boot/**",
+                            "rule_id": "protected-path",
+                            "detail": "protected by the workspace policy; needs a one-time allowance"
+                          }
+                        },
+                        {
+                          "check": "secrets",
+                          "mode": "warn",
+                          "evidence": {
+                            "path": "subsys/ota/checksum_verify.c",
+                            "line": 9,
+                            "rule_id": "generic-password",
+                            "detail": "1 finding in 1 file."
+                          }
+                        }
+                      ],
+                      "needsHuman": true
+                    }
+                  }
                 }
               }
             }
@@ -3852,6 +3899,7 @@
                   "alias_unavailable",
                   "no_anthropic_hop",
                   "cost_cap_exceeded",
+                  "token_budget_exceeded",
                   "resolution_failed",
                   "vote_execution_unavailable",
                   "provider_unavailable"
@@ -3859,6 +3907,37 @@
               },
               "cap": {
                 "$ref": "#/components/schemas/InvokeCap"
+              },
+              "attemptBudget": {
+                "type": "object",
+                "description": "On `token_budget_exceeded` ([#315](https://github.com/NobuData/ouroboros/issues/315))\n— the stage attempt's budget and what it had spent when the call was refused.",
+                "required": [
+                  "limitTokens",
+                  "spentTokens",
+                  "stage",
+                  "attempt"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "limitTokens": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "The pinned node's `limits.token_budget`."
+                  },
+                  "spentTokens": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Input plus output tokens the attempt had already spent."
+                  },
+                  "stage": {
+                    "type": "string",
+                    "description": "The DSL node id the credential was minted for."
+                  },
+                  "attempt": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
               },
               "reason": {
                 "type": "string"
@@ -5211,6 +5290,8 @@
           "deletions",
           "guardrailChecks",
           "guardrailFailures",
+          "guardrailWarnings",
+          "guardrailVerdicts",
           "needsHuman"
         ],
         "properties": {
@@ -5249,9 +5330,81 @@
               ]
             }
           },
+          "guardrailWarnings": {
+            "type": "array",
+            "description": "The failures judged under the workspace's `warn` mode — a subset of\n`guardrailFailures`, in the same order (AR.1,\n[#315](https://github.com/NobuData/ouroboros/issues/315)). Shown in a warn tone;\nthey do not stop the run.",
+            "items": {
+              "type": "string",
+              "enum": [
+                "allowed_paths",
+                "ci_config",
+                "secrets",
+                "review_required"
+              ]
+            }
+          },
+          "guardrailVerdicts": {
+            "type": "array",
+            "description": "Every failure of `guardrailFailures` again, in the same order, with the mode it was\njudged under and its evidence (AR.1, #315) — what an executor renders a halt's reason\nfrom, e.g. *guardrail allowed_paths failed: boot/rollback_flag.c is protected\n(boot/\\*\\*)*. Use only the `block` entries for that reason.",
+            "items": {
+              "$ref": "#/components/schemas/IngestGuardrailFailure"
+            }
+          },
           "needsHuman": {
             "type": "boolean",
-            "description": "Whether a failing check flags this run for a person. Evaluation, not enforcement:\nthe run's status is not moved and no stage is stopped (AR.1,\n[#315](https://github.com/NobuData/ouroboros/issues/315))."
+            "description": "Whether a failing check flags this run for a person — at least one failure was\njudged under `block` (AR.1, [#315](https://github.com/NobuData/ouroboros/issues/315)).\nThe executor halts the stage at that boundary and finishes the run `needs_human`. A\n`warn` failure alone leaves it `false`."
+          }
+        }
+      },
+      "IngestGuardrailFailure": {
+        "type": "object",
+        "title": "IngestGuardrailFailure",
+        "description": "One failed guardrail check, with its mode and evidence (AR.1,",
+        "additionalProperties": false,
+        "required": [
+          "check",
+          "mode"
+        ],
+        "properties": {
+          "check": {
+            "type": "string",
+            "enum": [
+              "allowed_paths",
+              "ci_config",
+              "secrets",
+              "review_required"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "block",
+              "warn"
+            ],
+            "description": "`block` stops the run and needs a person; `warn` is only shown."
+          },
+          "evidence": {
+            "type": "object",
+            "description": "Where, and by which rule — never the matched value (decision R5). The stored\nevidence's closed key set; absent when the verdict carried none.",
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "rule_id": {
+                "type": "string"
+              },
+              "glob": {
+                "type": "string"
+              },
+              "detail": {
+                "type": "string"
+              }
+            }
           }
         }
       },

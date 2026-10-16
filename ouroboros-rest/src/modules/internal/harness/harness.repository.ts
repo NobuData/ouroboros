@@ -9,6 +9,8 @@
  * revoke         harness_credentials.revoked_at        set once
  * recorded       token_usage by credential             per (alias, model) sums, for reconcile
  * reconciled     harness_credentials.reconciliation    stored with its time
+ * pinnedDefinition  runs ⋈ workflow_versions           the pinned document, for a stage's token budget (#315)
+ * attemptTokens  token_usage by run · stage · attempt  input + output tokens already spent (#315)
  * ```
  */
 
@@ -198,6 +200,54 @@ export class HarnessRepository {
       cacheWriteTokens: Number(row.cache_write_tokens),
       calls: row.calls,
     }));
+  }
+
+  /**
+   * The workflow document a credential's run is pinned to (AR.1,
+   * [#315](https://github.com/NobuData/ouroboros/issues/315)) — where a stage's
+   * `limits.token_budget` is read from, as `ingest.pin.ts` reads it for `run_stages`.
+   *
+   * @param binding - The credential, as bound.
+   * @returns The stored definition, or `undefined` for a run with no pin (or a pin whose version
+   *   no longer exists), which has no token budget to enforce.
+   */
+  async pinnedDefinition(binding: CredentialBinding): Promise<unknown> {
+    const row = await this.database.db
+      .selectFrom("runs as r")
+      .innerJoin("workflows as w", (join) =>
+        join
+          .onRef("w.organization_id", "=", "r.organization_id")
+          .onRef("w.slug", "=", "r.workflow_tag"),
+      )
+      .innerJoin("workflow_versions as v", (join) =>
+        join.onRef("v.workflow_id", "=", "w.id").onRef("v.version", "=", "r.workflow_version_pin"),
+      )
+      .select("v.definition")
+      .where("r.id", "=", binding.runId)
+      .where("r.organization_id", "=", binding.organizationId)
+      .executeTakeFirst();
+
+    return row?.definition;
+  }
+
+  /**
+   * The tokens a stage attempt has already spent (AR.1, #315): input plus output, over every
+   * `token_usage` row of the run, stage and attempt — whichever credential made the call.
+   *
+   * @param binding - The credential, as bound — its run, stage and attempt.
+   * @returns The sum, `0` before the attempt's first call.
+   */
+  async attemptTokens(binding: CredentialBinding): Promise<number> {
+    const row = await this.database.db
+      .selectFrom("token_usage")
+      .select(sql<string | null>`sum(tokens_in + tokens_out)::text`.as("spent"))
+      .where("organization_id", "=", binding.organizationId)
+      .where("run_id", "=", binding.runId)
+      .where("stage", "=", binding.stage)
+      .where("attempt", "=", binding.attempt)
+      .executeTakeFirst();
+
+    return Number(row?.spent ?? 0);
   }
 
   /**

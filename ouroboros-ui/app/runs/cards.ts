@@ -465,18 +465,51 @@ export interface PillView {
 }
 
 /**
+ * A check's enforcement mode (#315): a `block` fail makes the run need a person; a `warn` fail
+ * is shown and does not stop the run.
+ */
+export type GuardrailMode = "block" | "warn";
+
+/**
+ * A verdict's mode, as stamped at evaluation time. The field is additive in the contract, so a
+ * row that does not carry it — an older service, or a verdict stamped before #315 — is `block`,
+ * which is what every check was before modes existed.
+ *
+ * @param check The verdict.
+ * @returns Its mode.
+ */
+export function checkMode(check: RunGuardrailCheck & { readonly mode?: GuardrailMode }): GuardrailMode {
+  return check.mode === "warn" ? "warn" : "block";
+}
+
+/**
  * The header pill, **computed from the verdicts on the card** — the service's own rule
  * (`RunGuardrails.status`), applied to the rows this card draws so the two cannot disagree:
- * any `fail` is `violations`; else any `pending` is `pending`; else, with at least one
+ * any `block` fail is `violations`; else any `pending` is `pending`; else, with at least one
  * verdict, `clean`; and no verdicts at all is `not evaluated`, which is not the same as clean.
+ *
+ * A `warn` fail (#315) never makes the pill `violations`: it is counted beside the rest —
+ * `1 violation · 1 warning`, `pending · 1 warning` — and, with nothing else to say, the pill is
+ * `1 warning` in the warn tone. Without warnings the copy is what it always was.
  *
  * @param checks The verdicts.
  * @returns The pill.
  */
 export function guardrailPill(checks: readonly RunGuardrailCheck[]): PillView {
-  if (checks.some((check) => check.verdict === "fail")) return { label: "violations", tone: "err", dot: "filled" };
-  if (checks.some((check) => check.verdict === "pending")) return { label: "pending", tone: "warn", dot: "ring" };
+  const fails = checks.filter((check) => check.verdict === "fail");
+  const violations = fails.filter((check) => checkMode(check) === "block").length;
+  const warnings = fails.length - violations;
+  const warned = counted(warnings, "warning");
+
+  if (violations > 0) {
+    const label = warnings === 0 ? "violations" : `${counted(violations, "violation")} · ${warned}`;
+    return { label, tone: "err", dot: "filled" };
+  }
+  if (checks.some((check) => check.verdict === "pending")) {
+    return { label: warnings === 0 ? "pending" : `pending · ${warned}`, tone: "warn", dot: "ring" };
+  }
   if (checks.length === 0) return { label: "not evaluated", tone: "neutral", dot: "ring" };
+  if (warnings > 0) return { label: warned, tone: "warn", dot: "filled" };
 
   return { label: "clean", tone: "ok", dot: "filled" };
 }
@@ -490,6 +523,19 @@ export const MARK: Readonly<Record<RunGuardrailCheck["verdict"], { glyph: string
   fail: { glyph: "✗", tone: "err", word: "failed" },
   not_applicable: { glyph: "○", tone: "idle", word: "not applicable" },
   pending: { glyph: "…", tone: "warn", word: "evaluating" },
+};
+
+/** A `warn` fail's mark (#315): the warn tone and `!`, never the block fail's `✗`. */
+export const WARN_MARK: Readonly<{ glyph: string; tone: MarkTone; word: string }> = {
+  glyph: "!",
+  tone: "warn",
+  word: "failed",
+};
+
+/** The inline note on a failed row, per mode — what the fail did to the run. */
+export const FAIL_NOTE: Readonly<Record<GuardrailMode, string>> = {
+  block: "blocked — the run needs a person",
+  warn: "warn — did not stop the run",
 };
 
 /** What a row says, and the faint caption after it — per check, per verdict. */
@@ -562,7 +608,14 @@ export interface GuardrailRowView {
   readonly tone: MarkTone;
   readonly text: string;
   readonly caption: string | null;
-  /** What a screen reader hears — `Secrets scan clean: passed`. */
+  /** A failed row's mode — whether it stopped the run; `null` on any other verdict. */
+  readonly failMode: GuardrailMode | null;
+  /** A failed row's note — what the fail did to the run, per {@link FAIL_NOTE}; `null` otherwise. */
+  readonly note: string | null;
+  /**
+   * What a screen reader hears — `Secrets scan clean: passed`, and a failure's note after it:
+   * `Possible secret in the diff: failed (warn — did not stop the run)`.
+   */
   readonly accessibleName: string;
   readonly evidence: readonly EvidenceLine[];
   /** Whether the evidence starts open — a failure's always does. */
@@ -604,8 +657,11 @@ export function guardrailsView(guardrails: RunGuardrails): GuardrailsView {
   return {
     pill: guardrailPill(guardrails.checks),
     rows: guardrails.checks.map((check) => {
-      const mark = MARK[check.verdict];
+      const failed = check.verdict === "fail";
+      const mode = checkMode(check);
+      const mark = failed && mode === "warn" ? WARN_MARK : MARK[check.verdict];
       const { text, caption } = CHECK_TEXT[check.check][check.verdict];
+      const note = failed ? FAIL_NOTE[mode] : null;
 
       return {
         key: check.check,
@@ -613,9 +669,11 @@ export function guardrailsView(guardrails: RunGuardrails): GuardrailsView {
         tone: mark.tone,
         text,
         caption,
-        accessibleName: `${text}: ${mark.word}`,
+        failMode: failed ? mode : null,
+        note,
+        accessibleName: note === null ? `${text}: ${mark.word}` : `${text}: ${mark.word} (${note})`,
         evidence: evidenceLines(check.evidence),
-        expanded: check.verdict === "fail",
+        expanded: failed,
         disclosure: check.check === "secrets" ? disclosure : null,
       };
     }),

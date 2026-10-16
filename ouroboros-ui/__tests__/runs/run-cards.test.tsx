@@ -280,7 +280,9 @@ describe("guardrails", () => {
     expect(card.querySelector(".ou-card__head .ou-chip")).toHaveTextContent("violations");
     expect(card).not.toHaveTextContent(/\bclean\b/);
 
-    const failing = within(card).getByRole("listitem", { name: "Possible secret in the diff: failed" });
+    const failing = within(card).getByRole("listitem", {
+      name: "Possible secret in the diff: failed (blocked — the run needs a person)",
+    });
     expect(failing.querySelector(".run-guard__mark--err")).toHaveTextContent("✗");
 
     const evidence = failing.querySelector("details") as HTMLDetailsElement;
@@ -288,6 +290,106 @@ describe("guardrails", () => {
     expect(within(failing).getByText(EVIDENCE_LABEL)).toBeInTheDocument();
     expect(within(failing).getByText("drivers/can/config.c:42")).toBeInTheDocument();
     expect(within(failing).getByText("aws-access-key-id")).toBeInTheDocument();
+  });
+
+  describe("block and warn fails (#315)", () => {
+    /** The seeded run #479's card: an `allowed_paths` block fail beside a `secrets` warn fail. */
+    const mixed = () =>
+      runConsole({
+        guardrails: {
+          checks: [
+            guardrailCheck(
+              "allowed_paths",
+              "fail",
+              { path: "boot/rollback_flag.c", rule_id: "protected-path", glob: "boot/**" },
+              "block",
+            ),
+            guardrailCheck("ci_config", "pass", undefined, "block"),
+            guardrailCheck("secrets", "fail", { path: "tools/flash.py", line: 12, rule_id: "generic-api-key" }, "warn"),
+            guardrailCheck("review_required", "not_applicable"),
+          ],
+        },
+      });
+
+    it("keeps a block fail's ✗ in the err tone and notes that the run needs a person", () => {
+      const card = drawGuardrails(mixed());
+      const row = within(card).getByRole("listitem", {
+        name: "Diff outside allowed paths: failed (blocked — the run needs a person)",
+      });
+
+      expect(row.querySelector(".run-guard__mark")).toHaveClass("run-guard__mark--err");
+      expect(row.querySelector(".run-guard__mark")).toHaveTextContent("✗");
+      expect(row.querySelector(".run-guard__dot")).toHaveClass("run-guard__dot--err");
+      const note = row.querySelector(".run-guard__note");
+      expect(note).toHaveClass("run-guard__note--block");
+      expect(note).not.toHaveClass("run-guard__note--warn");
+      expect(note).toHaveTextContent("blocked — the run needs a person");
+      expect(row.querySelector(".run-guard__text")).toHaveTextContent(
+        "Diff outside allowed paths blocked — the run needs a person",
+      );
+      expect(row.querySelector(".run-guard__facts")).not.toHaveClass("run-guard__facts--warn");
+      expect((row.querySelector("details") as HTMLDetailsElement).open).toBe(true);
+    });
+
+    it("draws a warn fail with ! in the warn tone and notes that it did not stop the run", () => {
+      const card = drawGuardrails(mixed());
+      const row = within(card).getByRole("listitem", {
+        name: "Possible secret in the diff: failed (warn — did not stop the run)",
+      });
+      const mark = row.querySelector(".run-guard__mark");
+
+      expect(mark).toHaveClass("run-guard__mark--warn");
+      expect(mark).not.toHaveClass("run-guard__mark--err");
+      expect(mark).toHaveTextContent("!");
+      expect(row).not.toHaveTextContent("✗");
+      expect(row.querySelector(".run-guard__dot")).toHaveClass("run-guard__dot--warn");
+      const note = row.querySelector(".run-guard__note");
+      expect(note).toHaveClass("run-guard__note--warn");
+      expect(note).not.toHaveClass("run-guard__note--block");
+      expect(note).toHaveTextContent("warn — did not stop the run");
+      expect(row).not.toHaveTextContent("needs a person");
+      expect(row.querySelector(".run-guard__facts")).toHaveClass("run-guard__facts--warn");
+      expect((row.querySelector("details") as HTMLDetailsElement).open).toBe(true);
+      expect(within(row).getByText("tools/flash.py:12")).toBeInTheDocument();
+    });
+
+    it("counts the violation and the warning separately in the pill", () => {
+      const card = drawGuardrails(mixed());
+      const pill = card.querySelector(".ou-card__head .ou-chip");
+
+      expect(pill).toHaveTextContent("1 violation · 1 warning");
+      expect(pill).toHaveClass("ou-chip--err");
+    });
+
+    it("never says violations for a warn fail alone, and notes nothing on the passing rows", () => {
+      const card = drawGuardrails(
+        runConsole({
+          guardrails: {
+            checks: [
+              guardrailCheck("allowed_paths", "pass"),
+              guardrailCheck("secrets", "fail", { rule_id: "generic-api-key" }, "warn"),
+            ],
+          },
+        }),
+      );
+      const pill = card.querySelector(".ou-card__head .ou-chip");
+
+      expect(pill).toHaveTextContent("1 warning");
+      expect(pill).not.toHaveTextContent(/violation/);
+      expect(pill).toHaveClass("ou-chip--warn");
+      expect(card.querySelectorAll(".run-guard__note")).toHaveLength(1);
+      expect(within(card).getByRole("listitem", { name: "Diff confined to allowed paths: passed" })).not.toHaveTextContent(
+        /blocked|warn —/,
+      );
+    });
+
+    it("reads a fail without a mode as a block fail", () => {
+      const card = drawGuardrails(runConsole({ guardrails: { checks: [guardrailCheck("ci_config", "fail")] } }));
+
+      expect(card.querySelector(".run-guard__mark--err")).toHaveTextContent("✗");
+      expect(card.querySelector(".run-guard__note--block")).toHaveTextContent("blocked — the run needs a person");
+      expect(card.querySelector(".ou-card__head .ou-chip")).toHaveTextContent(/^violations$/);
+    });
   });
 
   it("draws the pill from the verdicts, not from a stored status", () => {

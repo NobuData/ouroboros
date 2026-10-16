@@ -557,11 +557,11 @@
       "workspace": "acme-robotics",
       "ready": "section.run-guardrails .run-guard__evidence",
       "clip": "section.run-guardrails",
-      "caption": "A guardrail that failed: the diff touches a protected path, with the evidence beneath it.",
-      "alt": "The Guardrails card marked violations: Diff outside allowed paths has failed, with its evidence open — path boot/rollback_flag.c, rule protected-path, glob boot/**, and the detail that the path is protected by the workspace policy and needs a one-time allowance — above the line Policy: feature-loop · tenant acme-robotics.",
-      "capturedAt": "2026-10-09T00:16:18.233Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "5a61bd193e8b806e20bfea70bddd1d3860c9509c"
+      "caption": "A blocking guardrail that failed — the diff touches a protected path — beside a warning one that did not stop the run.",
+      "alt": "The Guardrails card tagged 1 violation · 1 warning. Diff outside allowed paths is marked ✗ with blocked — the run needs a person, its evidence open: path boot/rollback_flag.c, rule protected-path, glob boot/**, and the detail that the path is protected by the workspace policy and needs a one-time allowance. Below it, Possible secret in the diff is marked ! with warn — did not stop the run, its evidence open: path subsys/ota/checksum_verify.c:9, rule generic-password, detail 1 finding in 1 file. The card ends with Policy: feature-loop · tenant acme-robotics.",
+      "capturedAt": "2026-10-16T01:52:24.148Z",
+      "uiVersion": "0.169.6",
+      "seedRef": "4e5ecf7c4162a6b4bb890582d4a2b71578acbb0d"
     },
     {
       "id": "user-guide.run.controls",

@@ -242,6 +242,7 @@ class ClaudeAgentExecutor(StageExecutor):
                 f"no conversation found with session id {session} in this run's "
                 "configuration directory"
             )
+        self._pause = False  # the pause this resume answers is over
         return self._attempt(ctx, RESUME_PROMPT, session, checkpoint.next_seq)
 
     def pause(self) -> None:
@@ -261,7 +262,7 @@ class ClaudeAgentExecutor(StageExecutor):
 
         Delivered at the next pre-tool boundary, where the harness folds it into the
         model's next request; guidance still queued when the session would end starts one
-        more turn instead. #315 wires REST's control queue to this.
+        more turn instead. #315's interpreter calls it for a ``steer`` control.
 
         Args:
             text: The guidance.
@@ -333,7 +334,10 @@ class ClaudeAgentExecutor(StageExecutor):
             policy_deadline=self._hook_timeout * POLICY_DEADLINE_SHARE,
         )
         recorder.pause_requested, recorder.abort_requested = self._pause, self._abort
-        recorder.steers, self._steers = self._steers, []
+        # Guidance the last session ended before delivering (a steer during a pause's hold
+        # lands there) travels into this one.
+        leftover = self._recorder.steers if self._recorder is not None else []
+        recorder.steers, self._steers = [*leftover, *self._steers], []
         recorder.session_id = resume_id
         self._recorder, self._ctx = recorder, ctx
         if self._abort:

@@ -37,7 +37,8 @@
 --   |--------------------------------------------------|-------------------------------------------|------------|
 --   | canonical `tickets` #465, #479, #486, #490        | a ticket ref resolves against `tickets` only (V093); the four existed as run numbers and intake mirrors | `5eed0079…` |
 --   | `run_files` — #1830's six, #1844's three          | PR #504's `+214 −180 across 6 files` and the 3-line protected diff are sums of these | `5eed007a…` |
---   | one `guardrail_evaluations` fail on #1844         | the stop **Allow once** clears            | `5eed007b…` |
+--   | two `guardrail_evaluations` fails on #1844        | the stop **Allow once** clears, and a warn-mode secrets finding beside it (#315) | `5eed007b…` |
+--   | acme-robotics's `guardrail_modes` row: secrets = warn | the mode that warn-mode fail was judged under (#315) | (keyed by workspace and check) |
 --   | PR #504: `pull_requests`, one `pr_revisions`, 14 gate definitions and results, 3 criteria and their evidence | the verification page the merge card links to | `5eed007c…`–`5eed0081…` |
 --   | 16 `decision_items`, 11 `decision_resolutions`, 8 `run_blocks`, 1 snooze event | the inbox | `5eed0082…`, `5eed0083…` |
 --
@@ -189,6 +190,33 @@ select '5eed007b-0000-4000-8000-000479000001'::uuid,
   from ouroboros.organization org
   join ouroboros.runs run      on run.organization_id = org."id" and run.issue_number = 479
   join ouroboros.run_files f   on f.run_id = run.id and f.path = 'boot/rollback_flag.c'
+ where org."slug" = 'acme-robotics'
+   and ${ouro_dev_seed}
+on conflict do nothing;
+
+-- Beside the stop, a warn-mode fail (#315, AR.1): acme-robotics treats a secrets finding as a
+-- warning, so the same report's scan flagged a password-like assignment in checksum_verify.c and
+-- the run was not stopped for it. The Guardrails card draws it in a warn tone ("warn — did not
+-- stop the run") under the block fail. The workspace's mode is seeded with it, so the setting and
+-- the verdict agree; V148 keeps a warn-mode fail out of intervention_events, so mockup 15's
+-- counts do not move.
+insert into ouroboros.guardrail_modes (organization_id, "check", mode)
+select org."id", 'secrets', 'warn'
+  from ouroboros.organization org
+ where org."slug" = 'acme-robotics'
+   and ${ouro_dev_seed}
+on conflict do nothing;
+
+insert into ouroboros.guardrail_evaluations (id, run_id, "check", verdict, evidence,
+                                             ruleset_version, change_set_seq, evaluated_at, mode)
+select '5eed007b-0000-4000-8000-000479000002'::uuid,
+       run.id, 'secrets', 'fail',
+       jsonb_build_object('path', f.path, 'line', 9, 'rule_id', 'generic-password',
+                          'detail', '1 finding in 1 file.'),
+       'v3', 1, now() - interval '21 minutes 5 seconds', 'warn'
+  from ouroboros.organization org
+  join ouroboros.runs run      on run.organization_id = org."id" and run.issue_number = 479
+  join ouroboros.run_files f   on f.run_id = run.id and f.path = 'subsys/ota/checksum_verify.c'
  where org."slug" = 'acme-robotics'
    and ${ouro_dev_seed}
 on conflict do nothing;

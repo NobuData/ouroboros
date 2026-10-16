@@ -80,6 +80,7 @@ class Bench:
         doc: dict[str, Any],
         *executors: Any,
         sleep: Any = never,
+        poll_sleep: Any = never,
         **control: Any,
     ) -> None:
         """Build it; ``executors`` are handed out in order (the last repeats)."""
@@ -99,6 +100,7 @@ class Bench:
             worker="engine-test",
             heartbeat_seconds=5,
             sleep=sleep,
+            poll_sleep=poll_sleep,
         )
 
     def run(self) -> FakeControl:

@@ -1092,7 +1092,7 @@ e2e: parity ✓ · live scenario (stepper·transcript·steer·guardrails) ✓ ·
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AR.1 | #315 | 🟡 Open | ouroboros-engine: [AR.1] Real-execution integration & guardrail enforcement | WF-T.6 reports through AP.1; guardrail fails block; caps enforced | mvp, live-loop, runs, workflow, engine, rest | Y (after WF-T.6, AP.1) | N | L | ouroboros-engine, ouroboros-rest |
+| AR.1 | ✅ #315 | 🟢 Done | ouroboros-engine: [AR.1] Real-execution integration & guardrail enforcement | WF-T.6 reports through AP.1; guardrail fails block; caps enforced | mvp, live-loop, runs, workflow, engine, rest | Y (after WF-T.6, AP.1) | N | L | ouroboros-engine, ouroboros-rest |
 | AR.2 | #316 | 🟡 Open | ouroboros-ui: [AR.2] IDE take-over protocol | Deep hand-off: editor deep links, context transfer, resume-from-IDE | v2, runs, ui | N (after AQ.2) | N | L | ouroboros-ui, ouroboros-rest |
 | AR.3 | #317 | 🟡 Open | ouroboros-rest: [AR.3] SSE live transcript | Push streaming over DASH-J.1's channel; poll fallback retained | v2, runs, rest, ui | N (after DASH-J.1, AP.2) | N | M | ouroboros-rest, ouroboros-ui |
 | AR.4 | #318 | 🟡 Open | ouroboros-rest: [AR.4] Slack-thread steering | Mockup-19 tie-in: steer/pause from the run's Slack thread | v2, runs, rest | N (after mockup-19 roadmap, AP.4) | N | M | ouroboros-rest |

@@ -240,6 +240,25 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
       ? `set the live-run ceiling to ${after}`
       : "changed the live-run ceiling";
   },
+  "workspace.guardrail_modes_changed": (f) => {
+    const after = text(f, "after");
+    return after === undefined
+      ? "changed the guardrail modes"
+      : `set the guardrail modes to ${after.replaceAll(",", ", ")}`;
+  },
+  "run.budget_exceeded": (f) => {
+    const limit = text(f, "limit");
+    const stage = text(f, "stage");
+    const what =
+      limit === "token_budget"
+        ? "its token budget"
+        : limit === "cost_cap"
+          ? "its cost cap"
+          : "a budget";
+    return stage === undefined
+      ? `stopped a run at ${what}`
+      : `stopped a run at ${what} in ${stage}`;
+  },
 };
 
 /**

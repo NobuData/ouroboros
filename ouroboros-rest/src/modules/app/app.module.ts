@@ -51,6 +51,7 @@ import { RoutingModule } from "../routing/routing.module";
 import { LifecycleModule } from "../lifecycle/lifecycle.module";
 import { LoopModule } from "../loop/loop.module";
 import { AdmissionModule } from "../admission/admission.module";
+import { GuardrailModesModule } from "../guardrails/guardrail-modes.module";
 import { MembersModule } from "../members/members.module";
 import { ServiceAccountsModule } from "../service-accounts/service-accounts.module";
 import { WebhooksModule } from "../webhooks/webhooks.module";
@@ -519,6 +520,10 @@ export class AppModule {
         // `/api/v1/settings/live-execution`. The claim, the queue, the dashboard and the backlog
         // import it for the one evaluator they share.
         AdmissionModule,
+        // AR.1 ([#315](https://github.com/NobuData/ouroboros/issues/315)) — whether each guardrail
+        // check stops a run or is only shown: `/api/v1/settings/guardrails`. The evaluator reads
+        // the same rows inside each change-set report.
+        GuardrailModesModule,
         // BI.4 ([#435](https://github.com/NobuData/ouroboros/issues/435)) — estimator calibration
         // under `/api/v1/insights/calibration`. `PullRequestsModule` imports it for the merge
         // observer that grades each merged loop; nothing else claims the prefix.

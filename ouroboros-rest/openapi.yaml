@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.47"
+  version: "0.41.48"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -7010,6 +7010,97 @@ paths:
           description: |-
             `live_ceiling_above_max` — above `OURO_LIVE_RUN_CEILING_MAX`; `details` carries
             `requested` and `maximum`. `validation_failed` — not a whole number from 1 to 100.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/guardrails:
+    get:
+      tags: [workspace]
+      summary: Whether each guardrail check stops a run or is only shown
+      description: |-
+        The workspace's mode for each of the four guardrail checks
+        ([#315](https://github.com/NobuData/ouroboros/issues/315), AR.1) — `block` (a failed
+        check makes the run need a person; the executor halts the stage) or `warn` (a failed
+        check is drawn on the run console's Guardrails card in a warn tone and the run carries
+        on). A check the workspace never chose a mode for is `block`, so the answer always names
+        all four. Any member may read it. There is no settings screen; this is the API.
+      operationId: readGuardrailModes
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The four checks' modes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardrailModesSettings"
+              example:
+                modes:
+                  allowed_paths: block
+                  ci_config: block
+                  secrets: warn
+                  review_required: block
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [workspace]
+      summary: Change some guardrail checks' modes
+      description: |-
+        **`owner` or `admin`, people only.** A partial map — name only the checks to change;
+        the others keep their mode. The change applies from the run's next change-set report:
+        each verdict records the mode it was judged under, so history is not rewritten. Writes
+        `workspace.guardrail_modes_changed` (`changed`, `before`, `after`) when a mode moves,
+        and nothing when none does. Answers all four modes as they now stand.
+      operationId: patchGuardrailModes
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuardrailModesPatch"
+            example:
+              modes:
+                secrets: warn
+      responses:
+        "200":
+          description: The four checks' modes as they now stand.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuardrailModesSettings"
+              example:
+                modes:
+                  allowed_paths: block
+                  ci_config: block
+                  secrets: warn
+                  review_required: block
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`forbidden` — not an `owner` or `admin`, or a service account."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `modes` missing or not an object, a check other than the four,
+            or a mode other than `block` or `warn`.
           content:
             application/json:
               schema:
@@ -48779,6 +48870,14 @@ components:
           type: [integer, "null"]
           minimum: 1
           description: Which change-set report was judged, or `null` for a policy-only check.
+        mode:
+          $ref: "#/components/schemas/GuardrailMode"
+          description: |-
+            The workspace's mode for this check when the verdict was made
+            ([#315](https://github.com/NobuData/ouroboros/issues/315)). A `fail` under `block`
+            stopped the run and needs a person; a `fail` under `warn` is drawn in a warn tone
+            and did not stop it. Always sent since 0.41.48; a client may read its absence as
+            `block`.
 
     RunGuardrailEvidence:
       type: object
@@ -49157,6 +49256,59 @@ components:
         - workflow_unpublished
         - route_not_invocable
         - needs_confirmation
+
+    GuardrailMode:
+      type: string
+      title: GuardrailMode
+      enum: [block, warn]
+      description: |-
+        What a failed guardrail check does ([#315](https://github.com/NobuData/ouroboros/issues/315)).
+        `block` — the run needs a person and the executor halts the stage. `warn` — the fail is
+        shown in a warn tone and the run carries on.
+
+    GuardrailModesSettings:
+      type: object
+      title: GuardrailModesSettings
+      description: |-
+        The workspace's mode for each guardrail check
+        ([#315](https://github.com/NobuData/ouroboros/issues/315)) — always all four; `block`
+        where the workspace never chose.
+      additionalProperties: false
+      required: [modes]
+      properties:
+        modes:
+          type: object
+          additionalProperties: false
+          required: [allowed_paths, ci_config, secrets, review_required]
+          properties:
+            allowed_paths:
+              $ref: "#/components/schemas/GuardrailMode"
+            ci_config:
+              $ref: "#/components/schemas/GuardrailMode"
+            secrets:
+              $ref: "#/components/schemas/GuardrailMode"
+            review_required:
+              $ref: "#/components/schemas/GuardrailMode"
+
+    GuardrailModesPatch:
+      type: object
+      title: GuardrailModesPatch
+      description: The checks whose mode should change; the others keep theirs.
+      additionalProperties: false
+      required: [modes]
+      properties:
+        modes:
+          type: object
+          additionalProperties: false
+          properties:
+            allowed_paths:
+              $ref: "#/components/schemas/GuardrailMode"
+            ci_config:
+              $ref: "#/components/schemas/GuardrailMode"
+            secrets:
+              $ref: "#/components/schemas/GuardrailMode"
+            review_required:
+              $ref: "#/components/schemas/GuardrailMode"
 
     LiveExecutionSettings:
       type: object

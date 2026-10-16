@@ -447,7 +447,7 @@ wheels = [
 
 [[package]]
 name = "ouroboros-engine"
-version = "0.7.41"
+version = "0.7.42"
 source = { editable = "." }
 dependencies = [
     { name = "claude-agent-sdk" },

@@ -113,6 +113,9 @@ describe("a control nobody asked for", () => {
   it("names the kept branch in every abort's sentence", () => {
     expect(SYSTEM_CONTROL_SENTENCES.wall_clock_limit).toContain("branch is kept");
     expect(SYSTEM_CONTROL_SENTENCES.no_progress_limit).toContain("branch is kept");
+    // AR.1 (#315): the harness facade's budget aborts keep the branch too.
+    expect(SYSTEM_CONTROL_SENTENCES.cost_cap_exceeded).toContain("branch is kept");
+    expect(SYSTEM_CONTROL_SENTENCES.token_budget_exceeded).toContain("branch is kept");
   });
 
   it("answers an outstanding control of the same kind rather than queueing a second", async () => {

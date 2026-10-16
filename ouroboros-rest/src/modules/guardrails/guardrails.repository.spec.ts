@@ -181,6 +181,76 @@ describe("the guardrails repository", () => {
     );
   });
 
+  it("stamps each verdict with the mode it was judged under, block where none was chosen (#315)", async () => {
+    await repository.appendVerdicts(
+      database.service.db,
+      RUN,
+      14,
+      [
+        {
+          check: "secrets",
+          verdict: "fail",
+          evidence: null,
+          rulesetVersion: "v3",
+          changeSetSeq: 2,
+        },
+        {
+          check: "ci_config",
+          verdict: "pass",
+          evidence: null,
+          rulesetVersion: null,
+          changeSetSeq: 2,
+        },
+      ],
+      { secrets: "warn" },
+    );
+
+    expect(database.statements[0].sql).toContain('"mode"');
+    const parameters = database.statements[0].parameters;
+    expect(parameters.filter((value) => value === "warn")).toHaveLength(1);
+    expect(parameters.filter((value) => value === "block")).toHaveLength(1);
+  });
+
+  it("reads a workspace's stored modes by check (#315)", async () => {
+    database.answers({ rows: [{ check: "secrets", mode: "warn" }] });
+
+    expect(await repository.modes(database.service.db, ORG)).toEqual({ secrets: "warn" });
+    expect(database.statements[0].sql).toContain('from "ouroboros"."guardrail_modes"');
+    expect(database.statements[0].parameters).toEqual([ORG]);
+  });
+
+  it("upserts the modes it is given and never deletes one (#315)", async () => {
+    await repository.saveModes(
+      database.service.db,
+      ORG,
+      { secrets: "warn", review_required: "block" },
+      "user-1",
+    );
+
+    expect(database.statements).toHaveLength(1);
+    expect(database.statements[0].sql).toContain('insert into "ouroboros"."guardrail_modes"');
+    expect(database.statements[0].sql).toContain(
+      'on conflict ("organization_id", "check") do update set',
+    );
+    expect(database.statements[0].parameters).toEqual([
+      ORG,
+      "secrets",
+      "warn",
+      "user-1",
+      ORG,
+      "review_required",
+      "block",
+      "user-1",
+    ]);
+    expect(database.sql().join(" ")).not.toMatch(/delete/i);
+  });
+
+  it("writes nothing for an empty set of modes", async () => {
+    await repository.saveModes(database.service.db, ORG, {}, "user-1");
+
+    expect(database.statements).toHaveLength(0);
+  });
+
   it("answers each written verdict's id by its check", async () => {
     database.answers({
       rows: [

@@ -104,6 +104,8 @@ import {
   TICKET_SOURCE_REMOVED_EVENT,
   QUEUE_ITEM_CONFIRMED_EVENT,
   WORKSPACE_LIVE_CEILING_CHANGED_EVENT,
+  WORKSPACE_GUARDRAIL_MODES_CHANGED_EVENT,
+  RUN_BUDGET_EXCEEDED_EVENT,
   ROADMAP_SUGGESTION_DISMISSED_EVENT,
 } from "./audit.events";
 
@@ -266,6 +268,8 @@ describe("the vocabulary", () => {
       "ticket_source.removed",
       "queue_item.confirmed",
       "workspace.live_ceiling_changed",
+      "workspace.guardrail_modes_changed",
+      "run.budget_exceeded",
     ]);
   });
 
@@ -298,7 +302,8 @@ describe("the vocabulary", () => {
     // own export and purge (#486), and
     // `notification_route.` for the org-level notification routes (#488), and
     // `regression_watch.` for the regression watch's policy (#623), and `roadmap.` for a
-    // dismissed roadmap suggestion and the direct-commit opt-in (#624). The
+    // dismissed roadmap suggestion and the direct-commit opt-in (#624), and `run.` for a live run
+    // the harness facade stopped at its budget (#315). The
     // families are what make `action like 'provider.%'` a useful question — and what keeps
     // *"who changed our GitHub token"* and *"what has happened to our fleet"* answerable
     // without knowing every name in either. The pool events are deliberately inside
@@ -324,6 +329,7 @@ describe("the vocabulary", () => {
       "queue_item",
       "regression_watch",
       "roadmap",
+      "run",
       "runner",
       "service_account",
       "ticket_source",
@@ -441,6 +447,8 @@ describe("the vocabulary", () => {
       TICKET_SOURCE_REMOVED_EVENT,
       QUEUE_ITEM_CONFIRMED_EVENT,
       WORKSPACE_LIVE_CEILING_CHANGED_EVENT,
+      WORKSPACE_GUARDRAIL_MODES_CHANGED_EVENT,
+      RUN_BUDGET_EXCEEDED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

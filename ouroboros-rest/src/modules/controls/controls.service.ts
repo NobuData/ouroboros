@@ -79,9 +79,17 @@ export interface Requester {
   readonly roles: readonly OrganizationRole[];
 }
 
-/** Why the system queued a control (DI.4, #1312). Stable: the console keys copy on it. */
+/**
+ * Why the system queued a control (DI.4, #1312; the two budget reasons are AR.1's, #315, filed
+ * by the harness facade when it refuses a call). Stable: the console keys copy on it.
+ */
 export type SystemControlReason =
-  "wall_clock_limit" | "no_progress_limit" | "workspace_paused" | "workspace_resumed";
+  | "wall_clock_limit"
+  | "no_progress_limit"
+  | "workspace_paused"
+  | "workspace_resumed"
+  | "cost_cap_exceeded"
+  | "token_budget_exceeded";
 
 /** The transcript sentence each reason writes. */
 export const SYSTEM_CONTROL_SENTENCES: Readonly<Record<SystemControlReason, string>> = {
@@ -91,6 +99,10 @@ export const SYSTEM_CONTROL_SENTENCES: Readonly<Record<SystemControlReason, stri
     "Aborted: the run reported no progress within the deployment's no-progress limit. Its branch is kept.",
   workspace_paused: "Pausing at the next safe boundary: the workspace was paused.",
   workspace_resumed: "Resuming: the workspace was resumed.",
+  cost_cap_exceeded:
+    "Aborted: the run reached its per-run cost cap, so its next model call was refused. Its branch is kept.",
+  token_budget_exceeded:
+    "Aborted: the stage attempt reached its token budget, so its next model call was refused. Its branch is kept.",
 };
 
 @Injectable()
@@ -147,8 +159,9 @@ export class ControlsService {
   // --- controls nobody asked for (DI.4, #1312) -----------------------------------------------
 
   /**
-   * Queue a control in the system's name — a live-run limit's abort, or a workspace pause
-   * reaching its running runs (DI.4, [#1312](https://github.com/NobuData/ouroboros/issues/1312)).
+   * Queue a control in the system's name — a live-run limit's abort, a workspace pause reaching
+   * its running runs (DI.4, [#1312](https://github.com/NobuData/ouroboros/issues/1312)), or the
+   * harness facade's abort when a run reaches its cost cap or token budget (AR.1, #315).
    *
    * No role and no typed confirmation: no person is asking, and the limit or the lifecycle move
    * that caused it is its own authority. Everything else is {@link submit}'s: the run is locked,

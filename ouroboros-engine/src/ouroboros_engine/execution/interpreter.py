@@ -34,6 +34,21 @@ stored after every tool result) — on an executor that can resume, is resumed o
 the interrupted attempt is marked ``failed`` and one fresh attempt (the next number) starts;
 a native single-shot stage is thereby simply re-run.
 
+**Controls** (#315, AP.4): a person's ``pause``, ``resume``, ``abort`` and ``steer`` are fetched
+while a stage runs (:mod:`~ouroboros_engine.execution.poller`), when an attempt ends, between
+stages and before every finish, and applied at safe boundaries
+(:mod:`~ouroboros_engine.execution.controls`). A pause holds the run — heartbeating — until a
+resume continues the same attempt; an abort keeps the tree and its branch, acknowledges, and
+stops without ``/finish`` (the control plane marks the run ``canceled`` at the ack). Because
+controls are polled before every finish, an attempt that failed on the facade's budget
+refusal goes down the abort path the facade filed, not ``failed``.
+
+**Guardrails at tool boundaries** (#315): after every ``file_change`` the whole change-set is
+reported, so the console's Changes card moves as the work happens. An answer with
+``needsHuman`` (a ``block``-mode failure) stops the executor at that boundary, fails the
+stage and finishes the run ``needs_human`` with the failures rendered
+(:mod:`~ouroboros_engine.execution.guardrails`); ``warn``-mode failures do not halt.
+
 The interpreter performs no I/O of its own: the control plane, the clone store, the run
 workspaces, the executor registry and the sleep between heartbeats are all handed to it.
 """
@@ -43,7 +58,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 from pydantic import ValidationError
@@ -52,12 +67,15 @@ from ouroboros_engine.code.clones import CloneError, CloneStore, RepositoryRef
 from ouroboros_engine.code.repo import RefNotFoundError
 from ouroboros_engine.control_plane.client import ControlPlaneError
 from ouroboros_engine.control_plane.execution import FinishOutcome, RunStarted
-from ouroboros_engine.control_plane.ingest import StageReturn
+from ouroboros_engine.control_plane.ingest import ChangeSet, StageReturn
 from ouroboros_engine.control_plane.transport import TransportError
+from ouroboros_engine.execution.controls import Controls, RunAborted, Running
 from ouroboros_engine.execution.events import StageEvent
 from ouroboros_engine.execution.facts import TicketFacts, judge
 from ouroboros_engine.execution.graph import WorkflowGraph
+from ouroboros_engine.execution.guardrails import halt_reason
 from ouroboros_engine.execution.heartbeat import Heartbeat, Sleep
+from ouroboros_engine.execution.poller import ControlPoller
 from ouroboros_engine.execution.registry import ExecutorRegistry
 from ouroboros_engine.execution.reporter import RunControl, RunLostError, RunReporter
 from ouroboros_engine.execution.spi import (
@@ -72,6 +90,7 @@ from ouroboros_engine.execution.stage import (
     render_prompt,
     stage_model,
     stage_policy,
+    with_notes,
 )
 from ouroboros_engine.execution.state import ExecutionState, edge_id
 from ouroboros_engine.execution.workspace import (
@@ -107,15 +126,19 @@ class _Run:
         workspace: The open working tree, until it is closed or finished.
         executor: The attempt running now, so a lost heartbeat can abort it.
         returned_from: The gate return the next attempt reports, after a loop.
+        controls: A person's controls: pending, and how they are claimed and acked.
+        halt: The change-set answer that stopped the running stage for a person.
     """
 
     started: RunStarted
     state: ExecutionState
     reporter: RunReporter
+    controls: Controls
     graph: WorkflowGraph | None = None
     workspace: RunWorkspace | None = None
     executor: StageExecutor | None = None
     returned_from: StageReturn | None = field(default=None)
+    halt: ChangeSet | None = None
 
     def lose(self, code: str) -> None:
         """The run is no longer this worker's: stop writing and abort the attempt.
@@ -156,6 +179,7 @@ class Interpreter:
         worker: str,
         heartbeat_seconds: float = 5.0,
         sleep: Sleep = asyncio.sleep,
+        poll_sleep: Sleep | None = None,
     ) -> None:
         """Hold the collaborators.
 
@@ -167,6 +191,8 @@ class Interpreter:
             worker: This worker's name, sent on ``start``.
             heartbeat_seconds: ``OURO_ENGINE_HEARTBEAT_SECONDS``.
             sleep: Waits between heartbeats.
+            poll_sleep: Waits between control fetches (same cadence); ``sleep`` unless a
+                test separates the two.
         """
         self._control = control
         self._clones = clones
@@ -175,6 +201,7 @@ class Interpreter:
         self._worker = worker
         self._heartbeat_seconds = heartbeat_seconds
         self._sleep = sleep
+        self._poll_sleep = poll_sleep or sleep
 
     async def execute(self, run_id: str) -> None:
         """Take a run and walk it until it finishes, parks, or is lost.
@@ -192,10 +219,17 @@ class Interpreter:
             _log.warning("run %s not started: %s", run_id, refused)
             return
         state = ExecutionState.from_json(started.checkpoint)
+        reporter = RunReporter(self._control, run_id, started.epoch, seq=state.seq)
         run = _Run(
             started=started,
             state=state,
-            reporter=RunReporter(self._control, run_id, started.epoch, seq=state.seq),
+            reporter=reporter,
+            controls=Controls(
+                self._control,
+                reporter,
+                interval=self._heartbeat_seconds,
+                sleep=self._poll_sleep,
+            ),
         )
         heartbeat = Heartbeat(
             self._control,
@@ -208,6 +242,8 @@ class Interpreter:
         beating = asyncio.create_task(heartbeat.run())
         try:
             await self._execute(run)
+        except RunAborted as aborted:
+            await self._aborted(run, aborted)
         except RunLostError as lost:
             _log.warning("run %s stopped: %s", run_id, lost.code)
         except TransportError as unreachable:
@@ -252,7 +288,7 @@ class Interpreter:
                 ),
             )
             await self._walk(run)
-        except (RunLostError, TransportError):
+        except (RunLostError, TransportError, RunAborted):
             raise
         except (CloneError, RefNotFoundError, WorkspaceError) as broken:
             await self._end(run, "failed", f"The run's working tree failed: {broken}")
@@ -320,6 +356,7 @@ class Interpreter:
                     f"The checkpoint names `{position}`, which the pinned workflow lacks.",
                 )
                 return
+            await self._boundary(run, f"before {node.id}")
             following = await self._step(run, node)
             if following is None:
                 return
@@ -389,6 +426,11 @@ class Interpreter:
     ) -> str | None:
         """Run a model stage to completion, retrying within its bound.
 
+        After each attempt, in order: a person's abort wins; then a guardrail halt; then a
+        pause (held when a person asked for it, parked otherwise); then the change-set is
+        reported and the attempt succeeds or fails. A correction round runs the stage again
+        as the next attempt whichever way the attempt ended.
+
         Args:
             run: The execution.
             node: The stage.
@@ -396,6 +438,9 @@ class Interpreter:
 
         Returns:
             The next node after success, or ``None`` when the walk stops.
+
+        Raises:
+            RunAborted: A person aborted the run.
         """
         kind = self._registry.default_kind()
         if kind is None:
@@ -406,7 +451,7 @@ class Interpreter:
         limit = config.limits.max_retries + 1
         if run.state.mid_stage(node.id):
             attempt = run.state.attempt or 1
-            outcome = await self._resume(run, kind)
+            outcome = await self._resume(run, kind, attempt)
             if outcome is None:
                 await run.reporter.transition(
                     node.id, "failed", attempt, tolerate_invalid=True
@@ -424,6 +469,11 @@ class Interpreter:
             outcome = await self._attempt(run, node, config, kind, attempt)
 
         while True:
+            if run.controls.abort is not None:
+                raise RunAborted(run.controls.abort)
+            if run.halt is not None:
+                await self._halt(run, node, attempt, run.halt)
+                return None
             if outcome.status == "aborted":
                 return None
             if outcome.status == "paused":
@@ -432,25 +482,52 @@ class Interpreter:
                     None if checkpoint is None else checkpoint.model_dump(mode="json")
                 )
                 await self._save(run)
-                return None
-            assert run.workspace is not None  # noqa: S101
-            files = await asyncio.to_thread(run.workspace.changes)
-            change_set = await run.reporter.files(files)
-            if change_set.needs_human:
-                await self._end(
-                    run, "needs_human", "The guardrails need a person.", node.id
+                if run.controls.pause is None:
+                    return None
+                await self._hold(run, f"{node.id} attempt {attempt}")
+                resumed = await self._resume(run, kind, attempt)
+                if resumed is not None:
+                    outcome = resumed
+                    continue
+                outcome = StageOutcome(
+                    status="failed", error="the paused attempt could not be resumed"
                 )
-                return None
+            else:
+                assert run.workspace is not None  # noqa: S101
+                files = await asyncio.to_thread(run.workspace.changes)
+                change_set = await run.reporter.files(files)
+                if change_set.needs_human:
+                    await self._halt(run, node, attempt, change_set)
+                    return None
+            correction = bool(run.controls.corrections)
             if outcome.status == "completed":
+                assert run.workspace is not None  # noqa: S101
                 await asyncio.to_thread(run.workspace.checkpoint, node.id)
                 await run.reporter.transition(node.id, "succeeded", attempt)
-                return await self._forward(run, node)
-            await run.reporter.transition(node.id, "failed", attempt)
-            if attempt >= min(limit, MAX_ATTEMPT):
-                await self._exhausted(run, node, attempt, _why(outcome))
-                return None
+                if not correction or attempt >= min(limit, MAX_ATTEMPT):
+                    return await self._forward(run, node)
+            else:
+                await run.reporter.transition(node.id, "failed", attempt)
+                if attempt >= min(limit, MAX_ATTEMPT):
+                    await self._exhausted(run, node, attempt, _why(outcome))
+                    return None
             attempt += 1
+            await self._boundary(run, f"before {node.id} attempt {attempt}")
             outcome = await self._attempt(run, node, config, kind, attempt)
+
+    async def _halt(
+        self, run: _Run, node: WorkflowNode, attempt: int, change_set: ChangeSet
+    ) -> None:
+        """Stop the stage for a person: the guardrails blocked its change-set.
+
+        Args:
+            run: The execution.
+            node: The stage.
+            attempt: The attempt that was stopped.
+            change_set: The answer that flagged it.
+        """
+        await run.reporter.transition(node.id, "failed", attempt, tolerate_invalid=True)
+        await self._end(run, "needs_human", halt_reason(change_set), node.id)
 
     async def _attempt(
         self,
@@ -461,6 +538,9 @@ class Interpreter:
         attempt: int,
     ) -> StageOutcome:
         """Start one fresh attempt and drive it to its outcome.
+
+        The steering notes waiting for an attempt are appended to its prompt, after the
+        untrusted block, and each steer is acknowledged with this attempt's number.
 
         Args:
             run: The execution.
@@ -483,31 +563,37 @@ class Interpreter:
             node.id, "active", attempt, returned_from=returned_from
         )
         started = run.started
+        prompt = render_prompt(
+            config,
+            started.issue_number,
+            started.issue_title,
+            started.issue_body,
+            started.acceptance_criteria,
+        )
         context = StageContext(
             run_id=started.run_id,
             stage_key=node.id,
             attempt=attempt,
-            prompt=render_prompt(
-                config,
-                started.issue_number,
-                started.issue_title,
-                started.issue_body,
-                started.acceptance_criteria,
-            ),
+            prompt=with_notes(prompt, await run.controls.notes_for(attempt)),
             model=stage_model(config, started.model),
             policy=stage_policy(
                 config, str(run.workspace.path), started.protected_paths
             ),
         )
         executor = self._registry.create(kind)
-        return await self._drive(run, executor, lambda: executor.run(context))
+        return await self._drive(run, executor, executor.run(context))
 
-    async def _resume(self, run: _Run, kind: str) -> StageOutcome | None:
-        """Resume an interrupted attempt from its executor checkpoint, once.
+    async def _resume(self, run: _Run, kind: str, attempt: int) -> StageOutcome | None:
+        """Resume an attempt from its executor checkpoint, once.
+
+        Serves both an attempt interrupted by a lost worker and one a person paused and
+        resumed. Steers that arrived while it was held are handed to an executor that
+        steers before it continues.
 
         Args:
             run: The execution, whose state records the attempt.
             kind: The executor kind.
+            attempt: The attempt being continued.
 
         Returns:
             The resumed attempt's outcome, or ``None`` when there is nothing to resume, the
@@ -517,7 +603,8 @@ class Interpreter:
         if stored is None:
             return None
         executor = self._registry.create(kind)
-        if not executor.capabilities().resume:
+        capabilities = executor.capabilities()
+        if not capabilities.resume:
             return None
         try:
             checkpoint = Checkpoint.model_validate(stored)
@@ -525,35 +612,45 @@ class Interpreter:
             _log.warning("run %s: unreadable executor checkpoint", run.started.run_id)
             return None
         try:
-            return await self._drive(run, executor, lambda: executor.resume(checkpoint))
+            stream = executor.resume(checkpoint)
         except ExecutorCapabilityError as refused:
             _log.warning("run %s: resume refused (%s)", run.started.run_id, refused)
             return None
+        if capabilities.steer:
+            await run.controls.deliver(executor, attempt)
+        return await self._drive(run, executor, stream)
 
     async def _drive(
         self,
         run: _Run,
         executor: StageExecutor,
-        begin: Callable[[], AsyncIterator[StageEvent]],
+        stream: AsyncIterator[StageEvent],
     ) -> StageOutcome:
-        """Run an executor's stream with the executor visible to the heartbeat.
+        """Run an executor's stream with controls polled and the change-set reported.
+
+        The executor is visible to the heartbeat (a lost run aborts it) and to a
+        :class:`~ouroboros_engine.execution.poller.ControlPoller` while it runs. Each file
+        boundary reports the change-set; a ``needsHuman`` answer stops the executor (an
+        internal abort, recorded in ``run.halt``). The attempt's end is a boundary too: the
+        controls are fetched once more before the caller decides what follows.
 
         Args:
             run: The execution.
             executor: The attempt's executor.
-            begin: Returns the stream — called here so a refusal to start is raised here.
+            stream: What :meth:`~StageExecutor.run` or :meth:`~StageExecutor.resume`
+                returned.
 
         Returns:
             The outcome.
 
         Raises:
-            RunLostError: The run was lost before or while the attempt ran.
-            ExecutorCapabilityError: The executor refused to start (a resume).
+            RunLostError: The run was lost before, while or after the attempt ran.
         """
         if run.reporter.lost is not None:
             raise RunLostError(run.reporter.lost)
-        stream = begin()
         run.executor = executor
+        stage_key, attempt = run.state.stage_key or "", run.state.attempt or 1
+        running = Running(executor, stage_key, attempt, _limit(run, stage_key))
 
         async def store(checkpoint: Checkpoint) -> None:
             """Persist the attempt's live checkpoint in the run checkpoint.
@@ -565,10 +662,87 @@ class Interpreter:
             run.state.executor_checkpoint = checkpoint.model_dump(mode="json")
             await self._save(run)
 
+        async def report_files() -> None:
+            """Report the change-set at a tool boundary; halt on a block failure."""
+            if run.halt is not None:
+                return
+            assert run.workspace is not None  # noqa: S101
+            files = await asyncio.to_thread(run.workspace.changes)
+            change_set = await run.reporter.files(files)
+            if change_set.needs_human:
+                run.halt = change_set
+                executor.abort()
+
         try:
-            return await drive(executor, stream, run.reporter, store)
+            async with ControlPoller(run.controls, running):
+                outcome = await drive(
+                    executor, stream, run.reporter, store, report_files
+                )
         finally:
             run.executor = None
+        if run.reporter.lost is not None:
+            raise RunLostError(run.reporter.lost)
+        await run.controls.poll(
+            Running(executor, stage_key, attempt, running.limit, live=False)
+        )
+        return outcome
+
+    async def _boundary(self, run: _Run, where: str) -> None:
+        """A safe boundary outside an attempt: apply controls, hold on a pause.
+
+        Args:
+            run: The execution.
+            where: The boundary, for the acknowledgments.
+
+        Raises:
+            RunAborted: A person aborted the run.
+        """
+        await run.controls.poll()
+        if run.controls.abort is not None:
+            raise RunAborted(run.controls.abort)
+        if run.controls.pause is not None:
+            await self._hold(run, where)
+
+    async def _hold(self, run: _Run, where: str) -> None:
+        """Hold for the pending pause until a resume.
+
+        Args:
+            run: The execution.
+            where: The boundary.
+
+        Raises:
+            RunAborted: An abort arrived instead.
+        """
+        await run.reporter.flush()
+        if not await run.controls.hold(where) and run.controls.abort is not None:
+            raise RunAborted(run.controls.abort)
+
+    async def _aborted(self, run: _Run, aborted: RunAborted) -> None:
+        """End an aborted run: keep the tree on its branch, acknowledge, and stop.
+
+        No ``/finish``: the acknowledgment is what closes the run ``canceled``. The tree is
+        committed (a local checkpoint, never reported) and later closed — not finished — so
+        the branch keeps the work until the sweeper's idle rule reclaims it.
+
+        Args:
+            run: The execution.
+            aborted: The abort.
+        """
+        if run.executor is not None:
+            run.executor.abort()
+        with contextlib.suppress(RunLostError, ControlPlaneError, TransportError):
+            await run.reporter.flush()
+        if run.workspace is not None:
+            try:
+                await asyncio.to_thread(
+                    run.workspace.checkpoint, run.state.stage_key or "aborted"
+                )
+            except WorkspaceError as broken:
+                _log.warning(
+                    "run %s: abort checkpoint failed: %s", run.started.run_id, broken
+                )
+        if await run.controls.ack(aborted.control):
+            _log.info("run %s aborted; its branch is kept", run.started.run_id)
 
     async def _exhausted(
         self, run: _Run, node: WorkflowNode, attempts: int, why: str
@@ -695,6 +869,7 @@ class Interpreter:
         """
         if config.action == "open_pr_automerge":
             assert run.workspace is not None  # noqa: S101
+            await self._before_finish(run, node.id)
             await asyncio.to_thread(run.workspace.checkpoint, node.id)
             await run.reporter.finish(
                 "review",
@@ -727,16 +902,52 @@ class Interpreter:
     ) -> None:
         """Finish the run, then abandon its tree (every outcome but ``review``).
 
+        Controls are polled first (:meth:`_before_finish`), so an abort waiting in the queue
+        — a budget breach's, say — ends the run instead.
+
         Args:
             run: The execution.
             outcome: How it ends.
             reason: One sentence.
             stage_key: The stage it ended at.
         """
+        await self._before_finish(run, stage_key)
         await run.reporter.finish(outcome, reason, stage_key)
         if run.workspace is not None:
             workspace, run.workspace = run.workspace, None
             await asyncio.to_thread(workspace.finish, "abandoned")
+
+    async def _before_finish(self, run: _Run, stage_key: str | None) -> None:
+        """The boundary before every finish: controls first, then unclaimed steers acked.
+
+        Args:
+            run: The execution.
+            stage_key: The stage the run ends at.
+
+        Raises:
+            RunAborted: A person — or the facade, on a budget breach — aborted the run.
+        """
+        await self._boundary(
+            run, f"before the run finishes at {stage_key or 'its start'}"
+        )
+        await run.controls.settle()
+
+
+def _limit(run: _Run, stage_key: str) -> int:
+    """The most attempts a stage may make.
+
+    Args:
+        run: The execution, with its graph.
+        stage_key: The stage.
+
+    Returns:
+        Its ``max_retries`` + 1, capped at :data:`MAX_ATTEMPT`; :data:`MAX_ATTEMPT` for a
+        node that is not a model stage.
+    """
+    node = run.graph.node(stage_key) if run.graph is not None else None
+    if node is None or not isinstance(node.config, LlmConfig):
+        return MAX_ATTEMPT
+    return min(node.config.limits.max_retries + 1, MAX_ATTEMPT)
 
 
 def _facts(run: _Run) -> TicketFacts:

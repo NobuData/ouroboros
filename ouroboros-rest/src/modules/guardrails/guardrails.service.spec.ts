@@ -3,6 +3,7 @@ import { resolveRule } from "../policies/policy-resolution";
 import type { PolicyResolutionService } from "../policies/policy-resolution.service";
 
 import { recordingDatabase } from "../db/database.fixture";
+import type { GuardrailCheck, GuardrailMode } from "../db/schema";
 import type { GuardrailRequest } from "../ingest/ingest.guardrails";
 import { readFixture } from "../workflows/dsl.golden.fixture";
 import type { GuardrailExceptionGrant, GuardrailVerdictRow } from "./guardrails.checks";
@@ -37,10 +38,18 @@ function stubRepository(
     exceptions?: GuardrailExceptionGrant[];
     consumes?: boolean;
     recorded?: { changeSetSeq: number; paths: string[] } | undefined;
+    modes?: Partial<Record<GuardrailCheck, GuardrailMode>>;
   } = {},
 ) {
-  const appended: { policyRef: number | null; verdicts: readonly GuardrailVerdictRow[] }[] = [];
+  const appended: {
+    policyRef: number | null;
+    verdicts: readonly GuardrailVerdictRow[];
+    modes: Partial<Record<GuardrailCheck, GuardrailMode>> | undefined;
+  }[] = [];
   const repository = {
+    modes: jest.fn((_writer: unknown, _organizationId: string) =>
+      Promise.resolve(overrides.modes ?? {}),
+    ),
     runPolicy: jest.fn(() => Promise.resolve("policy" in overrides ? overrides.policy : POLICY)),
     pinnedDefinition: jest.fn(() =>
       Promise.resolve(
@@ -74,8 +83,9 @@ function stubRepository(
         _run: string,
         policyRef: number | null,
         verdicts: readonly GuardrailVerdictRow[],
+        modes?: Partial<Record<GuardrailCheck, GuardrailMode>>,
       ) => {
-        appended.push({ policyRef, verdicts });
+        appended.push({ policyRef, verdicts, modes });
 
         return Promise.resolve(
           new Map(verdicts.map((row) => [row.check, `evaluation-${row.check}`])),
@@ -113,7 +123,7 @@ describe("GuardrailService", () => {
 
     const outcome = await new GuardrailService(repository).evaluate(writer, CLEAN);
 
-    expect(outcome).toEqual({ checks: 4, failures: [] });
+    expect(outcome).toEqual({ checks: 4, failures: [], failed: [] });
     expect(appended[0].policyRef).toBe(14);
     expect(appended[0].verdicts.map((row) => row.verdict)).toEqual([
       "pass",
@@ -133,6 +143,7 @@ describe("GuardrailService", () => {
       spy.pinnedDefinition,
       spy.reportedStages,
       spy.protectedPaths,
+      spy.modes,
       spy.appendVerdicts,
     ]) {
       expect(method.mock.calls[0][0]).toBe(writer);
@@ -205,6 +216,17 @@ describe("GuardrailService", () => {
 
     expect(spy.protectedPaths.mock.calls[0][1]).toBe(POLICY);
     expect(outcome.failures).toEqual(["allowed_paths"]);
+    expect(outcome.failed).toEqual([
+      {
+        check: "allowed_paths",
+        mode: "block",
+        evidence: {
+          path: "keys/signing.pem",
+          glob: "keys/**",
+          detail: "1 path inside a protected path.",
+        },
+      },
+    ]);
     expect(appended[0].verdicts[0].evidence).toEqual({
       path: "keys/signing.pem",
       glob: "keys/**",
@@ -397,8 +419,65 @@ describe("GuardrailService", () => {
     expect(await new GuardrailService(repository).evaluate(writer, CLEAN)).toEqual({
       checks: 0,
       failures: [],
+      failed: [],
     });
     expect(spy.appendVerdicts).not.toHaveBeenCalled();
+  });
+
+  describe("block or warn (AR.1, #315)", () => {
+    const PROTECTED = {
+      ticket: { labels: [], planFiles: ["keys/signing.pem"], effort: "s" },
+      protectedPaths: ["keys/**"],
+    };
+
+    it("reads the modes of the run's own workspace, through the report's writer", async () => {
+      const { repository, spy } = stubRepository();
+
+      await new GuardrailService(repository).evaluate(writer, CLEAN);
+
+      expect(spy.modes).toHaveBeenCalledWith(writer, POLICY.organizationId);
+    });
+
+    it("stamps every verdict with the workspace's modes, and reports a warn-mode fail as warn", async () => {
+      const { repository, appended } = stubRepository({
+        ...PROTECTED,
+        modes: { allowed_paths: "warn" },
+      });
+
+      const outcome = await new GuardrailService(repository).evaluate(
+        writer,
+        request([{ path: "keys/signing.pem" }]),
+      );
+
+      expect(appended[0].modes).toEqual({ allowed_paths: "warn" });
+      expect(outcome.failures).toEqual(["allowed_paths"]);
+      expect(outcome.failed.map((failure) => [failure.check, failure.mode])).toEqual([
+        ["allowed_paths", "warn"],
+      ]);
+    });
+
+    it("reads a check the workspace never chose as block", async () => {
+      const { repository } = stubRepository({ ...PROTECTED, modes: { secrets: "warn" } });
+
+      const outcome = await new GuardrailService(repository).evaluate(
+        writer,
+        request([{ path: "keys/signing.pem" }]),
+      );
+
+      expect(outcome.failed[0]).toMatchObject({ check: "allowed_paths", mode: "block" });
+    });
+
+    it("stamps a re-judged allowed_paths verdict with the mode in force too", async () => {
+      const { repository, appended } = stubRepository({
+        protectedPaths: ["boot/**"],
+        ticket: { labels: [], planFiles: ["boot/rollback_flag.c"], effort: "m" },
+        modes: { allowed_paths: "warn" },
+      });
+
+      await new GuardrailService(repository).reevaluatePaths(writer, RUN);
+
+      expect(appended[0].modes).toEqual({ allowed_paths: "warn" });
+    });
   });
 
   it("exposes the secrets ruleset's disclosure for the card's tooltip", () => {

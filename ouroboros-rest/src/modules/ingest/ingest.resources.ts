@@ -35,6 +35,7 @@ import type {
   RunStageReturnKind,
   RunStageStatus,
 } from "../db/schema";
+import type { GuardrailFailure } from "./ingest.guardrails";
 
 /**
  * `POST /internal/queue/claim` — the queue item a worker now holds (#91).
@@ -227,17 +228,28 @@ export interface ChangeSetResource {
    * The checks this report **failed**, in the card's order — empty when everything passed or did
    * not apply.
    *
-   * AP.3 ([#305](https://github.com/NobuData/ouroboros/issues/305)). The evidence is not echoed:
-   * it lives in `guardrail_evaluations`, where it has been held to decision R5's shape, and a
-   * receipt is the wrong place for a second copy of it.
+   * AP.3 ([#305](https://github.com/NobuData/ouroboros/issues/305)). Every failure, whatever its
+   * mode; `guardrailVerdicts` carries each one's mode and evidence (AR.1, #315).
    */
   readonly guardrailFailures: GuardrailCheck[];
   /**
-   * Whether a failing check flags this run for a person — `guardrailFailures` is non-empty.
+   * The failures judged under the workspace's `warn` mode — a subset of `guardrailFailures`, in
+   * the same order (AR.1, [#315](https://github.com/NobuData/ouroboros/issues/315)). Shown on the
+   * Guardrails card in a warn tone; they do not stop the run.
+   */
+  readonly guardrailWarnings: GuardrailCheck[];
+  /**
+   * Every failure of `guardrailFailures` again, with the mode it was judged under and its
+   * evidence (AR.1, #315) — what the executor renders a halt's reason from. The evidence is the
+   * screened `guardrail_evaluations.evidence` (a location and a rule id, never a matched value).
+   */
+  readonly guardrailVerdicts: GuardrailFailure[];
+  /**
+   * Whether a failing check flags this run for a person — at least one failure was judged under
+   * the workspace's `block` mode (AR.1, #315). A `warn` failure alone leaves it `false`.
    *
-   * The `needs_human` interplay, stated rather than enforced: evaluation does not move
-   * `runs.status` or stop a stage. An executor may act on it today; AR.1
-   * ([#315](https://github.com/NobuData/ouroboros/issues/315)) is where a fail stops the stage.
+   * The executor halts the stage at that boundary and finishes the run `needs_human`; evaluation
+   * itself does not move `runs.status`.
    */
   readonly needsHuman: boolean;
 }

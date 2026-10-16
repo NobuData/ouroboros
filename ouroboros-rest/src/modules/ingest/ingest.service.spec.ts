@@ -4,12 +4,19 @@ import type { Database, QueueItem, Run, RunStage } from "../db/schema";
 import { DomainError } from "../errors/error.envelope";
 import { LIFECYCLE_ERRORS } from "../lifecycle/lifecycle.errors";
 import { ACTIVE_STATES, statesOf } from "../lifecycle/lifecycle.fixture";
-import type { GuardrailCheck } from "../db/schema";
+import type { GuardrailCheck, GuardrailMode } from "../db/schema";
 import type { GuardrailRequest, GuardrailScheduler } from "./ingest.guardrails";
 import { INGEST_ERRORS } from "./ingest.errors";
 import { requestDigest } from "./ingest.idempotency";
 import type { IngestRepository } from "./ingest.repository";
-import { IngestService, RECEIPT_KEY_CONSTRAINT, originOf, stageResource } from "./ingest.service";
+import {
+  IngestService,
+  RECEIPT_KEY_CONSTRAINT,
+  originOf,
+  stageResource,
+  withGuardrailModes,
+} from "./ingest.service";
+import type { ChangeSetResource } from "./ingest.resources";
 
 /**
  * The five steps, and the decisions between them.
@@ -261,9 +268,13 @@ function stubRepository() {
   return { repository: repository as unknown as IngestRepository, spy: repository, written };
 }
 
-/** A scheduler that counts, remembers what it was asked, and fails what it is told to. */
+/**
+ * A scheduler that counts, remembers what it was asked, and fails what it is told to — each
+ * failure under the mode a test names (AR.1, #315), `block` otherwise.
+ */
 function stubGuardrails(
   failures: GuardrailCheck[] = [],
+  modes: Partial<Record<GuardrailCheck, GuardrailMode>> = {},
 ): GuardrailScheduler & { calls: number; requests: GuardrailRequest[] } {
   return {
     calls: 0,
@@ -272,7 +283,15 @@ function stubGuardrails(
       this.calls += 1;
       this.requests.push(request);
 
-      return Promise.resolve({ checks: 4, failures });
+      return Promise.resolve({
+        checks: 4,
+        failures,
+        failed: failures.map((check) => ({
+          check,
+          mode: modes[check] ?? "block",
+          evidence: { detail: `${check} failed.` },
+        })),
+      });
     },
   };
 }
@@ -978,6 +997,8 @@ describe("reporting a change-set", () => {
       deletions: 12,
       guardrailChecks: 4,
       guardrailFailures: [],
+      guardrailWarnings: [],
+      guardrailVerdicts: [],
       needsHuman: false,
     });
     expect(spy.allocateChangeSetSeq).toHaveBeenCalled();
@@ -1012,7 +1033,7 @@ describe("reporting a change-set", () => {
   });
 
   it("flags the run for a person when a check fails, and names the check", async () => {
-    // The `needs_human` interplay: stated in the answer, not enforced — AR.1 stops the stage.
+    // A failure under the default `block` mode asks for a person; the executor halts the stage.
     const { repository } = stubRepository();
 
     const answer = await new IngestService(
@@ -1025,6 +1046,49 @@ describe("reporting a change-set", () => {
     } as never);
 
     expect(answer.guardrailFailures).toEqual(["secrets", "ci_config"]);
+    expect(answer.guardrailWarnings).toEqual([]);
+    expect(answer.guardrailVerdicts).toEqual([
+      { check: "secrets", mode: "block", evidence: { detail: "secrets failed." } },
+      { check: "ci_config", mode: "block", evidence: { detail: "ci_config failed." } },
+    ]);
+    expect(answer.needsHuman).toBe(true);
+  });
+
+  it("does not ask for a person when every failure is warn-mode, and reports them as warnings (#315)", async () => {
+    const { repository } = stubRepository();
+
+    const answer = await new IngestService(
+      repository,
+      stubGuardrails(["secrets"], { secrets: "warn" }),
+      ACTIVE_STATES,
+    ).reportFiles(RUN, {
+      idempotencyKey: "k",
+      files: [{ path: "a.c", status: "modified", additions: 3 }],
+    } as never);
+
+    expect(answer.guardrailFailures).toEqual(["secrets"]);
+    expect(answer.guardrailWarnings).toEqual(["secrets"]);
+    expect(answer.guardrailVerdicts).toEqual([
+      { check: "secrets", mode: "warn", evidence: { detail: "secrets failed." } },
+    ]);
+    expect(answer.needsHuman).toBe(false);
+  });
+
+  it("asks for a person when one block failure stands beside a warning (#315)", async () => {
+    const { repository } = stubRepository();
+
+    const answer = await new IngestService(
+      repository,
+      stubGuardrails(["allowed_paths", "secrets"], { secrets: "warn" }),
+      ACTIVE_STATES,
+    ).reportFiles(RUN, {
+      idempotencyKey: "k",
+      files: [{ path: "a.c", status: "modified", additions: 3 }],
+    } as never);
+
+    expect(answer.guardrailFailures).toEqual(["allowed_paths", "secrets"]);
+    expect(answer.guardrailWarnings).toEqual(["secrets"]);
+    expect(answer.guardrailVerdicts.map((failure) => failure.mode)).toEqual(["block", "warn"]);
     expect(answer.needsHuman).toBe(true);
   });
 
@@ -1042,6 +1106,8 @@ describe("reporting a change-set", () => {
     expect(guardrails.calls).toBe(0);
     expect(answer.guardrailChecks).toBe(0);
     expect(answer.guardrailFailures).toEqual([]);
+    expect(answer.guardrailWarnings).toEqual([]);
+    expect(answer.guardrailVerdicts).toEqual([]);
     expect(answer.needsHuman).toBe(false);
     expect(answer.changeSetSeq).toBe(2);
     expect(spy.allocateChangeSetSeq).not.toHaveBeenCalled();
@@ -1091,6 +1157,24 @@ describe("reporting a change-set", () => {
 
     expect(protectedPaths.verdictFailed).toHaveBeenCalledTimes(1);
     expect(protectedPaths.verdictFailed).toHaveBeenCalledWith(RUN);
+  });
+
+  it("files no allow-once card for a warn-mode allowed_paths failure — the run did not stop (#315)", async () => {
+    const { repository } = stubRepository();
+    const protectedPaths = { verdictFailed: jest.fn().mockResolvedValue(undefined) };
+
+    await new IngestService(
+      repository,
+      stubGuardrails(["allowed_paths"], { allowed_paths: "warn" }),
+      ACTIVE_STATES,
+      undefined,
+      protectedPaths as never,
+    ).reportFiles(RUN, {
+      idempotencyKey: "k",
+      files: [{ path: "boot/rollback_flag.c", status: "modified", additions: 1 }],
+    } as never);
+
+    expect(protectedPaths.verdictFailed).not.toHaveBeenCalled();
   });
 
   it("still replaces the stored change-set when the report is empty", async () => {
@@ -1429,5 +1513,41 @@ describe("originOf", () => {
   it("makes an engine's run live and a simulator's simulated — never seeded (DJ.1, #1313)", () => {
     expect(originOf(false)).toBe("live");
     expect(originOf(true)).toBe("simulated");
+  });
+});
+
+describe("withGuardrailModes (#315)", () => {
+  it("reads a receipt stored before modes as every failure blocking, with no warnings", () => {
+    const legacy = {
+      changeSetSeq: 2,
+      files: 1,
+      additions: 1,
+      deletions: 0,
+      guardrailChecks: 4,
+      guardrailFailures: ["allowed_paths"],
+      needsHuman: true,
+    } as unknown as ChangeSetResource;
+
+    expect(withGuardrailModes(legacy)).toEqual({
+      ...legacy,
+      guardrailWarnings: [],
+      guardrailVerdicts: [{ check: "allowed_paths", mode: "block" }],
+    });
+  });
+
+  it("returns a receipt that already carries the fields as it is", () => {
+    const current: ChangeSetResource = {
+      changeSetSeq: 2,
+      files: 1,
+      additions: 1,
+      deletions: 0,
+      guardrailChecks: 4,
+      guardrailFailures: ["secrets"],
+      guardrailWarnings: ["secrets"],
+      guardrailVerdicts: [{ check: "secrets", mode: "warn" }],
+      needsHuman: false,
+    };
+
+    expect(withGuardrailModes(current)).toEqual(current);
   });
 });

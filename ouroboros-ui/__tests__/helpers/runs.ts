@@ -135,17 +135,20 @@ export const SEEDED_SECRETS: RunConsole["guardrails"]["secrets"] = {
  * @param check Which check.
  * @param verdict Its answer.
  * @param evidence Where, and by which rule.
+ * @param mode The check's mode at evaluation (#315); omitted, the row carries none — `block`.
  * @returns The verdict.
  */
 export function guardrailCheck(
   check: RunConsole["guardrails"]["checks"][number]["check"],
   verdict: RunConsole["guardrails"]["checks"][number]["verdict"],
   evidence?: RunConsole["guardrails"]["checks"][number]["evidence"],
-): RunConsole["guardrails"]["checks"][number] {
+  mode?: "block" | "warn",
+): RunConsole["guardrails"]["checks"][number] & { mode?: "block" | "warn" } {
   return {
     check,
     verdict,
     ...(evidence === undefined ? {} : { evidence }),
+    ...(mode === undefined ? {} : { mode }),
     rulesetVersion: check === "secrets" ? "v3" : null,
     evaluatedAt: "2026-09-19T12:09:31.000Z",
     changeSetSeq: check === "review_required" ? null : 2,

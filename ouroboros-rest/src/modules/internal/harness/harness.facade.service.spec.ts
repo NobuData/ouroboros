@@ -11,6 +11,8 @@ import { OpenAiCompatibleAdapter } from "../../providers/adapters/openai-compati
 import type { InvokePlan, PlanRefusal, PlannedHop } from "../invoke/invoke.plan";
 import type { InvokeRepository } from "../invoke/invoke.repository";
 import type { InvokeService, PreparedInvocation } from "../invoke/invoke.service";
+import type { HarnessBudgetGuard } from "./harness.budget";
+import type { AttemptBudgetBreach } from "./harness.errors";
 import {
   HarnessFacadeService,
   SKIPPED_HOPS_HEADER,
@@ -106,6 +108,8 @@ function facade(options: {
   spent?: number;
   monthSpent?: number;
   caps?: Record<string, number>;
+  /** The stage attempt's token budget breach the guard reports, if any (#315). */
+  attemptBreach?: AttemptBudgetBreach;
 }) {
   const prepared: PreparedInvocation = {
     subject: { organizationId: "acme", kind: "run", id: BINDING.runId },
@@ -149,15 +153,22 @@ function facade(options: {
     }),
   };
 
+  const budgets = {
+    attemptBudgetBreach: jest.fn().mockResolvedValue(options.attemptBreach),
+    breached: jest.fn().mockResolvedValue(true),
+  };
+
   return {
     rows,
     touched,
     connections,
+    budgets,
     subject: new HarnessFacadeService(
       invocations as unknown as InvokeService,
       repository as unknown as InvokeRepository,
       connections as unknown as ConnectionOpener,
       pricing as unknown as PricingService,
+      budgets as unknown as HarnessBudgetGuard,
     ),
   };
 }
@@ -427,7 +438,7 @@ describe("refusals", () => {
 
   it("stops the next call once the run's cap is spent, naming the cap", async () => {
     const spy = recordResponses(streamedResponse(ANTHROPIC_INVOCATION_STREAM));
-    const { subject } = facade({
+    const { subject, budgets } = facade({
       planned: plan([PRIMARY], { source: "route", limitCents: 250 }),
       spent: 250,
     });
@@ -444,11 +455,94 @@ describe("refusals", () => {
       },
       error: { message: expect.stringContaining("$2.50") as string },
     });
+    // AR.1 (#315): the run is stopped too — a system abort and the audit row, through the guard.
+    expect(budgets.breached).toHaveBeenCalledWith(BINDING, {
+      limit: "cost_cap",
+      spent: 250,
+      cap: 250,
+    });
+  });
+
+  it("lets a call under the cap through without filing anything", async () => {
+    recordResponses(streamedResponse(ANTHROPIC_INVOCATION_STREAM));
+    const { subject, budgets } = facade({
+      planned: plan([PRIMARY], { source: "spend_guard", limitCents: 250 }),
+      spent: 249,
+    });
+    const sink = recorder();
+
+    await subject.relay(call(), sink);
+
+    expect(sink.status).toBe(200);
+    expect(budgets.attemptBudgetBreach).toHaveBeenCalledWith(BINDING);
+    expect(budgets.breached).not.toHaveBeenCalled();
+  });
+
+  it("refuses the call once the stage attempt's token budget is spent, and stops the run (#315)", async () => {
+    const spy = recordResponses(streamedResponse(ANTHROPIC_INVOCATION_STREAM));
+    const attemptBreach: AttemptBudgetBreach = {
+      limitTokens: 400_000,
+      spentTokens: 400_512,
+      stage: BINDING.stage,
+      attempt: BINDING.attempt,
+    };
+    const { subject, budgets, rows } = facade({ planned: plan([PRIMARY]), attemptBreach });
+    const sink = recorder();
+
+    await subject.relay(call(), sink);
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(rows).toEqual([]);
+    expect(sink.status).toBe(400);
+    expect(sink.headers["content-type"]).toBe("application/json");
+    expect(sink.json()).toEqual({
+      type: "error",
+      error: {
+        type: "invalid_request_error",
+        message: expect.stringContaining("400000-token budget") as string,
+      },
+      ouroboros: { code: "token_budget_exceeded", attemptBudget: attemptBreach },
+    });
+    expect(budgets.breached).toHaveBeenCalledWith(BINDING, {
+      limit: "token_budget",
+      spent: 400_512,
+      cap: 400_000,
+    });
+  });
+
+  it("checks the cost cap before the token budget, and files one breach for the call", async () => {
+    recordResponses(streamedResponse(ANTHROPIC_INVOCATION_STREAM));
+    const { subject, budgets } = facade({
+      planned: plan([PRIMARY], { source: "route", limitCents: 250 }),
+      spent: 300,
+      attemptBreach: { limitTokens: 1, spentTokens: 2, stage: "implement", attempt: 2 },
+    });
+    const sink = recorder();
+
+    await subject.relay(call(), sink);
+
+    expect(sink.json()).toMatchObject({ ouroboros: { code: "cost_cap_exceeded" } });
+    expect(budgets.attemptBudgetBreach).not.toHaveBeenCalled();
+    expect(budgets.breached).toHaveBeenCalledTimes(1);
+  });
+
+  it("neither budgets nor aborts a count_tokens call", async () => {
+    recordResponses(streamedResponse(ANTHROPIC_INVOCATION_STREAM));
+    const { subject, budgets } = facade({
+      planned: plan([PRIMARY], { source: "route", limitCents: 250 }),
+      spent: 300,
+      attemptBreach: { limitTokens: 1, spentTokens: 2, stage: "implement", attempt: 2 },
+    });
+
+    await subject.relay(call({ path: "/v1/messages/count_tokens" }), recorder());
+
+    expect(budgets.attemptBudgetBreach).not.toHaveBeenCalled();
+    expect(budgets.breached).not.toHaveBeenCalled();
   });
 
   it("skips a hop whose provider is at its monthly cap, and names that cap when none is left", async () => {
     const spy = recordResponses(streamedResponse(ANTHROPIC_INVOCATION_STREAM));
-    const { subject } = facade({
+    const { subject, budgets } = facade({
       planned: plan([PRIMARY]),
       caps: { [ANTHROPIC_A]: 60_000 },
       monthSpent: 60_000,
@@ -461,6 +555,8 @@ describe("refusals", () => {
     expect(sink.json()).toMatchObject({
       ouroboros: { code: "cost_cap_exceeded", cap: { source: "provider" } },
     });
+    // A provider's month is not the run's budget: nothing is aborted.
+    expect(budgets.breached).not.toHaveBeenCalled();
   });
 
   it("reports a refused resolution and a vote as their own rules", async () => {

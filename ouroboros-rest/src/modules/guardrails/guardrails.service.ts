@@ -12,13 +12,17 @@
  *                           ──▶ judge: allowed_paths · ci_config · secrets · review_required
  *                           ──▶ append four rows to guardrail_evaluations (never update)
  *                           ──▶ consume the grants a passing allowed_paths relied on
- *                           ──▶ answer: {checks: 4, failures: [...]}  → needsHuman on the report
+ *                           ──▶ answer: {checks: 4, failures, failed: [{check, mode, evidence}]}
+ *                                         → needsHuman on the report when a failure is `block`
  * ```
  *
- * **Evaluation, not enforcement.** A `fail` is recorded with its evidence and returned to the
- * executor as `needsHuman`; nothing here pauses a stage or moves `runs.status`. Blocking needs an
- * executor to block and lands with AR.1 ([#315](https://github.com/NobuData/ouroboros/issues/315)).
- * The card says what is true today and does not imply a gate that is not there.
+ * **Block or warn, per check, per workspace** (AR.1, [#315](https://github.com/NobuData/ouroboros/issues/315),
+ * decision 1). Each verdict is stamped with the workspace's mode for its check at the moment it
+ * is judged (`guardrail_modes`, V148; no row is `block`). A `block` fail sets `needsHuman` on the
+ * change-set answer, and the executor halts the stage at that boundary and hands the run to a
+ * person; a `warn` fail is recorded, reported in `guardrailWarnings` and drawn in a warn tone,
+ * and stops nothing. This service still never moves `runs.status` itself — the stop is the
+ * executor's, at a boundary it controls, finished through `/finish`.
  *
  * **Allow once means once** (#459, decision **X3**). A protected path a live grant covers does not
  * fail `allowed_paths`; when the verdict passes with a grant's help, the grant is consumed against
@@ -51,7 +55,9 @@
 import { Injectable, Logger, Optional } from "@nestjs/common";
 import { performance } from "node:perf_hooks";
 
+import type { GuardrailCheck, GuardrailMode } from "../db/schema";
 import type {
+  GuardrailFailure,
   GuardrailOutcome,
   GuardrailRequest,
   GuardrailScheduler,
@@ -124,7 +130,7 @@ export class GuardrailService implements GuardrailScheduler {
     const run = await this.repository.runPolicy(writer, request.runId);
 
     if (run === undefined) {
-      return { checks: 0, failures: [] };
+      return { checks: 0, failures: [], failed: [] };
     }
 
     const input = await this.readInput(
@@ -134,6 +140,9 @@ export class GuardrailService implements GuardrailScheduler {
       request.changeSetSeq,
       request.changeSet,
     );
+    // Read in the report's transaction, so a mode changed after this point applies to the next
+    // report and never to half of this one.
+    const modes = await this.repository.modes(writer, run.organizationId);
 
     // Timed from here: the pure part, the ≤ 50 ms budget, as before the reads were shared.
     const started = performance.now();
@@ -145,13 +154,14 @@ export class GuardrailService implements GuardrailScheduler {
       request.runId,
       run.workflowVersionPin,
       verdicts,
+      modes,
     );
     await this.consumeGrants(writer, input, verdicts, written);
 
-    const failures = verdicts.filter((row) => row.verdict === "fail").map((row) => row.check);
+    const failed = failuresOf(verdicts, modes);
     this.logger.debug(summary(request, verdicts, elapsed));
 
-    return { checks: verdicts.length, failures };
+    return { checks: verdicts.length, failures: failed.map((row) => row.check), failed };
   }
 
   /**
@@ -184,9 +194,14 @@ export class GuardrailService implements GuardrailScheduler {
       recorded.paths.map((path) => ({ path })),
     );
     const verdict = checkAllowedPaths(input);
-    const written = await this.repository.appendVerdicts(writer, runId, run.workflowVersionPin, [
-      verdict,
-    ]);
+    const modes = await this.repository.modes(writer, run.organizationId);
+    const written = await this.repository.appendVerdicts(
+      writer,
+      runId,
+      run.workflowVersionPin,
+      [verdict],
+      modes,
+    );
     const evaluationId = written.get("allowed_paths");
 
     if (evaluationId === undefined) {
@@ -331,6 +346,27 @@ export class GuardrailService implements GuardrailScheduler {
 
     return spent;
   }
+}
+
+/**
+ * The failed verdicts, each with the mode it was judged under and its evidence — the change-set
+ * answer's `guardrailVerdicts` (AR.1, #315).
+ *
+ * @param verdicts - What the checks decided, in the card's order.
+ * @param modes - The workspace's stored modes; a check it does not name is `block`.
+ * @returns One entry per `fail`, in the same order; evidence only when the verdict carried some.
+ */
+export function failuresOf(
+  verdicts: readonly GuardrailVerdictRow[],
+  modes: Readonly<Partial<Record<GuardrailCheck, GuardrailMode>>>,
+): GuardrailFailure[] {
+  return verdicts
+    .filter((row) => row.verdict === "fail")
+    .map((row) => {
+      const failure: GuardrailFailure = { check: row.check, mode: modes[row.check] ?? "block" };
+
+      return row.evidence === null ? failure : { ...failure, evidence: row.evidence };
+    });
 }
 
 /**

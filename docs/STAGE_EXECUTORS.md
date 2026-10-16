@@ -87,7 +87,7 @@ No tool runs after it.
 |---|---|
 | `tools` | It runs a tool loop. `False` for a single-shot executor (plan, summarise) |
 | `resume` | A paused attempt can be continued from its checkpoint, on a fresh instance |
-| `steer` | It accepts guidance mid-attempt. #315 defines the call; no executor claims it yet |
+| `steer` | It accepts guidance mid-attempt through `StageExecutor.steer(text)` (#315; the SPI's default refuses). The Claude Agent executor claims it; for an executor that does not, the interpreter appends a steer to the next attempt's prompt instead |
 | `provider_neutral` | Any provider the chain executor routes to can serve it. `False` for a harness that serves one vendor's models |
 
 ## The event vocabulary
@@ -251,8 +251,10 @@ It is the only core module ruff's `TID251` lets import an adapter.
 - `ThinkingBlock`s are model turns, as received. The harness's own `<synthetic>` messages, such
   as a narrated API error, are not.
 - The outcome comes from `terminal_reason`. `steer(text)` delivers guidance as the next user
-  turn, at the next tool boundary, and `capabilities().steer` is `True`. #315 wires REST's
-  control queue to `pause`, `abort` and `steer`.
+  turn, at the next tool boundary, and `capabilities().steer` is `True`. #315's interpreter
+  calls `pause`, `abort` and `steer` for REST's control queue.
+- A model turn carries the model the facade's answer names (`AssistantMessage.model`), never
+  the stage's alias; a message that names none yields no model turn (#315).
 
 Planned:
 

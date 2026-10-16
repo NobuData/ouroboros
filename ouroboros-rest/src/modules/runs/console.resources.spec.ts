@@ -453,6 +453,25 @@ describe("the guardrails card", () => {
     expect(card.checks[0]).not.toHaveProperty("evidence");
   });
 
+  it("carries each check's mode, so a warn-mode fail can be drawn apart from a block (#315)", () => {
+    const card = guardrailsOf(
+      [
+        guardrailRow({ check: "allowed_paths", verdict: "fail", mode: "block" }),
+        guardrailRow({ check: "secrets", verdict: "fail", mode: "warn" }),
+        guardrailRow({ check: "ci_config" }),
+      ],
+      "standard-fix",
+      14,
+      "acme",
+    );
+
+    expect(card.checks.map((row) => [row.check, row.verdict, row.mode])).toEqual([
+      ["allowed_paths", "fail", "block"],
+      ["ci_config", "pass", "block"],
+      ["secrets", "fail", "warn"],
+    ]);
+  });
+
   it("carries the secrets ruleset's disclosure for the tooltip, as AP.3 states it", () => {
     const card = guardrailsOf(mockupGuardrails(), "standard-fix", 14, "acme");
 

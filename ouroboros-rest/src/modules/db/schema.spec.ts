@@ -540,7 +540,8 @@ describe("TABLE_COLUMNS", () => {
     // and V132's `on_call_assignments`, which a *DM on-call* route reads. The two after are
     // BZ.4's (#538): V135's `decision_escalation_timers` and `decision_escalation_overrides`.
     // The hundred-and-eighty-fourth is DH.2's (#1303): V140's `harness_credentials`.
-    expect(TABLE_NAMES).toHaveLength(184);
+    // The hundred-and-eighty-fifth is AR.1's (#315): V148's `guardrail_modes`.
+    expect(TABLE_NAMES).toHaveLength(185);
   });
 
   it("mirrors what V136 made of a command typed in the console", () => {

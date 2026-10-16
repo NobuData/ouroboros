@@ -28,7 +28,7 @@
 import { Inject } from "@nestjs/common";
 import type { Kysely, Transaction } from "kysely";
 
-import type { Database, GuardrailCheck } from "../db/schema";
+import type { Database, GuardrailCheck, GuardrailEvidence, GuardrailMode } from "../db/schema";
 
 /**
  * The connection a scheduler writes through.
@@ -86,18 +86,43 @@ export interface GuardrailFile {
   readonly hunks?: readonly GuardrailHunk[];
 }
 
+/**
+ * One failed check, as the change-set answer reports it in `guardrailVerdicts` (AR.1,
+ * [#315](https://github.com/NobuData/ouroboros/issues/315)).
+ */
+export interface GuardrailFailure {
+  /** Which check failed. */
+  readonly check: GuardrailCheck;
+  /**
+   * The mode the verdict was made under — the workspace's choice for this check when it was
+   * judged (`guardrail_evaluations.mode`). `block` stops the run; `warn` is only shown.
+   */
+  readonly mode: GuardrailMode;
+  /**
+   * Where, and by which rule — the evidence exactly as `guardrail_evaluations.evidence` holds it
+   * (already screened by `safeEvidence`: a location and a rule id, never a matched value).
+   * Absent when the verdict carried none. What the executor renders a halt's reason from.
+   */
+  readonly evidence?: GuardrailEvidence;
+}
+
 /** What judging a change-set produced, as the ingestion service reports it. */
 export interface GuardrailOutcome {
   /** How many checks were written — returned to the caller as `guardrailChecks`. */
   readonly checks: number;
   /**
-   * The checks that failed, in the card's order.
+   * The checks that failed, in the card's order — every failure, whatever its mode.
    *
-   * Non-empty is the `needs_human` flag: the change-set answer carries it so the executor (and,
-   * with AR.1, the enforcement that stops a stage) can act on it. Evaluation does not move
-   * `runs.status` itself — see `guardrails.checks.ts`.
+   * Evaluation does not move `runs.status` itself — see `guardrails.checks.ts`; the executor
+   * halts the stage when the answer's `needsHuman` (a `block` failure) says so (AR.1).
    */
   readonly failures: readonly GuardrailCheck[];
+  /**
+   * The same failures with the mode each was judged under and its evidence, in the same order
+   * (AR.1, #315). Any `block` among them is the `needsHuman` flag; a `warn` is reported in
+   * `guardrailWarnings` and stops nothing.
+   */
+  readonly failed: readonly GuardrailFailure[];
 }
 
 /**

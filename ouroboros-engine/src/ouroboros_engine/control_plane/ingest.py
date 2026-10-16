@@ -576,6 +576,42 @@ class ReportFilesRequest(_Request):
     epoch: int | None = Field(default=None, ge=1)
 
 
+#: A guardrail check's mode in its workspace (#315): only a ``block`` fail needs a person.
+GuardrailMode = Literal["block", "warn"]
+
+
+class GuardrailEvidence(_Response):
+    """What a failed check found, as far as the control plane echoes it.
+
+    Attributes:
+        path: The file it found it in.
+        line: The line, when known.
+        rule_id: The rule that matched (``rule_id`` or ``ruleId`` on the wire).
+        glob: The protected-path glob the file fell under.
+        detail: One sentence, when the check wrote one.
+    """
+
+    path: str | None = None
+    line: int | None = None
+    rule_id: str | None = None
+    glob: str | None = None
+    detail: str | None = None
+
+
+class GuardrailVerdict(_Response):
+    """One failed check of a change-set report, with the mode it was judged under.
+
+    Attributes:
+        check: ``allowed_paths``, ``ci_config``, ``secrets`` or ``review_required``.
+        mode: ``block`` stops the stage; ``warn`` is shown and does not.
+        evidence: What it found, when the control plane has it.
+    """
+
+    check: str
+    mode: GuardrailMode = "block"
+    evidence: GuardrailEvidence | None = None
+
+
 class ChangeSet(_Response):
     """The change-set as it now stands, and what judging it produced.
 
@@ -589,8 +625,11 @@ class ChangeSet(_Response):
         additions: Their additions.
         deletions: Their deletions.
         guardrail_checks: How many checks this report evaluated. ``0`` with no files.
-        guardrail_failures: The checks that failed, in the card's order.
-        needs_human: Whether a failure flags the run for a person.
+        guardrail_failures: The checks that failed — block and warn — in the card's order.
+        guardrail_warnings: The warn-mode subset of those names (#315). Empty from a
+            control plane that predates modes.
+        guardrail_verdicts: One per failed check, with its mode and evidence (#315).
+        needs_human: Whether a **block**-mode failure flags the run for a person.
     """
 
     change_set_seq: int
@@ -599,6 +638,8 @@ class ChangeSet(_Response):
     deletions: int
     guardrail_checks: int
     guardrail_failures: list[str] = Field(default_factory=list)
+    guardrail_warnings: list[str] = Field(default_factory=list)
+    guardrail_verdicts: list[GuardrailVerdict] = Field(default_factory=list)
     needs_human: bool
 
 

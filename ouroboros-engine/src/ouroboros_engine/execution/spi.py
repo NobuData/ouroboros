@@ -66,7 +66,7 @@ class ExecutorCapabilities(_Model):
     Attributes:
         tools: It runs a tool loop. ``False`` for a single-shot executor (plan, summarise).
         resume: A paused attempt can be continued from its checkpoint.
-        steer: It accepts guidance mid-attempt (#315 defines the call).
+        steer: It accepts guidance mid-attempt through :meth:`StageExecutor.steer` (#315).
         provider_neutral: Any provider the chain executor routes to can serve it.
             ``False`` for a harness that serves one vendor's models.
     """
@@ -194,6 +194,22 @@ class StageExecutor(ABC):
             ExecutorCapabilityError: When the executor cannot resume, or the checkpoint
                 was written by another kind.
         """
+
+    def steer(self, text: str) -> None:
+        """Hand the running attempt a person's guidance, without pausing it (#315).
+
+        Not abstract: only an executor whose :attr:`ExecutorCapabilities.steer` is set
+        overrides it. The interpreter never calls it on one that is not; a steer for such an
+        executor lands in the next attempt's prompt instead.
+
+        Args:
+            text: The guidance, non-blank.
+
+        Raises:
+            ExecutorCapabilityError: Always, unless overridden.
+        """
+        del text
+        raise ExecutorCapabilityError(f"a {self.kind} executor here does not steer")
 
     @property
     @abstractmethod

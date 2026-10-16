@@ -750,6 +750,23 @@ export const QUEUE_ITEM_CONFIRMED_EVENT = "queue_item.confirmed";
 export const WORKSPACE_LIVE_CEILING_CHANGED_EVENT = "workspace.live_ceiling_changed";
 
 /**
+ * An owner or admin changed whether a failed guardrail check stops a run or is only shown (AR.1,
+ * #315) — `PATCH /api/v1/settings/guardrails`. Subject `workspace`. The detail is flat: `changed`,
+ * the checks whose mode moved, comma-joined in the card's order; `before` and `after`, all four
+ * modes as `check=mode` pairs, comma-joined in the same order. Not written when nothing moved.
+ */
+export const WORKSPACE_GUARDRAIL_MODES_CHANGED_EVENT = "workspace.guardrail_modes_changed";
+
+/**
+ * A live run reached a budget it may not pass, so the harness facade refused its model call and
+ * filed a system abort (AR.1, #315). Subject `run`; no actor — the facade decided. The detail is
+ * flat: `limit` (`cost_cap` or `token_budget`), `spent` and `cap` (cents for a cost cap, tokens
+ * for a token budget), and the `stage` and `attempt` the refused call was made for. Written once
+ * per abort: further refused calls while that abort is pending write nothing.
+ */
+export const RUN_BUDGET_EXCEEDED_EVENT = "run.budget_exceeded";
+
+/**
  * An owner or admin queued the Slack connection's dead-lettered messages again (CA.5, #545).
  * Subject `chat_connection`. The detail is flat: `messages`, how many were queued, and `routes`,
  * the kinds of the routes they belong to, comma-joined. Not written when there was nothing to retry.
@@ -868,6 +885,8 @@ export const AUDIT_ACTIONS = [
   TICKET_SOURCE_REMOVED_EVENT,
   QUEUE_ITEM_CONFIRMED_EVENT,
   WORKSPACE_LIVE_CEILING_CHANGED_EVENT,
+  WORKSPACE_GUARDRAIL_MODES_CHANGED_EVENT,
+  RUN_BUDGET_EXCEEDED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

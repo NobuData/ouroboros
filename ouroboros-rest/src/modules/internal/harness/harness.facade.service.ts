@@ -9,6 +9,8 @@
  *   plan              #235's prepare: the stage's route, or the alias alone
  *   Anthropic hops    every other hop skipped, with why; none left        → no_anthropic_hop
  *   cap               the run's, before every call (never mid-stream)     → cost_cap_exceeded
+ *   token budget      the stage attempt's, before every call (#315)        → token_budget_exceeded
+ *   either breached   system abort through the control queue + run.budget_exceeded, once per run
  *   for each hop      provider month cap → relay → 5xx/429/auth/G8 before the first byte: next
  *   success           relayed byte for byte, ping included; usage row per call
  *   every hop failed  the last upstream error body, unmodified
@@ -23,6 +25,14 @@
  * corrupt turn for the harness; refusing the *next* call is what lets the stage halt with the
  * cap named. Routing's per-hop params are not merged into the harness's request: its request is
  * the harness's, an open list of fields.
+ *
+ * **A breach stops the run, not only the call** (AR.1, [#315](https://github.com/NobuData/ouroboros/issues/315),
+ * decision 2). The run's cost cap and the stage attempt's `token_budget` (the pinned node's
+ * `limits.token_budget` against the attempt's input + output tokens) are both checked before each
+ * call; on either, the facade refuses the call *and* files a system abort through the control
+ * queue and writes `run.budget_exceeded` — once per run, see `harness.budget.ts`. A provider's
+ * monthly cap is not the run's budget: it skips the hop, and refuses only when no hop is left,
+ * without aborting anything.
  */
 
 import { Injectable } from "@nestjs/common";
@@ -47,6 +57,7 @@ import {
   usageRow,
   type PreparedInvocation,
 } from "../invoke/invoke.service";
+import { HarnessBudgetGuard } from "./harness.budget";
 import { facadeRefusal, type FacadeRefusal } from "./harness.errors";
 import type { CredentialBinding } from "./harness.repository";
 
@@ -82,6 +93,7 @@ export class HarnessFacadeService {
     private readonly repository: InvokeRepository,
     private readonly connections: ConnectionOpener,
     private readonly pricing: PricingService,
+    private readonly budgets: HarnessBudgetGuard,
   ) {}
 
   /**
@@ -155,7 +167,33 @@ export class HarnessFacadeService {
       if (spent >= plan.cap.limitCents) {
         const cap: InvokeCap = { ...plan.cap, spentCents: spent };
 
+        await this.budgets.breached(binding, {
+          limit: "cost_cap",
+          spent,
+          cap: plan.cap.limitCents,
+        });
+
         return facadeRefusal("cost_cap_exceeded", capSentence(cap), { cap });
+      }
+    }
+
+    if (!counting) {
+      const breach = await this.budgets.attemptBudgetBreach(binding);
+
+      if (breach !== undefined) {
+        await this.budgets.breached(binding, {
+          limit: "token_budget",
+          spent: breach.spentTokens,
+          cap: breach.limitTokens,
+        });
+
+        return facadeRefusal(
+          "token_budget_exceeded",
+          `Stage ${binding.stage} attempt ${String(binding.attempt)} has spent ` +
+            `${String(breach.spentTokens)} of its ${String(breach.limitTokens)}-token budget; ` +
+            "the run is being stopped and its branch kept.",
+          { attemptBudget: breach },
+        );
       }
     }
 

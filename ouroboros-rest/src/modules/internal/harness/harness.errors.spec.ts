@@ -36,4 +36,18 @@ describe("facade refusals", () => {
       skipped: ["hop 2"],
     });
   });
+
+  it("carries the stage attempt's token budget on token_budget_exceeded (#315)", () => {
+    const attemptBudget = {
+      limitTokens: 400_000,
+      spentTokens: 400_120,
+      stage: "implement",
+      attempt: 2,
+    };
+    const refusal = facadeRefusal("token_budget_exceeded", "Budget.", { attemptBudget });
+
+    expect(refusal.status).toBe(400);
+    expect(refusal.body.error.type).toBe("invalid_request_error");
+    expect(refusal.body.ouroboros).toEqual({ code: "token_budget_exceeded", attemptBudget });
+  });
 });
