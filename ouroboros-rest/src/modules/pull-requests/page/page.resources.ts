@@ -109,6 +109,13 @@ export interface PullRequestHeadResource {
    * person opened is live; one a run opened has the run's origin.
    */
   readonly origin: DataOrigin;
+  /**
+   * Whether the host holds the PR as a draft — it cannot merge until someone marks it ready
+   * (V152, DI.3 [#1311](https://github.com/NobuData/ouroboros/issues/1311)). A PR a loop opened
+   * is always one; the page's head shows a **Draft** tag and, with {@link run}, *Opened by Loop
+   * #N*.
+   */
+  readonly draft: boolean;
 }
 
 /** `pr_gate_aggregate` — `5 of 7 green`. */
@@ -376,6 +383,7 @@ export function headResource(row: PrHeadRow): PullRequestHeadResource {
     updatedAt: row.updatedAt.toISOString(),
     syncedAt: iso(row.syncedAt),
     origin: row.origin,
+    draft: row.draft,
   };
 }
 

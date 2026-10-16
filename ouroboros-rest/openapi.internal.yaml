@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.42.0"
+  version: "0.42.1"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -2402,6 +2402,107 @@ paths:
                 message: The request body is not valid.
                 details:
                   reason: ["reason must be longer than or equal to 1 characters"]
+
+  /internal/runs/{id}/pull-request:
+    post:
+      tags: [runs]
+      summary: Open the run's draft pull request
+      description: |-
+        The engine asks, at the `open_pr_automerge` terminal and after its last push, for the
+        run's pull request (DI.3, #1311). The request carries no PR field: the control plane
+        opens it through the ticket source that mirrors the run's issue — head = the run's
+        branch, base = the repository's default branch, a composed body (summary, plan criteria,
+        build, alias, cost, a dry-run line, `Refs #N` without a closing keyword) — and
+        **always as a draft**. A host answer that is not a draft is refused `draft_refused` and
+        nothing is linked; there is no fallback to a ready PR.
+
+        The PR is mirrored, linked to the run (`pull_requests.run_id`, `runs.pr_number`), its
+        plan criteria imported, and `run.pull_request_opened` written to the audit trail with
+        the person who started the run as its actor.
+
+        **Idempotent by the run**: a run that already has a linked PR answers it with
+        `created: false` whatever the key; a replayed key (operation `run.pull_request`) answers
+        what its first delivery was told.
+      operationId: openRunPullRequest
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunPullRequestRequest"
+            example:
+              idempotency_key: run-482-pull-request-1
+              epoch: 3
+      responses:
+        "200":
+          description: The run's draft pull request — opened now, or the one it already had.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunPullRequestOpened"
+              example:
+                pull_request_id: 5eed0009-0000-4000-8000-000000000512
+                number: 512
+                url: https://github.com/acme/helios-firmware/pull/512
+                draft: true
+                created: true
+        "401":
+          description: No `X-Ouro-Internal-Key`, or a value matching neither principal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: unauthenticated
+                message: Unauthorized.
+                details: {}
+        "404":
+          description: "`run_not_found`, `repository_not_found`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: run_not_found
+                message: No such run. A report is made against the run it is about.
+                details:
+                  run: 5eed0009-0000-4000-8000-000000000999
+        "409":
+          description: "`fenced`, `run_not_executable`, `idempotency_key_reused`, `not_pushed` (the branch has no recorded successful push), `pr_source_unavailable` (no ticket source can open a PR for the issue, or no default branch), `draft_refused` (the host would not hold it as a draft)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: draft_refused
+                message: "No pull request was opened: the host refused to open it as a draft (Draft pull requests are not supported in this repository)."
+                details:
+                  host_message: Draft pull requests are not supported in this repository
+        "422":
+          description: "`validation_failed` — a missing key or a field of the wrong shape."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: validation_failed
+                message: The request body is not valid.
+                details:
+                  idempotency_key: ["idempotency_key must be a string"]
+        "502":
+          description: "`pr_create_failed` — the host refused for another reason, by its class."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: pr_create_failed
+                message: "No pull request was opened: the host could not be asked to open it (rate_limit)."
+                details:
+                  error_class: rate_limit
+                  host_message: API rate limit exceeded
 
   /internal/research/tools/{slug}/{op}:
     post:
@@ -5160,6 +5261,46 @@ components:
         recorded:
           type: boolean
           const: true
+
+    RunPullRequestRequest:
+      type: object
+      title: RunPullRequestRequest
+      description: Open the run's draft pull request now (#1311). Nothing about the PR is a field.
+      additionalProperties: false
+      required: [idempotency_key]
+      properties:
+        idempotency_key:
+          type: string
+          minLength: 1
+          maxLength: 128
+        epoch:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+
+    RunPullRequestOpened:
+      type: object
+      title: RunPullRequestOpened
+      additionalProperties: false
+      required: [pull_request_id, number, url, draft, created]
+      properties:
+        pull_request_id:
+          type: string
+          format: uuid
+          description: The mirror row (`pull_requests.id`) — the PR page's `/prs/:id`.
+        number:
+          type: integer
+          minimum: 1
+        url:
+          type: string
+          format: uri
+        draft:
+          type: boolean
+          const: true
+          description: Always true — a loop's pull request is a draft.
+        created:
+          type: boolean
+          description: False when the run already had this PR (the idempotent path).
 
     RunStarted:
       type: object

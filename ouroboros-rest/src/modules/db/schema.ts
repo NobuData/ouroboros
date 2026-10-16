@@ -1651,6 +1651,13 @@ export interface PullRequestsTable {
    * `never`.
    */
   origin: ColumnType<DataOrigin, DataOrigin | undefined, never>;
+  /**
+   * Whether the host holds it as a draft (V152, DI.3
+   * [#1311](https://github.com/NobuData/ouroboros/issues/1311)) — sync-owned, written from the
+   * host's PR on every sync, and set true by the draft publisher when it links a loop-opened PR to
+   * its run. `default false`.
+   */
+  draft: Generated<boolean>;
 }
 
 /**
@@ -2336,9 +2343,10 @@ export type RunIngestOperation =
   | "run.commits"
   | "run.resources"
   | "run.finish"
-  | "run.push_result";
+  | "run.push_result"
+  | "run.pull_request";
 
-/** The eight, in the order the contract performs them — what a DTO validates and a test iterates. */
+/** The nine, in the order the contract performs them — what a DTO validates and a test iterates. */
 export const RUN_INGEST_OPERATIONS = [
   "run.create",
   "run.stage_transition",
@@ -2348,6 +2356,7 @@ export const RUN_INGEST_OPERATIONS = [
   "run.resources",
   "run.finish",
   "run.push_result",
+  "run.pull_request",
 ] as const satisfies readonly RunIngestOperation[];
 
 /**

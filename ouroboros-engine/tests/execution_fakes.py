@@ -25,6 +25,8 @@ from ouroboros_engine.control_plane.execution import (
     CheckpointSaved,
     FinishRunRequest,
     HeartbeatAccepted,
+    PullRequestOpened,
+    PullRequestRequest,
     PushGrant,
     PushRecorded,
     PushRequest,
@@ -126,6 +128,12 @@ class FakeControl:
         self.push_refspec: str | None = None
         #: The push grant's remote; the run's remote unless a test sets another.
         self.push_remote: str | None = None
+        #: The draft pull request REST opened for the run (DI.3) — ``None`` until one is.
+        self.pull_request_opened: PullRequestOpened | None = None
+        #: How many pull requests REST created on the host — a re-run must not add one.
+        self.pull_requests_created = 0
+        #: What the host's pull request says about being a draft; ``False`` breaks contract.
+        self.pull_request_draft = True
         self._lock = threading.Lock()
         self._keys = 0
 
@@ -347,6 +355,23 @@ class FakeControl:
         self._record("push_result", body)
         self._fence(body.epoch)
         return PushRecorded(recorded=True)
+
+    def pull_request(self, run: str, body: PullRequestRequest) -> PullRequestOpened:
+        """Open the run's draft pull request once, then answer it — or a scripted refusal."""
+        del run
+        self._record("pull_request", body)
+        self._fence(body.epoch)
+        if self.pull_request_opened is not None:
+            return self.pull_request_opened.model_copy(update={"created": False})
+        self.pull_requests_created += 1
+        self.pull_request_opened = PullRequestOpened(
+            pull_request_id="pr-1311",
+            number=42,
+            url="https://github.com/acme/helios-firmware/pull/42",
+            draft=self.pull_request_draft,
+            created=True,
+        )
+        return self.pull_request_opened
 
     def resources(self, run: str, body: ReportResourcesRequest) -> ResourcesReported:
         """Attribute spend."""

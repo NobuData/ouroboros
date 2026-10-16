@@ -352,6 +352,30 @@ update ouroboros.pull_requests pr
        is distinct from (snapshot.additions, snapshot.deletions, snapshot.changed_files)
    and ${ouro_dev_seed};
 
+-- A loop opens its pull request as a draft (DI.3, #1311), so PR #504 is one: the PR page's head
+-- wears the **Draft** chip beside `loop #1830`, the `user-guide.pr.loop-draft` screenshot. No
+-- screenshot or e2e baseline draws #504's head, so nothing else moves.
+--
+-- Guarded for older schemas, as the guardrail rows above: V152's `draft` column does not exist on
+-- the V140 schema the V141 rehearsal applies this seed to, so the update runs as dynamic SQL once
+-- it is there.
+do $seed$
+begin
+  if ${ouro_dev_seed} and exists (select 1
+                                     from information_schema.columns
+                                    where table_schema = 'ouroboros'
+                                      and table_name = 'pull_requests'
+                                      and column_name = 'draft') then
+    execute $q$
+      update ouroboros.pull_requests
+         set draft = true
+       where id = '5eed007c-0000-4000-8000-000000000504'
+         and not draft
+    $q$;
+  end if;
+end
+$seed$;
+
 -- ---------------------------------------------------------------------------
 -- Fourteen gates: thirteen required checks green, and the human approval the refactor label asks
 -- for, pending. The dashboard's `13/14` (mockup 02) is this set; the merge card's `13/13` is the

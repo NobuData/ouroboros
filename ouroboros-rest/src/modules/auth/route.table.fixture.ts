@@ -62,6 +62,7 @@ import {
   INTERNAL_RUN_FINISH_PATH,
   INTERNAL_RUN_PUSH_PATH,
   INTERNAL_RUN_PUSH_RESULT_PATH,
+  INTERNAL_RUN_PULL_REQUEST_PATH,
   INTERNAL_DRY_RUN_REPLAY_ESTIMATES_PATH,
   INTERNAL_REGRESSION_WATCH_RELEASES_PATH,
   INTERNAL_INVESTIGATION_BRIEF_PATH,
@@ -216,6 +217,7 @@ export const INTERNAL_SURFACE: readonly string[] = [
   `POST ${INTERNAL_RUN_FINISH_PATH}`,
   `POST ${INTERNAL_RUN_PUSH_PATH}`,
   `POST ${INTERNAL_RUN_PUSH_RESULT_PATH}`,
+  `POST ${INTERNAL_RUN_PULL_REQUEST_PATH}`,
   // The research tool surface (CL.1, #614, decision V2): every research tool operation the
   // engine's investigation loop makes. A stranger who could reach it could spend a workspace's
   // tool credentials and write into its citation ledger.

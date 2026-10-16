@@ -304,6 +304,11 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
     // DI.2 (#1310): a live run's branch push was granted, and how it ended.
     adds: ["audit.run.push_granted", "audit.run.branch_pushed"],
   },
+  {
+    version: 21,
+    // DI.3 (#1311): a live run's draft pull request was opened and linked to the run.
+    adds: ["audit.run.pull_request_opened"],
+  },
 ];
 
 /** The newest registry version — what a new endpoint subscribes under. */

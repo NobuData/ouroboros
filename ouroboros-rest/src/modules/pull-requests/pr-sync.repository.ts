@@ -178,6 +178,8 @@ export class PrMirrorRepository implements PrMirrorStore {
       changed_files: snapshot.changedFiles,
       merged_at: snapshot.mergedAt,
       merged_by: snapshot.mergedBy,
+      // V152 (#1311): the host's draft flag, on every sync — a PR marked ready clears it.
+      draft: snapshot.draft,
     };
 
     // Kept out of `content`: the stamp differs on every sync, and is not what *changed* asks.

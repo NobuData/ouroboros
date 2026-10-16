@@ -84,7 +84,8 @@ export interface PlanDraftRow {
 export interface NewCriterionRow {
   readonly claim: string;
   readonly source: PrCriterionSource;
-  readonly createdBy: string;
+  /** Who wrote it — null for a plan import no person asked for (a loop's draft PR, #1311). */
+  readonly createdBy: string | null;
 }
 
 /** What {@link CriteriaRepository.waive} wrote. */
