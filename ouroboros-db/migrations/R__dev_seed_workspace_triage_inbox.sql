@@ -200,26 +200,39 @@ on conflict do nothing;
 -- stop the run") under the block fail. The workspace's mode is seeded with it, so the setting and
 -- the verdict agree; V148 keeps a warn-mode fail out of intervention_events, so mockup 15's
 -- counts do not move.
-insert into ouroboros.guardrail_modes (organization_id, "check", mode)
-select org."id", 'secrets', 'warn'
-  from ouroboros.organization org
- where org."slug" = 'acme-robotics'
-   and ${ouro_dev_seed}
-on conflict do nothing;
-
-insert into ouroboros.guardrail_evaluations (id, run_id, "check", verdict, evidence,
-                                             ruleset_version, change_set_seq, evaluated_at, mode)
-select '5eed007b-0000-4000-8000-000479000002'::uuid,
-       run.id, 'secrets', 'fail',
-       jsonb_build_object('path', f.path, 'line', 9, 'rule_id', 'generic-password',
-                          'detail', '1 finding in 1 file.'),
-       'v3', 1, now() - interval '21 minutes 5 seconds', 'warn'
-  from ouroboros.organization org
-  join ouroboros.runs run      on run.organization_id = org."id" and run.issue_number = 479
-  join ouroboros.run_files f   on f.run_id = run.id and f.path = 'subsys/ota/checksum_verify.c'
- where org."slug" = 'acme-robotics'
-   and ${ouro_dev_seed}
-on conflict do nothing;
+--
+-- Guarded for older schemas: the V141 rehearsal in .github/workflows/db.yml applies these seeds to a
+-- database migrated to V140 only, where V148's `guardrail_modes` and `mode` column do not exist and
+-- plain SQL naming them would not parse. Both statements run as dynamic SQL once V148 is there; on
+-- an older schema the warn-mode fail is simply absent (seeded without a mode it would be a block
+-- fail, which this seed never meant).
+do $seed$
+begin
+  if ${ouro_dev_seed} and to_regclass('ouroboros.guardrail_modes') is not null then
+    execute $q$
+      insert into ouroboros.guardrail_modes (organization_id, "check", mode)
+      select org."id", 'secrets', 'warn'
+        from ouroboros.organization org
+       where org."slug" = 'acme-robotics'
+      on conflict do nothing
+    $q$;
+    execute $q$
+      insert into ouroboros.guardrail_evaluations (id, run_id, "check", verdict, evidence,
+                                                   ruleset_version, change_set_seq, evaluated_at, mode)
+      select '5eed007b-0000-4000-8000-000479000002'::uuid,
+             run.id, 'secrets', 'fail',
+             jsonb_build_object('path', f.path, 'line', 9, 'rule_id', 'generic-password',
+                                'detail', '1 finding in 1 file.'),
+             'v3', 1, now() - interval '21 minutes 5 seconds', 'warn'
+        from ouroboros.organization org
+        join ouroboros.runs run      on run.organization_id = org."id" and run.issue_number = 479
+        join ouroboros.run_files f   on f.run_id = run.id and f.path = 'subsys/ota/checksum_verify.c'
+       where org."slug" = 'acme-robotics'
+      on conflict do nothing
+    $q$;
+  end if;
+end
+$seed$;
 
 -- That stop is an intervention (V079 files it as `guardrail`, cause `other`), so the stored
 -- `human_interventions` rollup for its day and repository is brought to what
