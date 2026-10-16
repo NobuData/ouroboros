@@ -32,6 +32,10 @@ so the control plane answers the first delivery's result rather than recording i
 :meth:`~IngestClient.heartbeat`, :meth:`~IngestClient.checkpoint` and
 :meth:`~IngestClient.finish` — and :mod:`ouroboros_engine.execution.interpreter` is their
 caller: it starts a run for an epoch and carries that epoch on every report.
+
+**A harness attempt** (DH.3, #1308) adds three more — :meth:`IngestClient.mint_credential`,
+:meth:`~IngestClient.reconcile_credential` and :meth:`~IngestClient.revoke_credential` — over
+DH.2's credential routes (:mod:`ouroboros_engine.control_plane.harness`).
 """
 
 from __future__ import annotations
@@ -48,6 +52,12 @@ from ouroboros_engine.control_plane.execution import (
     RunFinished,
     RunStarted,
     StartRunRequest,
+)
+from ouroboros_engine.control_plane.harness import (
+    HarnessCredential,
+    HarnessCredentialRequest,
+    HarnessReconcileRequest,
+    HarnessReconciliation,
 )
 from ouroboros_engine.control_plane.ingest import (
     ChangeSet,
@@ -306,3 +316,47 @@ class IngestClient:
         """
         answer = self._transport.send(self._client.finish_run_request(run, body))
         return self._client.read_run_finished(answer.status, answer.body)
+
+    # --- harness credentials (DH.3, #1308) ---------------------------------------------------
+
+    def mint_credential(self, body: HarnessCredentialRequest) -> HarnessCredential:
+        """Mint the run-scoped credential a harness attempt calls the facade with.
+
+        Args:
+            body: The run, stage, alias and attempt.
+
+        Returns:
+            The credential; its token is shown this once.
+        """
+        answer = self._transport.send(
+            self._client.mint_harness_credential_request(body)
+        )
+        return self._client.read_harness_credential(answer.status, answer.body)
+
+    def reconcile_credential(
+        self, credential: str, body: HarnessReconcileRequest
+    ) -> HarnessReconciliation:
+        """Report a session's own per-model totals against the facade's usage rows.
+
+        Args:
+            credential: The credential's id.
+            body: The SDK's ``modelUsage``.
+
+        Returns:
+            The comparison.
+        """
+        answer = self._transport.send(
+            self._client.reconcile_harness_credential_request(credential, body)
+        )
+        return self._client.read_harness_reconciliation(answer.status, answer.body)
+
+    def revoke_credential(self, credential: str) -> None:
+        """Revoke a credential when its attempt ends.
+
+        Args:
+            credential: The credential's id.
+        """
+        answer = self._transport.send(
+            self._client.revoke_harness_credential_request(credential)
+        )
+        self._client.read_harness_revoked(answer.status, answer.body)

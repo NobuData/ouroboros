@@ -36,10 +36,20 @@ export interface RunRepositoryFacts {
 
 /** What the run's canonical ticket says, as the start answers it. */
 export interface RunTicketFacts {
+  /** `tickets.id`, or `null` when no source has mirrored the issue. */
+  readonly id: string | null;
   /** The ticket's body, or `null`. */
   readonly body: string | null;
   /** The ticket's labels; empty when it has none or no source mirrored it. */
   readonly labels: readonly string[];
+}
+
+/** One imported acceptance criterion of the run's issue, as the start answers it (#1308). */
+export interface RunCriterionFacts {
+  /** `pr_criteria.id`. */
+  readonly id: string;
+  /** `pr_criteria.claim` — the quoted claim, never blank. */
+  readonly text: string;
 }
 
 /** A queue row a `back_to_queue` finish writes. */
@@ -228,8 +238,8 @@ export class RunExecutionRepository {
    *
    * @param writer - The connection.
    * @param run - The run.
-   * @returns The body (`null` when the ticket has none) and the labels; `null` and `[]` when no
-   *   source has mirrored the issue.
+   * @returns The ticket's id, its body (`null` when the ticket has none) and its labels; `null`,
+   *   `null` and `[]` when no source has mirrored the issue.
    */
   async ticketOf(
     writer: Writer,
@@ -240,7 +250,7 @@ export class RunExecutionRepository {
       .innerJoin("ticket_sources", "ticket_sources.id", "tickets.source_id")
       .innerJoin("github_repos", (join) => join.on("github_repos.id", "=", run.github_repo_id))
       .innerJoin("github_orgs", "github_orgs.id", "github_repos.org_id")
-      .select(["tickets.body", "tickets.labels"])
+      .select(["tickets.id", "tickets.body", "tickets.labels"])
       .where("tickets.organization_id", "=", run.organization_id)
       .where("github_orgs.organization_id", "=", run.organization_id)
       .where("ticket_sources.kind", "=", "github")
@@ -256,7 +266,65 @@ export class RunExecutionRepository {
       .limit(1)
       .executeTakeFirst();
 
-    return { body: row?.body ?? null, labels: row?.labels ?? [] };
+    return { id: row?.id ?? null, body: row?.body ?? null, labels: row?.labels ?? [] };
+  }
+
+  /**
+   * The issue's imported acceptance criteria (#1308) — AX.3's `pr_criteria` rows (#359), the
+   * claims a person authored or imported from the ticket's plan, in the matrix's stored order:
+   * `sort_order`, then `created_at`, then id.
+   *
+   * Criteria hang off a pull request, so the statement first picks one: among the workspace's PRs
+   * that carry at least one criterion and were opened by this run or close the run's canonical
+   * ticket, the run's own PR wins, then the most recently created, then the lowest id. One PR's
+   * matrix, never a merge of several — two PRs of one ticket may word the same claim twice.
+   *
+   * @param writer - The connection.
+   * @param run - The run.
+   * @param ticketId - The run's canonical ticket ({@link RunTicketFacts.id}), or `null` when no
+   *   source mirrored the issue — then only the run's own PR is considered.
+   * @returns The criteria as `{ id, text }`, in order; `[]` when no such PR has any.
+   */
+  async acceptanceCriteriaOf(
+    writer: Writer,
+    run: Pick<Run, "id" | "organization_id">,
+    ticketId: string | null,
+  ): Promise<RunCriterionFacts[]> {
+    const rows = await writer
+      .selectFrom("pr_criteria")
+      .select(["pr_criteria.id as id", "pr_criteria.claim as text"])
+      .where("pr_criteria.pr_id", "=", (eb) =>
+        eb
+          .selectFrom("pull_requests")
+          .select("pull_requests.id")
+          .where("pull_requests.organization_id", "=", run.organization_id)
+          .where((pr) =>
+            ticketId === null
+              ? pr("pull_requests.run_id", "=", run.id)
+              : pr.or([
+                  pr("pull_requests.run_id", "=", run.id),
+                  pr("pull_requests.ticket_id", "=", ticketId),
+                ]),
+          )
+          .where((pr) =>
+            pr.exists(
+              pr
+                .selectFrom("pr_criteria as c")
+                .select(sql<number>`1`.as("one"))
+                .whereRef("c.pr_id", "=", "pull_requests.id"),
+            ),
+          )
+          .orderBy(sql`(${sql.ref("pull_requests.run_id")} is not distinct from ${run.id})`, "desc")
+          .orderBy("pull_requests.created_at", "desc")
+          .orderBy("pull_requests.id")
+          .limit(1),
+      )
+      .orderBy("pr_criteria.sort_order")
+      .orderBy("pr_criteria.created_at")
+      .orderBy("pr_criteria.id")
+      .execute();
+
+    return rows.map((row) => ({ id: row.id, text: row.text }));
   }
 
   /**

@@ -94,6 +94,7 @@ class FakeControl:
         self.labels = list(labels)
         self.effort = effort
         self.needs_human = False
+        self.acceptance_criteria: list[dict[str, str]] = []
         self.calls: list[tuple[str, Any]] = []
         self.refusals: dict[str, list[ControlPlaneError | None]] = {}
         self.claimed: QueueItemClaimed | None = None
@@ -176,6 +177,7 @@ class FakeControl:
                 "baseCommit": self.base_commit,
                 "checkpoint": self.state,
                 "status": "coding",
+                "acceptance_criteria": self.acceptance_criteria,
             }
         )
 

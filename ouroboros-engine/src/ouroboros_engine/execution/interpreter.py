@@ -28,8 +28,9 @@ answered (:mod:`~ouroboros_engine.execution.reporter`). A worker whose heartbeat
 refused ``fenced`` or ``run_not_executable`` aborts its executor and stops writing; the run
 is the next worker's.
 
-**Resume** (A.5): a run restarted mid-stage with a paused attempt's executor checkpoint,
-on an executor that can resume, is resumed once. Otherwise — or when the resume is refused —
+**Resume** (A.5): a run restarted mid-stage with a paused attempt's executor checkpoint —
+or a running attempt's live one (:meth:`~ouroboros_engine.execution.spi.StageExecutor.live_checkpoint`,
+stored after every tool result) — on an executor that can resume, is resumed once. Otherwise — or when the resume is refused —
 the interrupted attempt is marked ``failed`` and one fresh attempt (the next number) starts;
 a native single-shot stage is thereby simply re-run.
 
@@ -487,7 +488,11 @@ class Interpreter:
             stage_key=node.id,
             attempt=attempt,
             prompt=render_prompt(
-                config, started.issue_number, started.issue_title, started.issue_body
+                config,
+                started.issue_number,
+                started.issue_title,
+                started.issue_body,
+                started.acceptance_criteria,
             ),
             model=stage_model(config, started.model),
             policy=stage_policy(
@@ -549,8 +554,19 @@ class Interpreter:
             raise RunLostError(run.reporter.lost)
         stream = begin()
         run.executor = executor
+
+        async def store(checkpoint: Checkpoint) -> None:
+            """Persist the attempt's live checkpoint in the run checkpoint.
+
+            Args:
+                checkpoint: What the executor answered.
+            """
+            await run.reporter.flush()
+            run.state.executor_checkpoint = checkpoint.model_dump(mode="json")
+            await self._save(run)
+
         try:
-            return await drive(executor, stream, run.reporter)
+            return await drive(executor, stream, run.reporter, store)
         finally:
             run.executor = None
 

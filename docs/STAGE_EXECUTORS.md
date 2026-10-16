@@ -44,6 +44,7 @@ class StageExecutor(ABC):
     def resume(self, checkpoint: Checkpoint) -> AsyncIterator[StageEvent]
     @property
     def outcome(self) -> StageOutcome | None            # set when the stream ends
+    def live_checkpoint(self) -> Checkpoint | None      # optional; None unless overridden
 ```
 
 **One instance serves one stage attempt.** `run()` streams the attempt's events and ends
@@ -62,6 +63,12 @@ executor resolves) and the attempt's `ToolPolicy`. A `Checkpoint` carries the ki
 it, the context, the `seq` to continue from, and an opaque, JSON-serialisable `state`: a
 harness's session id, or a native loop's message history. Resuming under another kind raises
 `ExecutorCapabilityError`. So does resuming with an executor whose capabilities say it cannot.
+
+`live_checkpoint()` is the one method that is not abstract (DH.3). An executor whose position
+survives the process — a harness's session on disk — answers a checkpoint while the attempt
+still runs. #160's interpreter stores it in the run checkpoint the first time it is set and
+after every `tool_result`, so a worker killed mid-attempt is resumed once rather than re-run.
+The default answers `None`.
 
 ### Kinds and safe boundaries
 
@@ -210,11 +217,47 @@ policy, events for another stage, and a missing outcome.
 
 ## Registered executors
 
-None yet. The planned ones:
+| Executor | Kind | Module | Issue | Release |
+|---|---|---|---|---|
+| Claude Agent SDK | `harness` | `execution/executors/claude_agent.py` | DH.3 ([#1308](https://github.com/NobuData/ouroboros/issues/1308)) | MVP |
+
+`execution/compose.py` registers it whenever the CLI bundled in the pinned
+`claude-agent-sdk==0.2.167` wheel is present and executable and the engine has a REST URL.
+It is the only core module ruff's `TID251` lets import an adapter.
+
+**The Claude Agent executor**, against the must-list above:
+
+- `permission_mode="dontAsk"`, `setting_sources=[]`, `tools` = `Read`, `Glob`, `Grep`, `Edit`,
+  `Write`, with the shell, web, agent and other built-in tools also named in
+  `disallowed_tools`; no MCP servers and `strict_mcp_config`; `cwd` = the run tree;
+  `verbatim_prompts`; `max_turns` = `DEFAULT_MAX_TURNS` (40), because the DSL has no turns field.
+- A per-run `CLAUDE_CONFIG_DIR` at `<OURO_ENGINE_RUN_DIR>/<run>/claude-config`, beside the
+  tree on the runs volume. A resume whose session file is not there is refused before any
+  process starts, so the interpreter starts one fresh attempt.
+- The SDK merges `options.env` over the engine's environment, so the executor blanks every
+  inherited variable except `PATH`, locale, `TZ`, `TMPDIR` and CA-bundle paths, and sets only
+  the facade URL, the minted run-scoped credential, the alias (as every model the CLI could
+  pick), `CLAUDE_CONFIG_DIR`, `HOME` (the same directory),
+  `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and `CLAUDE_CODE_MAX_RETRIES=2`. The tests
+  read the CLI process's `/proc/<pid>/environ` and find no inherited canary.
+- No credential, no process: the attempt mints one first and fails without it. At the end
+  it reconciles the SDK's per-model totals with the facade and revokes the credential,
+  whatever the outcome. It emits no `usage` events; the facade meters every call.
+- The one `PreToolUse` hook (every tool, 30 s timeout) gives the policy 20 s. A deny, an
+  exception or a missed deadline answers `deny` with `continue: false`, and the executor
+  records the verdict. A call to an unoffered tool is recorded from the assistant message,
+  denied and halts. A request and its result are reported together, so the pair stays adjacent
+  when the model calls tools in parallel.
+- `ThinkingBlock`s are model turns, as received. The harness's own `<synthetic>` messages, such
+  as a narrated API error, are not.
+- The outcome comes from `terminal_reason`. `steer(text)` delivers guidance as the next user
+  turn, at the next tool boundary, and `capabilities().steer` is `True`. #315 wires REST's
+  control queue to `pause`, `abort` and `steer`.
+
+Planned:
 
 | Executor | Kind | Issue | Release |
 |---|---|---|---|
 | Single-shot (plan, summarise) over the chain executor | `native` | #160 with #235 | MVP |
-| Claude Agent SDK | `harness` | DH.3 ([#1308](https://github.com/NobuData/ouroboros/issues/1308)) | MVP |
 | Native tool loop, any provider | `native` | DH.5 ([#1309](https://github.com/NobuData/ouroboros/issues/1309)) | v2 |
 | CLI harnesses (`codex exec`, `cursor-agent -p`, …) | `harness` | DH.6 ([#1306](https://github.com/NobuData/ouroboros/issues/1306)) | v2 |

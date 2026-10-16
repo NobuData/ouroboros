@@ -91,7 +91,8 @@ export class RunExecutionService {
   /**
    * Start (or restart) executing a run: take a new epoch, and answer everything the interpreter
    * needs — the pinned document, the repository and how to fetch it, the protected paths, the
-   * ticket, and the base commit and checkpoint a restart resumes from.
+   * ticket and its imported acceptance criteria (#1308), and the base commit and checkpoint a
+   * restart resumes from.
    *
    * The epoch, the worker, the heartbeat and the branch are written in one transaction with the
    * reads that could refuse the start, so a refused start takes no epoch. The repository's token
@@ -138,6 +139,7 @@ export class RunExecutionService {
       }
 
       const ticket = await this.execution.ticketOf(trx, started);
+      const criteria = await this.execution.acceptanceCriteriaOf(trx, started, ticket.id);
       const estimate = await this.execution.latestEstimate(trx, started);
       const protectedPaths = await this.guardrails.effectiveProtectedPaths(trx, {
         organizationId: started.organization_id,
@@ -153,6 +155,7 @@ export class RunExecutionService {
         document: pinned.definition,
         repository,
         ticket,
+        criteria,
         effort: estimate?.effort ?? null,
         protectedPaths,
       };
@@ -170,6 +173,7 @@ export class RunExecutionService {
       issue_body: context.ticket.body,
       labels: [...context.ticket.labels],
       effort: context.effort,
+      acceptance_criteria: context.criteria.map(({ id, text }) => ({ id, text })),
       model: started.model,
       // Set by the start when the run had none, so never null here.
       branch_name: started.branch_name ?? "",

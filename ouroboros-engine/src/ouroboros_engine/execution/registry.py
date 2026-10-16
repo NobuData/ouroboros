@@ -3,11 +3,12 @@
 #160. The interpreter asks the registry for a fresh :class:`~ouroboros_engine.execution.spi.StageExecutor`
 per stage attempt, and the queue worker asks it which kinds to declare on a claim, so a
 process with nothing registered claims nothing and executes nothing (``no_executor``). The
-concrete executors are DH.3 (#1308) and DH.5 (#1309); until they land the registry is empty,
-and the tests register DH.1's fakes.
+composition root (:mod:`ouroboros_engine.execution.compose`) registers DH.3's (#1308) Claude
+Agent executor when its CLI is installed; DH.5 (#1309) is the next. The tests register DH.1's
+fakes.
 
-This module never imports :mod:`ouroboros_engine.execution.executors` (ruff ``TID251``): an
-adapter registers itself here with a factory, the core never reaches for it.
+This module never imports :mod:`ouroboros_engine.execution.executors` (ruff ``TID251``): the
+composition root registers an adapter here with a factory, the core never reaches for it.
 """
 
 from __future__ import annotations

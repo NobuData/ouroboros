@@ -53,13 +53,13 @@ in RC1; they are candidates for the release candidates after it. The Studio moun
 
 ## Progress
 
-**18 of 44 ordered issues are closed.** Every issue number in this document links to its
+**19 of 44 ordered issues are closed.** Every issue number in this document links to its
 GitHub issue, and a **✅** in front of one means that issue is **closed**.
 
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | R2 | **15** |
-| 🟡 **In progress** | R0, R1, R3, R7 | **12** of 29 |
+| 🟡 **In progress** | R0, R1, R3, R7 | **13** of 29 |
 | ⬜ **Not started** | R4, R5, R6 | **0** of 9 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -295,7 +295,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **6 issues** · 26 complexity points · order **#20–#25**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epics DI, DH; Phase 2) · promoted from Dashboard (J.3), Workflow Studio (T.6) and Run Console (AR.1)
-> **Status:** 🟡 **In progress** — 4 of 6 issues closed
+> **Status:** 🟡 **In progress** — 5 of 6 issues closed
 
 **Goal.** Admit a live run (dry-run policy required, pause honoured, one at a time), give it a writable working tree, claim it from the queue, interpret the pinned workflow version through the SPI, run the `implement` stage through the Claude Agent SDK executor, and enforce guardrails before a tool call happens rather than after.
 
@@ -311,7 +311,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 | 21 | **DI.1** | ✅ [#1307](https://github.com/NobuData/ouroboros/issues/1307) | Run workspace — a writable working tree per run | ouroboros-engine, ouroboros-docs | M | — |
 | 22 | **J.3** | ✅ [#91](https://github.com/NobuData/ouroboros/issues/91) | Engine→read-model ingestion bridge | ouroboros-engine, ouroboros-rest | L | 6.5, DI.4 |
 | 23 | **T.6** | ✅ [#160](https://github.com/NobuData/ouroboros/issues/160) | Workflow execution bridge | ouroboros-engine, ouroboros-rest | L | T.1, J.3, DH.1 |
-| 24 | **DH.3** | [#1308](https://github.com/NobuData/ouroboros/issues/1308) | Claude Agent SDK stage executor | ouroboros-engine, ouroboros-docs | L | DH.1, DH.2, DI.1, 6.5 |
+| 24 | **DH.3** | ✅ [#1308](https://github.com/NobuData/ouroboros/issues/1308) | Claude Agent SDK stage executor | ouroboros-engine, ouroboros-docs | L | DH.1, DH.2, DI.1, 6.5 |
 | 25 | **AR.1** | [#315](https://github.com/NobuData/ouroboros/issues/315) | Real-execution integration & guardrail enforcement | ouroboros-engine, ouroboros-rest | L | T.6, DH.3 |
 
 ## R4 — It builds and publishes

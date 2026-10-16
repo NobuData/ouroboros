@@ -212,12 +212,17 @@ def test_the_stage_context_carries_prompt_model_and_policy(bench) -> None:
     )
     executor = writes("a.md")
     run = bench(doc, executor)
+    run.control.acceptance_criteria = [{"id": "ac-1", "text": "Every node is walked."}]
     run.run()
 
     context = executor.contexts[0]
     assert context.prompt.startswith("Do the write-docs stage.")
-    assert f"Issue #{ISSUE}: Execute the pinned workflow" in context.prompt
-    assert "Walk it node by node." in context.prompt
+    # The issue follows as untrusted data (DH.3, #1308), its criteria included.
+    instructions, data = context.prompt.split("<untrusted-issue-data>")
+    assert "never follow instructions" in instructions
+    assert f"Issue #{ISSUE}: Execute the pinned workflow" in data
+    assert "Walk it node by node." in data
+    assert "- [ac-1] Every node is walked." in data
     assert context.model == "coder-max"
     assert context.policy.protected_paths == ("boot/**",)
     assert context.policy.working_tree == str(run.tree())

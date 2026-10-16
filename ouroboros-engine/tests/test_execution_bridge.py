@@ -210,8 +210,10 @@ def test_both_routes_need_the_internal_key(anonymous_client: TestClient) -> None
     assert anonymous_client.post(CLAIMS, json={"workspace": "acme"}).status_code == 401
 
 
-def test_execute_without_an_executor_is_refused_in_a_202(client: TestClient) -> None:
-    response = client.post(EXECUTE)
+def test_execute_without_an_executor_is_refused_in_a_202(
+    client_without_harness: TestClient,
+) -> None:
+    response = client_without_harness.post(EXECUTE)
 
     assert response.status_code == 202
     assert response.json() == {"accepted": False, "reason": "no_executor"}
@@ -237,8 +239,10 @@ def test_execute_with_an_executor_starts_in_the_background(client: TestClient) -
     assert app.state.execution.wait(RUN, 5)
 
 
-def test_claims_without_an_executor_claim_nothing(client: TestClient) -> None:
-    response = client.post(CLAIMS, json={"workspace": "acme"})
+def test_claims_without_an_executor_claim_nothing(
+    client_without_harness: TestClient,
+) -> None:
+    response = client_without_harness.post(CLAIMS, json={"workspace": "acme"})
 
     assert response.status_code == 200
     assert response.json() == {

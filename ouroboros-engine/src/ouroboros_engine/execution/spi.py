@@ -16,6 +16,8 @@ An executor instance serves **one** stage attempt:
   effect at the kind's safe boundary (:data:`SAFE_BOUNDARIES`) and never mid-tool.
 * :meth:`StageExecutor.resume` continues a paused attempt from its :class:`Checkpoint`, on
   a fresh instance, possibly after an engine restart.
+* :meth:`StageExecutor.live_checkpoint` (optional) answers a checkpoint while the attempt
+  still runs, so an engine killed mid-attempt can resume it too.
 
 Every tool request is put to :func:`~ouroboros_engine.execution.policy.evaluate` before the
 tool runs. That is not an implementation choice an adapter may make differently; the
@@ -197,3 +199,17 @@ class StageExecutor(ABC):
     @abstractmethod
     def outcome(self) -> StageOutcome | None:
         """How the attempt ended — ``None`` until its stream has."""
+
+    def live_checkpoint(self) -> Checkpoint | None:
+        """Where the running attempt could be resumed from, if the engine died now.
+
+        Not abstract: an executor whose position lives only in memory has nothing to offer
+        and keeps this default. A harness whose session is on disk (DH.3, #1308) answers
+        its session id as soon as the session reports one, and #160's interpreter stores
+        it in the run checkpoint after every ``tool_result`` and the first time it is set,
+        so a restarted engine resumes the attempt instead of re-running it (decision A.5).
+
+        Returns:
+            A checkpoint :meth:`resume` accepts, or ``None`` (the default).
+        """
+        return None

@@ -576,9 +576,13 @@ run supervisor calls `POST /v0/execution/claims` for a workspace with admissible
 `POST /v0/runs/{run_id}/execute` for a run whose heartbeat went stale; both answer at once and
 the run executes on a background thread (`execution/worker.py`).
 
-- **Executors** come from `execution/registry.py`'s `ExecutorRegistry` (`app.state.executors`).
-  It is empty until DH.3/DH.5 register one, so `/v0/status` reports `executors: []` and the
-  engine claims and executes nothing (`no_executor`).
+- **Executors** come from `execution/registry.py`'s `ExecutorRegistry` (`app.state.executors`),
+  filled by the composition root `execution/compose.py` — the one core module ruff's `TID251`
+  lets name an adapter. It registers the Claude Agent executor (`harness`, below) whenever the
+  CLI bundled in the `claude-agent-sdk` wheel is installed and executable and `OURO_REST_URL`
+  is set; there is no switch of its own (REST's `OURO_LIVE_EXECUTION_ENABLED` decides whether
+  live runs execute at all). Without the binary the registry is empty, `/v0/status` reports
+  `executors: []` and the engine claims and executes nothing (`no_executor`).
 - **The interpreter** (`execution/interpreter.py`) takes the run with
   `POST /internal/runs/{id}/start`, which increments its epoch and answers the pinned workflow
   document, the repository, the protected paths, the base commit and the last checkpoint. A new
@@ -597,6 +601,54 @@ the run executes on a background thread (`execution/worker.py`).
   or `run_not_executable` aborts the executor and stops all writes. The state shape in
   `execution/state.py` is checkpointed after every stage boundary. A run restarted mid-stage
   resumes the executor's checkpoint once when the executor can, else starts one fresh attempt.
+  An executor that offers a **live checkpoint** (`StageExecutor.live_checkpoint()`, DH.3) has it
+  stored in the run checkpoint the first time it is set and after every `tool_result`, so a
+  worker killed mid-attempt is resumed too, on a tree reset to its last checkpoint.
+- **The prompt.** A stage's `prompt_template` is the only instruction. The issue's number,
+  title, body and imported acceptance criteria (`acceptance_criteria` in the start answer)
+  follow as one `<untrusted-issue-data>` block the model is told never to take instructions
+  from (`execution/stage.py`). The Knowledge context manifest is not in it yet (a follow-up).
+
+## The Claude Agent executor
+
+DH.3 ([#1308](https://github.com/NobuData/ouroboros/issues/1308)) —
+`execution/executors/claude_agent*.py`, decided in `docs/DECISION_EXECUTION_ENGINE.md` § Axis 2
+and held to `docs/STAGE_EXECUTORS.md`. One instance runs one stage attempt inside the CLI bundled
+in the pinned `claude-agent-sdk==0.2.167` wheel (CLI 2.1.300), reaching models only through
+DH.2's facade:
+
+- **Credential first.** `POST /internal/harness/credentials {run, stage, alias, attempt}` mints
+  a run-scoped credential (the CLI's `ANTHROPIC_API_KEY`). No credential, no process. At the end
+  the SDK's per-model totals go to `POST …/{id}/reconcile` and the credential is revoked
+  (`DELETE …/{id}`) whatever the outcome. The executor emits **no `usage` events**: the facade
+  meters every call into `token_usage` itself.
+- **L5, configured.** `permission_mode="dontAsk"`, `setting_sources=[]`, `tools` = `Read`,
+  `Glob`, `Grep`, `Edit`, `Write` (shell, web, agent and similar tools also refused by name in
+  `disallowed_tools`), no MCP (`strict_mcp_config`), `cwd` = the run tree, `verbatim_prompts`
+  (an `@/path` in the issue cannot make the CLI read a file), and a per-run `CLAUDE_CONFIG_DIR`
+  at `OURO_ENGINE_RUN_DIR/<run>/claude-config` — on the runs volume, removed with the run.
+- **A scrubbed environment.** The SDK merges `options.env` over the engine's environment, so
+  every inherited variable is blanked except `PATH`, locale, `TZ`, `TMPDIR` and CA-bundle
+  paths; then the facade URL (`<OURO_REST_URL>/internal/harness/anthropic`), the credential,
+  the alias as every model the CLI could choose, `HOME` = the config directory,
+  `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and `CLAUDE_CODE_MAX_RETRIES=2` are set.
+- **One `PreToolUse` hook, every tool.** It asks `execution.policy.evaluate`; a `deny` halts
+  the session with `continue: false`. Any exception, or a policy slower than two thirds of
+  the 30 s hook timeout, is a `deny` too, recorded by the executor. A call to a tool never
+  offered (`Bash`) never reaches the hook; it is recorded from the assistant message, denied
+  and halts. Pause and abort take effect there; `steer(text)` delivers guidance as the next
+  user turn.
+- **The outcome** comes from the result's `terminal_reason` (never `subtype`): `completed`,
+  else `failed` with the reason (`max_turns`, `api_error`, …); `halted`/`paused`/`aborted`
+  when the hook stopped it. A pause checkpoints `{session_id}`; `resume()` continues that
+  session with a new credential, and refuses before starting when the session is not in the
+  config directory (the interpreter then starts one fresh attempt).
+- **Turns.** The workflow DSL has no turns field yet, so every session has
+  `DEFAULT_MAX_TURNS = 40`.
+
+The tests run the real bundled CLI against a scripted Messages-format stub on loopback
+(`tests/harness_stub_facade.py`); they skip where the binary is absent. A real-model run is the
+manual `docs/prototypes/stage-executor/harness_sandbox.sh`.
 
 ## The task queue
 
@@ -877,7 +929,7 @@ Development default port: **8000** (`PORT`).
 | `OURO_ENGINE_SHARED_SECRET` | Expected value of `X-Ouro-Internal-Key`; compared in constant time | **required** |
 | `OURO_LOG_LEVEL` | Log verbosity — `debug`, `info`, `warning` or `error` | `info` |
 | `OURO_RUN_SIMULATOR_SECRET` | The simulator's principal on REST's internal surface. Set, a development engine mounts `/dev` and the driver can run ([#307](https://github.com/NobuData/ouroboros/issues/307)). Must differ from `OURO_ENGINE_SHARED_SECRET` | unset |
-| `OURO_REST_URL` | Where the simulated-run driver reports runs to | `http://localhost:4000` |
+| `OURO_REST_URL` | Where `ouroboros-rest` is: the control plane every executing run reports to, and the base of the harness facade the Claude Agent executor calls (`/internal/harness/anthropic`) | `http://localhost:4000` |
 | `OURO_ENGINE_CLONE_DIR` | Where the code & git mining tool keeps its bare clones; a volume in a deployment ([#617](https://github.com/NobuData/ouroboros/issues/617)) | `<temp dir>/ouroboros-engine/clones` |
 | `OURO_ENGINE_CLONE_REFRESH_SECONDS` | How long a fetched clone is read without fetching again (0–86400) | `300` |
 | `OURO_ENGINE_CLONE_TIMEOUT_SECONDS` | The socket timeout of one fetch (1–3600) | `120` |
@@ -985,8 +1037,8 @@ and `tests/` included.
 | Base image | `python:3.12-slim`, every stage |
 | User | `engine`, created in the runtime stage; nothing runs as root |
 | Port | 8000 (`PORT`), bound on `0.0.0.0` — a container bound to loopback is unreachable |
-| Healthcheck | the venv's own `python` against `/healthz` every 30 s, after a 10 s grace |
-| Size | 55 MB to pull, 233 MB of layers unpacked — against a 250 MB budget |
+| Healthcheck | the venv's own `python` against `/healthz`, then the bundled Claude Agent CLI's `--version`, every 30 s, after a 10 s grace |
+| Size | 55 MB to pull, 233 MB of layers unpacked before DH.3; the Claude Agent CLI in the `claude-agent-sdk` wheel adds about 255 MB unpacked (not yet re-measured), over the old 250 MB budget and inside the ADR's 400 MB footprint trigger |
 | Runtime config | every `OURO_*` variable, supplied per environment — never baked into a layer |
 
 **What moves between stages is one directory:** `/app/.venv`, holding the locked
@@ -1019,7 +1071,10 @@ second HTTP client in an image whose only job is to answer through the first. It
 check holds no secret, and a Docker healthcheck is read by restart policies and by
 compose's `condition: service_healthy` — pointing it at anything under `/v0` would
 restart a healthy container over a dependency's problem. It expands `$PORT` at run time,
-so it follows the port the container was actually given.
+so it follows the port the container was actually given. It then runs the stage-executor
+runtime — the CLI bundled in the `claude-agent-sdk` wheel, found without importing the SDK —
+with `--version` and nothing but `PATH` (DH.3, #1308): an image whose runtime is missing or
+cannot execute is unhealthy rather than an engine that silently registers no executor.
 
 `OURO_ENGINE_SHARED_SECRET` is set **nowhere** in the image. It is the key every route
 but liveness is checked against; a default in a layer would be a published image carrying

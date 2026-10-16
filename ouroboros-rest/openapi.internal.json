@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest (internal)",
-    "version": "0.41.46",
+    "version": "0.41.47",
     "summary": "What ouroboros-engine may ask the control plane for — and what it is never given.",
     "description": "The **engine-facing** surface of\n[Ouroboros](https://github.com/NobuData/ouroboros)' communications layer. Two\noperations, one caller, and one idea holding both of them together — roadmap decision\n**P3**, [#224](https://github.com/NobuData/ouroboros/issues/224):\n\n> **A worker never holds a provider credential.**\n\nMockup 07's page subline promises something weaker — *\"keys never leave the control\nplane — workers only ever see short-lived tokens\"* — and this document is where the\nfirst clause is made literal and the second is **improved on**. There is no token. A\nfifteen-minute credential is still a credential: it genuinely reaches the worker,\nrevocation is bounded only by its TTL, and the audit surface widens to every process\nthat ever held one. It is also, for most LLM providers, fiction — almost none support\nderiving short-lived scoped keys, so such a token would in practice be a full API key\nwith a timer bolted on by us.\n\nSo the two operations divide the world:\n\n| Operation | For | Hands over |\n|---|---|---|\n| `POST /internal/llm/invoke` | every **cloud** provider | nothing — the control plane makes the call and streams back the answer |\n| `POST /internal/credentials/lease` | **local** providers only | an address, TTL-bounded and audited |\n\nThe exception is narrow and is not a compromise. An engine worker calling an Ollama\ndaemon on the same box gains nothing from proxying its traffic through this service,\nbecause there is no key on that path to protect — so it is told the address and nothing\nelse, and a lease naming a cloud provider is a `403` by policy, enforced here rather\nthan trusted to the caller.\n\n**What is built.** The lease and the proxy are both implemented. The proxy was\n*specified* by this document first (AD.3) so that AF.1\n([#234](https://github.com/NobuData/ouroboros/issues/234)) could choose an executor\n**against** it, and AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235))\nimplemented it — a custom chain executor inside this service, with no sidecar.\n\n**Authentication is the #51 pattern, in the other direction.** Every operation requires\n`X-Ouro-Internal-Key`, carrying `OURO_ENGINE_SHARED_SECRET` — the same header and the\nsame variable `ouroboros-rest` sends when *it* calls the engine\n([#51](https://github.com/NobuData/ouroboros/issues/51)). The comparison is constant\ntime, a missing header takes the same path as a wrong one, and the rejection is one\nconstant body: `401` with `code: \"unauthenticated\"` and nothing else. A session cookie\nis not accepted here, whoever it belongs to.\n\n**These paths are outside `/api`, and unversioned.** `/api` is the browser's boundary;\nthe only caller of these two is deployed alongside this service and upgraded with it, so\na version in the path would be one nobody could ever be on a different side of. That is\nthe same argument `/health/live` and `ouroboros-engine`'s `/healthz` are written under.\n\n**Every error has the shape every other error in this system has** — `{code, message,\ndetails}`, `docs/ARCHITECTURE.md` § 5.3 — so a worker parses one envelope whether it\nwas refused at the boundary or inside a handler.\n\n**The naming convention changes at this boundary, once.** This service writes\n`camelCase` in its contracts and `ouroboros-engine` writes `snake_case` in its own; each\nside translates in exactly one file — `src/modules/engine/engine.contract.ts` here,\n`ouroboros_engine/control_plane/contract.py` there — so no code on either side carries\nthe other's spelling.",
     "license": {
@@ -1854,7 +1854,7 @@
           "runs"
         ],
         "summary": "Start (or restart) executing a run under a new epoch",
-        "description": "The engine takes a run to execute it (#160, ADR decision A). In one transaction, under\nthe run's lock, the run's `exec_epoch` is raised by one, `exec_worker` and\n`exec_heartbeat_at` are set, and `branch_name` becomes `ouro/run-<id>-<issue>` when the\nrun has none. The answer is everything the interpreter needs: the epoch, the pinned\nworkflow document as stored, the repository and a `ref` to fetch it with (the\nworkspace's GitHub token opened for this call, never stored), the workspace's effective\nprotected-path globs, the ticket's body, labels and size, and — for a restart — the base\ncommit and checkpoint to resume from.\n\n**Every later write carries the epoch.** Heartbeats, checkpoints, the finish and the six\nAP.1 reports refuse a superseded one with `409 fenced`, so a second start fences the\nfirst worker out of the run even if it was only slow.\n\nOnly live runs execute (`409 run_simulated`), and only while `coding` or `building`\n(`409 run_not_executable`). A refused start takes no epoch.\n\nSpelled in snake_case: these four execution routes are the contract the engine's\ninterpreter was built against field for field.",
+        "description": "The engine takes a run to execute it (#160, ADR decision A). In one transaction, under\nthe run's lock, the run's `exec_epoch` is raised by one, `exec_worker` and\n`exec_heartbeat_at` are set, and `branch_name` becomes `ouro/run-<id>-<issue>` when the\nrun has none. The answer is everything the interpreter needs: the epoch, the pinned\nworkflow document as stored, the repository and a `ref` to fetch it with (the\nworkspace's GitHub token opened for this call, never stored), the workspace's effective\nprotected-path globs, the ticket's body, labels and size, its imported acceptance\ncriteria (#1308), and — for a restart — the base commit and checkpoint to resume from.\n\n**Every later write carries the epoch.** Heartbeats, checkpoints, the finish and the six\nAP.1 reports refuse a superseded one with `409 fenced`, so a second start fences the\nfirst worker out of the run even if it was only slow.\n\nOnly live runs execute (`409 run_simulated`), and only while `coding` or `building`\n(`409 run_not_executable`). A refused start takes no epoch.\n\nSpelled in snake_case: these four execution routes are the contract the engine's\ninterpreter was built against field for field.",
         "operationId": "startRunExecution",
         "parameters": [
           {
@@ -1894,6 +1894,16 @@
                     "telemetry"
                   ],
                   "effort": "m",
+                  "acceptance_criteria": [
+                    {
+                      "id": "5eed0057-0000-4000-8000-000000000001",
+                      "text": "Telemetry frames arrive in ISR order under load"
+                    },
+                    {
+                      "id": "5eed0057-0000-4000-8000-000000000002",
+                      "text": "No regression in the e-stop response envelope"
+                    }
+                  ],
                   "model": "coder-max",
                   "branch_name": "ouro/run-5eed0009-0000-4000-8000-000000000482-482",
                   "workflow": {
@@ -5491,6 +5501,29 @@
           }
         }
       },
+      "ExecutionCriterion": {
+        "type": "object",
+        "title": "ExecutionCriterion",
+        "description": "One imported acceptance criterion of a run's issue (#1308).",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "text"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The criterion's id."
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "The quoted claim, as stored."
+          }
+        }
+      },
       "RunStarted": {
         "type": "object",
         "title": "RunStarted",
@@ -5505,6 +5538,7 @@
           "issue_body",
           "labels",
           "effort",
+          "acceptance_criteria",
           "model",
           "branch_name",
           "workflow",
@@ -5561,6 +5595,13 @@
               null
             ],
             "description": "The issue's current size estimate — its latest estimate's effort, the chip the backlog\nand queue show — or null when it was never sized. Judged by `effort` decision predicates."
+          },
+          "acceptance_criteria": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExecutionCriterion"
+            },
+            "description": "The issue's imported acceptance criteria (#1308) — the AX.3 criteria (#359) of one pull\nrequest: the run's own when it carries any, else the most recently created one closing\nthe run's canonical ticket. In their stored order (the matrix's `sort_order`, then\ncreation, then id); empty when none. The interpreter hands them to the model as\nuntrusted data, never as instructions."
           },
           "model": {
             "type": "string",
