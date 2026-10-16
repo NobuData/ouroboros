@@ -12,7 +12,11 @@
  * (`node_modules/next/dist/docs/01-app/02-guides/server-actions.md` § Security). So none of
  * these trust the form for anything but *what the person wants changed*:
  *
- * - **Who** comes from the session cookie, read through `currentAccess()`.
+ * - **Who** comes from the session cookie, read through `currentAccess()`. A person whose
+ *   account is on hold (account approval) never gets further: the session read behind
+ *   `currentAccess()` (`app/api/auth-server.ts`'s `readSession`) sends them to the waiting page,
+ *   so every post-sign-in redirect here — and the login screen itself — lands a held person on
+ *   `/account-pending`.
  * - **Which workspace** comes from the form — and is immediately resolved against the
  *   memberships the service reported in this same request (`app/api/membership.ts`'s
  *   `activeMembership`). A reference naming a workspace this person does not belong to

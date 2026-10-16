@@ -68,8 +68,12 @@
       "additionalProperties": false,
       "required": ["id", "route", "ready", "clip", "caption", "alt"],
       "if": { "required": ["signedOut"] },
-      "then": { "not": { "anyOf": [{ "required": ["workspace"] }, { "required": ["as"] }] } },
-      "else": { "required": ["workspace"] },
+      "then": { "not": { "anyOf": [{ "required": ["workspace"] }, { "required": ["as"] }, { "required": ["held"] }] } },
+      "else": {
+        "if": { "required": ["held"] },
+        "then": { "required": ["as"], "not": { "required": ["workspace"] } },
+        "else": { "required": ["workspace"] }
+      },
       "properties": {
         "id": {
           "description": "`<section>.<slug>` — the section is where the image is used and the folder it is written to.",
@@ -88,6 +92,10 @@
         },
         "signedOut": {
           "description": "Capture the page signed out — the session's cookies are cleared first — for the sign-in page. Such an entry names no `workspace`.",
+          "const": true
+        },
+        "held": {
+          "description": "Capture the page signed in as `as`, a seeded person whose account is held for approval. Such a person has no workspace, so the entry names none and no workspace is entered.",
           "const": true
         },
         "as": {

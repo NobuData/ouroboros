@@ -3,7 +3,13 @@ import { join } from "node:path";
 
 import { HttpStatus } from "@nestjs/common";
 
-import { AUTH_ERRORS, unauthenticated } from "./auth.errors";
+import {
+  AUTH_ERRORS,
+  accountDenied,
+  accountPendingApproval,
+  appAdminRequired,
+  unauthenticated,
+} from "./auth.errors";
 
 /**
  * The codes the authentication surface answers with, and the two promises made about them.
@@ -72,5 +78,20 @@ describe("a request with no session", () => {
 describe("every error here", () => {
   it("carries empty details rather than absent ones", () => {
     expect(unauthenticated().envelope().details).toEqual({});
+  });
+});
+
+describe("account approval's refusals", () => {
+  it("are 403s carrying the envelope, with the waiting page's own words", () => {
+    expect(accountPendingApproval().getStatus()).toBe(HttpStatus.FORBIDDEN);
+    expect(accountPendingApproval().envelope()).toEqual({
+      code: "account_pending_approval",
+      message: "Your account is waiting for approval. An administrator has been asked.",
+      details: {},
+    });
+    expect(accountDenied().getStatus()).toBe(HttpStatus.FORBIDDEN);
+    expect(accountDenied().envelope().code).toBe("account_denied");
+    expect(appAdminRequired().getStatus()).toBe(HttpStatus.FORBIDDEN);
+    expect(appAdminRequired().envelope().code).toBe("app_admin_required");
   });
 });

@@ -52,6 +52,11 @@ export const TENANT_OPTIONAL = "ouroboros:tenancy:optional";
  *     whichever organization the session is acting in, and requiring one would make a
  *     reader's text size depend on having somewhere to be. Scoped to the person through
  *     `currentUser()`, exactly as the orgs listing is.
+ *   * **`GET /api/v1/account/status`** and **`/api/v1/admin/accounts`,
+ *     `/api/v1/admin/preapproved-emails`** — account approval. The first is a person's own
+ *     status, read by somebody who is held and therefore belongs nowhere; the others are the
+ *     application administrator's, about the *deployment's* accounts, gated by
+ *     `OURO_APP_ADMIN_EMAILS` rather than by any workspace role.
  *
  * There were two more, and both left with the routes that carried them.
  * `POST /api/v1/tenants` created a workspace for somebody who belonged to nothing yet;

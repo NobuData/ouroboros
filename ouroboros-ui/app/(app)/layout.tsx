@@ -1,3 +1,4 @@
+import { AppAdminNavPublisher } from "@/app/accounts/admin-nav";
 import { DashboardSummaryProvider } from "@/app/dashboard/summary-store";
 import { LifecycleProvider } from "@/app/lifecycle/lifecycle-store";
 import { AppShell } from "@/app/shell/app-shell";
@@ -31,6 +32,10 @@ import { InboxBadgePublisher } from "@/app/shell/inbox-badge";
  * its count through the nav registry. It renders nothing, so its place in the tree is about its
  * lifetime — every signed-in screen — and nothing else.
  *
+ * **So is the Accounts entry** (account approval): `AppAdminNavPublisher` asks once per
+ * signed-in shell whether the reader is an application administrator and, if so, grants the
+ * sidebar's capability-gated **Accounts** entry. It renders nothing either.
+ *
  * **The workspace's lifecycle is provided here too**
  * ([#496](https://github.com/NobuData/ouroboros/issues/496)): `LifecycleProvider` runs one poll
  * of where the workspace stands per signed-in shell. The shell's paused banner reads it on every
@@ -55,6 +60,7 @@ export default function AppLayout({
   return (
     <DashboardSummaryProvider>
       <InboxBadgePublisher />
+      <AppAdminNavPublisher />
       <LifecycleProvider>
         <AppShell>{children}</AppShell>
       </LifecycleProvider>

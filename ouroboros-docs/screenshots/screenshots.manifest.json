@@ -62,6 +62,19 @@
       "seedRef": "010fb287e1c459cdc1d703473959cc3bb408a31f"
     },
     {
+      "id": "user-guide.sign-in.pending",
+      "route": "/account-pending",
+      "held": true,
+      "as": "priya@contractor.dev",
+      "ready": ".accounts-pending__card",
+      "clip": ".accounts-pending__card",
+      "caption": "A new account waiting for an administrator to approve it.",
+      "alt": "A card headed ACCOUNT ON HOLD: Your account is waiting for approval. An administrator has been asked to approve it. Once they have, reload this page to continue. Signed in as priya@contractor.dev, with a Sign out button.",
+      "capturedAt": "2026-10-16T04:03:22.657Z",
+      "uiVersion": "0.169.7",
+      "seedRef": "62ed2c4e78c1b031bfe91529323eecc67d7ddfb5"
+    },
+    {
       "id": "user-guide.wizard.detection",
       "route": "/get-started?repo=acme-robotics/helios-firmware",
       "workspace": "acme-onboarding",
@@ -1318,6 +1331,18 @@
       "capturedAt": "2026-10-09T01:29:46.972Z",
       "uiVersion": "0.144.1",
       "seedRef": "5ad618f6e116449565b5c52cf181a9f18d4fa0b1"
+    },
+    {
+      "id": "administration.accounts",
+      "route": "/admin/accounts",
+      "workspace": "acme-robotics",
+      "ready": "section.accounts-card--pending .accounts-row",
+      "clip": "main.accounts-admin",
+      "caption": "The Accounts page: accounts waiting for approval, denied accounts and pre-approved emails.",
+      "alt": "The Accounts page, headed People who sign in without an invitation wait here until an administrator approves them. Waiting for approval lists Priya Raman, priya@contractor.dev, @priyaraman, signed in 3d ago, with Approve and Deny. Denied lists Sam, sam@unknown.example, denied 1w ago by ken@acme-robotics.dev, with Approve. Pre-approved emails, under the hint An email listed here is approved the moment it first signs in, lists lee@acme-robotics.dev with the note starts Monday, added by ken@acme-robotics.dev 1d ago, with Remove, above a form with Email, Note (optional) and Pre-approve.",
+      "capturedAt": "2026-10-16T04:03:18.404Z",
+      "uiVersion": "0.169.7",
+      "seedRef": "62ed2c4e78c1b031bfe91529323eecc67d7ddfb5"
     },
     {
       "id": "administration.settings",

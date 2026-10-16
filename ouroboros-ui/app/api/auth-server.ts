@@ -77,12 +77,13 @@ import {
   unwrap,
 } from "@/app/api/auth-client";
 import type { ApiClient } from "@/app/api/client";
+import { isAccountHeld } from "@/app/api/errors";
 import type { Session } from "@/app/api/identity";
 import { loginDestination } from "@/app/api/request";
 import { WORKSPACE_LIMIT, tenants } from "@/app/api/tenants";
 import { anonymousApi, forgetWorkspace } from "@/app/api/server";
 import { restUrl } from "@/app/env";
-import { loginPath } from "@/app/paths";
+import { ACCOUNT_PENDING_PATH, loginPath } from "@/app/paths";
 
 /**
  * The client this module calls through — the same library, configured for a server.
@@ -238,7 +239,8 @@ export async function authFetchOptions(
  *   behind a login form.
  * @throws {ApiError} What `ouroboros-rest` answered to the workspace listing.
  * @throws Next.js's redirect signal, when an auth route answered `401` — see
- *   {@link authRead}.
+ *   {@link authRead} — and to the waiting page when the listing answered that the account is
+ *   on hold (`403 account_pending_approval` or `account_denied`).
  */
 export async function readSession(
   fetchImpl: typeof fetch = fetch,
@@ -249,7 +251,18 @@ export async function readSession(
   const current = await authRead(authApi.getSession({ fetchOptions }), "/get-session");
   if (current === null) return null;
 
-  const workspaces = await tenants.list({ limit: WORKSPACE_LIMIT }, client);
+  const workspaces = await tenants.list({ limit: WORKSPACE_LIMIT }, client).catch(
+    (error: unknown) => {
+      // An account on hold (account approval) has a session and nothing it may read: the
+      // listing answers `403 account_pending_approval` / `account_denied`. Every gate in the
+      // product — `currentAccess`, `requireWorkspace`, the login screen and its actions —
+      // reads the session through here, so this one redirect is what sends a held person to
+      // the waiting page from all of them. That page reads its own status instead of the
+      // session, so it is never sent to itself.
+      if (isAccountHeld(error)) redirect(ACCOUNT_PENDING_PATH);
+      throw error;
+    },
+  );
 
   return {
     user: {

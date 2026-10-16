@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthError } from "@/app/api/auth-client";
 import { REQUEST_PATH_HEADER } from "@/app/api/request";
 import { resetRestUrlCache } from "@/app/env";
-import { LOGIN_PATH, RETURN_TO_PARAM } from "@/app/paths";
+import { ACCOUNT_PENDING_PATH, LOGIN_PATH, RETURN_TO_PARAM } from "@/app/paths";
 
 import { requestedUrl } from "../helpers/auth";
 
@@ -425,6 +425,27 @@ describe("readSession", () => {
     });
 
     await expect(readSession()).rejects.toMatchObject({ name: "ApiError", status: 500 });
+  });
+
+  it.each(["account_pending_approval", "account_denied"])(
+    "sends a held account to the waiting page when the listing answers 403 %s",
+    async (code) => {
+      // Every gate reads the session through here — the login screen after a sign-in
+      // included — so this is the one redirect that keeps a held person off every page.
+      serviceAnswering({ orgs: { body: { code, message: "On hold.", details: {} }, status: 403 } });
+
+      await expect(readSession()).rejects.toThrow(RedirectSignal);
+      expect(redirectedTo).toBe(ACCOUNT_PENDING_PATH);
+    },
+  );
+
+  it("lets any other 403 from the listing reject as it did", async () => {
+    serviceAnswering({
+      orgs: { body: { code: "forbidden", message: "No.", details: {} }, status: 403 },
+    });
+
+    await expect(readSession()).rejects.toMatchObject({ name: "ApiError", status: 403 });
+    expect(redirectedTo).toBeUndefined();
   });
 
   it("answers null for nobody, rather than throwing", async () => {

@@ -22,7 +22,7 @@
  * route can answer with is a contract entry `openapi.yaml` publishes and nothing honours.
  */
 
-import { UnauthenticatedError, type ErrorDetails } from "../errors/error.envelope";
+import { ForbiddenError, UnauthenticatedError, type ErrorDetails } from "../errors/error.envelope";
 
 /**
  * The codes, as one object.
@@ -33,6 +33,15 @@ import { UnauthenticatedError, type ErrorDetails } from "../errors/error.envelop
 export const AUTH_ERRORS = {
   /** No session, or one this service will not honour. The global guard's answer. */
   unauthenticated: "unauthenticated",
+  /**
+   * Signed in, but the account is held until an application administrator approves it
+   * (account approval). `403`. The UI sends the person to `/account-pending`.
+   */
+  accountPendingApproval: "account_pending_approval",
+  /** Signed in, but an application administrator denied the account. `403`. */
+  accountDenied: "account_denied",
+  /** A route only an application administrator (`OURO_APP_ADMIN_EMAILS`) may call. `403`. */
+  appAdminRequired: "app_admin_required",
 } as const;
 
 /** One of {@link AUTH_ERRORS}' values. */
@@ -48,4 +57,43 @@ export type AuthErrorCode = (typeof AUTH_ERRORS)[keyof typeof AUTH_ERRORS];
  */
 export function unauthenticated(details: ErrorDetails = {}): UnauthenticatedError {
   return new UnauthenticatedError(AUTH_ERRORS.unauthenticated, "Sign in to continue.", details);
+}
+
+/**
+ * A signed-in person whose account is waiting for approval.
+ *
+ * Raised by the global guard on every route a held account may not reach. The message is the
+ * waiting page's own sentence, so a client that renders it verbatim says the right thing.
+ *
+ * @returns A `403` `account_pending_approval`.
+ */
+export function accountPendingApproval(): ForbiddenError {
+  return new ForbiddenError(
+    AUTH_ERRORS.accountPendingApproval,
+    "Your account is waiting for approval. An administrator has been asked.",
+  );
+}
+
+/**
+ * A signed-in person whose account an administrator denied.
+ *
+ * @returns A `403` `account_denied`.
+ */
+export function accountDenied(): ForbiddenError {
+  return new ForbiddenError(
+    AUTH_ERRORS.accountDenied,
+    "Your account was not approved. Contact the administrator.",
+  );
+}
+
+/**
+ * A caller who is not an application administrator, on a route only one may call.
+ *
+ * @returns A `403` `app_admin_required`.
+ */
+export function appAdminRequired(): ForbiddenError {
+  return new ForbiddenError(
+    AUTH_ERRORS.appAdminRequired,
+    "Only an application administrator may do this.",
+  );
 }

@@ -28,7 +28,11 @@ import {
 } from "@/app/paths";
 import { navGroup, navStatus, orderNavEntries } from "@/app/shell/nav";
 import { navRegistry } from "@/app/shell/nav-registry";
-import { INBOX_BADGE_SOURCE, SEEDED_NAV_ENTRIES } from "@/app/shell/nav-modules";
+import {
+  ACCOUNTS_NAV_ENTRY,
+  INBOX_BADGE_SOURCE,
+  SEEDED_NAV_ENTRIES,
+} from "@/app/shell/nav-modules";
 
 /**
  * The eleven entries the shell specification names
@@ -188,11 +192,13 @@ describe("importing the module", () => {
   });
 
   it("registers them in the order the registry will hand them out", () => {
-    // The seeded entries are the only ones in the registry in this file, so the registry's
-    // own order and the seeds' are the same list — which is what proves the sort numbers
-    // above are doing the work rather than the array's literal order.
+    // The seeded entries — plus the capability-gated Accounts entry the same module registers
+    // (account approval), last in the bottom group — are the only ones in the registry in this
+    // file, so the registry's own order and theirs are the same list — which is what proves the
+    // sort numbers above are doing the work rather than the array's literal order.
     expect(navRegistry().entries.map((entry) => entry.id)).toEqual(
-      ordered.map((entry) => entry.id),
+      orderNavEntries([...SEEDED_NAV_ENTRIES, ACCOUNTS_NAV_ENTRY]).map((entry) => entry.id),
     );
+    expect(navRegistry().entries.at(-1)?.id).toBe(ACCOUNTS_NAV_ENTRY.id);
   });
 });

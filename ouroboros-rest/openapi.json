@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.41.48",
+    "version": "0.41.49",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -48,6 +48,10 @@
     {
       "name": "engine",
       "description": "The gateway to `ouroboros-engine`, the Python backend that executes the work this\nservice brokers. It is internal — reachable from this service and from nothing else\n(`docs/ARCHITECTURE.md` § 10) — so everything a client learns about it, it learns\nthrough an operation here.\n\nThere is no proxy route and there will not be one. Each engine capability arrives as a\nnamed operation with its own contract in this document, because a route that forwarded\na path, a method and a body to an internal service would be that boundary written as a\nhole.\n\n**The engine failing is always a `502`.** Down, slow, unresolvable, holding a\nmismatched shared secret, or answering outside its own contract are one answer with\none code, naming no address. A mismatched secret in particular is never forwarded as a\n`401`: it is a deployment's mistake rather than a caller's, and telling a browser to\nsign in again for it would be telling it about a boundary it cannot reach."
+    },
+    {
+      "name": "accounts",
+      "description": "**Account approval** — a stranger's first sign-in is held until an application\nadministrator approves it.\n\nApplication administrators are the addresses in `OURO_APP_ADMIN_EMAILS`\n(comma-separated, case-insensitive; unset means none). They are always approved and are\nthe only callers of `/api/v1/admin/*`; anybody else gets `403 app_admin_required`.\n\nA new account is approved automatically when its address is an administrator's, has a\npending unexpired workspace invitation, or was pre-approved; every other first sign-in\nis held as `pending`. Accounts that existed before account approval are approved.\n\n**A held person can sign in but reach almost nothing.** Every route answers\n`403 account_pending_approval` (pending) or `403 account_denied` (denied) except\nBetterAuth's own `/api/auth/*`, the `security: []` routes, and\n`GET /api/v1/account/status`, which the waiting page reads. They get no personal\nworkspace until approved; approval makes one and stamps it onto their open sessions, so\ntheir next request works without signing in again.\n\nNone of these routes takes a workspace."
     },
     {
       "name": "preferences",
@@ -23435,6 +23439,516 @@
           },
           "501": {
             "description": "`provider_kind_unsupported` — this build has no adapter for the connection's kind,\nand `details.registered` lists the ones it has.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/status": {
+      "get": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "Your account status",
+        "description": "Whether the caller's account is approved, waiting for approval, or denied, whether they\nare an application administrator, and their address. Read from the stored row, so the\nwaiting page never shows a stale decision; an application administrator is `approved`\nwhatever is stored.\n\n**Open to a held account** — the one product route that is — because the waiting page\nat `/account-pending` reads it to choose its copy.",
+        "operationId": "readAccountStatus",
+        "responses": {
+          "200": {
+            "description": "The caller's status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountStatusResource"
+                },
+                "example": {
+                  "status": "pending",
+                  "appAdmin": false,
+                  "email": "priya@contractor.dev"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — no session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`service_principal_refused` — a service token; this route is about a person.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/accounts": {
+      "get": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "List accounts by status",
+        "description": "One list for the admin page, newest first, at most 200 — `pending` by default, or\n`denied` or `approved`. Application administrators only.",
+        "operationId": "listAdminAccounts",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Which list. Defaults to `pending`.",
+            "schema": {
+              "$ref": "#/components/schemas/AccountStatus"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The accounts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAccounts"
+                },
+                "example": {
+                  "accounts": [
+                    {
+                      "id": "5eed009d-0000-4000-8000-000000000001",
+                      "name": "Priya Raman",
+                      "email": "priya@contractor.dev",
+                      "githubLogin": "priyaraman",
+                      "status": "pending",
+                      "createdAt": "2026-10-13T09:00:00.000Z",
+                      "statusChangedAt": "2026-10-13T09:00:00.000Z",
+                      "statusChangedBy": null,
+                      "statusReason": "held"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — no session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`app_admin_required` — the caller is not an application administrator\n(`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `status` is not one of `pending`, `denied`, `approved`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/accounts/{userId}/approve": {
+      "post": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "Approve an account",
+        "description": "Sets the account `approved` (reason `approved_by_admin`, recording who and when),\nwrites an `approved` event, and — when the person belongs to no workspace — makes their\npersonal workspace and stamps it onto their open sessions, so their next request works\nwithout signing in again. When `OURO_SMTP_URL` is set the person is emailed.\n\nWorks on a pending or a denied account; an account already approved is answered\nunchanged. Application administrators only.",
+        "operationId": "approveAccount",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AccountUserId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The account as it now stands.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAccount"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — no session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`app_admin_required` — the caller is not an application administrator\n(`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`account_not_found` — no account with that id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/accounts/{userId}/deny": {
+      "post": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "Deny an account",
+        "description": "Sets the account `denied` (reason `denied_by_admin`) and writes a `denied` event. The\nperson stays signed in but every route answers `403 account_denied` — within five\nminutes for a browser holding a fresh session snapshot — until somebody approves them.\nAn account already denied is answered unchanged. Application administrators only.",
+        "operationId": "denyAccount",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AccountUserId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The account as it now stands.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAccount"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — no session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`app_admin_required` — the caller is not an application administrator\n(`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`account_not_found` — no account with that id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`cannot_deny_app_admin` — the account is an application administrator's, which\n`OURO_APP_ADMIN_EMAILS` approves whatever is stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/preapproved-emails": {
+      "get": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "List pre-approved emails",
+        "description": "Addresses let in ahead of their first sign-in, newest first. Application\nadministrators only.",
+        "operationId": "listPreapprovedEmails",
+        "responses": {
+          "200": {
+            "description": "The pre-approved addresses.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreapprovedEmails"
+                },
+                "example": {
+                  "emails": [
+                    {
+                      "email": "lee@acme-robotics.dev",
+                      "addedBy": "ken@acme-robotics.dev",
+                      "createdAt": "2026-10-14T09:00:00.000Z",
+                      "note": "starts Monday"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — no session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`app_admin_required` — the caller is not an application administrator\n(`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "Pre-approve an email",
+        "description": "Adds an address (trimmed and lower-cased) with an optional note, and writes a\n`preapproved_added` event. A new account with this address is approved at its first\nsign-in. **If a pending account already exists with this address it is approved on\nthe spot**, exactly as the approve operation does, and returned as `approvedAccount`.\nA denied account is left for an explicit approval. Application administrators only.",
+        "operationId": "addPreapprovedEmail",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreapprovedEmailCreate"
+              },
+              "example": {
+                "email": "lee@acme-robotics.dev",
+                "note": "starts Monday"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The entry added, and the account it approved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddedPreapprovedEmail"
+                },
+                "example": {
+                  "email": "lee@acme-robotics.dev",
+                  "addedBy": "ken@acme-robotics.dev",
+                  "createdAt": "2026-10-15T09:00:00.000Z",
+                  "note": "starts Monday",
+                  "approvedAccount": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — no session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`app_admin_required` — the caller is not an application administrator\n(`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`already_preapproved` — the address is already on the list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — not a bare email address, longer than 320 characters, or a\nnote longer than 200.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/preapproved-emails/{email}": {
+      "delete": {
+        "tags": [
+          "accounts"
+        ],
+        "summary": "Remove a pre-approved email",
+        "description": "Takes the address off the list (matched case-insensitively) and writes a\n`preapproved_removed` event. An account it already let in stays approved. Application\nadministrators only.",
+        "operationId": "removePreapprovedEmail",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "path",
+            "required": true,
+            "description": "The address, URL-encoded.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 320
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "401": {
+            "description": "`unauthenticated` — no session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`app_admin_required` — the caller is not an application administrator\n(`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`preapproved_email_not_found` — the address is not on the list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -50527,6 +51041,16 @@
       }
     },
     "parameters": {
+      "AccountUserId": {
+        "name": "userId",
+        "in": "path",
+        "required": true,
+        "description": "The account — `\"user\".id`.",
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
       "AuditFrom": {
         "name": "from",
         "in": "query",
@@ -52635,6 +53159,256 @@
         "examples": [
           "100"
         ]
+      },
+      "AccountStatus": {
+        "type": "string",
+        "title": "AccountStatus",
+        "description": "An account's approval status — `approved` (may use the product), `pending` (held until\nan application administrator approves it) or `denied` (refused; stays blocked until\napproved). V149's `\"user\".account_status`.",
+        "enum": [
+          "approved",
+          "pending",
+          "denied"
+        ]
+      },
+      "AccountStatusReason": {
+        "type": "string",
+        "title": "AccountStatusReason",
+        "description": "Why an account holds its status — `existing`, `invited`, `preapproved`, `app_admin` or\n`held` (automatic), `approved_by_admin` or `denied_by_admin` (an administrator).",
+        "enum": [
+          "existing",
+          "invited",
+          "preapproved",
+          "app_admin",
+          "held",
+          "approved_by_admin",
+          "denied_by_admin"
+        ]
+      },
+      "AccountStatusResource": {
+        "type": "object",
+        "title": "AccountStatusResource",
+        "description": "The caller's own account status — `GET /api/v1/account/status`.",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "appAdmin",
+          "email"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/AccountStatus"
+          },
+          "appAdmin": {
+            "type": "boolean",
+            "description": "Whether the caller is an application administrator (`OURO_APP_ADMIN_EMAILS`)."
+          },
+          "email": {
+            "type": "string",
+            "description": "The caller's address."
+          }
+        }
+      },
+      "AdminAccount": {
+        "type": "object",
+        "title": "AdminAccount",
+        "description": "One account, as the account-approval admin page lists it.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "email",
+          "githubLogin",
+          "status",
+          "createdAt",
+          "statusChangedAt",
+          "statusChangedBy",
+          "statusReason"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "githubLogin": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The GitHub login at the first sign-in, or null for an account made another way."
+          },
+          "status": {
+            "$ref": "#/components/schemas/AccountStatus"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the account was created — its first sign-in."
+          },
+          "statusChangedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the status was last decided."
+          },
+          "statusChangedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The deciding administrator's address; null for an automatic decision."
+          },
+          "statusReason": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AccountStatusReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "AdminAccounts": {
+        "type": "object",
+        "title": "AdminAccounts",
+        "description": "One admin list — newest first, at most 200.",
+        "additionalProperties": false,
+        "required": [
+          "accounts"
+        ],
+        "properties": {
+          "accounts": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "$ref": "#/components/schemas/AdminAccount"
+            }
+          }
+        }
+      },
+      "PreapprovedEmail": {
+        "type": "object",
+        "title": "PreapprovedEmail",
+        "description": "An address an application administrator let in ahead of its first sign-in.",
+        "additionalProperties": false,
+        "required": [
+          "email",
+          "addedBy",
+          "createdAt",
+          "note"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Lower-cased."
+          },
+          "addedBy": {
+            "type": "string",
+            "description": "The administrator who added it."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200
+          }
+        }
+      },
+      "PreapprovedEmails": {
+        "type": "object",
+        "title": "PreapprovedEmails",
+        "description": "Every pre-approved address, newest first.",
+        "additionalProperties": false,
+        "required": [
+          "emails"
+        ],
+        "properties": {
+          "emails": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreapprovedEmail"
+            }
+          }
+        }
+      },
+      "PreapprovedEmailCreate": {
+        "type": "object",
+        "title": "PreapprovedEmailCreate",
+        "description": "An address to pre-approve. Trimmed and lower-cased before it is stored.",
+        "additionalProperties": false,
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "description": "A bare email address — no display name, no spaces."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200,
+            "description": "Why, in the administrator's words. Optional; blank is stored as none."
+          }
+        }
+      },
+      "AddedPreapprovedEmail": {
+        "type": "object",
+        "title": "AddedPreapprovedEmail",
+        "description": "The entry added, and the pending account it approved on the spot (or null).",
+        "additionalProperties": false,
+        "required": [
+          "email",
+          "addedBy",
+          "createdAt",
+          "note",
+          "approvedAccount"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "addedBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 200
+          },
+          "approvedAccount": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AdminAccount"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
       },
       "Preferences": {
         "type": "object",

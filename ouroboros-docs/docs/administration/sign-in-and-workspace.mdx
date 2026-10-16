@@ -121,19 +121,64 @@ beside a workspace's tenant domain does not appear for any workspace.
 
 ## Who can sign in
 
-Anyone with a GitHub account who can reach your sign-in page can sign in. Signing in does not
-put anyone in your workspace. Someone who belongs to no workspace yet gets a personal workspace
-of their own, named after them, of which they are the Owner. They see nothing of any other
-workspace until they accept an invitation to it.
+Anyone with a GitHub account who can reach your sign-in page can sign in, but **a new account
+waits for approval** unless an account was made for that person. Until an application
+administrator approves it, the person sees only a page saying **Your account is waiting for
+approval**, and nothing else in the product. They have no workspace yet.
 
-Signing in does not accept an invitation. The invited person accepts it themselves, with the
-GitHub account whose verified address you invited — see
-[Inviting someone](./members-and-tokens.mdx#inviting-someone).
+A new account is approved at once, without waiting, when:
 
-To keep strangers off the deployment altogether, put the UI on a network only your people can
-reach. To invite people, see [Members, invites, roles & API tokens](./members-and-tokens.mdx).
+- its email has a **pending invitation** to a workspace (see
+  [Inviting someone](./members-and-tokens.mdx#inviting-someone)), or
+- an application administrator has **pre-approved** its email, or
+- its email is one of the application administrators' (below).
+
+Accounts that existed before this check was added were approved automatically.
+
+Once approved, someone who belongs to no workspace yet gets a personal workspace of their own,
+named after them, of which they are the Owner. They see nothing of any other workspace until
+they accept an invitation to it. Signing in does not accept an invitation. The invited person
+accepts it themselves, with the GitHub account whose verified address you invited.
+
+### Application administrators
+
+The application administrators are set by the deployment, not by any workspace:
+<EnvVar name="OURO_APP_ADMIN_EMAILS" /> lists their emails, separated by commas. Case does not
+matter. Someone who signs in with one of those emails is always approved, and can approve
+others. With the variable unset there is no application administrator, and nobody can approve
+a waiting account — so set it before you open sign-in to new people.
+
+### Approving new accounts
+
+An application administrator approves accounts on the **Accounts** page, at the bottom of the
+sidebar (<UiPath path="Accounts" />). Nobody else sees the entry or the page.
+
+<Screenshot id="administration.accounts" />
+
+- **Waiting for approval** lists each waiting account: name, email, GitHub login and when they
+  signed in. **Approve** lets them in — they reload the waiting page to continue. **Deny** asks
+  first (**Deny *email*? They stay signed out until approved.**); a denied person sees **Your
+  account was not approved**.
+- **Denied** lists denied accounts. **Approve** lets one in later. A denied person who is
+  signed in at that moment can keep using Ouroboros for up to five minutes, until their
+  browser's session is checked again.
+- **Pre-approved emails** lets someone in ahead of time, without an invitation to any
+  workspace: enter their **Email** and an optional **Note**, then **Pre-approve**. If that
+  person is already waiting, they are approved at once. **Remove** takes an email off the list;
+  it does not affect an account that was already approved.
+
+When email is set up (<EnvVar name="OURO_SMTP_URL" />), each application administrator is
+emailed when someone starts waiting, with a link to the page, and the person is emailed when
+they are approved. Without it, nothing is sent: check the page.
+
+Every hold, approval, denial and change to the pre-approved list is recorded with who did it
+and when. These records belong to the deployment, not to a workspace, so they do not appear in
+any workspace's audit log.
+
+To keep strangers off the deployment altogether, also put the UI on a network only your people
+can reach. To invite people, see [Members, invites, roles & API tokens](./members-and-tokens.mdx).
 What people see when they sign in is in the User Guide's
-[Sign in](../user-guide/getting-started/sign-in.mdx).
+[Sign in](../user-guide/getting-started/sign-in.mdx#waiting-for-approval).
 
 ## The Workspace card
 

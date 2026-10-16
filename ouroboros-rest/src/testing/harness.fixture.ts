@@ -490,15 +490,28 @@ export class ApiHarness {
    * `{ NODE_ENV: "production" }` gets a `400` from this, and `credentials.integration-spec.ts`
    * is where that is asserted rather than worked around.
    *
-   * @param overrides - Their address, name and password, when a suite cares what they are.
+   * **Account approval.** A sign-up is a user creation, so it is decided by
+   * `auth/account.approval.ts` — and a stranger is held. Every suite that signs somebody up to
+   * do something *else* wants an approved person, so the address is **pre-approved** first
+   * (one of the real exemptions, with its own row), unless `held: true` asks for the stranger
+   * a held-account suite is about.
+   *
+   * @param overrides - Their address, name and password, when a suite cares what they are;
+   *   `held: true` to sign up a stranger who is held as pending.
    * @returns Them, with the cookie the sign-up handed back.
    * @throws {Error} When the library refused the sign-up, naming what it said — a suite
    *   whose arrangement failed should not go on to report a confusing assertion failure.
    */
   async signUp(
-    overrides: Partial<Pick<Person, "email" | "displayName">> & { password?: string } = {},
+    overrides: Partial<Pick<Person, "email" | "displayName">> & {
+      password?: string;
+      held?: boolean;
+    } = {},
   ): Promise<Person> {
     const email = (overrides.email ?? uniqueEmail(HARNESS_PREFIX)).toLowerCase();
+
+    if (overrides.held !== true) await this.preapprove(email);
+
     const displayName = overrides.displayName ?? "Harness Person";
     const response = await this.anonymous("post", `${AUTH}/sign-up/email`).send({
       email,
@@ -565,6 +578,8 @@ export class ApiHarness {
    *   asserts what was sent to github.com.
    * @param code - The authorization code github.com would have redirected with. Any string;
    *   the stub does not check it, and the exchange records it.
+   * @param options - `held: true` to leave the stub's address un-pre-approved, so a first
+   *   sign-in is held as pending (account approval).
    * @returns The browser's `Cookie` header after the callback, and where it was redirected.
    *   Not a {@link Person}: who signed in is a *result* of this flow rather than an input,
    *   and a suite reads it from `GET /api/auth/get-session`.
@@ -572,7 +587,12 @@ export class ApiHarness {
   async signInWithGithub(
     github: GithubStub,
     code = "stubbed-authorization-code",
+    options: { held?: boolean } = {},
   ): Promise<{ cookie: string; location: string; status: number }> {
+    // Account approval: a first GitHub sign-in is a user creation, decided like a sign-up's —
+    // so the stub's address is pre-approved unless the suite wants the stranger held.
+    if (options.held !== true) await this.preapprove(github.primaryEmail);
+
     const begun = await this.anonymous("post", `${AUTH}/sign-in/social`).send({
       provider: GITHUB_PROVIDER_ID,
       callbackURL: "/",
@@ -615,6 +635,24 @@ export class ApiHarness {
       location: String(callback.headers.location ?? ""),
       status: callback.status,
     };
+  }
+
+  /**
+   * Pre-approve an address, as an application administrator would (account approval).
+   *
+   * A row in `app_preapproved_emails`, written directly: the admin route is a suite's subject
+   * elsewhere, and here it is only arrangement. Idempotent, so signing the same address up
+   * twice is fine.
+   *
+   * @param email - The address; lower-cased here, as the route would.
+   */
+  async preapprove(email: string): Promise<void> {
+    await this.sql.query(
+      `insert into ${SCHEMA_NAME}.app_preapproved_emails (email, added_by, note)
+       values (lower($1), 'harness@example.test', 'harness')
+       on conflict do nothing`,
+      [email],
+    );
   }
 
   /**

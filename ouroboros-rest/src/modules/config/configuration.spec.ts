@@ -44,6 +44,7 @@ import {
   isBase64Key,
   listenHost,
   loadConfiguration,
+  parseAppAdminEmails,
   type Configuration,
   DEFAULT_ARTIFACT_DIR,
   DEFAULT_ARTIFACT_MAX_FILE_BYTES,
@@ -195,6 +196,8 @@ describe("the development defaults", () => {
       liveRunNoProgressMinutes: 15,
       runSupervisorTickSeconds: 5,
       runHeartbeatStaleSeconds: 30,
+      // Account approval's administrators: none unless a deployment names them.
+      appAdminEmails: [],
     });
   });
 });
@@ -1542,6 +1545,49 @@ describe("the deployment's data region (BQ.4, #483, decision S6)", () => {
     expect(failureFor(testEnvironment({ OURO_DATA_REGION: value }))).toContain(
       "OURO_DATA_REGION: expected a region label without spaces",
     );
+  });
+});
+
+describe("the application administrators (account approval)", () => {
+  it("is an empty, frozen list when unset, so nobody is an administrator by omission", () => {
+    const configuration = loadConfiguration(testEnvironment());
+
+    expect(configuration.appAdminEmails).toEqual([]);
+    expect(Object.isFrozen(configuration.appAdminEmails)).toBe(true);
+  });
+
+  it("is empty when set to blanks and commas", () => {
+    expect(
+      loadConfiguration(testEnvironment({ OURO_APP_ADMIN_EMAILS: " , ,, " })).appAdminEmails,
+    ).toEqual([]);
+  });
+
+  it("trims, lower-cases and de-duplicates the addresses, keeping their order", () => {
+    const configuration = loadConfiguration(
+      testEnvironment({
+        OURO_APP_ADMIN_EMAILS:
+          " Ken@Acme-Robotics.dev, maya@acme-robotics.dev ,ken@acme-robotics.dev,",
+      }),
+    );
+
+    expect(configuration.appAdminEmails).toEqual([
+      "ken@acme-robotics.dev",
+      "maya@acme-robotics.dev",
+    ]);
+  });
+
+  it.each(["not-an-address", "ken@acme.dev,maya", "Ken <ken@acme.dev>", "a b@acme.dev"])(
+    "rejects %s, naming the variable",
+    (value) => {
+      expect(failureFor(testEnvironment({ OURO_APP_ADMIN_EMAILS: value }))).toContain(
+        "OURO_APP_ADMIN_EMAILS: expected a comma-separated list of bare email addresses",
+      );
+    },
+  );
+
+  it("parses the raw variable the same way when called directly", () => {
+    expect(parseAppAdminEmails(undefined)).toEqual([]);
+    expect(parseAppAdminEmails("A@x.dev,a@X.dev, b@x.dev")).toEqual(["a@x.dev", "b@x.dev"]);
   });
 });
 

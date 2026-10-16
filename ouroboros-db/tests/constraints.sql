@@ -44852,6 +44852,151 @@ select pg_temp.must_hold(
 
 delete from ouroboros.organization where "id" = 'org-v148';
 
+-- ===========================================================================
+-- V149 — account approval: held accounts, pre-approved addresses, the deployment trail.
+-- ===========================================================================
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v149-a', 'Default V149', 'default-v149@example.test', true);
+
+select pg_temp.must_hold(
+  (select account_status = 'approved' and account_status_reason is null
+          and account_status_changed_at is null and github_login is null
+     from ouroboros."user" where "id" = 'user-v149-a'),
+  'a user inserted without a decision takes the approved default, undecided');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros."user" ("id", "name", "email", "emailVerified", account_status)
+    values ('user-v149-b', 'B', 'b-v149@example.test', true, 'waiting')$$,
+  'an account status outside approved/pending/denied is refused', 'user_account_status');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros."user" ("id", "name", "email", "emailVerified", account_status_reason)
+    values ('user-v149-b', 'B', 'b-v149@example.test', true, 'because')$$,
+  'an unknown reason is refused', 'user_account_status_reason');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros."user" ("id", "name", "email", "emailVerified", account_status, account_status_reason)
+    values ('user-v149-b', 'B', 'b-v149@example.test', true, 'pending', 'approved_by_admin')$$,
+  'a pending account explained by an approval is refused', 'user_account_status_reason_matches');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros."user" ("id", "name", "email", "emailVerified", account_status, account_status_reason)
+    values ('user-v149-b', 'B', 'b-v149@example.test', true, 'approved', 'held')$$,
+  'an approved account explained as held is refused', 'user_account_status_reason_matches');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros."user" ("id", "name", "email", "emailVerified", account_status, account_status_reason)
+    values ('user-v149-b', 'B', 'b-v149@example.test', true, 'denied', 'held')$$,
+  'a denied account not denied by an administrator is refused', 'user_account_status_reason_matches');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros."user" ("id", "name", "email", "emailVerified", account_status_changed_by)
+    values ('user-v149-b', 'B', 'b-v149@example.test', true, 'Ken@Acme.dev')$$,
+  'the deciding administrator is stored lower-cased', 'user_account_status_changed_by_lower');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros."user" ("id", "name", "email", "emailVerified", github_login)
+    values ('user-v149-b', 'B', 'b-v149@example.test', true, '')$$,
+  'an empty GitHub login is refused', 'user_github_login_length');
+
+insert into ouroboros."user"
+    ("id", "name", "email", "emailVerified", account_status, account_status_reason, github_login)
+  values
+    ('user-v149-p', 'Pending V149', 'pending-v149@example.test', true, 'pending', 'held', 'pending-v149'),
+    ('user-v149-d', 'Denied V149', 'denied-v149@example.test', true, 'denied', 'denied_by_admin', null);
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros."user"
+    where "id" in ('user-v149-p', 'user-v149-d') and account_status <> 'approved'),
+  'pending and denied accounts with matching reasons are accepted');
+
+-- The admin page's held list reads the partial index.
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select "id" from ouroboros."user" where account_status = 'pending' order by "createdAt" desc limit 200$$,
+  'user_account_status_held_idx');
+set local enable_seqscan = on;
+
+-- Pre-approved addresses.
+insert into ouroboros.app_preapproved_emails (email, added_by, note) values
+  ('lee-v149@example.test', 'ken@example.test', 'starts Monday');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.app_preapproved_emails (email, added_by) values ('lee-v149@example.test', 'ken@example.test')$$,
+  'an address is pre-approved once', 'app_preapproved_emails_pkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.app_preapproved_emails (email, added_by) values ('Lee-V149@example.test', 'ken@example.test')$$,
+  'a pre-approved address is stored lower-cased', 'app_preapproved_emails_email_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.app_preapproved_emails (email, added_by) values ('Lee <lee@example.test>', 'ken@example.test')$$,
+  'a pre-approved address is bare', 'app_preapproved_emails_email_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.app_preapproved_emails (email, added_by) values ('x-v149@example.test', 'Ken@example.test')$$,
+  'the adding administrator is stored lower-cased', 'app_preapproved_emails_added_by_lower');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.app_preapproved_emails (email, added_by, note) values ('y-v149@example.test', 'ken@example.test', repeat('n', 201))$$,
+  'a note is at most 200 characters', 'app_preapproved_emails_note_length');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.app_preapproved_emails (email) values ('z-v149@example.test')$$,
+  'a pre-approval names who added it');
+
+-- The trail: append-only, for the owner too.
+insert into ouroboros.app_account_events (id, actor_email, action, subject_user_id, subject_email, detail)
+  values ('a1490000-0000-0000-0000-000000000001', null, 'held', 'user-v149-p', 'pending-v149@example.test', '{"reason":"held"}');
+
+select pg_temp.must_hold(
+  (select at is not null and detail = '{"reason":"held"}'::jsonb
+     from ouroboros.app_account_events where id = 'a1490000-0000-0000-0000-000000000001'),
+  'a system event is recorded with its time and detail');
+
+select pg_temp.must_reject(
+  $$update ouroboros.app_account_events set action = 'approved' where id = 'a1490000-0000-0000-0000-000000000001'$$,
+  'an account event cannot be revised', 'app_account_events_append_only');
+
+select pg_temp.must_reject(
+  $$delete from ouroboros.app_account_events where id = 'a1490000-0000-0000-0000-000000000001'$$,
+  'an account event cannot be removed', 'app_account_events_append_only');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.app_account_events (action, subject_email) values ('promoted', 'x@example.test')$$,
+  'an unknown action is refused', 'app_account_events_action');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.app_account_events (action, subject_email, actor_email) values ('approved', 'x@example.test', 'Ken@example.test')$$,
+  'the acting administrator is stored lower-cased', 'app_account_events_actor_lower');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.app_account_events (action, subject_email, detail) values ('approved', 'x@example.test', '[]')$$,
+  'event detail is an object', 'app_account_events_detail_object');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.app_account_events (action) values ('approved')$$,
+  'an event names the address it happened to');
+
+-- No foreign key: removing the person keeps the record of what was decided about them.
+delete from ouroboros."user" where "id" = 'user-v149-p';
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.app_account_events where subject_user_id = 'user-v149-p'),
+  'an account event outlives the account');
+
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.app_account_events', 'select, insert')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.app_account_events', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.app_account_events', 'delete'),
+  'the application role may read and append account events, never revise or remove them');
+
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.app_preapproved_emails', 'select, insert, delete')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.app_preapproved_emails', 'update'),
+  'the application role adds and removes pre-approvals, never edits one');
+
+delete from ouroboros."user" where "id" in ('user-v149-a', 'user-v149-d');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

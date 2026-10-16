@@ -159,6 +159,67 @@ export interface UserTable {
   image: string | null;
   createdAt: Date;
   updatedAt: Date;
+  /**
+   * Account approval (V149): `approved`, `pending` or `denied`. Defaults to `approved` for a
+   * direct insert; a sign-in that creates a user is decided by `auth/account.approval.ts`.
+   */
+  account_status: Generated<AccountStatus>;
+  /** When {@link account_status} was last decided; null while it holds the default. */
+  account_status_changed_at: Date | null;
+  /** The administrator who decided it, lower-cased email; null for an automatic decision. */
+  account_status_changed_by: string | null;
+  /** Why — see {@link AccountStatusReason}. Null for an undecided default. */
+  account_status_reason: AccountStatusReason | null;
+  /** The GitHub login at the first sign-in, for the admin page. Display only. */
+  github_login: string | null;
+}
+
+/** `"user".account_status` (V149). */
+export type AccountStatus = "approved" | "pending" | "denied";
+
+/** `"user".account_status_reason` (V149) — the automatic reason or the administrator's action. */
+export type AccountStatusReason =
+  | "existing"
+  | "invited"
+  | "preapproved"
+  | "app_admin"
+  | "held"
+  | "approved_by_admin"
+  | "denied_by_admin";
+
+/**
+ * `ouroboros.app_preapproved_emails` — addresses an application administrator let in ahead of
+ * their first sign-in (V149). Deployment-level: no organization.
+ */
+export interface AppPreapprovedEmailsTable {
+  /** Lower-cased, bare. The primary key. */
+  email: string;
+  /** The administrator who added it, lower-cased email. */
+  added_by: string;
+  created_at: Generated<Date>;
+  /** Optional, at most 200 characters. */
+  note: string | null;
+}
+
+/** `app_account_events.action` (V149). */
+export type AppAccountEventAction =
+  "held" | "approved" | "denied" | "preapproved_added" | "preapproved_removed";
+
+/**
+ * `ouroboros.app_account_events` — account approval's deployment-level, append-only trail
+ * (V149). `audit_events` needs an organization; a held person has none.
+ */
+export interface AppAccountEventsTable {
+  id: Generated<string>;
+  at: Generated<Date>;
+  /** The administrator, lower-cased email; null when the system decided. */
+  actor_email: string | null;
+  action: AppAccountEventAction;
+  /** `"user".id`, deliberately without a foreign key. Null for an address with no account. */
+  subject_user_id: string | null;
+  subject_email: string;
+  /** A JSON object. */
+  detail: Generated<Record<string, unknown>>;
 }
 
 /**
@@ -8392,6 +8453,8 @@ export interface Database {
   workspace_tombstones: WorkspaceTombstonesTable;
   session: SessionTable;
   invitation: InvitationTable;
+  app_preapproved_emails: AppPreapprovedEmailsTable;
+  app_account_events: AppAccountEventsTable;
   member_capabilities: MemberCapabilitiesTable;
   service_accounts: ServiceAccountsTable;
   service_tokens: ServiceTokensTable;
@@ -8444,7 +8507,20 @@ export interface Database {
  * against a migration reads top to bottom.
  */
 export const TABLE_COLUMNS = {
-  user: ["id", "name", "email", "emailVerified", "image", "createdAt", "updatedAt"],
+  user: [
+    "id",
+    "name",
+    "email",
+    "emailVerified",
+    "image",
+    "createdAt",
+    "updatedAt",
+    "account_status",
+    "account_status_changed_at",
+    "account_status_changed_by",
+    "account_status_reason",
+    "github_login",
+  ],
   tenant_domains: ["id", "domain", "is_primary", "created_at", "updated_at", "organization_id"],
   organization: ["id", "name", "slug", "logo", "createdAt", "metadata"],
   member: ["id", "organizationId", "userId", "role", "createdAt"],
@@ -10367,6 +10443,16 @@ export const TABLE_COLUMNS = {
     "expiresAt",
     "createdAt",
     "inviterId",
+  ],
+  app_preapproved_emails: ["email", "added_by", "created_at", "note"],
+  app_account_events: [
+    "id",
+    "at",
+    "actor_email",
+    "action",
+    "subject_user_id",
+    "subject_email",
+    "detail",
   ],
   member_capabilities: [
     "member_id",

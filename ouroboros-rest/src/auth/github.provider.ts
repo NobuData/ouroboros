@@ -103,6 +103,12 @@ export interface GithubUserFields {
    * is an `<img src="">` that requests the page it is on.
    */
   readonly image: string | undefined;
+  /**
+   * Their login — `octocat`, without the `@` — stored as `"user".github_login` (V149) so the
+   * account-approval admin page can say who a stranger is. Written once, at creation:
+   * `account.approval.ts` stops a later update from changing it.
+   */
+  readonly githubLogin: string;
 }
 
 /**
@@ -126,13 +132,17 @@ export interface GithubUserFields {
  * public profile's unverified one. #33 made the same choice for the same reason; see
  * `V004__betterauth_core.sql`, whose back-fill trusts that flag.
  *
+ * The **login** is kept too (account approval): an administrator deciding whether to let a
+ * stranger in reads it on the admin page, beside the name and address.
+ *
  * @param profile - What `GET /user` returned. Only three of its fields are read.
- * @returns The name and image to write. A fresh object; the caller owns it.
+ * @returns The name, image and login to write. A fresh object; the caller owns it.
  */
 export function githubProfileToUser(profile: GithubProfile): GithubUserFields {
   return {
     name: profile.name?.trim() || profile.login,
     image: profile.avatar_url || undefined,
+    githubLogin: profile.login,
   };
 }
 

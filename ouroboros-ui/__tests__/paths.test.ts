@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ACCOUNT_PENDING_PATH,
+  ADMIN_ACCOUNTS_PATH,
   BUILD_FARM_PATH,
   DASHBOARD_PATH,
   DASHBOARD_QUEUE_HASH,
@@ -61,6 +63,14 @@ describe("the paths themselves", () => {
   it("are the two segments the application redirects between", () => {
     expect(LOGIN_PATH).toBe("/login");
     expect(DASHBOARD_PATH).toBe("/dashboard");
+  });
+
+  it("give the waiting page and the accounts page segments of their own (account approval)", () => {
+    // The waiting page is outside the shell, like the recovery screen; the accounts page is
+    // deployment administration, so it is not under the workspace settings hub.
+    expect(ACCOUNT_PENDING_PATH).toBe("/account-pending");
+    expect(ADMIN_ACCOUNTS_PATH).toBe("/admin/accounts");
+    expect(ADMIN_ACCOUNTS_PATH.startsWith(SETTINGS_PATH)).toBe(false);
   });
 
   it("give the recovery screen a segment of its own, outside every section (#496)", () => {

@@ -46,11 +46,11 @@ import {
   type SessionCookies,
   createApiClient,
 } from "@/app/api/client";
-import { isWorkspaceFrozen } from "@/app/api/errors";
+import { isAccountHeld, isWorkspaceFrozen } from "@/app/api/errors";
 import { loginDestination } from "@/app/api/request";
 import { ACTIVE_TENANT_COOKIE, assertTenantReference, isTenantReference } from "@/app/api/tenant";
 import { restUrl } from "@/app/env";
-import { LOGIN_PATH, RECOVERY_PATH } from "@/app/paths";
+import { ACCOUNT_PENDING_PATH, LOGIN_PATH, RECOVERY_PATH } from "@/app/paths";
 
 /**
  * Where a request with no usable session is sent — the login screen
@@ -207,6 +207,11 @@ export function api(): ApiClient {
       // place to be — the recovery screen, which reads through `anonymousApi()` precisely so
       // that this redirect cannot send it to itself.
       if (isWorkspaceFrozen(error)) redirect(RECOVERY_PATH);
+      // The refusal that is about the person (account approval): an account on hold is
+      // answered `403 account_pending_approval` / `account_denied` on every product route,
+      // so — exactly as a `401` goes to the login screen — the request goes to the waiting
+      // page, which reads its status through `anonymousApi()` so this cannot loop.
+      if (isAccountHeld(error)) redirect(ACCOUNT_PENDING_PATH);
     },
   });
   return client;

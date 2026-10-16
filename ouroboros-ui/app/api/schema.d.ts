@@ -6475,6 +6475,153 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/account/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your account status
+         * @description Whether the caller's account is approved, waiting for approval, or denied, whether they
+         *     are an application administrator, and their address. Read from the stored row, so the
+         *     waiting page never shows a stale decision; an application administrator is `approved`
+         *     whatever is stored.
+         *
+         *     **Open to a held account** — the one product route that is — because the waiting page
+         *     at `/account-pending` reads it to choose its copy.
+         */
+        get: operations["readAccountStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List accounts by status
+         * @description One list for the admin page, newest first, at most 200 — `pending` by default, or
+         *     `denied` or `approved`. Application administrators only.
+         */
+        get: operations["listAdminAccounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/accounts/{userId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve an account
+         * @description Sets the account `approved` (reason `approved_by_admin`, recording who and when),
+         *     writes an `approved` event, and — when the person belongs to no workspace — makes their
+         *     personal workspace and stamps it onto their open sessions, so their next request works
+         *     without signing in again. When `OURO_SMTP_URL` is set the person is emailed.
+         *
+         *     Works on a pending or a denied account; an account already approved is answered
+         *     unchanged. Application administrators only.
+         */
+        post: operations["approveAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/accounts/{userId}/deny": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deny an account
+         * @description Sets the account `denied` (reason `denied_by_admin`) and writes a `denied` event. The
+         *     person stays signed in but every route answers `403 account_denied` — within five
+         *     minutes for a browser holding a fresh session snapshot — until somebody approves them.
+         *     An account already denied is answered unchanged. Application administrators only.
+         */
+        post: operations["denyAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/preapproved-emails": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List pre-approved emails
+         * @description Addresses let in ahead of their first sign-in, newest first. Application
+         *     administrators only.
+         */
+        get: operations["listPreapprovedEmails"];
+        put?: never;
+        /**
+         * Pre-approve an email
+         * @description Adds an address (trimmed and lower-cased) with an optional note, and writes a
+         *     `preapproved_added` event. A new account with this address is approved at its first
+         *     sign-in. **If a pending account already exists with this address it is approved on
+         *     the spot**, exactly as the approve operation does, and returned as `approvedAccount`.
+         *     A denied account is left for an explicit approval. Application administrators only.
+         */
+        post: operations["addPreapprovedEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/preapproved-emails/{email}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a pre-approved email
+         * @description Takes the address off the list (matched case-insensitively) and writes a
+         *     `preapproved_removed` event. An account it already let in stays approved. Application
+         *     administrators only.
+         */
+        delete: operations["removePreapprovedEmail"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/preferences": {
         parameters: {
             query?: never;
@@ -14151,6 +14298,106 @@ export interface components {
          * @enum {string}
          */
         FontScale: "87.5" | "100" | "112.5" | "125" | "150";
+        /**
+         * AccountStatus
+         * @description An account's approval status — `approved` (may use the product), `pending` (held until
+         *     an application administrator approves it) or `denied` (refused; stays blocked until
+         *     approved). V149's `"user".account_status`.
+         * @enum {string}
+         */
+        AccountStatus: "approved" | "pending" | "denied";
+        /**
+         * AccountStatusReason
+         * @description Why an account holds its status — `existing`, `invited`, `preapproved`, `app_admin` or
+         *     `held` (automatic), `approved_by_admin` or `denied_by_admin` (an administrator).
+         * @enum {string}
+         */
+        AccountStatusReason: "existing" | "invited" | "preapproved" | "app_admin" | "held" | "approved_by_admin" | "denied_by_admin";
+        /**
+         * AccountStatusResource
+         * @description The caller's own account status — `GET /api/v1/account/status`.
+         */
+        AccountStatusResource: {
+            status: components["schemas"]["AccountStatus"];
+            /** @description Whether the caller is an application administrator (`OURO_APP_ADMIN_EMAILS`). */
+            appAdmin: boolean;
+            /** @description The caller's address. */
+            email: string;
+        };
+        /**
+         * AdminAccount
+         * @description One account, as the account-approval admin page lists it.
+         */
+        AdminAccount: {
+            id: string;
+            name: string;
+            email: string;
+            /** @description The GitHub login at the first sign-in, or null for an account made another way. */
+            githubLogin: string | null;
+            status: components["schemas"]["AccountStatus"];
+            /**
+             * Format: date-time
+             * @description When the account was created — its first sign-in.
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description When the status was last decided.
+             */
+            statusChangedAt: string | null;
+            /** @description The deciding administrator's address; null for an automatic decision. */
+            statusChangedBy: string | null;
+            statusReason: components["schemas"]["AccountStatusReason"] | null;
+        };
+        /**
+         * AdminAccounts
+         * @description One admin list — newest first, at most 200.
+         */
+        AdminAccounts: {
+            accounts: components["schemas"]["AdminAccount"][];
+        };
+        /**
+         * PreapprovedEmail
+         * @description An address an application administrator let in ahead of its first sign-in.
+         */
+        PreapprovedEmail: {
+            /** @description Lower-cased. */
+            email: string;
+            /** @description The administrator who added it. */
+            addedBy: string;
+            /** Format: date-time */
+            createdAt: string;
+            note: string | null;
+        };
+        /**
+         * PreapprovedEmails
+         * @description Every pre-approved address, newest first.
+         */
+        PreapprovedEmails: {
+            emails: components["schemas"]["PreapprovedEmail"][];
+        };
+        /**
+         * PreapprovedEmailCreate
+         * @description An address to pre-approve. Trimmed and lower-cased before it is stored.
+         */
+        PreapprovedEmailCreate: {
+            /** @description A bare email address — no display name, no spaces. */
+            email: string;
+            /** @description Why, in the administrator's words. Optional; blank is stored as none. */
+            note?: string | null;
+        };
+        /**
+         * AddedPreapprovedEmail
+         * @description The entry added, and the pending account it approved on the spot (or null).
+         */
+        AddedPreapprovedEmail: {
+            email: string;
+            addedBy: string;
+            /** Format: date-time */
+            createdAt: string;
+            note: string | null;
+            approvedAccount: components["schemas"]["AdminAccount"] | null;
+        };
         /**
          * Preferences
          * @description The caller's product preferences, defaults included — the answer of both operations
@@ -32855,6 +33102,8 @@ export interface components {
     };
     responses: never;
     parameters: {
+        /** @description The account — `"user".id`. */
+        AccountUserId: string;
         /** @description Events at or after this instant — ISO-8601 with a zone. */
         AuditFrom: string;
         /** @description Events strictly before this instant — ISO-8601 with a zone. */
@@ -62189,6 +62438,487 @@ export interface operations {
              *     and `details.registered` lists the ones it has.
              */
             501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readAccountStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "pending",
+                     *       "appAdmin": false,
+                     *       "email": "priya@contractor.dev"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AccountStatusResource"];
+                };
+            };
+            /** @description `unauthenticated` — no session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `service_principal_refused` — a service token; this route is about a person. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listAdminAccounts: {
+        parameters: {
+            query?: {
+                /** @description Which list. Defaults to `pending`. */
+                status?: components["schemas"]["AccountStatus"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The accounts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "accounts": [
+                     *         {
+                     *           "id": "5eed009d-0000-4000-8000-000000000001",
+                     *           "name": "Priya Raman",
+                     *           "email": "priya@contractor.dev",
+                     *           "githubLogin": "priyaraman",
+                     *           "status": "pending",
+                     *           "createdAt": "2026-10-13T09:00:00.000Z",
+                     *           "statusChangedAt": "2026-10-13T09:00:00.000Z",
+                     *           "statusChangedBy": null,
+                     *           "statusReason": "held"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AdminAccounts"];
+                };
+            };
+            /** @description `unauthenticated` — no session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `app_admin_required` — the caller is not an application administrator
+             *     (`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `status` is not one of `pending`, `denied`, `approved`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    approveAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The account — `"user".id`. */
+                userId: components["parameters"]["AccountUserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAccount"];
+                };
+            };
+            /** @description `unauthenticated` — no session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `app_admin_required` — the caller is not an application administrator
+             *     (`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `account_not_found` — no account with that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    denyAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The account — `"user".id`. */
+                userId: components["parameters"]["AccountUserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The account as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAccount"];
+                };
+            };
+            /** @description `unauthenticated` — no session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `app_admin_required` — the caller is not an application administrator
+             *     (`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `account_not_found` — no account with that id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `cannot_deny_app_admin` — the account is an application administrator's, which
+             *     `OURO_APP_ADMIN_EMAILS` approves whatever is stored.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listPreapprovedEmails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pre-approved addresses. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "emails": [
+                     *         {
+                     *           "email": "lee@acme-robotics.dev",
+                     *           "addedBy": "ken@acme-robotics.dev",
+                     *           "createdAt": "2026-10-14T09:00:00.000Z",
+                     *           "note": "starts Monday"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PreapprovedEmails"];
+                };
+            };
+            /** @description `unauthenticated` — no session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `app_admin_required` — the caller is not an application administrator
+             *     (`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    addPreapprovedEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "email": "lee@acme-robotics.dev",
+                 *       "note": "starts Monday"
+                 *     }
+                 */
+                "application/json": components["schemas"]["PreapprovedEmailCreate"];
+            };
+        };
+        responses: {
+            /** @description The entry added, and the account it approved. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "email": "lee@acme-robotics.dev",
+                     *       "addedBy": "ken@acme-robotics.dev",
+                     *       "createdAt": "2026-10-15T09:00:00.000Z",
+                     *       "note": "starts Monday",
+                     *       "approvedAccount": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AddedPreapprovedEmail"];
+                };
+            };
+            /** @description `unauthenticated` — no session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `app_admin_required` — the caller is not an application administrator
+             *     (`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `already_preapproved` — the address is already on the list. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — not a bare email address, longer than 320 characters, or a
+             *     note longer than 200.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    removePreapprovedEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The address, URL-encoded. */
+                email: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `unauthenticated` — no session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `app_admin_required` — the caller is not an application administrator
+             *     (`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `preapproved_email_not_found` — the address is not on the list. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

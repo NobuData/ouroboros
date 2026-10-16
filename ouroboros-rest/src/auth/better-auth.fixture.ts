@@ -104,6 +104,8 @@ export interface StubbedSession {
     readonly image: string | null;
     readonly createdAt: Date;
     readonly updatedAt: Date;
+    /** Account approval's status (V149) — what every session since carries. */
+    readonly accountStatus?: string;
   };
 }
 
@@ -306,6 +308,9 @@ export function grantSession(user: Partial<StubbedSession["user"]> = {}): string
     image: null,
     createdAt: now,
     updatedAt: now,
+    // Approved, as every person a suite signs in to do something else is: account approval's
+    // guard refuses anybody else. A suite about a held person passes `accountStatus`.
+    accountStatus: "approved",
     ...user,
   };
 

@@ -349,6 +349,7 @@ service never starts half-configured.
 | `OURO_HOSTED_RUNNER_POOL` | Whether this deployment declares a hosted runner pool — selects the Smart Defaults build row ([#388](https://github.com/NobuData/ouroboros/issues/388)) |     no — false     | `true` or `false` |
 | `OURO_LIVE_EXECUTION_ENABLED` | Whether this deployment may execute loops for real; off, the [loop capability report](#the-loop-capability-report) says `execution` is unavailable ([#1300](https://github.com/NobuData/ouroboros/issues/1300)) |     no — false     | `true` or `false` |
 | `OURO_DATA_REGION` | Where this deployment keeps its data, shown read-only on [the workspace card](#the-workspace-card) ([#483](https://github.com/NobuData/ouroboros/issues/483)); a label that moves nothing |     no — unset     | up to 64 of letters, digits, `. _ : / ( ) -`; no spaces; unset reads `self-hosted` |
+| `OURO_APP_ADMIN_EMAILS` | The application administrators: always approved, and the only people who may approve or deny held accounts at `/admin/accounts` (see [Account approval](#account-approval)) |     no — unset     | comma-separated bare email addresses, case-insensitive; unset or empty means no administrators |
 
 Every one of them is documented with a development default in the repo-root
 [`.env.example`](../.env.example), and `scripts/verify-dev-env.sh` fails the build if this
@@ -785,6 +786,64 @@ the contract by accident.
 **and a workspace** ([#32](https://github.com/NobuData/ouroboros/issues/32)) — a workspace
 you are not a member of answers `404`, and the ten mutations above need `owner` or `admin`.
 See [The tenant context](#the-tenant-context).
+
+## Account approval
+
+A person who signs in without an account made for them is **held** until an application
+administrator approves them. Application administrators are the addresses in
+`OURO_APP_ADMIN_EMAILS` (comma-separated, case-insensitive, trimmed; unset or empty means
+none) — they are always approved and are the only callers of `/api/v1/admin/*`.
+
+**The decision at sign-up.** BetterAuth's `databaseHooks.user.create.before`
+(`src/auth/account.approval.ts`) runs for every path that creates a user — GitHub, the dev
+password sign-up, account linking — and sets `"user".account_status` (V149) in this order:
+
+| Rule | Status | Reason |
+| --- | --- | --- |
+| The address is in `OURO_APP_ADMIN_EMAILS` | `approved` | `app_admin` |
+| A pending, unexpired workspace invitation to the address | `approved` | `invited` |
+| An administrator pre-approved the address | `approved` | `preapproved` |
+| Anybody else | `pending` | `held` |
+
+Accounts that existed before V149 are `approved` (`existing`). A held sign-up writes a `held`
+row to `app_account_events` and, when `OURO_SMTP_URL` is set, emails every administrator a
+link to `<OURO_UI_URL>/admin/accounts` — after the user row commits (`user.create.after`). A
+failed insert or send is logged, never thrown.
+
+**The status as a BetterAuth field.** `accountStatus` (and `githubLogin`, filled from the GitHub
+profile) are `user.additionalFields` mapped onto V149's snake_case columns, so
+`session.user.accountStatus` reaches the guard with no query. All status fields are
+`input: false`. Writes go through BetterAuth's adapter: `"user"` is library-owned.
+
+**The guard.** `SessionOrServiceGuard` refuses a signed-in person who is not *effectively
+approved* (stored `approved`, or an administrator whatever is stored) with
+`403 account_pending_approval` or `403 account_denied`. Open to them: BetterAuth's
+`/api/auth/*`, `@AllowAnonymous()` routes (sign-out among them), and `@AllowHeldAccount()` routes
+— only `GET /api/v1/account/status`. When the five-minute cookie snapshot says *held*, the guard
+re-reads the session past the cache, so an approval works on the person's next request. A denial
+reaches a browser holding a fresh *approved* snapshot within five minutes.
+
+**No workspace while held.** `active.organization.ts` makes a personal organization only for an
+effectively approved person; a held one starts acting nowhere. Approval makes it with the same
+function and stamps it onto the person's open sessions.
+
+| Route | Who | Answers |
+| --- | --- | --- |
+| `GET /api/v1/account/status` | any signed-in person, held included | `{ status, appAdmin, email }` |
+| `GET /api/v1/admin/accounts?status=pending\|denied\|approved` | administrators | `{ accounts: [...] }`, newest first, ≤ 200 |
+| `POST /api/v1/admin/accounts/:userId/approve` | administrators | the account; `404 account_not_found` |
+| `POST /api/v1/admin/accounts/:userId/deny` | administrators | the account; `409 cannot_deny_app_admin` |
+| `GET /api/v1/admin/preapproved-emails` | administrators | `{ emails: [...] }` |
+| `POST /api/v1/admin/preapproved-emails` | administrators | `201` entry + `approvedAccount`; `409 already_preapproved` |
+| `DELETE /api/v1/admin/preapproved-emails/:email` | administrators | `204`; `404 preapproved_email_not_found` |
+
+Anybody else on an admin route gets `403 app_admin_required`. Pre-approving an address whose
+account is pending approves it on the spot. Every decision is appended to `app_account_events`.
+
+The dev seed holds one pending person (`priya@contractor.dev`), one denied
+(`sam@unknown.example`), both signing in with the dev password, and one pre-approved address
+(`lee@acme-robotics.dev`). The integration harness pre-approves every address it signs up unless
+a suite passes `held: true`.
 
 ## The dashboard
 

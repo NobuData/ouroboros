@@ -29,6 +29,14 @@ import type { BetterAuthOptions } from "better-auth";
 import type { Pool } from "pg";
 
 import type { Configuration } from "../modules/config/configuration";
+import type { Mailer } from "../modules/mail/mailer";
+import {
+  ACCOUNT_USER_FIELDS,
+  accountApprovalHooks,
+  holdNotifier,
+  poolLookups,
+  type ApprovalLogger,
+} from "./account.approval";
 import { activeOrganizationHooks } from "./active.organization";
 import { ACCOUNT_LINKING, GITHUB_PROVIDER_ID, githubProvider } from "./github.provider";
 import { passwordProvider } from "./password.provider";
@@ -81,6 +89,20 @@ export interface AuthDependencies {
    * **A4**).
    */
   readonly pool: Pool;
+  /**
+   * The mailer account approval emails administrators through when somebody is held.
+   *
+   * Optional, because one of the two callers has none: `@better-auth/cli` builds an instance
+   * to read its schema and never signs anybody in. The application passes `MailModule`'s,
+   * which is an unconfigured mailer — one that sends nothing — when `OURO_SMTP_URL` is unset.
+   */
+  readonly mailer?: Mailer;
+  /**
+   * Where account approval reports a failure that must not fail a sign-in — a held event
+   * that could not be written, an email that could not be sent. Defaults to `console`, for the
+   * CLI; the application passes a Nest `Logger`.
+   */
+  readonly logger?: ApprovalLogger;
 }
 
 /**
@@ -109,7 +131,12 @@ export interface AuthDependencies {
  * @returns The options object, ready for `betterAuth()`. A fresh object each call: the
  *   caller owns it, and a shared literal would let one caller's plugin list reach another.
  */
-export function authOptions({ configuration, pool }: AuthDependencies): BetterAuthOptions {
+export function authOptions({
+  configuration,
+  pool,
+  mailer,
+  logger = console,
+}: AuthDependencies): BetterAuthOptions {
   return {
     appName: AUTH_APP_NAME,
 
@@ -157,6 +184,13 @@ export function authOptions({ configuration, pool }: AuthDependencies): BetterAu
     // beside it.
     account: { accountLinking: ACCOUNT_LINKING },
 
+    // Account approval's fields on the person: the status the guard reads from the session
+    // without a query, the three columns saying when, by whom and why it was decided, and the
+    // GitHub login the admin page names a stranger by. Mapped onto V149's snake_case columns;
+    // every status field is `input: false`, so nobody chooses their own. See
+    // `account.approval.ts`.
+    user: { additionalFields: ACCOUNT_USER_FIELDS },
+
     // Where a new session starts out acting, and the personal organization that gives it
     // somewhere to be — decision **A5**, and #704's. It is a root option rather than one of
     // the organization plugin's because the library puts session hooks here; the plugin
@@ -164,7 +198,21 @@ export function authOptions({ configuration, pool }: AuthDependencies): BetterAu
     // `organization.plugin.ts`. See `active.organization.ts` for why the rule hangs off
     // session creation rather than user creation — in short, because `V004`'s back-filled
     // people were never *created* by a sign-in and would otherwise never get one.
-    databaseHooks: activeOrganizationHooks(),
+    //
+    // Composed with account approval's `user` hooks, which decide a new account's status as
+    // its row is written (administrator, invitation, pre-approval, else held) and tell the
+    // administrators once a held row commits. The session hook reads that status: a person who
+    // is not effectively approved gets no personal organization until an administrator
+    // approves them. Both read `OURO_APP_ADMIN_EMAILS`.
+    databaseHooks: {
+      ...activeOrganizationHooks(configuration.appAdminEmails),
+      user: accountApprovalHooks({
+        configuration,
+        lookups: poolLookups(pool),
+        notifier: holdNotifier({ pool, mailer, configuration, logger }),
+        logger,
+      }),
+    },
 
     // Decision **A2**: the built-in Kysely adapter, over the pool the service already has.
     // A `pg` pool given directly is how BetterAuth is told to build that adapter itself —

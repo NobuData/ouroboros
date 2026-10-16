@@ -9,10 +9,12 @@ import {
   Server,
   Settings,
   Telescope,
+  UserCheck,
   Workflow,
 } from "lucide-react";
 
 import {
+  ADMIN_ACCOUNTS_PATH,
   BUILD_FARM_PATH,
   DASHBOARD_PATH,
   INBOX_PATH,
@@ -203,6 +205,35 @@ export const SEEDED_NAV_ENTRIES: readonly NavEntry[] = [
 ];
 
 /**
+ * The capability that shows the **Accounts** entry: the reader is an application administrator
+ * (account approval).
+ *
+ * Exported because two sides have to agree on it: {@link ACCOUNTS_NAV_ENTRY} declares it, and
+ * `app/accounts/admin-nav.tsx` publishes it with `setNavCapabilities` when
+ * `GET /api/v1/account/status` answers `appAdmin: true`. Until then the entry is hidden — the
+ * registry's default for a capability nobody has published.
+ */
+export const APP_ADMIN_CAPABILITY = "app.admin";
+
+/**
+ * **Accounts** — the application administrators' approval page.
+ *
+ * Kept out of {@link SEEDED_NAV_ENTRIES} on purpose: those are the shell specification's eleven,
+ * shown to everyone, and this one is deployment administration shown to a handful of emails.
+ * It sits in the bottom group after Settings, and is hidden — with no gap — for every reader
+ * not granted {@link APP_ADMIN_CAPABILITY}.
+ */
+export const ACCOUNTS_NAV_ENTRY: NavEntry = {
+  id: "accounts",
+  label: "Accounts",
+  route: ADMIN_ACCOUNTS_PATH,
+  icon: UserCheck,
+  group: "secondary",
+  sort: 30,
+  capability: APP_ADMIN_CAPABILITY,
+};
+
+/**
  * The registrations themselves, run once when this module is first imported — which is what
  * "modules register themselves at load" means, and why `sidebar-nav.tsx` imports this file
  * for its effect rather than for a value.
@@ -211,3 +242,4 @@ export const SEEDED_NAV_ENTRIES: readonly NavEntry[] = [
  * than doubling the sidebar.
  */
 for (const entry of SEEDED_NAV_ENTRIES) registerNavEntry(entry);
+registerNavEntry(ACCOUNTS_NAV_ENTRY);

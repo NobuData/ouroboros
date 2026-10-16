@@ -1504,6 +1504,18 @@ export interface Configuration {
    * so the value describes that choice and cannot make one.
    */
   readonly dataRegion?: string;
+  /**
+   * The deployment's application administrators — `OURO_APP_ADMIN_EMAILS`, a comma-separated
+   * list of email addresses (account approval). Lower-cased, trimmed and de-duplicated, so a
+   * comparison is `appAdminEmails.includes(email.toLowerCase())`.
+   *
+   * A person signed in with one of these addresses is always approved, whatever their stored
+   * `account_status`, and may approve or deny everybody else's account. **Empty when unset**,
+   * which means nobody can approve a held account: every new stranger waits until an operator
+   * names an administrator. That is the safe reading of silence — an unset variable must not
+   * make everybody an administrator, nor let everybody in.
+   */
+  readonly appAdminEmails: readonly string[];
 }
 
 /**
@@ -1608,6 +1620,7 @@ export const VARIABLES = {
   managedKeyTrialCents: "OURO_MANAGED_KEY_TRIAL_CENTS",
   hostedRunnerPool: "OURO_HOSTED_RUNNER_POOL",
   dataRegion: "OURO_DATA_REGION",
+  appAdminEmails: "OURO_APP_ADMIN_EMAILS",
 } as const satisfies Record<keyof Configuration, string>;
 
 /**
@@ -1621,6 +1634,25 @@ export const DATA_REGION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/()-]{0,63}$/;
  * an env file that shells source, so the angle brackets a display name needs are kept out of it.
  */
 const MAIL_ADDRESS = /^[^\s@<>]+@[^\s@<>]+$/;
+
+/**
+ * Read `OURO_APP_ADMIN_EMAILS` into the list {@link Configuration.appAdminEmails} holds.
+ *
+ * Split on commas, trimmed, lower-cased (BetterAuth stores `"user".email` lower-cased, so the
+ * comparison is exact), blank entries dropped and duplicates removed. Validation of each entry
+ * is the schema's job, so a malformed address is named in the boot failure.
+ *
+ * @param value - The raw variable, or `undefined` when unset.
+ * @returns The addresses, in the order first written. Empty when unset or blank.
+ */
+export function parseAppAdminEmails(value: string | undefined): string[] {
+  const emails = (value ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry !== "");
+
+  return [...new Set(emails)];
+}
 
 /**
  * Is this an absolute URL on one of the given schemes, with a host?
@@ -2500,6 +2532,19 @@ const environmentShape = z.object({
     .regex(DATA_REGION_PATTERN, "expected a region label without spaces, such as eu-central-1")
     .optional(),
 
+  // The application administrators (account approval). Optional: unset is an empty list, and
+  // then nobody may approve a held account. Comma-separated like OURO_CORS_ORIGINS, with the
+  // same tolerance for blank entries; every entry must be a bare address, compared
+  // case-insensitively.
+  OURO_APP_ADMIN_EMAILS: z
+    .string()
+    .optional()
+    .transform((value) => parseAppAdminEmails(value))
+    .refine(
+      (emails) => emails.every((email) => MAIL_ADDRESS.test(email)),
+      "expected a comma-separated list of bare email addresses, such as ken@acme.dev,maya@acme.dev",
+    ),
+
   // Where this deployment's local model providers are (#224, decision P3) — `kind=url`
   // pairs, comma-separated. Optional, and its default is *no local providers*: an
   // installation that runs none is the normal one, and a default address would be this
@@ -2809,6 +2854,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     managedKeyTrialCents: values.OURO_MANAGED_KEY_TRIAL_CENTS,
     hostedRunnerPool: values.OURO_HOSTED_RUNNER_POOL,
     dataRegion: values.OURO_DATA_REGION,
+    appAdminEmails: Object.freeze(values.OURO_APP_ADMIN_EMAILS),
   });
 }
 
