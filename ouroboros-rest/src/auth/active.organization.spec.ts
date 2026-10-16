@@ -3,6 +3,7 @@ import {
   PERSONAL_ORGANIZATION_METADATA_JSON,
   SLUG_MAX_LENGTH,
   activeOrganizationHooks,
+  activeOrganizationStamp,
   chooseActiveOrganization,
   personalOrganizationName,
   personalOrganizationSlugs,
@@ -272,6 +273,9 @@ function fakeContext(
   } as unknown as Parameters<NonNullable<typeof stampActiveOrganization>>[1];
 }
 
+/** Ken as `findUserById` returns him since V149: with his account status. */
+const APPROVED_KEN = { ...KEN, accountStatus: "approved" };
+
 /** The session row the library is about to insert. */
 const NEW_SESSION = { id: "session-1", userId: KEN.id } as unknown as Parameters<
   NonNullable<typeof stampActiveOrganization>
@@ -309,7 +313,7 @@ describe("the session hook", () => {
     // starts out acting nowhere is the state mockup 01 Step 2 exists to resolve.
     const { store } = fakeStore({ takenSlugs: personalOrganizationSlugs(KEN) });
 
-    const result = await stampActiveOrganization?.(NEW_SESSION, fakeContext(store, KEN));
+    const result = await stampActiveOrganization?.(NEW_SESSION, fakeContext(store, APPROVED_KEN));
 
     expect(result).toEqual({ data: { ...NEW_SESSION, activeOrganizationId: null } });
   });
@@ -326,6 +330,78 @@ describe("the session hook", () => {
     const { store, written } = fakeStore();
 
     expect(await stampActiveOrganization?.(NEW_SESSION, fakeContext(store, null))).toBeUndefined();
+    expect(written).toHaveLength(0);
+  });
+
+  it("makes an approved person who belongs nowhere their personal organization", async () => {
+    const { store, written } = fakeStore();
+
+    const result = await stampActiveOrganization?.(NEW_SESSION, fakeContext(store, APPROVED_KEN));
+
+    expect(result).toEqual({ data: { ...NEW_SESSION, activeOrganizationId: "minted-1" } });
+    expect(written.map((row) => row.model)).toEqual(["organization", "member"]);
+  });
+});
+
+describe("the session hook under account approval", () => {
+  it.each(["pending", "denied"])(
+    "gives a %s person who belongs nowhere no workspace, and acts nowhere",
+    async (accountStatus) => {
+      const { store, written } = fakeStore();
+
+      const result = await stampActiveOrganization?.(
+        NEW_SESSION,
+        fakeContext(store, { ...KEN, accountStatus }),
+      );
+
+      expect(result).toEqual({ data: { ...NEW_SESSION, activeOrganizationId: null } });
+      expect(written).toHaveLength(0);
+    },
+  );
+
+  it("treats a person whose status cannot be read as not approved", async () => {
+    const { store, written } = fakeStore();
+
+    await stampActiveOrganization?.(NEW_SESSION, fakeContext(store, KEN));
+
+    expect(written).toHaveLength(0);
+  });
+
+  it("still starts a held person in a membership they already hold", async () => {
+    const { store } = fakeStore({ memberships: [{ organizationId: "org-existing" }] });
+
+    const result = await stampActiveOrganization?.(
+      NEW_SESSION,
+      fakeContext(store, { ...KEN, accountStatus: "pending" }),
+    );
+
+    expect(result).toEqual({ data: { ...NEW_SESSION, activeOrganizationId: "org-existing" } });
+  });
+
+  it("makes an application administrator a workspace whatever their stored status", async () => {
+    const { store, written } = fakeStore();
+    const stamp = activeOrganizationHooks([KEN.email])?.session?.create?.before;
+
+    const result = await stamp?.(
+      NEW_SESSION,
+      fakeContext(store, { ...KEN, accountStatus: "pending" }),
+    );
+
+    expect(result).toEqual({ data: { ...NEW_SESSION, activeOrganizationId: "minted-1" } });
+    expect(written).toHaveLength(2);
+  });
+
+  it("builds a hook of its own for a configured administrator list", () => {
+    expect(activeOrganizationStamp([KEN.email])).not.toBe(stampActiveOrganization);
+    expect(activeOrganizationHooks([KEN.email])?.session?.create?.before).not.toBe(
+      stampActiveOrganization,
+    );
+  });
+
+  it("resolves nothing new when creation is not allowed", async () => {
+    const { store, written } = fakeStore();
+
+    expect(await resolveActiveOrganization({ store, user: KEN, mayCreate: false })).toBeNull();
     expect(written).toHaveLength(0);
   });
 });

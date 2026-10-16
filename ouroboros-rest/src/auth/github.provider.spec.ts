@@ -100,7 +100,7 @@ describe("turning a GitHub profile into a person", () => {
   it("uses the name they have set", () => {
     expect(
       githubProfileToUser({ login: "octocat", name: "Mona Lisa", avatar_url: "https://a/1" }),
-    ).toEqual({ name: "Mona Lisa", image: "https://a/1" });
+    ).toEqual({ name: "Mona Lisa", image: "https://a/1", githubLogin: "octocat" });
   });
 
   it.each([
@@ -116,6 +116,7 @@ describe("turning a GitHub profile into a person", () => {
     expect(githubProfileToUser({ login: "octocat", name })).toEqual({
       name: "octocat",
       image: undefined,
+      githubLogin: "octocat",
     });
   });
 
@@ -133,9 +134,16 @@ describe("turning a GitHub profile into a person", () => {
     // `emailVerified` from GitHub's own flag. Writing `email` here would override a
     // verified value with the public profile's unverified one.
     expect(Object.keys(githubProfileToUser({ login: "octocat" })).sort()).toEqual([
+      "githubLogin",
       "image",
       "name",
     ]);
+  });
+
+  it("keeps the login, which the account-approval admin page names a stranger by", () => {
+    expect(githubProfileToUser({ login: "priyaraman", name: "Priya Raman" }).githubLogin).toBe(
+      "priyaraman",
+    );
   });
 
   it("is what the provider hands the library", () => {

@@ -651,6 +651,14 @@ export class AppConfigService {
   }
 
   /**
+   * The application administrators — `OURO_APP_ADMIN_EMAILS`, lower-cased. Empty when unset:
+   * nobody may then approve a held account (account approval).
+   */
+  get appAdminEmails(): readonly string[] {
+    return this.config.getOrThrow<readonly string[]>("appAdminEmails");
+  }
+
+  /**
    * Is this a production deployment?
    *
    * The one derived flag worth naming, because it is asked in several places and asking
@@ -770,6 +778,7 @@ export class AppConfigService {
       managedKeyTrialCents: this.managedKeyTrialCents,
       hostedRunnerPool: this.hostedRunnerPool,
       dataRegion: this.dataRegion,
+      appAdminEmails: this.appAdminEmails,
     };
   }
 

@@ -545,13 +545,14 @@ printf '\nR__dev_seed.sql — the workspaces\n'
 check_contains "$BODY" '5eed0001-0000-4000-8000-000000000001' \
   'the demo organization has the documented id'
 
-# Twenty-six rows, twenty-six ids, all of them recognisable on sight. Distinct ids are
+# Thirty-four rows, thirty-four ids, all of them recognisable on sight (twenty-six, plus account
+# approval's two held people, their two credential accounts and four account events). Distinct ids are
 # counted rather than occurrences: an id reused between two tables would still satisfy a
 # total, and would give two different rows the same name in every log and URL that
 # carries one. (The BetterAuth tables hold them as text; the shape is the same.)
 seed_ids=$(grep -Eo "'5eed[0-9a-f]{4}-0000-4000-8000-[0-9a-f]{12}'" "$BODY" | sort -u | wc -l)
-check_equals 26 "$(printf '%s' "$seed_ids" | tr -d ' ')" \
-  'the seed uses twenty-six distinct 5eed… ids, one per row it creates'
+check_equals 34 "$(printf '%s' "$seed_ids" | tr -d ' ')" \
+  'the seed uses thirty-four distinct 5eed… ids, one per row it creates'
 
 # The `account` table *can* hold the library's encrypted tokens, and this seed
 # deliberately writes none of those columns (tests/seed.sql asserts the rows stay null);
@@ -560,15 +561,16 @@ check_equals 26 "$(printf '%s' "$seed_ids" | tr -d ' ')" \
 # "token" is a unit of work a model consumed and not a credential.
 check_absent "$BODY" 'token' 'the seed writes no token'
 
-# The one credential the seed *is* allowed to write (#709): the three password hashes
+# The one credential the seed *is* allowed to write (#709): the password hashes
 # behind the documented development password, and nothing that merely resembles one.
-# Exactly three values in scrypt's `salt:key` shape — 32 hex chars, a colon, 128 — and
+# Exactly five values in scrypt's `salt:key` shape — the three demo people and, since account
+# approval, the held and the refused person the docs sign in as — 32 hex chars, a colon, 128 — and
 # every mention of the password column is one of those literals landing in it. The
 # plaintext lives in documentation, never in a statement, so a database seeded from
 # this file holds only what BetterAuth's verifier needs.
 hashes=$(grep -Eoc "'[0-9a-f]{32}:[0-9a-f]{128}'" "$BODY" || true)
-check_equals 3 "$(printf '%s' "$hashes" | tr -d ' ')" \
-  'the seed writes exactly three password hashes, one per demo person'
+check_equals 5 "$(printf '%s' "$hashes" | tr -d ' ')" \
+  'the seed writes exactly five password hashes, one per demo or held person'
 check_absent "$BODY" 'ouroboros-dev-password' \
   'the development password appears in documentation, never in SQL'
 

@@ -50,6 +50,16 @@ function instanceOf(auth: unknown): StubbedAuth {
   return auth as StubbedAuth;
 }
 
+/**
+ * The options with account approval's user hooks set aside: they close over each call's pool
+ * and mailer, so two builds hold equal hooks that are not the same functions.
+ */
+function withoutUserHooks(options: Record<string, unknown>): Record<string, unknown> {
+  const hooks = options.databaseHooks as Record<string, unknown> | undefined;
+
+  return { ...options, databaseHooks: { ...hooks, user: undefined } };
+}
+
 describe("the options handed to the library", () => {
   it("builds the instance from this service's own configuration", () => {
     const pool = new Pool();
@@ -67,7 +77,9 @@ describe("the options handed to the library", () => {
     // equal in every way except the identity `toEqual` compares functions by.
     const { plugins, ...rest } = instanceOf(options.auth).options;
 
-    expect(rest).toEqual(authOptions({ configuration: config.all, pool }));
+    expect(withoutUserHooks(rest)).toEqual(
+      withoutUserHooks({ ...authOptions({ configuration: config.all, pool }) }),
+    );
     expect(plugins).toHaveLength(1);
     expect(plugins?.[0]).toMatchObject({ id: "organization" });
   });

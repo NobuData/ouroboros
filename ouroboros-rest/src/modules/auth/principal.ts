@@ -65,6 +65,14 @@ export interface SessionUser {
   readonly createdAt: Date;
   /** When they were last updated. */
   readonly updatedAt: Date;
+  /**
+   * Account approval's status — `approved`, `pending` or `denied` — as the BetterAuth field
+   * `accountStatus` (V149's `account_status`). Optional because a cookie snapshot written
+   * before V149 lacks it; the guard reads the database then rather than assuming.
+   */
+  readonly accountStatus?: string | null;
+  /** The GitHub login at the account's first sign-in (V149's `github_login`), when any. */
+  readonly githubLogin?: string | null;
 }
 
 /**

@@ -6,6 +6,8 @@ import {
   SERVICE_PRINCIPAL_PROPERTY,
   SERVICE_TOKEN_REJECTED_PROPERTY,
 } from "../modules/auth/service.principal";
+import { AUTH_ERRORS } from "../modules/auth/auth.errors";
+import { AllowHeldAccount } from "../modules/auth/held.account";
 import { servicePrincipalFor } from "../modules/auth/service.principal.fixture";
 import { SessionOrServiceGuard } from "./session-or-service.guard";
 
@@ -25,6 +27,10 @@ class Routes {
   @AllowAnonymous()
   @Get()
   open(): void {}
+
+  @AllowHeldAccount()
+  @Get()
+  status(): void {}
 }
 
 /** An HTTP context for one handler and request. */
@@ -77,7 +83,10 @@ describe("the session-or-service guard", () => {
   });
 
   it("is the library's guard for everybody else", async () => {
-    const { guard, getSession } = guardWith({ session: { id: "s" }, user: { id: "u" } });
+    const { guard, getSession } = guardWith({
+      session: { id: "s" },
+      user: { id: "u", email: "maya@acme-robotics.dev", accountStatus: "approved" },
+    });
 
     await expect(
       guard.canActivate(contextFor(Routes.prototype.guarded, { headers: {} })),
@@ -91,5 +100,136 @@ describe("the session-or-service guard", () => {
     await expect(
       guard.canActivate(contextFor(Routes.prototype.guarded, { headers: {} })),
     ).rejects.toThrow();
+  });
+});
+
+/** A session for a person in one status. */
+function sessionOf(accountStatus: string | undefined, email = "priya@contractor.dev") {
+  return {
+    session: { id: "s", activeOrganizationId: null },
+    user: { id: "u", email, ...(accountStatus === undefined ? {} : { accountStatus }) },
+  };
+}
+
+/**
+ * The guard as Nest builds it: the library's lookup answering `snapshot`, the cache-bypassing
+ * re-read answering `fresh`, and `OURO_APP_ADMIN_EMAILS` set to `admins`.
+ */
+function approvalGuard(snapshot: unknown, fresh: unknown = snapshot, admins: string[] = []) {
+  const getSession = jest.fn().mockResolvedValue(snapshot);
+  const reread = jest.fn().mockResolvedValue(fresh);
+  const guard = new SessionOrServiceGuard(new Reflector(), {
+    auth: { api: { getSession } },
+  } as never);
+
+  guard.appConfig = { appAdminEmails: admins };
+  guard.betterAuth = { api: { getSession: reread } } as never;
+
+  return { guard, getSession, reread };
+}
+
+describe("the guard under account approval", () => {
+  it("admits an approved account without a second lookup", async () => {
+    const { guard, reread } = approvalGuard(sessionOf("approved"));
+
+    await expect(
+      guard.canActivate(contextFor(Routes.prototype.guarded, { headers: {} })),
+    ).resolves.toBe(true);
+    expect(reread).not.toHaveBeenCalled();
+  });
+
+  it("refuses a pending account with 403 account_pending_approval", async () => {
+    const { guard } = approvalGuard(sessionOf("pending"));
+
+    await expect(
+      guard.canActivate(contextFor(Routes.prototype.guarded, { headers: {} })),
+    ).rejects.toMatchObject({ code: AUTH_ERRORS.accountPendingApproval, status: 403 });
+  });
+
+  it("refuses a denied account with 403 account_denied", async () => {
+    const { guard } = approvalGuard(sessionOf("denied"));
+
+    await expect(
+      guard.canActivate(contextFor(Routes.prototype.guarded, { headers: {} })),
+    ).rejects.toMatchObject({ code: AUTH_ERRORS.accountDenied, status: 403 });
+  });
+
+  it("lets a held account reach an @AllowHeldAccount route", async () => {
+    const { guard } = approvalGuard(sessionOf("pending"));
+
+    await expect(
+      guard.canActivate(contextFor(Routes.prototype.status, { headers: {} })),
+    ).resolves.toBe(true);
+  });
+
+  it("leaves an @AllowAnonymous route alone for a held account", async () => {
+    const { guard, reread } = approvalGuard(sessionOf("denied"));
+
+    await expect(
+      guard.canActivate(contextFor(Routes.prototype.open, { headers: {} })),
+    ).resolves.toBe(true);
+    expect(reread).not.toHaveBeenCalled();
+  });
+
+  it("admits an application administrator whose stored status is pending", async () => {
+    const { guard, reread } = approvalGuard(
+      sessionOf("pending", "Ken@Acme-Robotics.dev"),
+      undefined,
+      ["ken@acme-robotics.dev"],
+    );
+
+    await expect(
+      guard.canActivate(contextFor(Routes.prototype.guarded, { headers: {} })),
+    ).resolves.toBe(true);
+    expect(reread).not.toHaveBeenCalled();
+  });
+
+  it("re-reads a held snapshot past the cookie cache, so an approval works on the next request", async () => {
+    const fresh = {
+      session: { id: "s", activeOrganizationId: "org-personal" },
+      user: { id: "u", email: "priya@contractor.dev", accountStatus: "approved" },
+    };
+    const { guard, reread } = approvalGuard(sessionOf("pending"), fresh);
+    const request: Record<string, unknown> = { headers: { cookie: "a=b", accept: ["x", "y"] } };
+
+    await expect(guard.canActivate(contextFor(Routes.prototype.guarded, request))).resolves.toBe(
+      true,
+    );
+    expect(reread).toHaveBeenCalledWith(
+      expect.objectContaining({ query: { disableCookieCache: true } }),
+    );
+    const headers = (reread.mock.calls[0] as [{ headers: Headers }])[0].headers;
+    expect(headers.get("cookie")).toBe("a=b");
+    expect(headers.get("accept")).toBe("x, y");
+    // The rest of the pipeline — the tenant guard above all — reads the fresh session.
+    expect(request.session).toBe(fresh);
+    expect(request.user).toBe(fresh.user);
+  });
+
+  it("re-reads a snapshot older than V149, and refuses what the database says is held", async () => {
+    const { guard, reread } = approvalGuard(sessionOf(undefined), sessionOf("denied"));
+
+    await expect(
+      guard.canActivate(contextFor(Routes.prototype.guarded, { headers: {} })),
+    ).rejects.toMatchObject({ code: AUTH_ERRORS.accountDenied });
+    expect(reread).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps refusing when the re-read finds no session", async () => {
+    const { guard } = approvalGuard(sessionOf("pending"), null);
+
+    await expect(
+      guard.canActivate(contextFor(Routes.prototype.guarded, { headers: {} })),
+    ).rejects.toMatchObject({ code: AUTH_ERRORS.accountPendingApproval });
+  });
+
+  it("never holds a service principal", async () => {
+    const { guard, getSession } = approvalGuard(sessionOf("pending"));
+    const request = { headers: {}, [SERVICE_PRINCIPAL_PROPERTY]: servicePrincipalFor() };
+
+    await expect(guard.canActivate(contextFor(Routes.prototype.guarded, request))).resolves.toBe(
+      true,
+    );
+    expect(getSession).not.toHaveBeenCalled();
   });
 });

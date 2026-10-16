@@ -45,6 +45,8 @@
 
 import type { BetterAuthOptions } from "better-auth";
 
+import { isEffectivelyApproved } from "./account.approval";
+
 /** The model names this module reads and writes, as the plugin's schema names them. */
 const ORGANIZATION_MODEL = "organization";
 const MEMBER_MODEL = "member";
@@ -266,6 +268,13 @@ export interface ActiveOrganizationRequest {
   readonly store: OrganizationStore;
   /** The person signing in. */
   readonly user: OrganizationOwner;
+  /**
+   * Whether a personal organization may be made for somebody who belongs to none. `true` unless
+   * said otherwise; account approval passes `false` for an account that is not effectively
+   * approved — a held person gets no workspace until an administrator approves them, and the
+   * approval then calls this again with `true` (`modules/accounts/accounts.service.ts`).
+   */
+  readonly mayCreate?: boolean;
 }
 
 /**
@@ -274,15 +283,17 @@ export interface ActiveOrganizationRequest {
  * One indexed lookup in the common case: the memberships of one person, ordered, which
  * `member_userId_idx` serves. Nothing is written unless the answer is "none".
  *
- * @param request - The adapter and the person — see {@link ActiveOrganizationRequest}.
+ * @param request - The adapter, the person and whether a workspace may be made for them — see
+ *   {@link ActiveOrganizationRequest}.
  * @returns The organization id to write onto the session row, or `null` if one could not be
- *   established. `null` is a valid session: *signed in, acting nowhere*, which is the state
+ *   established — or may not be, for a held account. `null` is a valid session: *signed in, acting nowhere*, which is the state
  *   `V005`'s nullable column exists to hold and which mockup 01 Step 2 renders as an empty
  *   list rather than an error.
  */
 export async function resolveActiveOrganization({
   store,
   user,
+  mayCreate = true,
 }: ActiveOrganizationRequest): Promise<string | null> {
   const existing = await membershipsOf(store, user.id);
 
@@ -290,7 +301,7 @@ export async function resolveActiveOrganization({
     return chooseActiveOrganization(existing);
   }
 
-  return createPersonalOrganization(store, user);
+  return mayCreate ? createPersonalOrganization(store, user) : null;
 }
 
 /**
@@ -394,48 +405,75 @@ type SessionCreateBefore = NonNullable<
  * session therefore has an active organization from the instant it exists — which matters,
  * because the request that created it is already on its way to a handler that may read one.
  *
- * A **module-level function rather than a closure** built inside
- * {@link activeOrganizationHooks}, so that two calls to `authOptions` produce hooks that
- * compare equal. `auth.options.spec.ts` asserts exactly that — a fresh object each call,
- * with equal contents — and a new arrow function per call would make the object fresh and
- * the contents unequal, which is a distinction nothing wants.
+ * **Account approval.** A personal organization is made only for somebody *effectively
+ * approved* — status `approved`, or an application administrator whatever their status
+ * (`account.approval.ts`). A held or denied person who belongs nowhere starts with a null
+ * pointer, which is a valid session (*signed in, acting nowhere*): they can sign in, and the
+ * guard sends every product route to the waiting page. Approval makes the organization then.
  *
- * @param session - The row the library is about to write.
- * @param context - The request that caused it, or `null`.
- * @returns The row with `activeOrganizationId` filled in, or nothing at all — which leaves
- *   the library's own data untouched.
+ * Built per administrator list by {@link activeOrganizationStamp}; the list is the only thing
+ * that varies, so a deployment with none shares one module-level hook,
+ * {@link stampActiveOrganization}, and two calls to `authOptions` produce hooks that compare
+ * equal — `auth.options.spec.ts` asserts a fresh object each call with equal contents.
+ *
+ * @param appAdminEmails - `OURO_APP_ADMIN_EMAILS`, lower-cased.
+ * @returns The hook. Given the row the library is about to write and the request that caused
+ *   it (or `null`), it answers the row with `activeOrganizationId` filled in, or nothing at
+ *   all — which leaves the library's own data untouched.
  */
-export const stampActiveOrganization: SessionCreateBefore = async (session, context) => {
-  // `context` is null when a session is created outside a request — the library types it
-  // so, and nothing in this service does it today. Refusing to guess is the right answer:
-  // there is no adapter to reach, and a session that starts with a null pointer is a valid
-  // session rather than a failed sign-in.
-  if (context === null) {
-    return;
-  }
+export function activeOrganizationStamp(appAdminEmails: readonly string[]): SessionCreateBefore {
+  return async (session, context) => {
+    // `context` is null when a session is created outside a request — the library types it
+    // so, and nothing in this service does it today. Refusing to guess is the right answer:
+    // there is no adapter to reach, and a session that starts with a null pointer is a valid
+    // session rather than a failed sign-in.
+    if (context === null) {
+      return;
+    }
 
-  const store = context.context.adapter as unknown as OrganizationStore;
-  const user = await context.context.internalAdapter.findUserById(session.userId);
+    const store = context.context.adapter as unknown as OrganizationStore;
+    const user = await context.context.internalAdapter.findUserById(session.userId);
 
-  // A session whose user cannot be read is not this hook's problem to report — the library
-  // is about to fail on its own foreign key, with a better message than anything here
-  // could produce.
-  if (user === null) {
-    return;
-  }
+    // A session whose user cannot be read is not this hook's problem to report — the library
+    // is about to fail on its own foreign key, with a better message than anything here
+    // could produce.
+    if (user === null) {
+      return;
+    }
 
-  return {
-    data: { ...session, activeOrganizationId: await resolveActiveOrganization({ store, user }) },
+    const mayCreate = isEffectivelyApproved(
+      { email: user.email, accountStatus: (user as { accountStatus?: string }).accountStatus },
+      appAdminEmails,
+    );
+
+    return {
+      data: {
+        ...session,
+        activeOrganizationId: await resolveActiveOrganization({ store, user, mayCreate }),
+      },
+    };
   };
-};
+}
+
+/**
+ * The session hook for a deployment that names no application administrator — shared, so the
+ * hooks two `authOptions` calls build compare equal. See {@link activeOrganizationStamp}.
+ */
+export const stampActiveOrganization: SessionCreateBefore = activeOrganizationStamp([]);
 
 /**
  * The session half of BetterAuth's `databaseHooks`.
  *
+ * @param appAdminEmails - `OURO_APP_ADMIN_EMAILS`, lower-cased. Empty by default, which shares
+ *   {@link stampActiveOrganization}; a configured list builds its own hook.
  * @returns The hooks, as `authOptions` hands them to the library. A fresh object each call,
- *   matching every other options builder here: the caller owns what it is given. The hook
- *   inside it is {@link stampActiveOrganization}, shared rather than rebuilt — see there.
+ *   matching every other options builder here: the caller owns what it is given.
  */
-export function activeOrganizationHooks(): BetterAuthOptions["databaseHooks"] {
-  return { session: { create: { before: stampActiveOrganization } } };
+export function activeOrganizationHooks(
+  appAdminEmails: readonly string[] = [],
+): BetterAuthOptions["databaseHooks"] {
+  const before =
+    appAdminEmails.length === 0 ? stampActiveOrganization : activeOrganizationStamp(appAdminEmails);
+
+  return { session: { create: { before } } };
 }

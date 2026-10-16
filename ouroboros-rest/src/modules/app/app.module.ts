@@ -33,6 +33,7 @@ import { ControlsModule } from "../controls/controls.module";
 import { InternalModule } from "../internal/internal.module";
 import { OnboardingModule } from "../onboarding/onboarding.module";
 import { PreferencesModule } from "../preferences/preferences.module";
+import { AccountsModule } from "../accounts/accounts.module";
 import { PricingModule } from "../pricing/pricing.module";
 import { ProviderHealthModule } from "../provider-health/provider-health.module";
 import { ProviderConnectionsModule } from "../provider-connections/provider-connections.module";
@@ -335,6 +336,7 @@ export class AppModule {
         TenancyModule,
         EngineModule,
         PreferencesModule,
+        AccountsModule,
         DashboardModule,
         RunsModule,
         QueueModule,

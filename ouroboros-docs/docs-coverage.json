@@ -4,6 +4,8 @@
     "/": {
       "undocumented": "redirects to /dashboard, or to /login when signed out; nothing to read"
     },
+    "/account-pending": "user-guide/getting-started/sign-in",
+    "/admin/accounts": "administration/sign-in-and-workspace",
     "/analyzer": "user-guide/analyzer",
     "/build-farm": "administration/build-farm",
     "/chatops": "user-guide/chatops",

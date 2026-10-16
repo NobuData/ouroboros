@@ -203,6 +203,85 @@ select seed.id, seed.name, seed.email, true
  where ${ouro_dev_seed}
 on conflict do nothing;
 
+-- ---------------------------------------------------------------------------
+-- Account approval (V149): one held stranger, one refused one, one address let in early.
+--
+-- For the /admin/accounts screenshots — each of the page's three lists has a row. The three
+-- people above take the column default, `approved`, because they were never strangers.
+--
+--   * **Priya Raman**, `pending`: she signed in with GitHub (login `priyaraman`) three days ago
+--     and is waiting. Older than the refusal below on purpose, so "signed in 3 days ago" reads
+--     as a real wait.
+--   * **sam@unknown.example**, `denied` by Ken a week ago, after signing in eight days ago.
+--
+-- Neither gets a membership, a GitHub account or a personal workspace: a held person has none
+-- until approved (that is the rule under test), and the seed must not contradict it. Their ids
+-- sit under `5eed009d…`, outside the `5eed0003…` people the seed's other assertions count.
+-- `emailVerified` is true, the state a GitHub sign-in leaves.
+-- ---------------------------------------------------------------------------
+insert into ouroboros."user"
+    ("id", "name", "email", "emailVerified", "createdAt", "updatedAt",
+     account_status, account_status_changed_at, account_status_changed_by,
+     account_status_reason, github_login)
+select seed.id, seed.name, seed.email, true, seed.created_at, seed.created_at,
+       seed.status, seed.changed_at, seed.changed_by, seed.reason, seed.login
+  from (values
+         ('5eed009d-0000-4000-8000-000000000001', 'Priya Raman', 'priya@contractor.dev',
+          now() - interval '3 days', 'pending', now() - interval '3 days',
+          null::text, 'held', 'priyaraman'),
+         ('5eed009d-0000-4000-8000-000000000002', 'Sam', 'sam@unknown.example',
+          now() - interval '8 days', 'denied', now() - interval '7 days',
+          'ken@acme-robotics.dev', 'denied_by_admin', null::text)
+       ) as seed (id, name, email, created_at, status, changed_at, changed_by, reason, login)
+ where ${ouro_dev_seed}
+on conflict do nothing;
+
+-- Both can sign in with the documented development password, exactly as the three demo people
+-- can (the credential accounts below): the docs screenshots sign in as Priya to show the
+-- waiting page, and as Sam to show the refusal. Same scrypt parameters, salt = the account id's
+-- hex. A credential account is how a person signs in, not a membership: they still belong
+-- nowhere.
+insert into ouroboros.account ("id", "accountId", "providerId", "userId", "password", "updatedAt")
+select seed.id, person."id", 'credential', person."id", seed.hash, now()
+  from (values
+         ('5eed009d-0000-4000-8000-0000000000a1', 'priya@contractor.dev',
+          '5eed009d0000400080000000000000a1:87c47a8664f92ee26a85820e3c8898327533b5e9800355668aef6abc2f8575a55771d1caecd082e4cc759be828da30b2e20a9ba72956253186020b4c854c5b8d'),
+         ('5eed009d-0000-4000-8000-0000000000a2', 'sam@unknown.example',
+          '5eed009d0000400080000000000000a2:1b7b879ea9eb0153057f00a5e30bc952f23af7bf757b18fe06ce1f31bdb035ba43133be69796f8583140b43541c861a3c817b4d9c03d0fa8a5ce14b63599231c')
+       ) as seed (id, email, hash)
+  join ouroboros."user" person on person."email" = seed.email
+ where ${ouro_dev_seed}
+on conflict do nothing;
+
+-- The trail those two decisions left, and the pre-approval below. Fixed ids, so a re-run adds
+-- nothing (the table is append-only: `on conflict do nothing` is the only way to repeat it).
+insert into ouroboros.app_account_events
+    (id, at, actor_email, action, subject_user_id, subject_email, detail)
+select seed.id::uuid, seed.at, seed.actor, seed.action, seed.subject_id, seed.subject_email,
+       seed.detail::jsonb
+  from (values
+         ('5eed009d-0000-4000-8000-0000000000e1', now() - interval '8 days', null::text, 'held',
+          '5eed009d-0000-4000-8000-000000000002', 'sam@unknown.example', '{"reason":"held"}'),
+         ('5eed009d-0000-4000-8000-0000000000e2', now() - interval '7 days',
+          'ken@acme-robotics.dev', 'denied',
+          '5eed009d-0000-4000-8000-000000000002', 'sam@unknown.example',
+          '{"previousStatus":"pending"}'),
+         ('5eed009d-0000-4000-8000-0000000000e3', now() - interval '3 days', null::text, 'held',
+          '5eed009d-0000-4000-8000-000000000001', 'priya@contractor.dev', '{"reason":"held"}'),
+         ('5eed009d-0000-4000-8000-0000000000e4', now() - interval '1 day',
+          'ken@acme-robotics.dev', 'preapproved_added', null::text, 'lee@acme-robotics.dev',
+          '{"note":"starts Monday"}')
+       ) as seed (id, at, actor, action, subject_id, subject_email, detail)
+ where ${ouro_dev_seed}
+on conflict do nothing;
+
+-- Lee starts Monday: an address let in before its first sign-in, so the pre-approved list is
+-- not empty. No account — that is the point of a pre-approval.
+insert into ouroboros.app_preapproved_emails (email, added_by, created_at, note)
+select 'lee@acme-robotics.dev', 'ken@acme-robotics.dev', now() - interval '1 day', 'starts Monday'
+ where ${ouro_dev_seed}
+on conflict do nothing;
+
 -- The GitHub-shaped account — mockup 01's "Continue with GitHub", for the one person
 -- driving the dev stack.
 --

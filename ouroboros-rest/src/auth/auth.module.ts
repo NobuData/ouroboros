@@ -54,7 +54,7 @@
  *     applied by whichever middleware Express reached first.
  */
 
-import { Module } from "@nestjs/common";
+import { Logger, Module } from "@nestjs/common";
 import { captureSlackRawBody } from "../modules/slack/slack.raw-body";
 import { APP_GUARD } from "@nestjs/core";
 import { AuthModule as NestBetterAuth } from "@thallesp/nestjs-better-auth";
@@ -62,6 +62,8 @@ import { AuthModule as NestBetterAuth } from "@thallesp/nestjs-better-auth";
 import { AppConfigService } from "../modules/config/config.service";
 import { DbModule } from "../modules/db/db.module";
 import { DatabaseService } from "../modules/db/db.service";
+import { MAILER, type Mailer } from "../modules/mail/mailer";
+import { MailModule } from "../modules/mail/mail.module";
 import { createAuth, type Auth } from "./auth.factory";
 import { SessionOrServiceGuard } from "./session-or-service.guard";
 
@@ -89,6 +91,9 @@ import { SessionOrServiceGuard } from "./session-or-service.guard";
  * `413 payload_too_large` with no handler reached (`errors/error.filter.ts`).
  */
 export const REQUEST_BODY_LIMIT = "8mb";
+
+/** The logger context account approval's hooks report under. */
+export const ACCOUNT_APPROVAL_LOGGER = "AccountApproval";
 
 /** What {@link betterAuthOptions} hands the library. */
 export interface BetterAuthOptions {
@@ -118,6 +123,9 @@ export interface BetterAuthOptions {
  *   so BetterAuth's adapter issues its statements over the connections `DbModule` already
  *   opened and `DatabaseService.end` already drains — one pool, one drain, one row in
  *   `pg_stat_activity`.
+ * @param mailer - `MailModule`'s mailer, which account approval emails administrators through
+ *   when somebody is held (`account.approval.ts`). Optional so a caller with no mail — a spec —
+ *   may omit it; an unconfigured mailer sends nothing either way.
  * @returns The instance, the one default this module turns off, and the body-parser limit in
  *   the injected options. (The global guard is an "extra" and is declined below — the
  *   library's own distinction: extras build the provider list rather than reaching the
@@ -126,9 +134,15 @@ export interface BetterAuthOptions {
 export function betterAuthOptions(
   config: AppConfigService,
   database: DatabaseService,
+  mailer?: Mailer,
 ): BetterAuthOptions {
   return {
-    auth: createAuth({ configuration: config.all, pool: database.pool }),
+    auth: createAuth({
+      configuration: config.all,
+      pool: database.pool,
+      mailer,
+      logger: new Logger(ACCOUNT_APPROVAL_LOGGER),
+    }),
     disableTrustedOriginsCors: true,
     // `application.ts` turns Nest's own parser off so BetterAuth can sign the bytes it was
     // sent; the library re-adds `express.json()` for every other path, and this is the one
@@ -155,8 +169,8 @@ export function betterAuthOptions(
 const betterAuth = NestBetterAuth.forRootAsync({
   // `DbModule` for `DatabaseService`; the configuration module is global, so
   // `AppConfigService` needs no import to be injectable.
-  imports: [DbModule],
-  inject: [AppConfigService, DatabaseService],
+  imports: [DbModule, MailModule],
+  inject: [AppConfigService, DatabaseService, MAILER],
   useFactory: betterAuthOptions,
   // Declined so that this module can register the same class itself, one level up, where
   // it lands ahead of the tenancy guards. See this file's header — the reason is guard

@@ -216,7 +216,8 @@ for (const entry of entries) {
     if (entry.signedOut) await page.context().clearCookies();
     else {
       if (entry.as) await signInAs(page, entry);
-      await enterWorkspace(page, entry);
+      // A held person belongs to no workspace, so there is none to enter.
+      if (!entry.held) await enterWorkspace(page, entry);
     }
 
     const response = await page.goto(entry.route);

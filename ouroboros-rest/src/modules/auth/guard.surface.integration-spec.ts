@@ -153,6 +153,11 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   itemId: "5eed0096-0000-4000-8000-0000000000ff",
   // `…/roadmap/suggestions/:suggestionId/{apply,dismiss}` (#624). A well-formed uuid no document holds.
   suggestionId: "5eed0097-0000-4000-8000-0000000000ff",
+  // `POST /api/v1/admin/accounts/:userId/{approve,deny}` (account approval). An id no account
+  // holds; the session guard answers before the service could look.
+  userId: "5eed009d-0000-4000-8000-0000000000ff",
+  // `DELETE /api/v1/admin/preapproved-emails/:email` (account approval). A well-formed address.
+  email: "nobody@example.test",
 };
 
 /**

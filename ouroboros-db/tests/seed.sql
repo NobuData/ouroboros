@@ -140,8 +140,60 @@ select pg_temp.must_hold(
 -- can send an email for in front of every password sign-in.
 select pg_temp.must_hold(
   (select count(*) = 3 from ouroboros."user"
-   where "id" like '5eed%' and "emailVerified"),
+   where "id" like '5eed0003-%' and "emailVerified"),
   'every demo person is emailVerified');
+
+-- Account approval (V149). The three demo people were never strangers, so they hold the
+-- column default; one held and one refused person exist for the /admin/accounts page, with
+-- no membership, account or workspace between them; one address is pre-approved.
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros."user"
+   where "id" like '5eed0003-%' and account_status = 'approved'),
+  'the three demo people are approved');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros."user"
+   where "id" = '5eed009d-0000-4000-8000-000000000001'
+     and "email" = 'priya@contractor.dev' and "name" = 'Priya Raman'
+     and account_status = 'pending' and account_status_reason = 'held'
+     and github_login = 'priyaraman'
+     and "createdAt" < now() - interval '2 days'),
+  'Priya Raman is held as pending, with a GitHub login and an older first sign-in');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros."user"
+   where "id" = '5eed009d-0000-4000-8000-000000000002'
+     and "email" = 'sam@unknown.example'
+     and account_status = 'denied' and account_status_reason = 'denied_by_admin'
+     and account_status_changed_by = 'ken@acme-robotics.dev'),
+  'sam@unknown.example is denied by an administrator');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.member where "userId" like '5eed009d-%')
+  and (select count(*) = 0 from ouroboros.session where "userId" like '5eed009d-%'),
+  'the held and refused people have no membership or session');
+
+-- …but they can sign in with the documented password, as the demo people can, so the docs
+-- can show the waiting page and the refusal. A credential account and nothing else.
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.account acct
+     join ouroboros."user" person on person."id" = acct."userId"
+    where acct."id" like '5eed009d-%'
+      and acct."providerId" = 'credential'
+      and acct."accountId" = person."id"
+      and acct."password" ~ '^[0-9a-f]{32}:[0-9a-f]{128}$')
+  and (select count(*) = 2 from ouroboros.account where "userId" like '5eed009d-%'),
+  'the held and refused people each hold one credential account and no other');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.app_preapproved_emails
+   where email = 'lee@acme-robotics.dev' and note = 'starts Monday'
+     and added_by = 'ken@acme-robotics.dev'),
+  'lee@acme-robotics.dev is pre-approved, noted "starts Monday"');
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.app_account_events where id::text like '5eed009d-%'),
+  'the seeded decisions left four account events');
 
 -- Null on purpose: the mockups draw monogram avatars, and null is what makes the UI take
 -- that path. An assertion rather than an omission, because a seed that quietly gained an
@@ -172,7 +224,7 @@ select pg_temp.must_hold(
   (select count(*) = 3 from ouroboros.account acct
      join ouroboros."user" person on person."id" = acct."userId"
     where acct."providerId" = 'credential'
-      and acct."id" like '5eed%'
+      and acct."id" like '5eed0008-%'
       and acct."accountId" = person."id"
       and acct."password" ~ '^[0-9a-f]{32}:[0-9a-f]{128}$'),
   'each demo person holds a credential account with a verifier-shaped password hash');

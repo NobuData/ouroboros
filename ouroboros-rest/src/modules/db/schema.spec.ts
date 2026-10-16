@@ -541,7 +541,9 @@ describe("TABLE_COLUMNS", () => {
     // BZ.4's (#538): V135's `decision_escalation_timers` and `decision_escalation_overrides`.
     // The hundred-and-eighty-fourth is DH.2's (#1303): V140's `harness_credentials`.
     // The hundred-and-eighty-fifth is AR.1's (#315): V148's `guardrail_modes`.
-    expect(TABLE_NAMES).toHaveLength(185);
+    // The hundred-and-eighty-sixth and -seventh are account approval's: V149's
+    // `app_preapproved_emails` and `app_account_events`, deployment-level and organization-free.
+    expect(TABLE_NAMES).toHaveLength(187);
   });
 
   it("mirrors what V136 made of a command typed in the console", () => {
@@ -588,6 +590,13 @@ describe("TABLE_COLUMNS", () => {
       "image",
       "createdAt",
       "updatedAt",
+      // Account approval (V149): read by the admin page; written only through the library's
+      // adapter, as BetterAuth user fields.
+      "account_status",
+      "account_status_changed_at",
+      "account_status_changed_by",
+      "account_status_reason",
+      "github_login",
     ]);
   });
 

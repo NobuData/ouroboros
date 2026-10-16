@@ -151,6 +151,12 @@ What BetterAuth signs sessions and encrypts stored OAuth tokens with; at least 1
 
 Generate a strong value, e.g.: openssl rand -base64 32
 
+### `OURO_APP_ADMIN_EMAILS`
+
+**Development default:** unset. Example: `ken@acme-robotics.dev`
+
+The application administrators — emails, comma-separated, case-insensitive. They are always approved and approve everyone else's account at /admin/accounts. A new account is held until an administrator approves it, unless its email has a pending workspace invitation or was pre-approved; accounts that existed before account approval shipped stay approved. Optional; unset or empty means nobody is an administrator, so held accounts wait until one is named. With OURO_SMTP_URL set, administrators are emailed when somebody is held.
+
 ### `BETTER_AUTH_URL`
 
 **Development default:** `http://localhost:4000`

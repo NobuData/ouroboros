@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ACCOUNT_DENIED_CODE,
+  ACCOUNT_PENDING_CODE,
   ApiError,
   STEP_UP_REQUIRED_CODE,
   UNAUTHENTICATED_CODE,
   UNREADABLE_ERROR_CODE,
+  isAccountHeld,
   isApiError,
   isErrorEnvelope,
 } from "@/app/api/errors";
@@ -199,5 +202,21 @@ describe("isApiError", () => {
     ["an envelope-shaped object that was never thrown by this client", { code: "x", message: "y" }],
   ])("rejects %s", (_description, value) => {
     expect(isApiError(value)).toBe(false);
+  });
+});
+
+describe("isAccountHeld", () => {
+  it("is the 403 of either held-account code (account approval)", () => {
+    expect(ACCOUNT_PENDING_CODE).toBe("account_pending_approval");
+    expect(ACCOUNT_DENIED_CODE).toBe("account_denied");
+    expect(isAccountHeld(new ApiError(403, ACCOUNT_PENDING_CODE, "Waiting."))).toBe(true);
+    expect(isAccountHeld(new ApiError(403, ACCOUNT_DENIED_CODE, "Denied."))).toBe(true);
+  });
+
+  it("is nothing else — another status, another code, or not an ApiError", () => {
+    expect(isAccountHeld(new ApiError(409, ACCOUNT_PENDING_CODE, "No."))).toBe(false);
+    expect(isAccountHeld(new ApiError(403, "app_admin_required", "No."))).toBe(false);
+    expect(isAccountHeld(new Error(ACCOUNT_PENDING_CODE))).toBe(false);
+    expect(isAccountHeld(undefined)).toBe(false);
   });
 });

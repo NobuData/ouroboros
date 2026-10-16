@@ -61,6 +61,38 @@ export function isWorkspaceFrozen(error: unknown): error is ApiError {
 }
 
 /**
+ * The `403` a person whose account is **waiting for approval** is answered with, on every
+ * product route (account approval). Not about the request or the workspace but about the
+ * person: `app/api/server.ts` and `app/api/auth-server.ts` turn it into the waiting page.
+ */
+export const ACCOUNT_PENDING_CODE = "account_pending_approval";
+
+/**
+ * The `403` a person whose account an application administrator **denied** is answered with,
+ * on every product route. Handled exactly as {@link ACCOUNT_PENDING_CODE} is; the waiting page
+ * is what tells the two apart, from `GET /api/v1/account/status`.
+ */
+export const ACCOUNT_DENIED_CODE = "account_denied";
+
+/**
+ * Whether an error is the held-account refusal — pending or denied.
+ *
+ * The status is part of the test, for {@link isWorkspaceFrozen}'s reason: a code is only this
+ * refusal when it arrives as a `403`.
+ *
+ * @param error Anything caught.
+ * @returns `true` for a `403` carrying {@link ACCOUNT_PENDING_CODE} or
+ *   {@link ACCOUNT_DENIED_CODE}.
+ */
+export function isAccountHeld(error: unknown): error is ApiError {
+  return (
+    isApiError(error) &&
+    error.status === 403 &&
+    (error.code === ACCOUNT_PENDING_CODE || error.code === ACCOUNT_DENIED_CODE)
+  );
+}
+
+/**
  * The `code` used when a failure carried no envelope this client could read.
  *
  * The `client_` prefix is the point: every code the service can answer with is named in

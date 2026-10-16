@@ -42,6 +42,16 @@ const betterAuthMock = jest.mocked(betterAuth);
 /** The plugin factory, typed the same way. */
 const organizationMock = jest.mocked(organization);
 
+/**
+ * The options with account approval's user hooks set aside: they close over each call's pool
+ * and mailer, so two builds hold equal hooks that are not the same functions.
+ */
+function withoutUserHooks(options: Record<string, unknown>): Record<string, unknown> {
+  const hooks = options.databaseHooks as Record<string, unknown> | undefined;
+
+  return { ...options, databaseHooks: { ...hooks, user: undefined } };
+}
+
 describe("createAuth", () => {
   it("builds the instance from this service's options", () => {
     const dependencies = { configuration: testConfiguration(), pool: new Pool() };
@@ -55,7 +65,7 @@ describe("createAuth", () => {
     // `authOptions` still has to appear here — the property #700 established.
     const { plugins, ...rest } = betterAuthMock.mock.calls[0]?.[0] ?? {};
 
-    expect(rest).toEqual(authOptions(dependencies));
+    expect(withoutUserHooks(rest)).toEqual(withoutUserHooks({ ...authOptions(dependencies) }));
     expect(plugins).toEqual([organizationMock.mock.results[0]?.value]);
   });
 

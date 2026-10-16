@@ -5,6 +5,7 @@ import { ConfigurationModule } from "../modules/config/config.module";
 import { testConfiguration } from "../modules/config/configuration.fixture";
 import { DbModule } from "../modules/db/db.module";
 import { DatabaseService } from "../modules/db/db.service";
+import { ACCOUNT_USER_FIELDS, keepGithubLoginFixed } from "./account.approval";
 import { activeOrganizationHooks, stampActiveOrganization } from "./active.organization";
 import { AUTH_APP_NAME, AUTH_BASE_PATH, authOptions } from "./auth.options";
 import { ACCOUNT_LINKING, githubProvider, GITHUB_PROVIDER_ID } from "./github.provider";
@@ -99,7 +100,16 @@ describe("authOptions", () => {
     const second = authOptions({ configuration: testConfiguration(), pool });
 
     expect(first).not.toBe(second);
-    expect(first).toEqual(second);
+    // Account approval's user hooks close over each call's pool and mailer, so they are
+    // compared by shape; everything else must be equal outright.
+    const withoutUserHooks = (options: typeof first) => ({
+      ...options,
+      databaseHooks: { ...options.databaseHooks, user: undefined },
+    });
+    expect(withoutUserHooks(first)).toEqual(withoutUserHooks(second));
+    expect(Object.keys(first.databaseHooks?.user ?? {})).toEqual(
+      Object.keys(second.databaseHooks?.user ?? {}),
+    );
   });
 
   // #700 was the foundation and the issues after it each own one of the options below.
@@ -107,7 +117,8 @@ describe("authOptions", () => {
   // the issue that owns it, with the migration and the tests that go with it — fails this
   // test. #702 added the two it owns, `socialProviders` and `account`, #703 the one it
   // owns, `session`, #704 the one it owns, `databaseHooks`, and #705 the last one,
-  // `emailAndPassword`.
+  // `emailAndPassword`. Account approval added `user` (its additional fields) and the `user`
+  // half of `databaseHooks`.
   //
   // **`plugins` is deliberately not here.** #704's organization plugin is registered in
   // `auth.factory.ts`, because `organization()` is a value from `better-auth` and this
@@ -129,6 +140,7 @@ describe("authOptions", () => {
       "socialProviders",
       "telemetry",
       "trustedOrigins",
+      "user",
     ]);
   });
 
@@ -154,8 +166,50 @@ describe("authOptions", () => {
     // tenant pointer decision A5 rests on would be a column nothing ever fills in.
     const { databaseHooks } = authOptions({ configuration: testConfiguration(), pool: fakePool() });
 
-    expect(databaseHooks).toEqual(activeOrganizationHooks());
+    expect(databaseHooks?.session).toEqual(activeOrganizationHooks()?.session);
     expect(databaseHooks?.session?.create?.before).toBe(stampActiveOrganization);
+  });
+
+  it("builds the session hook for the configured administrators when there are any", () => {
+    const { databaseHooks } = authOptions({
+      configuration: testConfiguration({ OURO_APP_ADMIN_EMAILS: "ken@acme-robotics.dev" }),
+      pool: fakePool(),
+    });
+
+    expect(databaseHooks?.session?.create?.before).toEqual(expect.any(Function));
+    expect(databaseHooks?.session?.create?.before).not.toBe(stampActiveOrganization);
+  });
+
+  it("carries account approval's user hooks and fields", () => {
+    const options = authOptions({ configuration: testConfiguration(), pool: fakePool() });
+
+    expect(options.user).toEqual({ additionalFields: ACCOUNT_USER_FIELDS });
+    expect(options.databaseHooks?.user?.create?.before).toEqual(expect.any(Function));
+    expect(options.databaseHooks?.user?.create?.after).toEqual(expect.any(Function));
+    expect(options.databaseHooks?.user?.update?.before).toBe(keepGithubLoginFixed);
+  });
+
+  it("holds a stranger at creation, through the pool it was given", async () => {
+    const pool = fakePool();
+    jest.mocked(pool.query).mockResolvedValue({ rowCount: 0 } as never);
+    const options = authOptions({ configuration: testConfiguration(), pool });
+
+    const result = await options.databaseHooks?.user?.create?.before?.(
+      {
+        id: "u1",
+        name: "Priya",
+        email: "priya@contractor.dev",
+        emailVerified: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      null,
+    );
+
+    expect(result).toMatchObject({
+      data: { accountStatus: "pending", accountStatusReason: "held" },
+    });
+    expect(pool.query).toHaveBeenCalledTimes(2);
   });
 
   it("carries the development sign-in #705 owns", () => {

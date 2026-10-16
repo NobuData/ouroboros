@@ -6,7 +6,7 @@ import { SESSION_CACHE_COOKIE, SESSION_COOKIE } from "@/app/api/client";
 import { ApiError } from "@/app/api/errors";
 import { REQUEST_PATH_HEADER } from "@/app/api/request";
 import { ACTIVE_TENANT_COOKIE } from "@/app/api/tenant";
-import { RECOVERY_PATH, RETURN_TO_PARAM } from "@/app/paths";
+import { ACCOUNT_PENDING_PATH, RECOVERY_PATH, RETURN_TO_PARAM } from "@/app/paths";
 
 // `app/api/server.ts` is server-only three times over, and each has to be answered before
 // it can be imported here at all:
@@ -339,6 +339,21 @@ describe("api", () => {
     expect(redirect).toHaveBeenCalledExactlyOnceWith(RECOVERY_PATH);
   });
 
+  it.each(["account_pending_approval", "account_denied"])(
+    "routes a held account's 403 %s to the waiting page, the way a 401 goes to login",
+    async (code) => {
+      respondWith(
+        new Response(JSON.stringify({ code, message: "On hold.", details: {} }), {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+      await expect(api().GET("/api/v1/orgs")).rejects.toBeInstanceOf(RedirectSignal);
+      expect(redirect).toHaveBeenCalledExactlyOnceWith(ACCOUNT_PENDING_PATH);
+    },
+  );
+
   it("does not mistake the dispatch points' 409 of the same code for a frozen surface", async () => {
     respondWith(
       new Response(
@@ -391,6 +406,18 @@ describe("anonymousApi", () => {
     respondWith(
       new Response(
         JSON.stringify({ code: "workspace_pending_delete", message: "Frozen.", details: {} }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await expect(anonymousApi().GET("/api/v1/orgs")).rejects.toBeInstanceOf(ApiError);
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("lets a held account's 403 reject too, so the waiting page can read its own status", async () => {
+    respondWith(
+      new Response(
+        JSON.stringify({ code: "account_pending_approval", message: "On hold.", details: {} }),
         { status: 403, headers: { "Content-Type": "application/json" } },
       ),
     );

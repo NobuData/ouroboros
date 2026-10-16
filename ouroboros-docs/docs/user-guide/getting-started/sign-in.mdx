@@ -31,6 +31,18 @@ deployment you sign in with GitHub or SSO.
 
 :::
 
+## Waiting for approval
+
+If nobody made an account for you — you were not invited to a workspace, and an administrator
+has not added your email — your new account waits for an administrator to approve it. You see
+**Your account is waiting for approval** and nothing else of Ouroboros yet; an administrator
+has been asked. Once they have approved you, reload the page to continue.
+
+<Screenshot id="user-guide.sign-in.pending" />
+
+If the page says **Your account was not approved**, contact your administrator; they can still
+approve it later. **Sign out** on either page signs you out.
+
 ## Step 2 — choose where the loop runs
 
 **Choose where the loop runs** lists every workspace you are a member of, with how many of
@@ -75,6 +87,8 @@ When the window closes, the workspace and its data are destroyed.
   it keeps happening, ask your administrator to check the sign-in configuration.
 - **"domain must be a company domain, such as acme.ouroboros.dev"** — the SSO field needs
   your company's domain, not an email address.
+- **Every page sends you to "Your account is waiting for approval"** — your account has not
+  been approved yet. See [Waiting for approval](#waiting-for-approval).
 - **You land back on sign-in from a page you had open** — your session ended. Sign in
   again; if this browser already remembers your workspace, you return to that page,
   otherwise you choose the workspace and start at the dashboard.

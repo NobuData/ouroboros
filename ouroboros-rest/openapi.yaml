@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.48"
+  version: "0.41.49"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -247,6 +247,27 @@ tags:
       `401`: it is a deployment's mistake rather than a caller's, and telling a browser to
       sign in again for it would be telling it about a boundary it cannot reach.
 
+  - name: accounts
+    description: |-
+      **Account approval** — a stranger's first sign-in is held until an application
+      administrator approves it.
+
+      Application administrators are the addresses in `OURO_APP_ADMIN_EMAILS`
+      (comma-separated, case-insensitive; unset means none). They are always approved and are
+      the only callers of `/api/v1/admin/*`; anybody else gets `403 app_admin_required`.
+
+      A new account is approved automatically when its address is an administrator's, has a
+      pending unexpired workspace invitation, or was pre-approved; every other first sign-in
+      is held as `pending`. Accounts that existed before account approval are approved.
+
+      **A held person can sign in but reach almost nothing.** Every route answers
+      `403 account_pending_approval` (pending) or `403 account_denied` (denied) except
+      BetterAuth's own `/api/auth/*`, the `security: []` routes, and
+      `GET /api/v1/account/status`, which the waiting page reads. They get no personal
+      workspace until approved; approval makes one and stamps it onto their open sessions, so
+      their next request works without signing in again.
+
+      None of these routes takes a workspace.
   - name: preferences
     description: |-
       **The caller's own product settings** ([#649](https://github.com/NobuData/ouroboros/issues/649))
@@ -21167,6 +21188,390 @@ paths:
           description: |-
             `provider_kind_unsupported` — this build has no adapter for the connection's kind,
             and `details.registered` lists the ones it has.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/account/status:
+    get:
+      tags: [accounts]
+      summary: Your account status
+      description: |-
+        Whether the caller's account is approved, waiting for approval, or denied, whether they
+        are an application administrator, and their address. Read from the stored row, so the
+        waiting page never shows a stale decision; an application administrator is `approved`
+        whatever is stored.
+
+        **Open to a held account** — the one product route that is — because the waiting page
+        at `/account-pending` reads it to choose its copy.
+      operationId: readAccountStatus
+      responses:
+        "200":
+          description: The caller's status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountStatusResource"
+              example:
+                status: pending
+                appAdmin: false
+                email: priya@contractor.dev
+        "401":
+          description: |-
+            `unauthenticated` — no session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `service_principal_refused` — a service token; this route is about a person.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/admin/accounts:
+    get:
+      tags: [accounts]
+      summary: List accounts by status
+      description: |-
+        One list for the admin page, newest first, at most 200 — `pending` by default, or
+        `denied` or `approved`. Application administrators only.
+      operationId: listAdminAccounts
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: |-
+            Which list. Defaults to `pending`.
+          schema:
+            $ref: "#/components/schemas/AccountStatus"
+      responses:
+        "200":
+          description: The accounts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAccounts"
+              example:
+                accounts:
+                  - id: 5eed009d-0000-4000-8000-000000000001
+                    name: Priya Raman
+                    email: priya@contractor.dev
+                    githubLogin: priyaraman
+                    status: pending
+                    createdAt: "2026-10-13T09:00:00.000Z"
+                    statusChangedAt: "2026-10-13T09:00:00.000Z"
+                    statusChangedBy: null
+                    statusReason: held
+        "401":
+          description: |-
+            `unauthenticated` — no session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `app_admin_required` — the caller is not an application administrator
+            (`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `status` is not one of `pending`, `denied`, `approved`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/admin/accounts/{userId}/approve:
+    post:
+      tags: [accounts]
+      summary: Approve an account
+      description: |-
+        Sets the account `approved` (reason `approved_by_admin`, recording who and when),
+        writes an `approved` event, and — when the person belongs to no workspace — makes their
+        personal workspace and stamps it onto their open sessions, so their next request works
+        without signing in again. When `OURO_SMTP_URL` is set the person is emailed.
+
+        Works on a pending or a denied account; an account already approved is answered
+        unchanged. Application administrators only.
+      operationId: approveAccount
+      parameters:
+        - $ref: "#/components/parameters/AccountUserId"
+      responses:
+        "200":
+          description: The account as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAccount"
+        "401":
+          description: |-
+            `unauthenticated` — no session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `app_admin_required` — the caller is not an application administrator
+            (`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `account_not_found` — no account with that id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/admin/accounts/{userId}/deny:
+    post:
+      tags: [accounts]
+      summary: Deny an account
+      description: |-
+        Sets the account `denied` (reason `denied_by_admin`) and writes a `denied` event. The
+        person stays signed in but every route answers `403 account_denied` — within five
+        minutes for a browser holding a fresh session snapshot — until somebody approves them.
+        An account already denied is answered unchanged. Application administrators only.
+      operationId: denyAccount
+      parameters:
+        - $ref: "#/components/parameters/AccountUserId"
+      responses:
+        "200":
+          description: The account as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAccount"
+        "401":
+          description: |-
+            `unauthenticated` — no session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `app_admin_required` — the caller is not an application administrator
+            (`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `account_not_found` — no account with that id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `cannot_deny_app_admin` — the account is an application administrator's, which
+            `OURO_APP_ADMIN_EMAILS` approves whatever is stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/admin/preapproved-emails:
+    get:
+      tags: [accounts]
+      summary: List pre-approved emails
+      description: |-
+        Addresses let in ahead of their first sign-in, newest first. Application
+        administrators only.
+      operationId: listPreapprovedEmails
+      responses:
+        "200":
+          description: The pre-approved addresses.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreapprovedEmails"
+              example:
+                emails:
+                  - email: lee@acme-robotics.dev
+                    addedBy: ken@acme-robotics.dev
+                    createdAt: "2026-10-14T09:00:00.000Z"
+                    note: starts Monday
+        "401":
+          description: |-
+            `unauthenticated` — no session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `app_admin_required` — the caller is not an application administrator
+            (`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [accounts]
+      summary: Pre-approve an email
+      description: |-
+        Adds an address (trimmed and lower-cased) with an optional note, and writes a
+        `preapproved_added` event. A new account with this address is approved at its first
+        sign-in. **If a pending account already exists with this address it is approved on
+        the spot**, exactly as the approve operation does, and returned as `approvedAccount`.
+        A denied account is left for an explicit approval. Application administrators only.
+      operationId: addPreapprovedEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreapprovedEmailCreate"
+            example:
+              email: lee@acme-robotics.dev
+              note: starts Monday
+      responses:
+        "201":
+          description: The entry added, and the account it approved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddedPreapprovedEmail"
+              example:
+                email: lee@acme-robotics.dev
+                addedBy: ken@acme-robotics.dev
+                createdAt: "2026-10-15T09:00:00.000Z"
+                note: starts Monday
+                approvedAccount: null
+        "401":
+          description: |-
+            `unauthenticated` — no session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `app_admin_required` — the caller is not an application administrator
+            (`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `already_preapproved` — the address is already on the list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — not a bare email address, longer than 320 characters, or a
+            note longer than 200.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/admin/preapproved-emails/{email}:
+    delete:
+      tags: [accounts]
+      summary: Remove a pre-approved email
+      description: |-
+        Takes the address off the list (matched case-insensitively) and writes a
+        `preapproved_removed` event. An account it already let in stays approved. Application
+        administrators only.
+      operationId: removePreapprovedEmail
+      parameters:
+        - name: email
+          in: path
+          required: true
+          description: |-
+            The address, URL-encoded.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 320
+      responses:
+        "204":
+          description: Removed.
+        "401":
+          description: |-
+            `unauthenticated` — no session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `app_admin_required` — the caller is not an application administrator
+            (`OURO_APP_ADMIN_EMAILS`). `service_principal_refused` — a service token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `preapproved_email_not_found` — the address is not on the list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
           content:
             application/json:
               schema:
@@ -43239,6 +43644,15 @@ components:
   # Referenced rather than repeated: `tenantId` appears on fifteen operations, and fifteen
   # copies of a description is fifteen places for one of them to say something else.
   parameters:
+    AccountUserId:
+      name: userId
+      in: path
+      required: true
+      description: |-
+        The account — `"user".id`.
+      schema:
+        type: string
+        minLength: 1
     AuditFrom:
       name: from
       in: query
@@ -45071,6 +45485,174 @@ components:
         is `user_preferences_font_scale`'s CHECK (V007), restated; widening it is a
         migration there before it is a value here.
       examples: ["100"]
+
+    AccountStatus:
+      type: string
+      title: AccountStatus
+      description: |-
+        An account's approval status — `approved` (may use the product), `pending` (held until
+        an application administrator approves it) or `denied` (refused; stays blocked until
+        approved). V149's `"user".account_status`.
+      enum: [approved, pending, denied]
+
+    AccountStatusReason:
+      type: string
+      title: AccountStatusReason
+      description: |-
+        Why an account holds its status — `existing`, `invited`, `preapproved`, `app_admin` or
+        `held` (automatic), `approved_by_admin` or `denied_by_admin` (an administrator).
+      enum: [existing, invited, preapproved, app_admin, held, approved_by_admin, denied_by_admin]
+
+    AccountStatusResource:
+      type: object
+      title: AccountStatusResource
+      description: |-
+        The caller's own account status — `GET /api/v1/account/status`.
+      additionalProperties: false
+      required: [status, appAdmin, email]
+      properties:
+        status:
+          $ref: "#/components/schemas/AccountStatus"
+        appAdmin:
+          type: boolean
+          description: |-
+            Whether the caller is an application administrator (`OURO_APP_ADMIN_EMAILS`).
+        email:
+          type: string
+          description: |-
+            The caller's address.
+
+    AdminAccount:
+      type: object
+      title: AdminAccount
+      description: |-
+        One account, as the account-approval admin page lists it.
+      additionalProperties: false
+      required:
+        [id, name, email, githubLogin, status, createdAt, statusChangedAt, statusChangedBy, statusReason]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        githubLogin:
+          type: [string, "null"]
+          description: |-
+            The GitHub login at the first sign-in, or null for an account made another way.
+        status:
+          $ref: "#/components/schemas/AccountStatus"
+        createdAt:
+          type: string
+          format: date-time
+          description: |-
+            When the account was created — its first sign-in.
+        statusChangedAt:
+          type: [string, "null"]
+          format: date-time
+          description: |-
+            When the status was last decided.
+        statusChangedBy:
+          type: [string, "null"]
+          description: |-
+            The deciding administrator's address; null for an automatic decision.
+        statusReason:
+          oneOf:
+            - $ref: "#/components/schemas/AccountStatusReason"
+            - type: "null"
+
+    AdminAccounts:
+      type: object
+      title: AdminAccounts
+      description: |-
+        One admin list — newest first, at most 200.
+      additionalProperties: false
+      required: [accounts]
+      properties:
+        accounts:
+          type: array
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/AdminAccount"
+
+    PreapprovedEmail:
+      type: object
+      title: PreapprovedEmail
+      description: |-
+        An address an application administrator let in ahead of its first sign-in.
+      additionalProperties: false
+      required: [email, addedBy, createdAt, note]
+      properties:
+        email:
+          type: string
+          description: |-
+            Lower-cased.
+        addedBy:
+          type: string
+          description: |-
+            The administrator who added it.
+        createdAt:
+          type: string
+          format: date-time
+        note:
+          type: [string, "null"]
+          maxLength: 200
+
+    PreapprovedEmails:
+      type: object
+      title: PreapprovedEmails
+      description: |-
+        Every pre-approved address, newest first.
+      additionalProperties: false
+      required: [emails]
+      properties:
+        emails:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreapprovedEmail"
+
+    PreapprovedEmailCreate:
+      type: object
+      title: PreapprovedEmailCreate
+      description: |-
+        An address to pre-approve. Trimmed and lower-cased before it is stored.
+      additionalProperties: false
+      required: [email]
+      properties:
+        email:
+          type: string
+          maxLength: 320
+          description: |-
+            A bare email address — no display name, no spaces.
+        note:
+          type: [string, "null"]
+          maxLength: 200
+          description: |-
+            Why, in the administrator's words. Optional; blank is stored as none.
+
+    AddedPreapprovedEmail:
+      type: object
+      title: AddedPreapprovedEmail
+      description: |-
+        The entry added, and the pending account it approved on the spot (or null).
+      additionalProperties: false
+      required: [email, addedBy, createdAt, note, approvedAccount]
+      properties:
+        email:
+          type: string
+        addedBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        note:
+          type: [string, "null"]
+          maxLength: 200
+        approvedAccount:
+          oneOf:
+            - $ref: "#/components/schemas/AdminAccount"
+            - type: "null"
 
     Preferences:
       type: object

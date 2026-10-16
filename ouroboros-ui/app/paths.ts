@@ -35,6 +35,29 @@ export const LOGIN_PATH = "/login";
 export const RECOVERY_PATH = "/workspace-recovery";
 
 /**
+ * The waiting page (account approval) — where every request from a person whose account is
+ * **on hold** is sent.
+ *
+ * Somebody who signed in without an account made for them waits for an application
+ * administrator, and until then `ouroboros-rest` answers every product route with
+ * `403 account_pending_approval` (or `403 account_denied`). `app/api/server.ts` and
+ * `app/api/auth-server.ts` turn either answer into this address, the way a `401` becomes the
+ * login screen. It lives in the `(auth)` group, outside the shell, because the shell's own reads
+ * are among what is refused.
+ */
+export const ACCOUNT_PENDING_PATH = "/account-pending";
+
+/**
+ * The application administrators' accounts page (account approval) — pending and denied
+ * accounts, and the pre-approved emails.
+ *
+ * Deployment-wide rather than a workspace's, so it is not under {@link SETTINGS_PATH}: the
+ * workspace settings hub is about one workspace, and this page is about who may enter any.
+ * Shown only to the emails `OURO_APP_ADMIN_EMAILS` lists; everyone else is answered not-found.
+ */
+export const ADMIN_ACCOUNTS_PATH = "/admin/accounts";
+
+/**
  * The dashboard (#45) — where a signed-in request with a chosen workspace belongs.
  *
  * A segment of its own rather than `/`, which is what it was while the placeholder stood
