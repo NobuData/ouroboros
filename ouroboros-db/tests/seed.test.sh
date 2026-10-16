@@ -1739,9 +1739,11 @@ done
 # The inbox and what its cards needed to point at — and no row the inbox could not explain. In
 # particular no `pr_waivers` row and no hand-written intervention: V079 derives the one intervention
 # the protected-path stop is. Its updates set PR #504's counts and criteria, and bring the insights
-# rollup and its tooltip to the intervention that stop raised.
-inbox_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$INBOX_BODY" |
-  sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
+# rollup and its tooltip to the intervention that stop raised. A statement may be indented: the
+# rows that need V148 run as dynamic SQL inside a guarded `do` block (the V141 rehearsal applies
+# this seed to a V140 schema).
+inbox_tables=$(grep -Eo '^[[:space:]]*(insert into|update) ouroboros\.[a-z_]+' "$INBOX_BODY" |
+  sed -E 's/^[[:space:]]*(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
 check_equals 'decision_items decision_resolutions guardrail_evaluations guardrail_modes metric_daily pr_criteria pr_criteria_evidence pr_gate_definitions pr_gate_results pr_revisions pull_requests run_blocks run_files tickets ' \
   "$inbox_tables" \
   'the inbox seed writes the cards, answers, blocks, the stop and its warn-mode neighbour (with its mode), PR #504 and the tickets — and amends only the rollup'

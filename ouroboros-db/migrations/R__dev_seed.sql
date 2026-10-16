@@ -219,20 +219,47 @@ on conflict do nothing;
 -- sit under `5eed009d…`, outside the `5eed0003…` people the seed's other assertions count.
 -- `emailVerified` is true, the state a GitHub sign-in leaves.
 -- ---------------------------------------------------------------------------
-insert into ouroboros."user"
-    ("id", "name", "email", "emailVerified", "createdAt", "updatedAt",
-     account_status, account_status_changed_at, account_status_changed_by,
-     account_status_reason, github_login)
-select seed.id, seed.name, seed.email, true, seed.created_at, seed.created_at,
-       seed.status, seed.changed_at, seed.changed_by, seed.reason, seed.login
+--
+-- **Guarded for older schemas.** The V141 rehearsal in .github/workflows/db.yml applies these
+-- repeatable seeds to a database migrated to V140 only, as on a deployment that ran them before
+-- V149 existed. Plain SQL naming V149's columns would not even parse there, so the V149 parts run
+-- as dynamic SQL, and only once `app_account_events` (V149) exists. On a schema without it the two
+-- people are still seeded, with the identity columns alone, and V149's back-fill later approves
+-- them like every account that predates it.
+do $seed$
+begin
+  if ${ouro_dev_seed} and to_regclass('ouroboros.app_account_events') is not null then
+    execute $q$
+      insert into ouroboros."user"
+          ("id", "name", "email", "emailVerified", "createdAt", "updatedAt",
+           account_status, account_status_changed_at, account_status_changed_by,
+           account_status_reason, github_login)
+      select seed.id, seed.name, seed.email, true, seed.created_at, seed.created_at,
+             seed.status, seed.changed_at, seed.changed_by, seed.reason, seed.login
+        from (values
+               ('5eed009d-0000-4000-8000-000000000001', 'Priya Raman', 'priya@contractor.dev',
+                now() - interval '3 days', 'pending', now() - interval '3 days',
+                null::text, 'held', 'priyaraman'),
+               ('5eed009d-0000-4000-8000-000000000002', 'Sam', 'sam@unknown.example',
+                now() - interval '8 days', 'denied', now() - interval '7 days',
+                'ken@acme-robotics.dev', 'denied_by_admin', null::text)
+             ) as seed (id, name, email, created_at, status, changed_at, changed_by, reason, login)
+      on conflict do nothing
+    $q$;
+  end if;
+end
+$seed$;
+
+-- The same two people with the identity columns only: a no-op once the statement above has run,
+-- and the whole of it on a schema older than V149.
+insert into ouroboros."user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt")
+select seed.id, seed.name, seed.email, true, seed.created_at, seed.created_at
   from (values
          ('5eed009d-0000-4000-8000-000000000001', 'Priya Raman', 'priya@contractor.dev',
-          now() - interval '3 days', 'pending', now() - interval '3 days',
-          null::text, 'held', 'priyaraman'),
+          now() - interval '3 days'),
          ('5eed009d-0000-4000-8000-000000000002', 'Sam', 'sam@unknown.example',
-          now() - interval '8 days', 'denied', now() - interval '7 days',
-          'ken@acme-robotics.dev', 'denied_by_admin', null::text)
-       ) as seed (id, name, email, created_at, status, changed_at, changed_by, reason, login)
+          now() - interval '8 days')
+       ) as seed (id, name, email, created_at)
  where ${ouro_dev_seed}
 on conflict do nothing;
 
@@ -253,34 +280,42 @@ select seed.id, person."id", 'credential', person."id", seed.hash, now()
  where ${ouro_dev_seed}
 on conflict do nothing;
 
--- The trail those two decisions left, and the pre-approval below. Fixed ids, so a re-run adds
--- nothing (the table is append-only: `on conflict do nothing` is the only way to repeat it).
-insert into ouroboros.app_account_events
-    (id, at, actor_email, action, subject_user_id, subject_email, detail)
-select seed.id::uuid, seed.at, seed.actor, seed.action, seed.subject_id, seed.subject_email,
-       seed.detail::jsonb
-  from (values
-         ('5eed009d-0000-4000-8000-0000000000e1', now() - interval '8 days', null::text, 'held',
-          '5eed009d-0000-4000-8000-000000000002', 'sam@unknown.example', '{"reason":"held"}'),
-         ('5eed009d-0000-4000-8000-0000000000e2', now() - interval '7 days',
-          'ken@acme-robotics.dev', 'denied',
-          '5eed009d-0000-4000-8000-000000000002', 'sam@unknown.example',
-          '{"previousStatus":"pending"}'),
-         ('5eed009d-0000-4000-8000-0000000000e3', now() - interval '3 days', null::text, 'held',
-          '5eed009d-0000-4000-8000-000000000001', 'priya@contractor.dev', '{"reason":"held"}'),
-         ('5eed009d-0000-4000-8000-0000000000e4', now() - interval '1 day',
-          'ken@acme-robotics.dev', 'preapproved_added', null::text, 'lee@acme-robotics.dev',
-          '{"note":"starts Monday"}')
-       ) as seed (id, at, actor, action, subject_id, subject_email, detail)
- where ${ouro_dev_seed}
-on conflict do nothing;
-
--- Lee starts Monday: an address let in before its first sign-in, so the pre-approved list is
--- not empty. No account — that is the point of a pre-approval.
-insert into ouroboros.app_preapproved_emails (email, added_by, created_at, note)
-select 'lee@acme-robotics.dev', 'ken@acme-robotics.dev', now() - interval '1 day', 'starts Monday'
- where ${ouro_dev_seed}
-on conflict do nothing;
+-- The trail those two decisions left, and Lee's pre-approval: an address let in before its first
+-- sign-in, so the pre-approved list is not empty (no account — that is the point of a
+-- pre-approval). Fixed ids, so a re-run adds nothing (the events table is append-only:
+-- `on conflict do nothing` is the only way to repeat it). Both tables are V149's, so both
+-- statements are guarded the same way as the people above.
+do $seed$
+begin
+  if ${ouro_dev_seed} and to_regclass('ouroboros.app_account_events') is not null then
+    execute $q$
+      insert into ouroboros.app_account_events
+          (id, at, actor_email, action, subject_user_id, subject_email, detail)
+      select seed.id::uuid, seed.at, seed.actor, seed.action, seed.subject_id, seed.subject_email,
+             seed.detail::jsonb
+        from (values
+               ('5eed009d-0000-4000-8000-0000000000e1', now() - interval '8 days', null::text, 'held',
+                '5eed009d-0000-4000-8000-000000000002', 'sam@unknown.example', '{"reason":"held"}'),
+               ('5eed009d-0000-4000-8000-0000000000e2', now() - interval '7 days',
+                'ken@acme-robotics.dev', 'denied',
+                '5eed009d-0000-4000-8000-000000000002', 'sam@unknown.example',
+                '{"previousStatus":"pending"}'),
+               ('5eed009d-0000-4000-8000-0000000000e3', now() - interval '3 days', null::text, 'held',
+                '5eed009d-0000-4000-8000-000000000001', 'priya@contractor.dev', '{"reason":"held"}'),
+               ('5eed009d-0000-4000-8000-0000000000e4', now() - interval '1 day',
+                'ken@acme-robotics.dev', 'preapproved_added', null::text, 'lee@acme-robotics.dev',
+                '{"note":"starts Monday"}')
+             ) as seed (id, at, actor, action, subject_id, subject_email, detail)
+      on conflict do nothing
+    $q$;
+    execute $q$
+      insert into ouroboros.app_preapproved_emails (email, added_by, created_at, note)
+      select 'lee@acme-robotics.dev', 'ken@acme-robotics.dev', now() - interval '1 day', 'starts Monday'
+      on conflict do nothing
+    $q$;
+  end if;
+end
+$seed$;
 
 -- The GitHub-shaped account — mockup 01's "Continue with GitHub", for the one person
 -- driving the dev stack.
