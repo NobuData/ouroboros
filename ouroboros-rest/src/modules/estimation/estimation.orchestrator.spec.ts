@@ -538,10 +538,14 @@ describe("the recovery sweep", () => {
 
     await orchestrator.sweep();
 
+    const after = Date.now();
     const [read] = staleReads;
     expect(read?.limit).toBe(SWEEP_BATCH);
-    expect(read?.olderThan.getTime()).toBeLessThanOrEqual(before - 300_000);
-    expect(read?.olderThan.getTime()).toBeGreaterThan(before - 301_000);
+    // The sweep reads the clock between `before` and `after`, so its threshold lies between the
+    // two, each moved back by the staleness — bracketed, not pinned to one side, because a busy
+    // runner lets a millisecond pass between the reads.
+    expect(read?.olderThan.getTime()).toBeGreaterThanOrEqual(before - 300_000);
+    expect(read?.olderThan.getTime()).toBeLessThanOrEqual(after - 300_000);
   });
 
   it("re-queues what it found, and re-estimates it", async () => {
