@@ -59,6 +59,8 @@ describe("the PR sync, against a migrated database", () => {
     merged_by: string | null;
     updated_at: Date;
     synced_at: Date | null;
+    /** Whether the host holds it as a draft (V152, #1311). */
+    draft: boolean;
     /** Whether the stamp is later than the PR's mirroring — compared in the database, to the microsecond. */
     synced_after_created: boolean | null;
   }
@@ -111,7 +113,7 @@ describe("the PR sync, against a migrated database", () => {
   async function prRow(sourceId: string): Promise<PrRow> {
     const { rows } = await api.sql.query<PrRow>(
       `select id, state, title, additions, deletions, changed_files, merged_at, merged_by, updated_at,
-              synced_at, synced_at > created_at as synced_after_created
+              synced_at, draft, synced_at > created_at as synced_after_created
          from ${SCHEMA_NAME}.pull_requests where source_id = $1`,
       [sourceId],
     );
@@ -154,7 +156,13 @@ describe("the PR sync, against a migrated database", () => {
       state: "open",
     });
     expect(second).toMatchObject({ revisionSeq: 2, newRevision: true, created: false });
-    expect(pr).toMatchObject({ state: "open", additions: 68, deletions: 15, changed_files: 3 });
+    expect(pr).toMatchObject({
+      state: "open",
+      additions: 68,
+      deletions: 15,
+      changed_files: 3,
+      draft: false,
+    });
     expect(rows.map((row) => row.revision_seq)).toEqual([1, 2]);
     expect(rows[1].files).toHaveLength(3);
     expect(rows[1].files).toContainEqual({
@@ -207,6 +215,35 @@ describe("the PR sync, against a migrated database", () => {
     expect(after.synced_after_created).toBe(true);
     expect(after.updated_at.getTime()).toBeGreaterThanOrEqual(before.updated_at.getTime());
     expect(after.updated_at.getTime()).toBe(after.synced_at?.getTime());
+  });
+
+  it("writes the host's draft flag on every sync — set while a draft, cleared once marked ready (#1311)", async () => {
+    const { organizationId, sourceId, host, service } = await sandbox();
+
+    host.push("ouro/run-1-1", FIRST_PUSH);
+
+    const draft = host.open(IN_MEMORY_TOKEN, IN_MEMORY_PROJECT, {
+      branch: "ouro/run-1-1",
+      base: IN_MEMORY_DEFAULT_BRANCH,
+      title: "Opened by a loop",
+      body: null,
+      draft: true,
+    }).number;
+    const { rows: first } = await api.sql.query<{ draft: boolean }>(
+      `select draft from ${SCHEMA_NAME}.pull_requests where id = $1`,
+      [(await service.sync(organizationId, sourceId, draft)).prId],
+    );
+
+    expect(first).toEqual([{ draft: true }]);
+
+    host.markReady(draft);
+
+    const { rows: second } = await api.sql.query<{ draft: boolean }>(
+      `select draft from ${SCHEMA_NAME}.pull_requests where id = $1`,
+      [(await service.sync(organizationId, sourceId, draft)).prId],
+    );
+
+    expect(second).toEqual([{ draft: false }]);
   });
 
   it("keeps the verification plane's refinement, and lands the host's merge with who and when", async () => {

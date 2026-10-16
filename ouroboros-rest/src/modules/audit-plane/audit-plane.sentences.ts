@@ -277,6 +277,12 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
     const where = branch === undefined ? "a run's branch" : branch;
     return outcome === "failed" ? `could not push ${where}` : `pushed ${where}`;
   },
+  "run.pull_request_opened": (f) => {
+    const number = count(f, "number");
+    return number === undefined
+      ? "opened a run's draft pull request"
+      : `opened draft pull request #${String(number)} for a run`;
+  },
 };
 
 /**

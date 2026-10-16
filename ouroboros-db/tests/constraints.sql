@@ -16381,7 +16381,9 @@ insert into ouroboros.run_ingest_receipts
          ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.finish',
           'cover-finish', repeat('7', 64), '{}'::jsonb),
          ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.push_result',
-          'cover-push-result', repeat('8', 64), '{}'::jsonb);
+          'cover-push-result', repeat('8', 64), '{}'::jsonb),
+         ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.pull_request',
+          'cover-pull-request', repeat('9', 64), '{}'::jsonb);
 
 select pg_temp.must_hold(
   pg_temp.vocabulary('ouroboros.run_ingest_receipts', 'run_ingest_receipts_operation')
@@ -45120,6 +45122,62 @@ select pg_temp.must_hold(
   'deleting the person keeps the run they started — the starter becomes null, the history stays');
 
 delete from ouroboros.organization where "id" = 'org-v151';
+
+-- ===========================================================================
+-- V152 — whether a mirrored pull request is a draft (#1311, DI.3).
+-- ===========================================================================
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v152', 'Draft Publisher', 'draft-publisher-v152', now());
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name, config, status) values
+  ('a1520000-0000-0000-0000-00000000000a', 'org-v152', 'github', 'GitHub · draft-v152',
+   '{"login": "draft-v152", "repos": ["helios-greeter"]}', 'active');
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title, head_branch, base_branch)
+  values
+    ('a1520000-0000-0000-0000-000000000001', 'org-v152', 'a1520000-0000-0000-0000-00000000000a',
+     1, 'https://github.com/draft-v152/helios-greeter/pull/1', 'Mirrored before V152',
+     'feature/one', 'main');
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title, head_branch, base_branch,
+     draft)
+  values
+    ('a1520000-0000-0000-0000-000000000002', 'org-v152', 'a1520000-0000-0000-0000-00000000000a',
+     2, 'https://github.com/draft-v152/helios-greeter/pull/2', 'Opened by a loop',
+     'ouro/run-a1520000-2', 'main', true);
+
+select pg_temp.must_hold(
+  (select not draft from ouroboros.pull_requests where id = 'a1520000-0000-0000-0000-000000000001'),
+  'a PR written without saying is not a draft — the reading every pre-V152 row had');
+
+select pg_temp.must_hold(
+  (select draft from ouroboros.pull_requests where id = 'a1520000-0000-0000-0000-000000000002'),
+  'a PR the host holds as a draft is mirrored as one');
+
+select pg_temp.must_hold(
+  (select is_nullable = 'NO' and column_default = 'false'
+     from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'pull_requests' and column_name = 'draft'),
+  'pull_requests.draft is not null, default false');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set draft = null
+     where id = 'a1520000-0000-0000-0000-000000000002'$$,
+  'a PR is a draft or it is not — never unknown');
+
+update ouroboros.pull_requests set draft = false
+ where id = 'a1520000-0000-0000-0000-000000000002';
+
+select pg_temp.must_hold(
+  (select not draft from ouroboros.pull_requests where id = 'a1520000-0000-0000-0000-000000000002'),
+  'a sync may clear draft once the host marks the PR ready');
+
+select pg_temp.must_hold(
+  (select col_description('ouroboros.pull_requests'::regclass, attnum) like '%#1311%'
+     from pg_attribute
+    where attrelid = 'ouroboros.pull_requests'::regclass and attname = 'draft'),
+  'pull_requests.draft says what writes it');
+
+delete from ouroboros.organization where "id" = 'org-v152';
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

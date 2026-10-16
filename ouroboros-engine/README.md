@@ -594,6 +594,27 @@ checkpoints it has not pushed.
   so the same checkpoints publish again. Local refs `refs/ouro/published` and
   `refs/ouro/published-checkpoint` record where the next publish starts.
 
+## The draft pull request
+
+DI.3 (#1311) opens the run branch's pull request at the `open_pr_automerge` terminal, after the
+publisher pushed it and before the run finishes `review`. The engine sends only its epoch and an
+idempotency key to `POST /internal/runs/{id}/pull-request`; `ouroboros-rest` composes the title
+and body, always asks the host for a **draft**, links it to the run and imports the plan's
+acceptance criteria.
+
+- **Success** finishes `review` with a reason naming the pull request
+  (`draft pull request #<n> opened: <url>`).
+- **A refusal** — `not_pushed`, `pr_source_unavailable`, `draft_refused`, `pr_create_failed`
+  (the one `502`), or any other code — finishes the run `failed` with the code and the host's
+  message from the refusal's details, and keeps the tree, as a failed publish does. An answer
+  that is not a draft fails it the same way. `fenced` and `run_not_executable` stop the worker
+  like any other write.
+- **Idempotent.** A resumed terminal asks again; `ouroboros-rest` answers the pull request
+  already open for the run (`created: false`) and the reason says `already open`.
+- Without a publisher nothing was pushed, so nothing is asked and the run finishes `review` as
+  before. No live run reaches this terminal yet: every `infra` stage fails `infra_unavailable`
+  until #265.
+
 ## The execution bridge
 
 #160 executes live runs under `docs/DECISION_EXECUTION_ENGINE.md` decision A. `ouroboros-rest`'s
@@ -620,7 +641,8 @@ the run executes on a background thread (`execution/worker.py`).
   from the tree's diff, but `checks` and an unsized ticket's effort are unknown, so a gate on
   them fails the run, naming why. Infrastructure stages fail with `infra_unavailable` until AR.1.
   Terminals finish through `POST /internal/runs/{id}/finish`: `needs_review` → `needs_human`,
-  `open_pr_automerge` → `review` (the tree is kept for DI.2), `back_to_queue` → `back_to_queue`.
+  `open_pr_automerge` → the branch is pushed (DI.2) and its draft pull request opened (DI.3),
+  then `review`; `back_to_queue` → `back_to_queue`.
 - **Fencing and resume.** Every write carries the epoch (`execution/reporter.py`), and a
   heartbeat goes every `OURO_ENGINE_HEARTBEAT_SECONDS`. A heartbeat or write refused `fenced`
   or `run_not_executable` aborts the executor and stops all writes. The state shape in

@@ -15599,6 +15599,11 @@ export interface components {
          */
         PullRequestHead: {
             origin: components["schemas"]["DataOrigin"];
+            /**
+             * @description Whether the host holds the PR as a draft — it cannot merge until someone marks it
+             *     ready (V152, #1311). A PR a loop opened is always one.
+             */
+            draft: boolean;
             /** Format: uuid */
             id: string;
             /** @example 514 */
@@ -15658,6 +15663,8 @@ export interface components {
          */
         PullRequestSummary: {
             origin: components["schemas"]["DataOrigin"];
+            /** @description Whether the host holds the PR as a draft (V152, */
+            draft: boolean;
             /** Format: uuid */
             id: string;
             /** @example 514 */

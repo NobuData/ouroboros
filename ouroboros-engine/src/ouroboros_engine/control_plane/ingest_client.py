@@ -50,6 +50,8 @@ from ouroboros_engine.control_plane.execution import (
     FinishRunRequest,
     HeartbeatAccepted,
     HeartbeatRequest,
+    PullRequestOpened,
+    PullRequestRequest,
     PushGrant,
     PushRecorded,
     PushRequest,
@@ -347,6 +349,19 @@ class IngestClient:
         """
         answer = self._transport.send(self._client.push_result_request(run, body))
         return self._client.read_push_recorded(answer.status, answer.body)
+
+    def pull_request(self, run: str, body: PullRequestRequest) -> PullRequestOpened:
+        """Open the run branch's draft pull request, or read the one already open (DI.3).
+
+        Args:
+            run: The run.
+            body: The epoch, keyed.
+
+        Returns:
+            The draft pull request, and whether this call created it.
+        """
+        answer = self._transport.send(self._client.pull_request_request(run, body))
+        return self._client.read_pull_request_opened(answer.status, answer.body)
 
     # --- run controls (AP.4, #306; honoured by the interpreter since #315) -------------------
 

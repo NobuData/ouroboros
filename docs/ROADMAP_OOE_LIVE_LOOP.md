@@ -1080,7 +1080,7 @@ The issues here are what the chain assumes and nothing filed provides.
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | DI.1 | ✅ #1307 | 🟢 Done | ouroboros-engine: [DI.1] Run workspace — a writable working tree per run | A confined tree from the clone cache on a branch named for the run; created, checkpointed, removed | mvp, live-loop, engine, workflow | Y | Y | M | ouroboros-engine, ouroboros-docs |
 | DI.2 | ✅ #1310 | 🟢 Done | ouroboros-engine: [DI.2] Branch publisher — attributed commits & single-branch push | Commit the tree's changes with honest authorship; push one branch with a one-call credential | mvp, live-loop, engine, rest, pr | N (after DI.1) | Y | M | ouroboros-engine, ouroboros-rest, ouroboros-docs |
-| DI.3 | #1311 | 🟡 Open | ouroboros-rest: [DI.3] Draft pull-request publisher under dry-run policy | `createPR` as a draft with the run summary and criteria; `run_id` linked; idempotent | mvp, live-loop, rest, pr, runs | N (after DI.2) | Y | M | ouroboros-rest, ouroboros-docs |
+| DI.3 | ✅ #1311 | 🟢 Done | ouroboros-rest: [DI.3] Draft pull-request publisher under dry-run policy | `createPR` as a draft with the run summary and criteria; `run_id` linked; idempotent | mvp, live-loop, rest, pr, runs | N (after DI.2) | Y | M | ouroboros-rest, ouroboros-docs |
 | DI.4 | ✅ #1312 | 🟢 Done | ouroboros-rest: [DI.4] Live-run admission — dry-run required, pause honoured, concurrency ceiling | The one gate a queue item passes before the engine may claim it | mvp, live-loop, rest, runs, workflow | Y | Y | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
 | DI.5 | ✅ #1314 | 🟢 Done | ouroboros-db: [DI.5] Slice workflow, seeds & the e2e sandbox fixture | A published `live-slice` workflow, a fixture repository that accepts a push and a pull request, a recorded provider exchange | mvp, live-loop, db, ci, workflow | Y | Y | M | ouroboros-db, tests/e2e, docker-compose.e2e.yml |
 | DI.6 | #1321 | 🟡 Open | ouroboros: [DI.6] Live-slice acceptance — e2e leg & real-provider run | The MVP gate: issue to draft pull request from cold compose, plus a scripted run against a real provider | mvp, live-loop, ci, runs, pr | N (after all MVP) | Y | L | tests/e2e, .github, docs |
@@ -1234,7 +1234,21 @@ sequenceDiagram
 
 ### Issue DI.3 — ouroboros-rest: [DI.3] Draft pull-request publisher under dry-run policy
 
-> **GitHub issue:** #1311 · **Status:** 🟡 Open · **Parent epic:** #1295
+> **GitHub issue:** #1311 · **Status:** 🟢 Done · **Parent epic:** #1295
+>
+> **Delivered (#1311):** at the `open_pr_automerge` terminal, after its last push, the engine
+> calls `POST /internal/runs/:id/pull-request {epoch, idempotency_key}`. REST refuses
+> `not_pushed` and `pr_source_unavailable`, composes the body (opening line, run/console link
+> with workflow and alias, summary and correction rounds, the plan's claims as unverified, the
+> latest farm job or "Build: none ran for this run", cost, `Refs #N`) and calls the SPI's
+> `createPR` through `PrSyncService.create` with the literal `draft: true`; an answer that is not
+> a draft is `409 draft_refused` and is not linked, any other refusal `502 pr_create_failed`, and
+> the engine finishes the run `failed` naming the cause. The PR is mirrored, linked
+> (`pull_requests.run_id`, `runs.pr_number`), its plan criteria imported, and
+> `run.pull_request_opened` audited (receipt operation `run.pull_request`). Idempotent by the
+> run: a linked PR answers `created: false`. V152 adds `pull_requests.draft`, written by the
+> sync and the publisher; the PR page shows a **Draft** chip. Gap for DI.6: proven by tests only
+> — no live run reaches the terminal while every `infra` stage fails `infra_unavailable` (#265).
 
 - **Problem Statement:** The PR plane verifies pull requests that a person or a
   fixture opened. The slice's outcome is a draft pull request the *loop*

@@ -53,6 +53,7 @@ const SNAPSHOT: PullRequestSnapshot = {
   mergedAt: null,
   mergedBy: null,
   mergeable: true,
+  draft: false,
   updatedAt: new Date("2026-09-24T10:00:00.000Z"),
 };
 
