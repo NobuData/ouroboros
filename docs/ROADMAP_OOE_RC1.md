@@ -53,14 +53,14 @@ in RC1; they are candidates for the release candidates after it. The Studio moun
 
 ## Progress
 
-**20 of 44 ordered issues are closed.** Every issue number in this document links to its
+**31 of 44 ordered issues are closed.** Every issue number in this document links to its
 GitHub issue, and a **✅** in front of one means that issue is **closed**.
 
 | Status | Phases | Issues |
 |--------|--------|-------:|
-| ✅ **Complete** | R2, R3 | **21** |
-| 🟡 **In progress** | R0, R1, R7 | **8** of 23 |
-| ⬜ **Not started** | R4, R5, R6 | **0** of 9 |
+| ✅ **Complete** | R0, R1, R2, R3, R4 | **30** |
+| 🟡 **In progress** | R7 | **1** of 10 |
+| ⬜ **Not started** | R5, R6 | **0** of 4 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
 > them with `gh issue list --milestone RC1 --state closed --limit 100 --json number`
@@ -225,7 +225,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **8 issues** · 20 complexity points · order **#1–#8**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epics DG, DH, DL; Phase 0) · promoted from Model Routing (AB.1), Providers & Keys (AF.1) and Workflow Studio (T.1)
-> **Status:** ⬜ **Not started** — 0 of 8 issues closed
+> **Status:** ✅ **Complete** — 8 of 8 issues closed
 
 **Goal.** Take the decisions the chain is built on and make them reviewable: the promotion pass over the existing issues, the gateway requirements and ADR, the `StageExecutor` SPI and the engine ADR with a harness option, the record of which adapters may serve invocation, a capability endpoint, and the public sample repository.
 
@@ -250,7 +250,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **5 issues** · 21 complexity points · order **#9–#13**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epics DH, DJ, DG; Phase 1) · promoted from Scaffolding (6.5) and Providers & Keys (AF.2)
-> **Status:** ⬜ **Not started** — 0 of 5 issues closed
+> **Status:** ✅ **Complete** — 5 of 5 issues closed
 
 **Goal.** Make `POST /internal/llm/invoke` walk a resolved chain instead of answering `501`, put an Anthropic Messages-format facade over it for the stage harness, give the engine its queue and workers, and add the data-origin column everything downstream reports.
 
@@ -318,7 +318,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **5 issues** · 15 complexity points · order **#26–#30**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epic DI; Phase 3) · promoted from Build Farm (AG.7, AJ.3)
-> **Status:** ⬜ **Not started** — 0 of 5 issues closed
+> **Status:** ✅ **Complete** — 5 of 5 issues closed
 
 **Goal.** Check the run's branch out on a real runner with a short-lived credential, publish attributed commits to a single branch, link the build job to the run so its exit code decides the gate, open a draft pull request, and seed the slice workflow and the e2e sandbox fixture.
 
@@ -330,11 +330,11 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 26 | **AG.7** | [#991](https://github.com/NobuData/ouroboros/issues/991) | Source checkout — run a submitted build on a real runner | ouroboros-runner, ouroboros-rest, tests/e2e | M | — |
-| 27 | **DI.5** | [#1314](https://github.com/NobuData/ouroboros/issues/1314) | Slice workflow, seeds & the e2e sandbox fixture | ouroboros-db, tests/e2e, docker-compose.e2e.yml | M | AG.7, DJ.1 |
-| 28 | **DI.2** | [#1310](https://github.com/NobuData/ouroboros/issues/1310) | Branch publisher — attributed commits & single-branch push | ouroboros-engine, ouroboros-rest, ouroboros-docs | M | DI.1, AR.1 |
-| 29 | **AJ.3** | [#265](https://github.com/NobuData/ouroboros/issues/265) | Workflow build-stage integration | ouroboros-rest, ouroboros-engine | M | AG.7, T.6, DI.2 |
-| 30 | **DI.3** | [#1311](https://github.com/NobuData/ouroboros/issues/1311) | Draft pull-request publisher under dry-run policy | ouroboros-rest, ouroboros-docs | M | DI.2, T.6 |
+| 26 | **AG.7** | ✅ [#991](https://github.com/NobuData/ouroboros/issues/991) | Source checkout — run a submitted build on a real runner | ouroboros-runner, ouroboros-rest, tests/e2e | M | — |
+| 27 | **DI.5** | ✅ [#1314](https://github.com/NobuData/ouroboros/issues/1314) | Slice workflow, seeds & the e2e sandbox fixture | ouroboros-db, tests/e2e, docker-compose.e2e.yml | M | AG.7, DJ.1 |
+| 28 | **DI.2** | ✅ [#1310](https://github.com/NobuData/ouroboros/issues/1310) | Branch publisher — attributed commits & single-branch push | ouroboros-engine, ouroboros-rest, ouroboros-docs | M | DI.1, AR.1 |
+| 29 | **AJ.3** | ✅ [#265](https://github.com/NobuData/ouroboros/issues/265) | Workflow build-stage integration | ouroboros-rest, ouroboros-engine | M | AG.7, T.6, DI.2 |
+| 30 | **DI.3** | ✅ [#1311](https://github.com/NobuData/ouroboros/issues/1311) | Draft pull-request publisher under dry-run policy | ouroboros-rest, ouroboros-docs | M | DI.2, T.6 |
 
 ## R5 — The surfaces tell the truth
 
@@ -378,7 +378,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **10 issues** · 21 complexity points across the eight sized issues · order **#35–#44**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epics DK, DL, DG; Phase 6) · promoted from Onboarding (BD.1) · two Settings defects
-> **Status:** ⬜ **Not started** — 0 of 10 issues closed
+> **Status:** 🟡 **In progress** — 1 of 10 issues closed
 
 **Goal.** Turn the gate into something a person meets: a readiness preflight, wizard states that never start a simulated first loop, the live first-loop experience, the administration page for switching execution on, a reproducible and recorded reference run, site numbers that are that run's numbers, and the final documentation sweep. Close the two remaining defects.
 
