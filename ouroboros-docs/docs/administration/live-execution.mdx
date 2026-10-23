@@ -1,13 +1,130 @@
 ---
-title: "Live execution — admission, confirmation & limits"
+title: "Live execution"
 sidebar_label: "Live execution"
 sidebar_position: 16
-description: "What must be true before a queued issue becomes a live run, who may start one, and the limits that stop it."
+description: "Turning the loop on: what it needs, what it can and cannot do, which credentials it uses, and how to limit and stop it."
 ---
 
-A **live run** calls models, edits code on a branch and opens a draft pull request. It costs
-money. This page covers the gate every queued issue passes before the engine may start one,
-who may start one, and the limits that stop one.
+A **live run** calls a model on your workspace's own provider key, edits code in a working
+tree on the engine, pushes one branch to your repository and opens a draft pull request. It
+costs money, and it writes into a repository you care about. Turning it on is an operator's
+decision; this page is what you need to make it.
+
+## Prerequisites
+
+Before a first loop starts, Ouroboros checks each of these for the repository and workflow
+it is about to run. The Get Started wizard shows the list as **Ready to run?**, and
+`GET /api/v1/loop/readiness?repository=<owner/name>&workflow=<slug>` answers it as JSON — each
+check with its state (`pass`, `fail` or `unknown`), a reason and a link to where it is fixed.
+A loop is ready only when every check passes; an `unknown` blocks like a failure.
+
+| Check | What must be true |
+| --- | --- |
+| `deployment` | <EnvVar name="OURO_LIVE_EXECUTION_ENABLED" /> is `true` — see [Turning it on](#turning-it-on). |
+| `workspace` | The workspace is active, not paused or pending deletion. |
+| `provider_connection` | An enabled provider connection that may run a loop exists and passed its last test — see [Providers § Which connections can run a loop](./providers.mdx#which-connections-can-run-a-loop). |
+| `routes` | Every task kind the workflow uses resolves to a model, and that model has a price, so the run's spend can be capped. |
+| `stage_executors` | The engine has a stage executor registered for the workflow's model stages — see [Stage executors](#stage-executors). |
+| `runner` | Each build stage names a runner pool, and that pool has a runner online that can check out the repository — see [Build farm](./build-farm.mdx). |
+| `repository` | The repository is enabled for the loop. |
+| `push_credential` | The workspace's GitHub token may push to the repository. |
+| `pull_request_credential` | The GitHub source that mirrors the issue may open a pull request in the repository. |
+| `dry_run` | The repository is in dry-run — see [Policies § Dry-run](./policies.mdx#dry-run). |
+| `workflow_published` | The workflow has a published version that reads. |
+| `concurrency` | A live-run slot is free under the workspace's ceiling — see [Limits](#limits). |
+
+GitHub answers the two permission checks with what the token's **account** may do, not the
+token's own scopes: a passing check confirms what GitHub can say and no more.
+
+<Screenshot id="user-guide.wizard.readiness" />
+
+The wizard's **Ready to run?** card while the switch is off. The checks read only: none calls
+a model or starts a job, so they are safe to ask as often as you like.
+
+## Turning it on
+
+Three things, on the deployment:
+
+1. **The switch.** Set <EnvVar name="OURO_LIVE_EXECUTION_ENABLED" /> to `true` on the REST
+   service and restart it. Off — the default — no queued issue becomes a live run, whatever
+   else is ready, so an upgrade never starts executing on its own.
+2. **The engine's way back to Ouroboros.** Set <EnvVar name="OURO_REST_URL" /> on the
+   **engine** to the REST service's internal address (`http://rest:4000` in the compose file).
+   The engine claims work, reports progress and sends every model call through it. Without it
+   the engine registers no stage executor and logs *no REST URL is configured: no harness
+   executor*.
+3. **The run volume.** Mount a volume at `/var/lib/ouroboros-engine/runs` and set
+   <EnvVar name="OURO_ENGINE_RUN_DIR" /> to it, beside the clones volume at
+   <EnvVar name="OURO_ENGINE_CLONE_DIR" />. Each live run gets its own working tree there.
+   Allow at least <EnvVar name="OURO_ENGINE_RUN_MAX_MB" /> (2048 MB unless set) free per run
+   you let run at once — see [Disk and cleanup](#disk-and-cleanup).
+
+**The harness runtime is already in the engine image.** The stage executor runs the Claude
+Agent runtime bundled with the image (about 255 MB of it); nothing else is installed. The
+image's health check fails if that runtime is missing.
+
+Then check it took:
+
+- The engine's `GET /v0/status` lists `harness` under `executors`.
+- The wizard's **Ready to run?** card, or the readiness route above, passes for the
+  repository you want to start with. This is the check to trust.
+- `GET /api/v1/loop/capabilities` lists each stage of the loop and, when one is not live, a
+  reason. In this version it still reports execution as `no_task_queue` and pull-request
+  publishing as `not_implemented` even when live runs work; the readiness check does not
+  depend on either.
+
+## What the loop can do
+
+Exactly this, and nothing else:
+
+- **It edits files in one working tree** — the run's own, on the engine. It may read,
+  search, edit and write files there. Paths outside the tree, through `.git`, onto a
+  protected path, or into CI configuration without the stage's permission are refused.
+- **It pushes one branch** — `ouro/run-<run id>-<issue number>`, fast-forward only — see
+  [What Ouroboros writes to your repository](#what-ouroboros-writes-to-your-repository).
+- **It opens one draft pull request** for that branch. While dry-run is on, Ouroboros refuses
+  to merge it.
+
+It has **no shell**, **no network access of its own** — no web tool, no sub-agents, no MCP
+servers — and it **loads nothing from the repository's agent settings**: settings, hooks and
+skills in the repository's `.claude/` directory are ignored. Its instructions come only from
+the workflow's stage prompts.
+
+## What it cannot protect you from
+
+These are as real as the protections above. Read them before turning the switch on.
+
+- **Issue text is untrusted input.** The issue's title, body and acceptance criteria are
+  passed to the model as data, not instructions. That limits prompt injection; it does not
+  rule it out. A crafted issue can still steer what the loop writes inside the working tree.
+- **The draft pull request is a contribution like any other.** It can contain wrong,
+  insecure or deliberately harmful code. Read it — diff and checks — the way you would read
+  a stranger's pull request before you merge it. Dry-run keeps it a draft so that you do.
+- **Build stages run your repository's build on your runners.** A build stage checks out the
+  run's changes and runs the repository's command on a runner in your farm. The loop's code
+  executes on that machine.
+- **Some protections do not exist yet.** There is no network egress control for the engine
+  or the runners, no gate that asks a person before a destructive change, no automatic scan
+  of what a run wrote for threats, and pushed commits are not signed. These are planned in the
+  [agent runtime security roadmap](https://github.com/NobuData/ouroboros/blob/main/docs/ROADMAP_AGENT_RUNTIME_SECURITY.md).
+
+A person still chooses every live run: an issue starts only once someone who holds **Can
+approve loops** has confirmed it — see [Who may start a live run](#who-may-start-a-live-run).
+
+## Credentials
+
+- **The provider key stays in the control plane.** The engine and the agent never hold it.
+  For each stage attempt the engine is given a short-lived credential for that run and stage;
+  every model call goes through Ouroboros, which routes it to your connection, applies the
+  run's spend cap, records the usage, and revokes the credential when the attempt ends.
+- **The GitHub credential is handed over per call.** The workspace's GitHub token is given to
+  the engine for one push at a time and used in memory. It is never written to the working
+  tree, its git configuration, the process list or the logs. The pull request is opened by
+  Ouroboros itself, with the token of the GitHub source that mirrors the issue.
+- **A subscription credential is refused.** A claude.ai subscription or session token is
+  refused when it is connected (`provider_credential_refused`); a loop runs only on an API key
+  your workspace pays for — see [Providers § Which connections can run a
+  loop](./providers.mdx#which-connections-can-run-a-loop).
 
 ## The admission check
 
@@ -82,7 +199,14 @@ Ouroboros checks every minute for live runs that have passed a limit, and aborts
 The abort goes through the run's control queue like any other abort. The engine cleans up,
 **the branch is kept**, and the run console says which limit stopped the run. The cap on
 what a run may spend is set separately, by the route and the policy's spend guard — see
-[Policies & guardrails](./policies.mdx).
+[Policies & guardrails](./policies.mdx). A run that reaches its cap is stopped the same way.
+
+### Aborting a run
+
+To stop one live run for good, open it in the run console and choose **Abort run** — see
+[The run console § Controlling a live run](../user-guide/runs/console.mdx#controlling-a-live-run).
+The branch is kept. To stop everything in a workspace at once, pause it — see
+[Pausing](#pausing).
 
 ## Stage executors
 
@@ -255,6 +379,7 @@ paused.
 | <EnvVar name="OURO_RUN_HEARTBEAT_STALE_SECONDS" /> | `30` | How long a run may go without a heartbeat before it is handed to the engine again (10–3600). |
 | <EnvVar name="OURO_ENGINE_HEARTBEAT_SECONDS" /> | `5` | How often the engine reports a running run's heartbeat (1–60). Keep it well under the stale limit. |
 | <EnvVar name="OURO_ENGINE_WORKER_ID" /> | the host name | The name the engine claims issues and starts runs under. |
+| <EnvVar name="OURO_REST_URL" /> (engine) | — | The REST service's internal address, on the engine. Required for live execution: without it the engine registers no stage executor. |
 | <EnvVar name="OURO_ENGINE_RUN_DIR" /> | `<temp dir>/ouroboros-engine/runs` | Where the engine keeps each run's working tree. Mount a volume there. |
 | <EnvVar name="OURO_ENGINE_RUN_MAX_MB" /> | `2048` | One tree's size limit in MB, and the free space a new run needs (16–1048576). |
 | <EnvVar name="OURO_ENGINE_RUN_IDLE_HOURS" /> | `168` | How long a tree may go unopened before the sweep removes it (1–8760). |
