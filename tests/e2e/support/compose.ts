@@ -67,10 +67,18 @@ const ROOT = resolve(__dirname, "../../..");
  */
 const COMPOSE_ARGS = [
   "compose",
+  // The stack variants `scripts/run.sh --unseeded` and `--production` bring up (#1316, #1317)
+  // run under their own compose project with more overlay files; run.sh exports both, so a leg
+  // that drives the stack reaches the one it is running against rather than the seeded one.
+  ...(process.env.OURO_E2E_COMPOSE_PROJECT ? ["-p", process.env.OURO_E2E_COMPOSE_PROJECT] : []),
   "-f",
   "docker-compose.yml",
   "-f",
   "docker-compose.e2e.yml",
+  ...(process.env.OURO_E2E_COMPOSE_OVERLAYS ?? "")
+    .split(",")
+    .filter((file) => file.trim() !== "")
+    .flatMap((file) => ["-f", file.trim()]),
   "--profile",
   "full",
 ];

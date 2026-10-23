@@ -1615,7 +1615,7 @@ the product able to say which of its data a real run produced.
 | DJ.1 | ✅ #1313 | 🟢 Done | ouroboros-db: [DJ.1] Data origin on runs and what derives from them | `live` / `simulated` / `seeded`, set once by the path that created the row and inherited downstream | mvp, live-loop, db, rest, runs | Y | Y | M | ouroboros-db, ouroboros-rest |
 | DJ.2 | ✅ #1315 | 🟢 Done | ouroboros-rest: [DJ.2] Origin-aware aggregates — dashboard, Insights, analyzer | Rollups carry origin; live-only by default; mixed results say so | mvp, live-loop, rest, insights, dashboard | N (after DJ.1) | Y | M | ouroboros-rest, ouroboros-db |
 | DJ.3 | ✅ #1316 | 🟢 Done | ouroboros-ui: [DJ.3] Data-origin labelling & honest empty states | A label wherever non-live data is shown or counted; a fresh deployment shows nothing invented | mvp, live-loop, ui, design, dashboard, insights, runs | N (after DJ.2) | Y | M | ouroboros-ui, ouroboros-docs |
-| DJ.4 | #1317 | 🟡 Open | ouroboros-engine: [DJ.4] Simulated driver out of the product path | The driver becomes a named test and development tool; nothing a user reaches starts it | mvp, live-loop, engine, runs, onboarding, ci | N (after #315) | Y | S | ouroboros-engine, ouroboros-rest, ouroboros-ui, tests/e2e, ouroboros-docs |
+| DJ.4 | ✅ #1317 | 🟢 Done | ouroboros-engine: [DJ.4] Simulated driver out of the product path | The driver becomes a named test and development tool; nothing a user reaches starts it | mvp, live-loop, engine, runs, onboarding, ci | N (after #315) | Y | S | ouroboros-engine, ouroboros-rest, ouroboros-ui, tests/e2e, ouroboros-docs |
 
 ### Issue DJ.1 — ouroboros-db: [DJ.1] Data origin on runs and what derives from them
 
@@ -1784,7 +1784,7 @@ the product able to say which of its data a real run produced.
 
 ### Issue DJ.4 — ouroboros-engine: [DJ.4] Simulated driver out of the product path
 
-> **GitHub issue:** #1317 · **Status:** 🟡 Open · **Parent epic:** #1296
+> **GitHub issue:** ✅ #1317 · **Status:** 🟢 Done · **Parent epic:** #1296
 
 - **Problem Statement:** The simulated-run driver is what makes the product
   look alive: the wizard's first loop is walked by its `first_loop` scenario in

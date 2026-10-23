@@ -54,12 +54,12 @@ import {
   setGithubToken,
   syncIntakeMirror,
 } from "../support/planning";
+import { expectJson, restUrl } from "../support/api";
 import { quietly, requestAs } from "../support/rest";
 import { SEED_OWNER } from "../support/seed";
 import { signIn } from "../support/session";
 import { expectFontScale, restoreFontScale, setFontScale } from "../support/settings";
 import { expectNoTopbarRemnants, expectNoViewportFixedElements } from "../support/shell";
-import { type Simulation, startSimulation } from "../support/simulator";
 import { THEMES, storeTheme } from "../support/theme";
 import {
   CHAIN,
@@ -67,7 +67,7 @@ import {
   DASHBOARD,
   DASHBOARD_BROKE,
   DETECTION_ROWS,
-  DRIVER_BROKE,
+  NO_SIMULATED_WALK,
   DRY_RUN,
   ENABLE_BROKE,
   LAUNCH_BROKE,
@@ -116,15 +116,6 @@ const SCAN_MS = 30 * 1000;
 
 /** How long the estimator may take to size one issue: a sync, a queue hop and an engine call. */
 const ESTIMATE_MS = 90 * 1000;
-
-/** The driver's time compression — two and a half scripted minutes in under ten real seconds. */
-const DRIVER_SPEED = 20;
-
-/** How long the run may take to reach its terminal at that speed, driver start-up included. */
-const DRIVER_MS = 60 * 1000;
-
-/** The quick-fixes template's nodes — the stepper's steps, every one done at the end. */
-const QUICK_FIXES_STAGES = 7;
 
 /**
  * The wizard's `.wizard__content` — the one region that scrolls. The route's loading state draws
@@ -328,7 +319,7 @@ test.describe("the Get Started wizard's states (#395)", () => {
 /* ------------------------------------------------------------------ the chain */
 
 test.describe("the first loop, from a cold rail (#395)", () => {
-  test("the chain: connect → pick → scan → template → Studio → pick → launch → dashboard → dry-run → simulated run → regression", async ({
+  test("the chain: connect → pick → scan → template → Studio → pick → launch → dashboard → dry-run → queued, never simulated → regression", async ({
     context,
     page,
     request,
@@ -337,7 +328,6 @@ test.describe("the first loop, from a cold rail (#395)", () => {
     // the driver in sequence. `slow()` triples the per-test timeout rather than raising the suite's.
     test.slow();
 
-    let simulation: Simulation | undefined;
     let issueNumber: number | undefined;
     let sourceId: string | undefined;
 
@@ -571,41 +561,28 @@ test.describe("the first loop, from a cold rail (#395)", () => {
         POLICY_BROKE,
       ).toHaveText(DRY_RUN.on);
 
-      /* ------------------------------------------------ the driver: a watermarked run to the terminal */
+      /* ------------------------------------------------ no simulated walk: the issue waits, honestly */
 
-      simulation = await startSimulation("first-loop", DRIVER_SPEED, {
-        ticketSource: sourceId,
-        ticket: `#${String(issueNumber)}`,
-        repository: mirrored!.id,
-        workflow: CHAIN.workflow.slug,
-        workflowVersion: CHAIN.workflow.version,
-      });
+      // The product never stands the run simulator in for a first loop (DJ.4, #1317). This
+      // stack runs no live execution, so the launched issue stays queued — no run of any
+      // origin is opened for it, and the rail does not claim one. The walk to a terminal run is
+      // the live slice's to prove (live-slice-fixtures.spec.ts, DI.5), against a real executor.
+      for (const family of ["active", "terminal"] as const) {
+        const runs = await expectJson<{ items: { issueNumber: number; origin: string }[] }>(
+          await page.request.get(restUrl(`/api/v1/runs?status=${family}&limit=100`)),
+          200,
+        );
 
-      await page.goto(`/runs/${simulation.runId}`);
-      await expect(page.getByRole("note"), DRIVER_BROKE).toContainText("Simulated run.");
-      await expect(page.getByRole("heading", { level: 1 }), DRIVER_BROKE).toContainText(
-        `#${String(issueNumber)}`,
-      );
-      await expect
-        .poll(() => page.locator(".run-step--done").count(), {
-          message: DRIVER_BROKE,
-          timeout: DRIVER_MS,
-        })
-        .toBe(QUICK_FIXES_STAGES);
+        expect(
+          runs.items.filter((run) => run.issueNumber === issueNumber),
+          NO_SIMULATED_WALK,
+        ).toEqual([]);
+      }
 
-      const { code, output } = await simulation.finished;
-      expect(code, DRIVER_BROKE).toBe(0);
-      expect(output, DRIVER_BROKE).toContain("first-loop: completed");
-
-      // The rail knows: the picked issue has a run.
       await page.goto(wizardPathFor(CHAIN.repo));
-      await expect(railStep(page, 4), DRIVER_BROKE).toContainText(
-        `#${String(issueNumber)} · run started`,
-        {
-          timeout: RAIL_MS,
-        },
-      );
-      await expect(card(page, WIZARD.receipt), DRIVER_BROKE).toContainText("run started");
+      await expect(card(page, WIZARD.receipt), NO_SIMULATED_WALK).toBeVisible();
+      await expect(card(page, WIZARD.receipt), NO_SIMULATED_WALK).not.toContainText("run started");
+      await expect(railStep(page, 4), NO_SIMULATED_WALK).not.toContainText("run started");
 
       /* ------------------------------------------------ the regression leg */
 
@@ -637,7 +614,6 @@ test.describe("the first loop, from a cold rail (#395)", () => {
       await expect(banner, REGRESSION_BROKE).toHaveCount(0, { timeout: RAIL_MS });
       await expect(railStep(page, 1), REGRESSION_BROKE).toContainText(WIZARD.connected);
     } finally {
-      simulation?.stop();
       await clearGithubToken(context);
       await restoreDryRun(context);
       if (sourceId !== undefined) await pauseSource(context, sourceId);

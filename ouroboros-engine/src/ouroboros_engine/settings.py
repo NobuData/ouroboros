@@ -83,7 +83,7 @@ class Settings(BaseSettings):
         run_simulator_secret: ``OURO_RUN_SIMULATOR_SECRET``, the second principal
             ``ouroboros-rest`` accepts on its internal surface, whose runs are marked
             simulated (AP.1, #303). Optional. Set, a *development* engine mounts the
-            simulated-run driver's ``/dev`` routes (AP.5, #307). A production image does
+            run simulator's ``/dev`` routes (AP.5, #307). A production image does
             not contain the driver, so there it mounts nothing and says so in the log.
         rest_url: ``OURO_REST_URL``, where ``ouroboros-rest`` is. Read by that
             development driver, which reports runs to it, and by the Workflow Copilot's

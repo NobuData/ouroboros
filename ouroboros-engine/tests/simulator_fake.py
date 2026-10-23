@@ -1,4 +1,4 @@
-"""An in-memory ``ouroboros-rest`` for the simulated-run driver's tests.
+"""An in-memory ``ouroboros-rest`` for the run simulator's tests.
 
 It answers the eight internal operations the driver calls, with the same shapes and the same
 refusals, and it enforces the rules that make the driver's behaviour worth testing:

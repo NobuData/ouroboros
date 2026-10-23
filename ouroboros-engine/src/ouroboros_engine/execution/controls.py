@@ -1,7 +1,7 @@
 """A person's controls over an executing run — fetched, applied at safe boundaries, acked.
 
 #315 (AR.1) honours AP.4's queue (`#306 <https://github.com/NobuData/ouroboros/issues/306>`_)
-the way the simulated-run driver's session does (its ``_apply``). The interpreter claims a
+the way the run simulator's session does (its ``_apply``). The interpreter claims a
 run's pending controls (``POST /internal/runs/{id}/controls/fetch``) while a stage runs
 (:mod:`~ouroboros_engine.execution.poller`), when an attempt ends, between stages and
 before every finish, and acknowledges each with the effect it had:

@@ -2,7 +2,7 @@
 
 The client describes a request completely and deliberately sends nothing; this is the socket
 that does, with the standard library, so no HTTP dependency is added to anything. It began as
-the simulated-run driver's (AP.5) and moved here when J.3 (#91) gave the engine its own
+the run simulator's (AP.5) and moved here when J.3 (#91) gave the engine its own
 ingestion client: one sender, so the driver and real execution retry the same way.
 
 **Retrying is safe because every write is idempotency-keyed.** A connection that drops, or a

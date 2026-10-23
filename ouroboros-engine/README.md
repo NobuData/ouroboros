@@ -894,7 +894,12 @@ Against a REST release without the gateway (before AF.2,
 with `details.reason: gateway_unavailable`; the suites run on a scripted model
 (`tests/skills_fakes.py`).
 
-## The simulated-run driver (development only)
+## The run simulator (development only)
+
+A test tool, never a product feature (DJ.4, #1317): nothing a signed-in person reaches starts
+it, a production `ouroboros-rest` refuses its secret, and CI asserts the production image does not
+contain it. Every remaining caller, its owner and its reason are in
+[`docs/RUN_SIMULATOR.md`](../docs/RUN_SIMULATOR.md).
 
 [#307](https://github.com/NobuData/ouroboros/issues/307) (AP.5). The Run Console is fed by
 `ouroboros-rest`'s ingestion contract ([#303](https://github.com/NobuData/ouroboros/issues/303))
@@ -1257,7 +1262,7 @@ ouroboros-engine/
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON
 │   └── settings.py     # pydantic-settings, OURO_*
-├── src/ouroboros_simulator/  # the simulated-run driver — NOT in the wheel      · #307
+├── src/ouroboros_simulator/  # the run simulator — NOT in the wheel      · #307
 │   ├── session.py      #   one run: reports through the client, honours controls
 │   ├── scenarios/      #   the eight scripts, over the session
 │   ├── runner.py       #   open a run, play a scenario, say what happened
@@ -1325,7 +1330,7 @@ the header, the provider kinds and AB.1's error taxonomy against this module's c
 mirror is checked rather than asserted. `ingest.py` does the same for AP.1's six run-ingestion
 operations ([#303](https://github.com/NobuData/ouroboros/issues/303)), checked by
 `tests/test_control_plane_ingest.py`, and the client builds those requests too. Their first
-sender is the simulated-run driver, which brings a `urllib` transport from outside the wheel
+sender is the run simulator, which brings a `urllib` transport from outside the wheel
 (see [the driver](#the-simulated-run-driver-development-only)). The naming convention changes in that one file: the
 control plane writes `camelCase` and this service writes `snake_case`, so nothing beneath it
 carries `runCtx` or `ttlSeconds`.
@@ -1360,7 +1365,7 @@ the workflow DSL and its shared validation [#133](https://github.com/NobuData/ou
 workflow validation and the dry-run simulator [#144](https://github.com/NobuData/ouroboros/issues/144) ·
 the plan contract and its outline parser [#277](https://github.com/NobuData/ouroboros/issues/277) ·
 the Build Analyzer's analyzer SPI and change-point core [#511](https://github.com/NobuData/ouroboros/issues/511) ·
-the simulated-run driver [#307](https://github.com/NobuData/ouroboros/issues/307) ·
+the run simulator [#307](https://github.com/NobuData/ouroboros/issues/307) ·
 the gateway that calls it [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 full epic [#6](https://github.com/NobuData/ouroboros/issues/6).
 

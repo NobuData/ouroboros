@@ -279,6 +279,7 @@ async function within<T>(promise: Promise<T>, ms: number, what: string): Promise
  * @returns The simulation.
  */
 async function simulate(scenario: string, speed: number): Promise<Simulation> {
+  // Driver (DJ.4): runs on a known schedule — a gate a policy flips, and stages a pause must land between.
   const simulation = await startSimulation(scenario, speed);
 
   simulations.push(simulation);
@@ -1136,6 +1137,7 @@ test.describe("the settings hub", () => {
 
       // ---- And nothing new starts: a loop cannot open at all.
       await expect(
+        // Driver (DJ.4): a second run that must stay queued behind the pause — a scripted start.
         startSimulation(FLOW_SCENARIO, FAST_SPEED),
         "a new loop must not open while the workspace is paused",
       ).rejects.toThrow(/workspace_paused/);

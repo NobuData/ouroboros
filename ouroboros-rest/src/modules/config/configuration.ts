@@ -918,6 +918,16 @@ export interface Configuration {
    */
   readonly runSimulatorSecret?: string;
   /**
+   * Whether a **production** deployment may hold {@link runSimulatorSecret} on purpose (DJ.4,
+   * [#1317](https://github.com/NobuData/ouroboros/issues/1317)). From
+   * `OURO_RUN_SIMULATOR_IN_PRODUCTION`; `false` when unset.
+   *
+   * The run simulator is a test tool. A production boot with its secret set and this off is
+   * refused with a sentence saying why; with this on it boots and logs a warning every start,
+   * so the choice is explicit and visible. Ignored outside production.
+   */
+  readonly runSimulatorInProduction: boolean;
+  /**
    * BetterAuth's signing and encryption key. From `BETTER_AUTH_SECRET`.
    *
    * Unprefixed because it is BetterAuth's own canonical name, which the library reads
@@ -1555,6 +1565,7 @@ export const VARIABLES = {
   engineUrl: "OURO_ENGINE_URL",
   engineSharedSecret: "OURO_ENGINE_SHARED_SECRET",
   runSimulatorSecret: "OURO_RUN_SIMULATOR_SECRET",
+  runSimulatorInProduction: "OURO_RUN_SIMULATOR_IN_PRODUCTION",
   betterAuthSecret: "BETTER_AUTH_SECRET",
   betterAuthUrl: "BETTER_AUTH_URL",
   githubClientId: "OURO_GITHUB_CLIENT_ID",
@@ -1986,6 +1997,7 @@ const environmentShape = z.object({
   OURO_ENGINE_SHARED_SECRET: secret,
 
   OURO_RUN_SIMULATOR_SECRET: secret.optional(),
+  OURO_RUN_SIMULATOR_IN_PRODUCTION: capabilityFlag(),
 
   // BetterAuth's two canonical variables (roadmap decision A9). They are validated by the
   // same rules as their OURO_ counterparts rather than by the library's own defaults,
@@ -2645,6 +2657,24 @@ const environmentSchema = environmentShape
       "share one secret",
   })
   .superRefine((values, context) => {
+    // The run simulator is a test tool (DJ.4, #1317): a production deployment holding its secret
+    // would let anything with that secret open runs nothing real did. Refused at boot unless the
+    // deployment says, in a second variable, that it means it.
+    if (
+      values.NODE_ENV === "production" &&
+      values.OURO_RUN_SIMULATOR_SECRET !== undefined &&
+      !values.OURO_RUN_SIMULATOR_IN_PRODUCTION
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: [VARIABLES.runSimulatorSecret],
+        message:
+          "is set on a production deployment — the run simulator is a test tool, so unset it, " +
+          "or set OURO_RUN_SIMULATOR_IN_PRODUCTION=true to run it here on purpose",
+      });
+    }
+  })
+  .superRefine((values, context) => {
     // A Slack app (#535) is its client id, client secret and signing secret together: a
     // deployment with two of the three would install and then refuse every request Slack sends.
     const slackApp = [
@@ -2818,6 +2848,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     engineUrl: values.OURO_ENGINE_URL,
     engineSharedSecret: values.OURO_ENGINE_SHARED_SECRET,
     runSimulatorSecret: values.OURO_RUN_SIMULATOR_SECRET,
+    runSimulatorInProduction: values.OURO_RUN_SIMULATOR_IN_PRODUCTION,
     betterAuthSecret: values.BETTER_AUTH_SECRET,
     betterAuthUrl: values.BETTER_AUTH_URL,
     githubClientId: values.OURO_GITHUB_CLIENT_ID,

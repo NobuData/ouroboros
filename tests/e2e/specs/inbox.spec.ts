@@ -650,6 +650,7 @@ test.describe("the Needs-You inbox (#470)", () => {
 
     // The chain's second long wait starts under this one: the simulated loop opens, files its
     // stop, and holds — all while the scheduler's tick is awaited below.
+    // Driver (DJ.4): a loop stopped on a protected path, on cue — a scripted stop no single live run reaches deterministically.
     simulation = await startSimulation(SCENARIO, SPEED);
 
     // A session of Ken's own, as the browser he reads his mail in would carry once signed in.

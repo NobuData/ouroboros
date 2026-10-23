@@ -16278,7 +16278,7 @@ export interface components {
              */
             branchName: string | null;
             /**
-             * @description Decision R4's watermark: the run was opened by the simulated-run driver. Set from
+             * @description Decision R4's watermark: the run was opened by the run simulator. Set from
              *     the principal that opened it, never from a client's claim.
              */
             simulated: boolean;

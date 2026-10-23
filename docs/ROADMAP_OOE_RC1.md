@@ -53,13 +53,13 @@ in RC1; they are candidates for the release candidates after it. The Studio moun
 
 ## Progress
 
-**33 of 44 ordered issues are closed.** Every issue number in this document links to its
+**34 of 44 ordered issues are closed.** Every issue number in this document links to its
 GitHub issue, and a **✅** in front of one means that issue is **closed**.
 
 | Status | Phases | Issues |
 |--------|--------|-------:|
-| ✅ **Complete** | R0, R1, R2, R3, R4 | **30** |
-| 🟡 **In progress** | R5, R7 | **3** of 13 |
+| ✅ **Complete** | R0, R1, R2, R3, R4, R5 | **33** |
+| 🟡 **In progress** | R7 | **1** of 10 |
 | ⬜ **Not started** | R6 | **0** of 1 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -340,7 +340,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **3 issues** · 8 complexity points · order **#31–#33**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epic DJ; Phase 4)
-> **Status:** 🟡 **In progress** — 2 of 3 issues closed
+> **Status:** ✅ **Complete** — 3 of 3 issues closed
 
 **Goal.** Make the aggregates origin-aware and live-only by default, label seeded and simulated rows wherever they are shown or counted, give a fresh deployment honest empty states, and take the simulated driver out of the product path.
 
@@ -354,7 +354,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 31 | **DJ.2** | ✅ [#1315](https://github.com/NobuData/ouroboros/issues/1315) | Origin-aware aggregates — dashboard, Insights, analyzer | ouroboros-rest, ouroboros-db | M | DJ.1 |
 | 32 | **DJ.3** | ✅ [#1316](https://github.com/NobuData/ouroboros/issues/1316) | Data-origin labelling & honest empty states | ouroboros-ui, ouroboros-docs | M | DJ.1, DJ.2 |
-| 33 | **DJ.4** | [#1317](https://github.com/NobuData/ouroboros/issues/1317) | Simulated driver out of the product path | ouroboros-engine, ouroboros-rest, ouroboros-ui, tests/e2e, ouroboros-docs | S | AR.1, DI.5, DJ.1 |
+| 33 | **DJ.4** | ✅ [#1317](https://github.com/NobuData/ouroboros/issues/1317) | Simulated driver out of the product path | ouroboros-engine, ouroboros-rest, ouroboros-ui, tests/e2e, ouroboros-docs | S | AR.1, DI.5, DJ.1 |
 
 ## R6 — The gate
 

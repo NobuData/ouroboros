@@ -31,6 +31,9 @@
 #   scripts/run.sh --unseeded      # the stack WITHOUT the development seed, and the unseeded leg
 #                                  # (playwright.unseeded.config.ts; DJ.3, #1316) — under its own
 #                                  # compose project, so its volume is never the seeded one
+#   scripts/run.sh --production    # the unseeded stack with rest in production mode and no run
+#                                  # simulator, and the production leg (playwright.production.
+#                                  # config.ts; DJ.4, #1317) — its own compose project too
 #   scripts/run.sh -- --grep @foo  # everything after -- goes to playwright
 #
 # Exit status:
@@ -48,12 +51,14 @@ ROOT=$(cd -- "$E2E_DIR/../.." && pwd)
 KEEP=0
 BUILD=--build
 UNSEEDED=0
+PRODUCTION=0
 
 while [ $# -gt 0 ]; do
   case $1 in
     --keep) KEEP=1; shift ;;
     --no-build) BUILD=''; shift ;;
     --unseeded) UNSEEDED=1; shift ;;
+    --production) PRODUCTION=1; shift ;;
     --) shift; break ;;
     -h | --help) sed -n '2,30p' "$0" | cut -c 3-; exit 0 ;;
     *) printf 'run.sh: unknown argument: %s\n' "$1" >&2; exit 2 ;;
@@ -66,13 +71,28 @@ cd "$ROOT"
 # turns on the seeded password sign-in and moves rest's bind interface so the suite can
 # reach it (#647 — the file's own header says why that is safe). Spelled as a function so
 # every invocation below composes the same pair of files and none can quietly drop one.
+# The variants' compose project and extra overlays, exported so support/compose.ts drives the
+# same stack the suite runs against.
+if [ "$PRODUCTION" -eq 1 ]; then
+  OURO_E2E_COMPOSE_PROJECT=ouroboros-production
+  OURO_E2E_COMPOSE_OVERLAYS=docker-compose.e2e-unseeded.yml,docker-compose.e2e-production.yml
+elif [ "$UNSEEDED" -eq 1 ]; then
+  OURO_E2E_COMPOSE_PROJECT=ouroboros-unseeded
+  OURO_E2E_COMPOSE_OVERLAYS=docker-compose.e2e-unseeded.yml
+else
+  OURO_E2E_COMPOSE_PROJECT=
+  OURO_E2E_COMPOSE_OVERLAYS=
+fi
+export OURO_E2E_COMPOSE_PROJECT OURO_E2E_COMPOSE_OVERLAYS
+
 compose() {
-  if [ "$UNSEEDED" -eq 1 ]; then
-    docker compose -p ouroboros-unseeded -f docker-compose.yml -f docker-compose.e2e.yml \
-      -f docker-compose.e2e-unseeded.yml "$@"
-  else
-    docker compose -f docker-compose.yml -f docker-compose.e2e.yml "$@"
-  fi
+  # Base, e2e, then each overlay in order: a later file overrides an earlier one.
+  files="-f docker-compose.yml -f docker-compose.e2e.yml"
+  for overlay in $(printf '%s' "$OURO_E2E_COMPOSE_OVERLAYS" | tr ',' ' '); do
+    files="$files -f $overlay"
+  done
+  # shellcheck disable=SC2086 # the file list is split on purpose; no file name has a space
+  docker compose ${OURO_E2E_COMPOSE_PROJECT:+-p "$OURO_E2E_COMPOSE_PROJECT"} $files "$@"
 }
 
 teardown() {
@@ -101,7 +121,9 @@ cd "$E2E_DIR"
 # suite would leave the stack running and a passing one would too. The status is carried
 # out by hand instead, which is what makes the teardown unconditional.
 status=0
-if [ "$UNSEEDED" -eq 1 ]; then
+if [ "$PRODUCTION" -eq 1 ]; then
+  yarn playwright test --config playwright.production.config.ts "$@" || status=$?
+elif [ "$UNSEEDED" -eq 1 ]; then
   yarn playwright test --config playwright.unseeded.config.ts "$@" || status=$?
 else
   yarn playwright test "$@" || status=$?

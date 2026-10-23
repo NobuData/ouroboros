@@ -1,5 +1,5 @@
 /**
- * The simulated-run driver, started from the host
+ * The run simulator, started from the host
  * ([#310](https://github.com/NobuData/ouroboros/issues/310), over AP.5's driver,
  * [#307](https://github.com/NobuData/ouroboros/issues/307)).
  *

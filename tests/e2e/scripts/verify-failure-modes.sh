@@ -720,7 +720,7 @@ expect_red farm-gateway farm.spec.ts "Could not resolve host|Failed to connect t
 # enrol, and the marker would be curl's, which the chain pair above already scores.
 expect_red git-stub farm.spec.ts "the log streamed" "streams a real build"
 
-# The run console leg (#310). Its run is opened by the simulated-run driver through
+# The run console leg (#310). Its run is opened by the run simulator through
 # `ouroboros-rest`'s ingestion contract, so with the database stopped there is no run to
 # control, and the leg goes red at its first step naming the driver rather than a timeout.
 expect_red db runs.spec.ts "the simulator (exited|opened no run)"

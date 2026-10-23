@@ -28,7 +28,7 @@ testable with no network anywhere::
     for event in client.read_events(lines):  # delta · usage · hop · done
         ...
 
-**The first sender is development tooling.** The simulated-run driver (AP.5,
+**The first sender is development tooling.** The run simulator (AP.5,
 `#307 <https://github.com/NobuData/ouroboros/issues/307>`_) puts these requests on a socket
 with the standard library, from a package the production wheel does not contain. It builds
 every request here, so the driver and the future executor share one client and differ only
@@ -221,7 +221,7 @@ class ControlPlaneClient:
                 this service already reads for the *inbound* direction
                 (:mod:`ouroboros_engine.core.security`); both sides of the boundary hold
                 one value, and a stack where they disagree fails in both directions at
-                once. The simulated-run driver passes ``OURO_RUN_SIMULATOR_SECRET`` instead,
+                once. The run simulator passes ``OURO_RUN_SIMULATOR_SECRET`` instead,
                 which is how the control plane knows to mark its runs simulated (#303).
         """
         self.base_url = base_url if base_url.endswith("/") else f"{base_url}/"

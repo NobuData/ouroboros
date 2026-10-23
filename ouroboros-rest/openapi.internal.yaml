@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.43.1"
+  version: "0.43.2"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -161,7 +161,7 @@ tags:
       ([#303](https://github.com/NobuData/ouroboros/issues/303)), decision **R2**.**
 
       One internal contract every executor reports through: stages, transcript events, file
-      and commit reports, resource deltas. The simulated-run driver (AP.5,
+      and commit reports, resource deltas. The run simulator (AP.5,
       [#307](https://github.com/NobuData/ouroboros/issues/307)) calls it today and real
       execution (AR.1, [#315](https://github.com/NobuData/ouroboros/issues/315)) calls it
       tomorrow, and that is the point of it existing before either: the Run Console is

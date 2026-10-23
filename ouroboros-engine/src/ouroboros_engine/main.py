@@ -375,14 +375,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
-#: The development-only package that holds the simulated-run driver (AP.5, #307). It is
+#: The development-only package that holds the run simulator (AP.5, #307). It is
 #: named here as a string and imported only when asked for, so this module does not depend
 #: on it, and the production wheel, which does not contain it, still builds and runs.
 SIMULATOR_PACKAGE = "ouroboros_simulator"
 
 
 def _mount_simulator(app: FastAPI, settings: Settings) -> bool:
-    """Mount the simulated-run driver's ``/dev`` routes on a development engine.
+    """Mount the run simulator's ``/dev`` routes on a development engine.
 
     Two conditions, and the second is the one that keeps it out of production: the
     simulator secret is set, **and** the driver's package is importable. The production
@@ -412,7 +412,7 @@ def _mount_simulator(app: FastAPI, settings: Settings) -> bool:
             raise
         logging.getLogger(__name__).info(
             "OURO_RUN_SIMULATOR_SECRET is set, but this build does not carry the "
-            "simulated-run driver; /dev is not mounted"
+            "run simulator; /dev is not mounted"
         )
         return False
 
