@@ -145,6 +145,10 @@ export const BASIS_LINES: Readonly<Record<OnboardingTimeline["basis"], string>> 
   none: "No times yet — they appear once a picked issue has been sized. Nothing here has been timed.",
 };
 
+/** The line once the first loop has measured some rows and not others (BD.1, #396). */
+export const PARTLY_MEASURED_LINE =
+  "Rows with a filled node are the first loop's measured times; rows marked projected have not happened yet.";
+
 /** What a row's `atMinutes` prints as — the origin, then the mockup's `~N min`. */
 export function timelineTime(atMinutes: number | null): string | null {
   if (atMinutes === null) return null;
@@ -246,7 +250,10 @@ export function timelineRows(
  * @returns The line, or null.
  */
 export function basisLine(timeline: Pick<OnboardingTimeline, "basis">, rows: readonly TimelineViewRow[]): string | null {
-  return rows.some((row) => row.projected) ? BASIS_LINES[timeline.basis] : null;
+  if (!rows.some((row) => row.projected)) return null;
+
+  // Part measured, part projected (BD.1, #396): say which is which, never "nothing timed".
+  return rows.some((row) => !row.projected && row.glyph === MEASURED_GLYPH) ? PARTLY_MEASURED_LINE : BASIS_LINES[timeline.basis];
 }
 
 /* ------------------------------------------------------------------ the reassure strip */

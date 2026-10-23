@@ -873,7 +873,7 @@ e2e: connect ✓ · scan ✓ · template→Studio ✓ · pick ✓ · launch→qu
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BD.1 | #396 | 🟡 Open | ouroboros-ui: [BD.1] Live first-loop experience | Timeline flips to real run telemetry; guided first review | mvp, live-loop, onboarding, runs, ui | Y (after AR.1, BB.5) | N | M | ouroboros-ui, ouroboros-rest |
+| BD.1 | ✅ #396 | 🟢 Done | ouroboros-ui: [BD.1] Live first-loop experience | Timeline flips to real run telemetry; guided first review | mvp, live-loop, onboarding, runs, ui | Y (after AR.1, BB.5) | N | M | ouroboros-ui, ouroboros-rest |
 | BD.2 | #397 | 🟡 Open | ouroboros-rest: [BD.2] Managed keys & hosted runner tier | Deployment pools: trial-credit keys, hosted first-loop runners | v2, onboarding, providers, build-farm | N (after AF.2, AJ.1) | N | L | ouroboros-rest |
 | BD.3 | #398 | 🟡 Open | ouroboros-rest: [BD.3] Config import/export | Org config bundles: sources, workflows, routes, policies | v2, onboarding, rest | N (after BB.2) | N | M | ouroboros-rest, ouroboros-ui |
 | BD.4 | #399 | 🟡 Open | ouroboros-rest: [BD.4] Devcontainer prebuilds & deep scans | Farm-built env snapshots; clone-based detection tier | v2, onboarding, build-farm | N (after AG.4/AJ.5, BB.1) | N | L | ouroboros-rest, ouroboros-runner |
@@ -881,7 +881,7 @@ e2e: connect ✓ · scan ✓ · template→Studio ✓ · pick ✓ · launch→qu
 
 ### Issue BD.1 — ouroboros-ui: [BD.1] Live first-loop experience
 
-> **GitHub issue:** #396 · **Status:** 🟡 Open · **Parent epic:** #379
+> **GitHub issue:** ✅ #396 · **Status:** 🟢 Done · **Parent epic:** #379
 
 
 - **Problem Statement:** The wizard's aha moment — watching the first loop

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Fragment, useCallback, useId, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useState } from "react";
 
 import type { RepoDetection } from "@/app/api/detection";
 import type { Enablement } from "@/app/api/enablement";
@@ -28,6 +28,10 @@ import { COLUMN_LABEL } from "./defaults-view";
 import { DetectionCard } from "./detection-card";
 import type { DetectionPollOptions } from "./detection-poll";
 import { FirstIssueCard } from "./first-issue-card";
+import { FirstLoopCard } from "./first-loop-card";
+import { type FirstLoopPollOptions, createFirstLoopPoll } from "./first-loop-poll";
+import { recordDuration, useReviewedAt } from "./first-loop-store";
+import { firstLoopEndpoint, liveTimelineRows } from "./first-loop-view";
 import type { FirstIssuePollOptions } from "./first-issue-poll";
 import { type OnboardingPollOptions, createOnboardingPoll, onboardingEndpoint } from "./poll";
 import { ReadinessCard } from "./readiness-card";
@@ -114,6 +118,8 @@ export interface GetStartedScreenProps {
   readonly defaultsPoll?: DefaultsPollOptions;
   /** Test seams for step 4's readiness poll (DK.2, #1319). */
   readonly readinessPoll?: ReadinessPollOptions;
+  /** Test seams for the first loop's poll (BD.1, #396). */
+  readonly firstLoopPoll?: FirstLoopPollOptions;
   /** The detection, first-issue and defaults cards' clock — a test seam. */
   readonly now?: () => number;
 }
@@ -362,6 +368,7 @@ export function GetStartedScreen({
   firstIssuePoll,
   defaultsPoll,
   readinessPoll,
+  firstLoopPoll,
   now,
 }: GetStartedScreenProps) {
   const { snapshot, refresh } = useKeyedPoll(repo === null ? null : onboardingEndpoint(repo), (endpoint) =>
@@ -408,6 +415,28 @@ export function GetStartedScreen({
     wizard === null
       ? { kind: "link", label: CONNECT_LABEL, href: SOURCES_PATH, blocked: null }
       : primaryAction(wizard, step, abilities, { suggestedIssueId: suggested?.id ?? null, readiness });
+  // The first loop, live (BD.1, #396): the picked issue's first run, re-read as it moves. A
+  // deployment that runs nothing never opens one, and the wizard reads as it always has.
+  const firstRun = wizard?.refs.firstRun ?? null;
+  const firstRunId = firstRun?.id ?? null;
+  const nowMs = now ?? Date.now;
+  const { snapshot: firstLoopSnapshot } = useKeyedPoll(
+    firstRun === null ? null : firstLoopEndpoint(firstRun.id),
+    (endpoint) => createFirstLoopPoll(endpoint, firstLoopPoll),
+  );
+  const firstLoop = firstLoopSnapshot.data;
+  // What this browser recorded of the run's guided review (storage is the browser's).
+  const [reviewedAt, acknowledgeReview] = useReviewedAt(firstRunId, nowMs);
+
+  // The first loop's duration, start to pull request — kept here once, never transmitted (#400).
+  useEffect(() => {
+    const opened = firstLoop?.pullRequest?.createdAt;
+    if (firstRunId === null || firstLoop === null || opened === undefined) return;
+    recordDuration(firstRunId, firstLoop.console.run.startedAt, opened);
+  }, [firstRunId, firstLoop]);
+
+  const liveRows =
+    firstRun === null || firstLoop === null ? null : liveTimelineRows(firstLoop, firstRun.planStage, reviewedAt);
   const regressions = wizard === null ? [] : regressionsOf(wizard);
   const onScreen = wizard?.steps.find((one) => one.step === step);
   const stepDone = (number: number): boolean => wizard?.steps.find((one) => one.step === number)?.status === "done";
@@ -480,6 +509,16 @@ export function GetStartedScreen({
           </section>
         )}
         {complete && wizard !== null && <ReceiptCard view={receiptView(receipt, wizard, enablement?.ok === true ? enablement.value : null)} />}
+        {firstRun !== null && (
+          <FirstLoopCard
+            failure={firstLoop === null ? firstLoopSnapshot.error : null}
+            loop={firstLoop}
+            now={nowMs()}
+            onReviewed={acknowledgeReview}
+            reviewedAt={reviewedAt}
+            runId={firstRun.id}
+          />
+        )}
         {wizard === null ? (
           <section className="wizard-panel">
             <h2 className="wizard-panel__title" id={content}>
@@ -549,7 +588,7 @@ export function GetStartedScreen({
               />
             </div>
             <aside aria-label={COLUMN_LABEL} className="wizard__aside">
-              <DefaultsColumn initial={defaults} now={now} poll={defaultsPoll} repo={repo} />
+              <DefaultsColumn initial={defaults} live={liveRows} now={now} poll={defaultsPoll} repo={repo} />
             </aside>
           </div>
         )}

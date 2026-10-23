@@ -17306,6 +17306,23 @@ export interface components {
                 /** @description `workflows.current_version` — null while nothing is published. */
                 version: number | null;
             };
+            /**
+             * @description The first run of the picked issue in this repository — the wizard's first loop, the
+             *     oldest by start — or null while none has opened. The live timeline reads the run
+             *     through `GET /api/v1/runs/{id}` (BD.1, #396).
+             */
+            firstRun: null | {
+                /** Format: uuid */
+                id: string;
+                status: components["schemas"]["RunStatus"];
+                /**
+                 * @description The run's first model stage — the node id of the first `llm` node of its
+                 *     pinned version, the stage key the run console reports — or null when the pin
+                 *     has none or does not read. The timeline's *plan posted* row is that stage's
+                 *     first attempt finishing.
+                 */
+                planStage: string | null;
+            };
         };
         /**
          * OnboardingSurfacing
@@ -39480,7 +39497,8 @@ export interface operations {
                      *           }
                      *         ],
                      *         "pickedTicket": null,
-                     *         "workflow": null
+                     *         "workflow": null,
+                     *         "firstRun": null
                      *       },
                      *       "surfacing": {
                      *         "offer": true,

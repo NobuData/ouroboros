@@ -172,6 +172,26 @@ describe("the onboarding repository", () => {
     expect(database.statements[1].parameters).toEqual([ORG, "repo-1", 488, 1]);
   });
 
+  it("reads an issue's first run — the oldest by start — within the workspace (BD.1, #396)", async () => {
+    database.answers({ rows: [{ id: "run-1", status: "coding", definition: { nodes: [] } }] });
+
+    await expect(repository.firstRun(ORG, "repo-1", 488)).resolves.toEqual({
+      id: "run-1",
+      status: "coding",
+      definition: { nodes: [] },
+    });
+    const [statement] = database.statements;
+    expect(statement.sql).toContain('from "ouroboros"."runs"');
+    expect(statement.sql).toMatch(/"runs"\."organization_id" = \$1/);
+    expect(statement.sql).toMatch(
+      /"workflows"\."organization_id" = "ouroboros"\."runs"\."organization_id"/,
+    );
+    expect(statement.sql).toMatch(
+      /order by "ouroboros"\."runs"\."started_at", "ouroboros"\."runs"\."id"/,
+    );
+    expect(statement.parameters).toEqual([ORG, "repo-1", 488, 1]);
+  });
+
   it("asks whether the workspace has ever had a run", async () => {
     database.answers({ rows: [{ id: "r" }] });
 

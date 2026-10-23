@@ -64,8 +64,43 @@ to check as often as you like.
 5. **In the recently closed list.** When the loop finishes, the dashboard lists it among the
    work recently closed by the loop.
 
-There is no separate tour: the wizard's receipt card, the dashboard and the run console are
-where you follow it.
+### In the wizard, live
+
+Once a loop claims the issue, the wizard follows it too. Back on `/get-started`, the
+**Your first loop** card says where the run stands — *The loop is running — now at
+Implement.* — with **Open the run console →** in every state. The receipt's
+**Open the run console →** opens the same run.
+
+The right-hand **What happens next** timeline turns from projections into the run's own
+history. Each row the run reaches prints its real time from the start — `0:00` when the loop
+starts, `1:04` when its first model stage finishes and the draft plan is posted, `3:11` when
+the draft pull request opens — and loses its **projected** label. Rows the run has not
+reached keep the label. Once the loop has finished and you have reviewed it, no projected
+label remains.
+
+<Screenshot id="user-guide.first-loop.timeline" />
+
+### Your first review
+
+When the draft pull request opens, the card walks you to it under
+**Review your first pull request**:
+
+- **Open the diff and checks →** opens the pull request's page — the loop's whole change and
+  the checks it ran ([Pull requests](../pull-requests.mdx)).
+- It says why the pull request is a draft: *It is a draft because dry-run is on: Ouroboros
+  opened it as a draft and will not merge it.*, with a link to **the dry-run policy**. If
+  dry-run is off for the workspace, it says the pull request opened ready for review instead.
+- Read it as you would a colleague's, then choose **I've reviewed it**.
+
+<Screenshot id="user-guide.first-loop.review" />
+
+Only after that does the card offer **When you trust the loop to merge**: an owner or admin
+can turn dry-run off under **Settings → Policies →**. From then on pull requests open ready
+for review, and a workflow whose last step merges will merge without a person. It is never
+suggested before you have seen a loop finish and looked at its work.
+
+**What this browser keeps.** Choosing **I've reviewed it**, and how long your first loop took
+from start to its pull request, are recorded in this browser only. Nothing is sent anywhere.
 
 **Your first loop is a real one.** Ouroboros never stands a simulated run in for it. If this
 deployment cannot run loops yet, the issue waits in the queue and the dashboard says why,
@@ -90,3 +125,16 @@ rather than showing you a loop nothing really ran.
   again; the stage timeline shows the attempt, and [test results](../runs/tests.mdx) show
   why.
 - **The pull request never merges** — that is dry-run working as intended.
+
+The **Your first loop** card states each of these plainly, never with an endless spinner, and
+always with **Open the run console →**:
+
+| The card says | What happened |
+| --- | --- |
+| *The loop is waiting on you* | It needs a decision — **Open Needs you →**. |
+| *The loop has not moved for N minutes* | No stage has started or finished for 15 minutes or more. The run console shows where it stopped. |
+| *The loop failed: …* | A stage failed; the reason is the failing attempt's own note. |
+| *The loop stopped: it reached its cost cap for one run.* | The run's spend reached its per-run cap, so Ouroboros stopped it. |
+| *The loop stopped: a stage reached its token budget.* | A stage used its whole token budget, so Ouroboros stopped it. |
+| *The loop was cancelled before it opened a pull request.* | Someone cancelled the run. |
+| *Your first loop's pull request was closed without merging.* | The pull request was closed on its host; **Open the diff and checks →** still opens it. |
