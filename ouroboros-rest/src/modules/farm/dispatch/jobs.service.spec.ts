@@ -529,6 +529,34 @@ describe("build job submission and cancellation", () => {
       });
       expect(dispatcher.propagateCancel).not.toHaveBeenCalled();
     });
+
+    it("cancels a still-waiting job only, asking the repository to judge it under the lock", async () => {
+      repository.cancel.mockResolvedValue({
+        kind: "canceled",
+        job: buildJob({ status: "canceled" }),
+        heldBy: null,
+      });
+
+      expect(await jobs.cancelWaiting(ORG, JOB)).toBe(true);
+      await drain();
+
+      expect(repository.cancel).toHaveBeenCalledWith(ORG, JOB, NOW, "waiting");
+      expect(completed).toEqual([{ organizationId: ORG, jobId: JOB, status: "canceled" }]);
+    });
+
+    it.each([
+      ["placed meanwhile", { kind: "moved", job: buildJob({ status: "offered" }) }],
+      ["finished meanwhile", { kind: "terminal", job: buildJob({ status: "succeeded" }) }],
+      ["unknown", { kind: "not_found" }],
+    ] as const)("leaves a job %s alone and says so", async (_label, outcome) => {
+      repository.cancel.mockResolvedValue(outcome);
+
+      expect(await jobs.cancelWaiting(ORG, JOB)).toBe(false);
+      await drain();
+
+      expect(completed).toEqual([]);
+      expect(dispatcher.propagateCancel).not.toHaveBeenCalled();
+    });
   });
 
   it("answers a runner's queue depth for AH.6 (#254)", async () => {

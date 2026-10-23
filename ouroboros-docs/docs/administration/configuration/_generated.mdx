@@ -93,6 +93,12 @@ How long ouroboros-engine reads a fetched clone without fetching again, in secon
 
 The socket timeout of one clone fetch from GitHub, in seconds (1–3600). Optional; defaults to 120.
 
+### `OURO_ENGINE_GIT_CA_FILE`
+
+**Development default:** unset. Example: `/etc/ouroboros/git-ca.pem`
+
+A PEM bundle of the certificate authority that signs a self-hosted git server's https certificate (GitHub Enterprise Server), for ouroboros-engine's clones and pushes. Verification is never turned off. Optional; unset, the system trust store is used.
+
 ### `OURO_ENGINE_RUN_DIR`
 
 **Development default:** unset. Example: `/var/lib/ouroboros-engine/runs`

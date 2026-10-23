@@ -96,6 +96,11 @@ class Settings(BaseSettings):
             clone is read without fetching again.
         clone_timeout_seconds: ``OURO_ENGINE_CLONE_TIMEOUT_SECONDS``, the socket timeout
             of one fetch.
+        git_ca_file: ``OURO_ENGINE_GIT_CA_FILE``, a PEM bundle of the certificate authority
+            a self-hosted git server is signed by (DI.6, #1321). Every ``https://`` clone and
+            push verifies against it; unset means the system's trust store. Read at each
+            connection, so a bundle another service writes after the engine starts is found;
+            a path with no bundle fails that connection, never quietly unverified.
         run_dir: ``OURO_ENGINE_RUN_DIR``, where each run's writable working tree lives
             (DI.1, #1307), one directory per run. Defaults under the system temporary
             directory; a deployment points it at a volume so a restarted engine finds the
@@ -171,6 +176,10 @@ class Settings(BaseSettings):
         ge=1,
         le=3_600,
         validation_alias="OURO_ENGINE_CLONE_TIMEOUT_SECONDS",
+    )
+    git_ca_file: Path | None = Field(
+        default=None,
+        validation_alias="OURO_ENGINE_GIT_CA_FILE",
     )
     run_dir: Path = Field(
         default_factory=lambda: (

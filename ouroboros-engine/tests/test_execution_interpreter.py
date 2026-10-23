@@ -481,6 +481,47 @@ def test_a_passing_gate_follows_its_default_edge(bench) -> None:
     assert control.finished().outcome == "review"
 
 
+def _branch_gate_doc(pass_globs: list[str]) -> dict[str, Any]:
+    """A gate whose pass is a labelled ``branch`` edge, as ``standard-fix`` draws it."""
+    return document(
+        [
+            trigger(),
+            llm("implement", max_retries=0),
+            flow(
+                "docs-only",
+                "gate",
+                {"kind": "paths", "op": "any", "globs": ["docs/**"]},
+            ),
+            term("done", "open_pr_automerge"),
+        ],
+        [
+            edge("trigger", "implement"),
+            edge("implement", "docs-only"),
+            edge(
+                "docs-only",
+                "done",
+                "branch",
+                condition={"kind": "paths", "op": "any", "globs": pass_globs},
+            ),
+            edge("docs-only", "implement", "loop"),
+        ],
+    )
+
+
+def test_a_passing_gate_takes_its_pass_branch(bench) -> None:
+    """DI.6 (#1321): a gate's pass drawn as a ``branch`` edge is followed, not refused."""
+    control = bench(_branch_gate_doc(["docs/**"]), writes("docs/a.md")).run()
+
+    assert control.finished().outcome == "review"
+
+
+def test_a_passing_gate_with_no_branch_that_holds_and_no_default_fails(bench) -> None:
+    """With neither a holding branch nor a default edge the run still fails, as before."""
+    control = bench(_branch_gate_doc(["nowhere/**"]), writes("docs/a.md")).run()
+
+    assert control.finished().outcome == "failed"
+
+
 def test_a_failing_gate_loops_back_with_the_next_attempt_until_the_bound(bench) -> None:
     control = bench(_gate_doc(["docs/**"], 1), writes("src/a.c")).run()
 

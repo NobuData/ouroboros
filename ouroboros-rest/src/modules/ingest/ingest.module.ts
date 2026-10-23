@@ -71,6 +71,7 @@ import { GithubModule } from "../github/github.module";
 import { GatesModule } from "../pull-requests/gates/gates.module";
 import { PullRequestsModule } from "../pull-requests/pull-requests.module";
 import { CodeModule } from "../research/code/code.module";
+import { RoutingModule } from "../routing/routing.module";
 import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
 import { IngestController } from "./ingest.controller";
 import { IngestRepository } from "./ingest.repository";
@@ -112,6 +113,8 @@ import { SpendApprovalEmitter } from "./spend-approval.emitter";
     // and the providers by kind — whether a source can open pull requests at all.
     PullRequestsModule,
     TicketSourcesModule,
+    // The start answer's task_models (DI.6, #1321): each inherited task's route, resolved.
+    RoutingModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [

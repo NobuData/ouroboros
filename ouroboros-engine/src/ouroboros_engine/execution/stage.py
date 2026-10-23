@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from typing import Final
 
 from ouroboros_engine.control_plane.execution import AcceptanceCriterion
@@ -117,18 +117,33 @@ def with_notes(prompt: str, notes: Sequence[str]) -> str:
     return "\n\n".join([prompt, OPERATOR_NOTES, *(f"- {note}" for note in kept)])
 
 
-def stage_model(config: LlmConfig, run_model: str) -> str:
+def stage_model(
+    config: LlmConfig, run_model: str, task_models: Mapping[str, str] | None = None
+) -> str:
     """The model a stage asks for.
+
+    A stage that inherits a task's route asks with that route's alias, which ``start`` answers
+    in ``task_models`` (DI.6, #1321): the facade plans an alias along the stage's route, and an
+    alias the route does not carry is called alone — so asking with the run's model would serve
+    ``implement`` with whatever model the run was opened with.
 
     Args:
         config: The stage.
-        run_model: The run's model, from ``start`` — what an inheriting stage uses.
+        run_model: The run's model, from ``start`` — the fallback for a stage whose task has no
+            route the control plane could resolve, or a control plane that predates
+            ``task_models``.
+        task_models: Task kind → the alias its route starts on, from ``start``.
 
     Returns:
-        The stage's pinned routing alias, else the run's model.
+        The stage's pinned routing alias, else its inherited task's alias, else the run's model.
     """
     pinned = config.routing.pinned_model
-    return pinned.alias if pinned is not None else run_model
+    if pinned is not None:
+        return pinned.alias
+    task = config.routing.inherit_task
+    if task is not None and task_models is not None and str(task) in task_models:
+        return task_models[str(task)]
+    return run_model
 
 
 def stage_policy(

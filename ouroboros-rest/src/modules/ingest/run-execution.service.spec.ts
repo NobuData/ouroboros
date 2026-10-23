@@ -4,6 +4,8 @@ import type { Run } from "../db/schema";
 import { DomainError } from "../errors/error.envelope";
 import type { GuardrailService } from "../guardrails/guardrails.service";
 import type { CodeWorkspace } from "../research/code/code.workspace";
+import type { ResolutionService } from "../routing/resolution.service";
+import { routeNotFound } from "../routing/routing.errors";
 import type { IngestRepository } from "./ingest.repository";
 import { requestDigest } from "./ingest.idempotency";
 import type { RunExecutionRepository } from "./run-execution.repository";
@@ -93,6 +95,7 @@ function rig(
     estimate?: { effort: string; estMinutes: number | null } | undefined;
     criteria?: { id: string; text: string }[];
     starter?: { name: string; email: string } | undefined;
+    resolve?: jest.Mock;
   } = {},
 ) {
   const row = "row" in options ? options.row : run();
@@ -148,6 +151,7 @@ function rig(
     effectiveProtectedPaths: jest.fn().mockResolvedValue([".github/workflows/**", "infra/**"]),
   };
   const needsHuman = { handedOver: options.emitter ?? jest.fn().mockResolvedValue(null) };
+  const resolutions = { resolve: options.resolve ?? jest.fn() };
 
   const service = new RunExecutionService(
     runs as unknown as IngestRepository,
@@ -155,9 +159,10 @@ function rig(
     code as unknown as CodeWorkspace,
     guardrails as unknown as GuardrailService,
     needsHuman as unknown as RunNeedsHumanEmitter,
+    resolutions as unknown as ResolutionService,
   );
 
-  return { service, runs, execution, code, guardrails, needsHuman };
+  return { service, runs, execution, code, guardrails, needsHuman, resolutions };
 }
 
 /** A finish request. */
@@ -213,6 +218,7 @@ describe("the run-execution service (#160)", () => {
         effort: "m",
         acceptance_criteria: CRITERIA,
         model: "coder-max",
+        task_models: {},
         started_by: null,
         branch_name: `ouro/run-${RUN}-482`,
         workflow: { tag: "docs-loop", version: 1, document: DOCUMENT },
@@ -222,6 +228,46 @@ describe("the run-execution service (#160)", () => {
         checkpoint: null,
         status: "coding",
       });
+    });
+
+    it("names the alias each inherited task routes to, so a stage asks with its own (#1321)", async () => {
+      const definition = {
+        ...DOCUMENT,
+        nodes: [
+          { id: "plan", type: "llm", config: { routing: { inherit_task: "plan" } } },
+          { id: "implement", type: "llm", config: { routing: { inherit_task: "implement" } } },
+          { id: "build", type: "infra", config: {} },
+        ],
+      };
+      const resolve = jest.fn((_org: string, kind: string) =>
+        Promise.resolve({
+          outcome: "resolved",
+          chain: [
+            { alias: `${kind}-dropped`, decision: "dropped", provider: { id: "p" } },
+            { alias: `${kind}-alias`, decision: "kept", provider: { id: "p" } },
+          ],
+        }),
+      );
+      const { service } = rig({ pinned: { definition }, resolve });
+
+      const started = await service.start(RUN, { worker: "w" });
+
+      expect(resolve).toHaveBeenCalledWith(ORG, "plan");
+      expect(resolve).toHaveBeenCalledWith(ORG, "implement");
+      expect(started.task_models).toEqual({ plan: "plan-alias", implement: "implement-alias" });
+    });
+
+    it("leaves out a task the workspace does not route, and the start still answers", async () => {
+      const definition = {
+        ...DOCUMENT,
+        nodes: [
+          { id: "implement", type: "llm", config: { routing: { inherit_task: "implement" } } },
+        ],
+      };
+      const resolve = jest.fn().mockRejectedValue(routeNotFound("implement"));
+      const { service } = rig({ pinned: { definition }, resolve });
+
+      expect((await service.start(RUN, { worker: "w" })).task_models).toEqual({});
     });
 
     it("reads the acceptance criteria of the run's canonical ticket", async () => {

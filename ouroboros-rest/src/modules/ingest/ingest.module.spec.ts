@@ -96,6 +96,7 @@ describe("the ingestion module", () => {
       "AuditModule",
       "PullRequestsModule",
       "TicketSourcesModule",
+      "RoutingModule",
       "ScheduleModule",
     ]);
   });

@@ -116,7 +116,8 @@ describe("the deploy pages (#1190)", () => {
     const locations = (conf: string) =>
       [...conf.matchAll(/^\s*location\s+(.*?)\s*\{/gm)].map((m) => m[1]).sort();
     const reference = locations(source("tests/e2e/fixtures/farm-gateway/nginx.conf")).filter(
-      (l) => l !== "= /healthz", // the fixture's own container probe
+      // The fixture's own container probe, and its route to the suite's git host (#1321).
+      (l) => l !== "= /healthz" && l !== "/git/",
     );
     expect(locations(fence(page("farm-gateway"), "nginx"))).toEqual(reference);
   });

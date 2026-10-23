@@ -237,6 +237,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         resolved.clone_dir,
         refresh_seconds=resolved.clone_refresh_seconds,
         timeout_seconds=resolved.clone_timeout_seconds,
+        ca_file=resolved.git_ca_file,
     )
     # Each run's writable working tree (DI.1, #1307), under `OURO_ENGINE_RUN_DIR`, borrowing
     # objects from those clones. The stage interpreter opens one per run; the lifespan above
@@ -281,7 +282,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     name=resolved.commit_author_name,
                     email=resolved.commit_author_email,
                 ),
-                DulwichPushTransport(timeout_seconds=resolved.clone_timeout_seconds),
+                DulwichPushTransport(
+                    timeout_seconds=resolved.clone_timeout_seconds,
+                    ca_file=resolved.git_ca_file,
+                ),
             ),
         ).execute,
         worker=resolved.engine_worker_id,
