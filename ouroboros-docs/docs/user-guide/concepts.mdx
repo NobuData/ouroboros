@@ -118,8 +118,8 @@ called, nothing runs and nothing is recorded. See
 [Workflows](./workflows/studio.mdx).
 
 **A simulated run** is marked with a **Simulated run** banner on the run console. It was
-opened by Ouroboros' simulated-run driver, not by a real loop: no executor, repository or
-model did the work it shows. The screenshot above is one, from the demonstration data. The
+opened by the run simulator — a test tool used in development and testing, never by the
+product itself — not by a real loop: no executor, repository or model did the work it shows. The
 banner belongs to the run, not to the deployment: once your deployment runs loops for real,
 an old simulated run still wears it. A live run carries no banner: its transcript holds
 only what the models and tools really returned, each model entry naming the model that wrote

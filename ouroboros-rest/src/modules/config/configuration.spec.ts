@@ -105,6 +105,7 @@ describe("the development defaults", () => {
       uiUrl: "http://localhost:3000",
       engineUrl: "http://localhost:8000",
       engineSharedSecret: "dev-engine-shared-secret-change-me",
+      runSimulatorInProduction: false,
       betterAuthSecret: "dev-better-auth-secret-change-me",
       betterAuthUrl: "http://localhost:4000",
       githubClientId: "dev-github-client-id",
@@ -709,6 +710,51 @@ describe("OURO_RUN_SIMULATOR_SECRET", () => {
     expect(message).toContain(VARIABLES.runSimulatorSecret);
     expect(message).toContain("two principals cannot share one secret");
     expect(message).not.toContain(shared);
+  });
+});
+
+describe("OURO_RUN_SIMULATOR_IN_PRODUCTION (DJ.4, #1317)", () => {
+  const secret = "y".repeat(MINIMUM_SECRET_LENGTH);
+
+  it("is false by default", () => {
+    expect(loadConfiguration(testEnvironment()).runSimulatorInProduction).toBe(false);
+  });
+
+  it("refuses a production deployment holding the simulator secret, and says why", () => {
+    const message = failureFor(
+      testEnvironment({ NODE_ENV: "production", OURO_RUN_SIMULATOR_SECRET: secret }),
+    );
+
+    expect(message).toContain(VARIABLES.runSimulatorSecret);
+    expect(message).toContain("the run simulator is a test tool");
+    expect(message).toContain(`${VARIABLES.runSimulatorInProduction}=true`);
+    expect(message).not.toContain(secret);
+  });
+
+  it("accepts it in production when the flag says so on purpose", () => {
+    const configuration = loadConfiguration(
+      testEnvironment({
+        NODE_ENV: "production",
+        OURO_RUN_SIMULATOR_SECRET: secret,
+        OURO_RUN_SIMULATOR_IN_PRODUCTION: "true",
+      }),
+    );
+
+    expect(configuration.runSimulatorInProduction).toBe(true);
+    expect(configuration.runSimulatorSecret).toBe(secret);
+  });
+
+  it("does not need the flag outside production", () => {
+    expect(
+      loadConfiguration(testEnvironment({ NODE_ENV: "test", OURO_RUN_SIMULATOR_SECRET: secret }))
+        .runSimulatorSecret,
+    ).toBe(secret);
+  });
+
+  it("refuses anything but true or false", () => {
+    expect(failureFor(testEnvironment({ OURO_RUN_SIMULATOR_IN_PRODUCTION: "yes" }))).toContain(
+      VARIABLES.runSimulatorInProduction,
+    );
   });
 });
 

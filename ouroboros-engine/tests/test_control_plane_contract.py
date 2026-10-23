@@ -87,7 +87,7 @@ def test_every_path_the_document_describes_is_one_this_package_mirrors() -> None
     """The whole internal surface is mirrored now: lease, invoke, ingestion and controls.
 
     AP.1 (`#303 <https://github.com/NobuData/ouroboros/issues/303>`_) added six operations
-    under ``/internal/runs``, and until the simulated-run driver (AP.5,
+    under ``/internal/runs``, and until the run simulator (AP.5,
     `#307 <https://github.com/NobuData/ouroboros/issues/307>`_) called them this module left
     them out. They are mirrored in :mod:`ouroboros_engine.control_plane.ingest`, so this is
     an equality: a path added to the document without a mirror here, or one removed from it

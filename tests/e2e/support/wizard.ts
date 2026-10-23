@@ -211,9 +211,9 @@ export const DASHBOARD_BROKE =
 export const POLICY_BROKE =
   "completing the wizard must turn dry-run on when the workspace never answered — the first-run promise, read back from the policy";
 
-/** The driver opened no run, or the run did not reach its terminal. */
-export const DRIVER_BROKE =
-  "the simulated driver must open a watermarked run of the queued issue under the wizard's workflow and walk it to Open PR & auto-merge";
+/** A launched first loop was walked by something other than a real executor (DJ.4). */
+export const NO_SIMULATED_WALK =
+  "a launched first loop must stay queued on a stack without live execution — no run, and no simulated one, may be opened for it (DJ.4, #1317)";
 
 /** Pausing the source did not un-tick step 1, or resuming did not tick it again. */
 export const REGRESSION_BROKE =

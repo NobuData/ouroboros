@@ -67,7 +67,7 @@ export const CLAIM_INVENTORY: readonly ClaimEntry[] = [
   {
     surface: "Run console — simulated-run banner",
     file: "app/runs/view.ts",
-    text: "no executor, repository or model did",
+    text: "no executor, repository or model",
     falsifiedBy: "run-origin",
     owner: DG3,
     handling: "per-run",

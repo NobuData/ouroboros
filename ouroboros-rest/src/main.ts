@@ -40,7 +40,30 @@ export interface StartedApplication {
 /** The logging surface {@link main} uses — satisfied by Nest's `Logger`. */
 export interface MainLogger {
   log(message: string): void;
+  warn(message: string): void;
   error(message: string): void;
+}
+
+/**
+ * What a production deployment that runs the run simulator on purpose logs at every start (DJ.4,
+ * [#1317](https://github.com/NobuData/ouroboros/issues/1317)).
+ */
+export const SIMULATOR_IN_PRODUCTION_WARNING =
+  "OURO_RUN_SIMULATOR_IN_PRODUCTION is on: this production deployment accepts runs from the " +
+  "run simulator, a test tool — such runs are marked simulated, and nothing real did their work.";
+
+/**
+ * Whether a configuration is a production deployment running the simulator on purpose.
+ *
+ * @param configuration - The loaded configuration.
+ * @returns True exactly when the boot must log {@link SIMULATOR_IN_PRODUCTION_WARNING}.
+ */
+export function simulatorInProduction(configuration: Configuration): boolean {
+  return (
+    configuration.nodeEnv === "production" &&
+    configuration.runSimulatorSecret !== undefined &&
+    configuration.runSimulatorInProduction
+  );
 }
 
 /** Overrides {@link main} accepts. Every one of them exists so the function is testable. */
@@ -108,6 +131,9 @@ export async function main({
   try {
     const configuration = loadConfiguration(env);
     logger.log(describeConfiguration(configuration));
+    if (simulatorInProduction(configuration)) {
+      logger.warn(SIMULATOR_IN_PRODUCTION_WARNING);
+    }
 
     const app = await start(configuration);
     logger.log(

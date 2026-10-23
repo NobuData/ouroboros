@@ -242,7 +242,7 @@
 # ---------------------------------------------------------------------------
 #
 #   * `OURO_RUN_SIMULATOR_SECRET: e2e-run-simulator-secret` — the second principal
-#     `X-Ouro-Internal-Key` may carry (#307), so the simulated-run driver can open a run.
+#     `X-Ouro-Internal-Key` may carry (#307), so the run simulator can open a run.
 #
 # **What it is for.** The run console leg (specs/runs.spec.ts) presses Pause, Resume and Abort
 # and asserts they reach *acknowledged* — which needs something on the other side of the

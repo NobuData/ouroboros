@@ -5,7 +5,7 @@
  * `ouroboros-ui`'s own suite drives *Pause loop*, *Take over in IDE* and *Abort run* against a
  * stubbed queue. What only a running stack can say is whether a press travels the whole way:
  * the browser, the Server Action, `ouroboros-rest`'s durable control queue (#306), the
- * simulated-run driver (#307) fetching it at a safe boundary, and its acknowledgment coming
+ * run simulator (#307) fetching it at a safe boundary, and its acknowledgment coming
  * back to the chip. So the run here is opened by the real driver, `control-responsive`, which
  * applies pause, resume and abort exactly as an executor will.
  *
@@ -134,7 +134,7 @@ function timeline(page: Page) {
   return page.getByRole("region", { name: "Stage timeline" }).filter({ visible: true });
 }
 
-test.describe("the run controls, against the simulated-run driver", () => {
+test.describe("the run controls, against the run simulator", () => {
   test.describe.configure({ mode: "serial" });
 
   let simulation: Simulation | undefined;
@@ -150,6 +150,7 @@ test.describe("the run controls, against the simulated-run driver", () => {
   }) => {
     test.setTimeout(LEG_TIMEOUT_MS);
 
+    // Driver (DJ.4): a run that honours pause, resume, take-over and abort on demand, at a scripted pace.
     simulation = await startSimulation("control-responsive", SPEED);
     const { runId, loopSeq } = simulation;
 
@@ -282,7 +283,7 @@ test.describe("the run controls, against the simulated-run driver", () => {
   });
 });
 
-test.describe("the stage timeline, against the simulated-run driver (#311)", () => {
+test.describe("the stage timeline, against the run simulator (#311)", () => {
   let simulation: Simulation | undefined;
 
   test.afterAll(() => {
@@ -295,6 +296,7 @@ test.describe("the stage timeline, against the simulated-run driver (#311)", () 
   }) => {
     test.setTimeout(LEG_TIMEOUT_MS);
 
+    // Driver (DJ.4): stages that start and finish on a known schedule, so the poll can be watched moving.
     simulation = await startSimulation("control-responsive", TIMELINE_SPEED);
     const { runId, loopSeq } = simulation;
 
@@ -395,6 +397,8 @@ test.describe("the agent transcript (#312)", () => {
     page,
   }) => {
     test.setTimeout(LEG_TIMEOUT_MS);
+    // Driver (DJ.4): a run that honours pause, resume, take-over and abort on demand, at a scripted pace.
+    // Driver (DJ.4): a run still open when the steer is sent, that ends when told — scripted timing.
     const simulation = await startSimulation("control-responsive", SPEED);
 
     try {

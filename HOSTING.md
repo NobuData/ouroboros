@@ -149,7 +149,7 @@ Build: `ouroboros-engine/Dockerfile` (context `ouroboros-engine/`). Listens on `
 | `PORT` | no | `8000` | Set in the image already |
 
 Leave `OURO_RUN_SIMULATOR_SECRET` and `OURO_REST_URL` **unset**. They exist for the
-development-only simulated-run driver, which is not in the production image
+development-only run simulator, which is not in the production image
 ([`ouroboros-engine/README.md`](ouroboros-engine/README.md)).
 
 ### 3.4 `rest` — `ouroboros-rest`

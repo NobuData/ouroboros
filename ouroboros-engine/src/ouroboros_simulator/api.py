@@ -329,7 +329,5 @@ def mount(app: FastAPI, settings: Settings) -> bool:
     registry = SimulationRegistry(simulator)
     app.state.simulations = registry
     app.include_router(build_router(registry))
-    _LOG.warning(
-        "simulated-run driver mounted at %s/* — a development engine", DEV_PREFIX
-    )
+    _LOG.warning("run simulator mounted at %s/* — a development engine", DEV_PREFIX)
     return True

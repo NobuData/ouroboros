@@ -8,7 +8,7 @@ what was said, the files it changed, the commits it made and what it spent. The
 is the authority, and this module is that tag written as Python, next to
 :mod:`~ouroboros_engine.control_plane.contract`, which mirrors the rest of the document.
 
-Two callers are written against it. The simulated-run driver (AP.5,
+Two callers are written against it. The run simulator (AP.5,
 `#307 <https://github.com/NobuData/ouroboros/issues/307>`_) calls it today and real execution
 (AR.1, `#315 <https://github.com/NobuData/ouroboros/issues/315>`_) will call it later, and
 both use these same models. The shapes live in the production package because that second

@@ -25,8 +25,8 @@ export const SIMULATED_HEADLINE = "Simulated run.";
 
 /** What the watermark means, beside {@link SIMULATED_HEADLINE}. */
 export const SIMULATED_NOTE =
-  "This run was opened by the simulated-run driver — no executor, repository or model did " +
-  "any of the work shown here.";
+  "This run was opened by the run simulator, a test tool — no executor, repository or model " +
+  "did any of the work shown here.";
 
 /** The copy control's name, before and after it has copied. */
 export const COPY_BRANCH_LABEL = "Copy branch name";

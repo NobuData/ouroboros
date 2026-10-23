@@ -101,11 +101,15 @@ criteria before it merges. See [Pull requests](./pull-requests.mdx).
 **Run console** — The page for one run: stage timeline, agent transcript, changes,
 resources and guardrails. See [The run console](./runs/console.mdx).
 
+**Run simulator** — A test tool that opens scripted runs in development and testing. Nothing
+you do in the product starts it, and a production deployment refuses to run it unless an
+administrator explicitly allows it. See [Concepts](./concepts.mdx#dry-run-and-live).
+
 **Runner** — The agent you install on a build machine; it dials out to Ouroboros and runs
 builds and tests. See [Build farm](../administration/build-farm.mdx).
 
-**Simulated run** — A run opened by the simulated-run driver for demonstration: no executor,
-repository or model did its work. See [Concepts](./concepts.mdx#dry-run-and-live).
+**Simulated run** — A run opened by the run simulator: no executor, repository or model did
+its work. It carries a **Simulated** label. See [Concepts](./concepts.mdx#dry-run-and-live).
 
 **Sizing** — The effort estimate, XS to XL, Ouroboros gives each issue. See
 [Issues](./issues.mdx).

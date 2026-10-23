@@ -552,7 +552,7 @@
     },
     {
       "id": "user-guide.run.live",
-      "route": "/runs/5eed0009-0000-4000-8000-000000000482?from=dashboard",
+      "route": "/runs/3b625a7f-8e42-4ddf-af83-bc297e241895?from=dashboard",
       "workspace": "acme-robotics",
       "ready": ".run-entry",
       "clip": "page",
@@ -562,10 +562,10 @@
         ".run-transcript__list > li:nth-last-child(-n+5) .run-entry__time"
       ],
       "caption": "A live loop in the run console: the stage timeline, the agent's transcript, and the changes, resources and guardrails beside it.",
-      "alt": "The run console for Loop #1847, #482 Fix flaky CAN-bus telemetry test, marked as a simulated run: the header with its coding status, labelled Demo data,, standard-fix v14, claude-fable-5, the elapsed time, the branch, a PR verification link and the Pause loop, Take over in IDE and Abort run controls; the stage timeline with Queued, Analyze and Plan done and Implementing on attempt 2/3 after an attempt failed its tests; the streaming agent transcript with tool, gate and model entries; and the Changes so far card listing three files and two commits.",
-      "capturedAt": "2026-10-23T06:05:47.003Z",
+      "alt": "The run console for a live loop, Loop #1895, #482 Fix flaky CAN-bus telemetry test, with no Demo data or Simulated label: a notice reading The engine runs no task queue — live runs cannot start. with Check the engine; the header with its coding status, standard-fix v14, claude-fable-5, the elapsed time, the branch loop/482-canbus-flake and the Pause loop, Take over in IDE and Abort run controls; the stage timeline with Issue queued, Understand & scope, Effort re-check and Write attack plan done, Split into subtasks and Back to queue skipped, and Code the change on attempt 2/3; the streaming agent transcript with system, tool, model, plan and gate entries; and the Changes so far, Resources and Guardrails cards.",
+      "capturedAt": "2026-10-23T15:39:34.506Z",
       "uiVersion": "0.170.0",
-      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
+      "seedRef": "4651d5819629e1bbcc9dd7d949d1ddd9b1d5f5e6"
     },
     {
       "id": "user-guide.run.completed",

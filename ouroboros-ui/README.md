@@ -5167,7 +5167,7 @@ quiet, loading, missing — is AQ.6's (#314).
 
 ```
 Dashboard / Loop #1847
-[ Simulated run. This run was opened by the simulated-run driver … ]   ← only when head.simulated
+[ Simulated run. This run was opened by the run simulator … ]   ← only when head.simulated
 RUN CONSOLE · LOOP #1847
 #482 — Fix flaky CAN-bus telemetry test                                  ← links to the tracker
 (● coding) (standard-fix v14) (claude-fable-5)  elapsed 12m 40s  branch loop/482-canbus-flake ⧉
@@ -5354,7 +5354,7 @@ brings the loop back.
 
 Both dialogs trap Tab, close on Escape and return focus to the button that opened them
 (`ShellOverlay`, which gained `role` and `describedBy` for the abort). The e2e leg is
-`tests/e2e/specs/runs.spec.ts`, against the real simulated-run driver.
+`tests/e2e/specs/runs.spec.ts`, against the real run simulator.
 
 ## Test results
 

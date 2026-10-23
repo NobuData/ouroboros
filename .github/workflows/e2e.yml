@@ -111,13 +111,13 @@ jobs:
         run: yarn email
 
       # The run console legs (#310's leg 17, and #314's leg 18 — the Run Console MVP gate) drive
-      # the simulated-run driver, which is not in the engine image and runs on the host through
+      # the run simulator, which is not in the engine image and runs on the host through
       # uv (tests/e2e/support/simulator.ts). Synced here so the legs do not spend their own
       # budget resolving Python.
       - name: Install uv
         uses: astral-sh/setup-uv@v9.0.0
 
-      - name: Prepare the simulated-run driver
+      - name: Prepare the run simulator
         working-directory: ouroboros-engine
         run: uv sync --locked
 
@@ -195,7 +195,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v9.0.0
 
-      - name: Prepare the simulated-run driver
+      - name: Prepare the run simulator
         working-directory: ouroboros-engine
         run: uv sync --locked
 

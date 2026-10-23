@@ -122,8 +122,12 @@ and set <EnvVar name="OURO_ENGINE_RUN_DIR" /> to that path, so a restarted engin
 at its last checkpoint. The trees borrow objects from the clones, so keep both volumes. See
 [Disk and cleanup](../live-execution.mdx#disk-and-cleanup).
 
-Leave <EnvVar name="OURO_RUN_SIMULATOR_SECRET" /> **unset**. It exists for a development-only
-simulated-run driver that is not in the production image.
+Leave <EnvVar name="OURO_RUN_SIMULATOR_SECRET" /> **unset**. It belongs to the run simulator, a
+test tool used in development and testing, which is not in the production image. A production
+`ouroboros-rest` (`NODE_ENV=production`) **refuses to start** with it set, and says why. To run
+the simulator against a production deployment on purpose — a staging copy, say — also set
+<EnvVar name="OURO_RUN_SIMULATOR_IN_PRODUCTION" /> to `true`; the service then logs a warning at
+every start, and every run the simulator opens is labelled **Simulated**.
 
 ## `ouroboros-rest`
 
