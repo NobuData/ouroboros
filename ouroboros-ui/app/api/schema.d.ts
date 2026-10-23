@@ -13419,6 +13419,14 @@ export interface components {
          */
         DataOrigin: "live" | "simulated" | "seeded";
         /**
+         * OriginFilter
+         * @description Which data origin an aggregate reads (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315)):
+         *     one `DataOrigin`, or `all` — every origin summed, and the answer marked `mixed`.
+         * @default live
+         * @enum {string}
+         */
+        OriginFilter: "live" | "simulated" | "seeded" | "all";
+        /**
          * Error
          * @description The body of **every** error this API answers with, and the same shape
          *     `ouroboros-engine` uses behind it (`docs/ARCHITECTURE.md` § 5.3). A failure the
@@ -16947,16 +16955,19 @@ export interface components {
         MergedSevenDays: {
             /**
              * @description Loop PRs merged over the last seven UTC days, today included — the registry's
-             *     `merged_prs`, from the shared windowed metrics service.
+             *     `merged_prs`, from the shared windowed metrics service. Null — no data — when the
+             *     window holds no loop PR of the asked origin (DJ.2).
              */
-            count: number;
+            count: number | null;
             /**
-             * @description This window's count less the seven UTC days before it — rendered as
+             * @description Null when either week has no data.
+             *
+             *     This window's count less the seven UTC days before it — rendered as
              *     `▲ 8 vs last week`.
              *     **Signed**: a negative value is a week that merged less than the one before, and
              *     the direction is read from the sign rather than from a separate flag.
              */
-            deltaVsPrior: number;
+            deltaVsPrior: number | null;
         };
         /**
          * TokensToday
@@ -16966,8 +16977,11 @@ export interface components {
          *     client rendering this beside a local clock should say so.
          */
         TokensToday: {
-            /** @description Input plus output tokens across every provider — rendered as `4.2M`. */
-            tokens: number;
+            /**
+             * @description Input plus output tokens across every provider — rendered as `4.2M`. Null — no data —
+             *     when the day holds no usage of the asked origin (DJ.2); `costCents` is then null too.
+             */
+            tokens: number | null;
             /**
              * @description What the day's **priced** events cost, in cents. Cents rather than a decimal
              *     currency amount so that nothing rounds on the way through JSON; it may carry
@@ -16975,7 +16989,7 @@ export interface components {
              *
              *     It is a **lower bound** whenever `unpricedEvents` is non-zero.
              */
-            costCents: number;
+            costCents: number | null;
             /** @description How many distinct providers were paid — the `across 4 providers` in the subline. */
             providers: number;
             /**
@@ -17016,28 +17030,28 @@ export interface components {
              *     as a fraction between 0 and 1. Recomposed from the days' components — Σ autonomous
              *     ÷ Σ closed — never an average of daily rates.
              *
-             *     **`0` when no PR closed in the window.** That is a floor rather than a measurement:
-             *     an organization with no history reads `0` here with `0` merged and `0`
-             *     interventions, and a meter should render *no data* rather than a bad week.
+             *     **Null — no data — when no PR of the asked origin closed in the window** (DJ.2): never
+             *     a zero floor, so a workspace with no history cannot read as one that merged nothing.
              * @example 0.92
              */
-            mergeRate: number;
+            mergeRate: number | null;
             /**
              * @description **Cycle time** (`cycle_time`): the **median** of `finishedAt − startedAt` over loops
              *     that finished merged in the window, in seconds, pooled across the window's days. The
              *     field keeps its name for compatibility; since 0.38.0 the figure is the registry's
              *     median rather than a mean over every terminal run.
              *
-             *     `0` when nothing merged in the window, with the same reading as `mergeRate`'s zero.
+             *     Null when nothing of the asked origin merged in the window — no data, as `mergeRate`.
              * @example 860
              */
-            avgCycleSeconds: number;
+            avgCycleSeconds: number | null;
             /**
              * @description **Human interventions** (`human_interventions`): every moment a person stepped into
              *     a loop in the window — a needs-human handoff, a human failure classification, a
-             *     waiver, a failed gate, a blocking vote — across every cause.
+             *     waiver, a failed gate, a blocking vote — across every cause. Null when the window
+             *     holds no intervention of the asked origin.
              */
-            interventions7d: number;
+            interventions7d: number | null;
             /**
              * @description Whether this workspace merges on green checks without asking.
              *
@@ -17069,21 +17083,30 @@ export interface components {
              * @description Loop PRs merged since **midnight UTC** — today's point of the same `merged_prs`
              *     window `stats.merged7d` counts, so the sentence and the card cannot disagree. It is
              *     the same day boundary `stats.tokensToday` uses, so the two cannot mean different
-             *     mornings.
+             *     mornings. Null exactly when `stats.merged7d.count` is.
              */
-            mergedSinceMorning: number;
+            mergedSinceMorning: number | null;
         };
         /**
          * Dashboard
          * @description The whole dashboard for one workspace, measured between one set of boundaries.
          *
-         *     **Every field is always present.** An organization with nothing in it answers zeros
-         *     and empty arrays — never `null`, and never an absent key — so a card renders from this
-         *     without a fallback branch. The nullable values are all *inside* a row, where a null is
-         *     a fact about that row: a run in flight has no `finishedAt`, a queued issue may carry no
-         *     estimate.
+         *     **Every field is always present.** Lists are lists, and counts of what is in flight or
+         *     queued are numbers. A windowed aggregate with no row of the asked origin is **null** — no
+         *     data, never a zero floor (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315))
+         *     — and `originsPresent` says what the workspace does hold. Aggregates count `live` rows
+         *     unless `origin` asks otherwise; the run lists and the queue are rows, not aggregates, and
+         *     are not filtered.
          */
         Dashboard: {
+            origin: components["schemas"]["OriginFilter"];
+            /**
+             * @description Every data origin with a row in the window, whichever was asked for — `["seeded"]`
+             *     beside a null figure is "no live data", not zero (DJ.2).
+             */
+            originsPresent: components["schemas"]["DataOrigin"][];
+            /** @description True only when `origin` is `all` and a figure sums more than one origin. */
+            mixed: boolean;
             stats: components["schemas"]["DashboardStats"];
             pulse: components["schemas"]["LoopPulse"];
             /**
@@ -18846,6 +18869,7 @@ export interface components {
         InterventionList: {
             /** @enum {string} */
             range: "7d" | "30d" | "90d";
+            origin: components["schemas"]["OriginFilter"];
             window: components["schemas"]["InsightsDaySpan"];
             /** @description The cause listed; null for every cause. */
             cause: components["schemas"]["InterventionCause"] | null;
@@ -18873,8 +18897,21 @@ export interface components {
          *     carries `costCents` only when the usage it covers was priced — otherwise the key is absent,
          *     never `0`. Claims whose source does not exist yet (cap alerts, the routing suggestion, the
          *     analyzer's cluster note) have no key at all.
+         *
+         *     **Live data by default** (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315)):
+         *     every figure is computed from the asked `origin`'s rows alone. A figure with none is null and
+         *     a chart with none has no points — never zeros — and `originsPresent` names what the
+         *     workspace does hold.
          */
         Insights: {
+            origin: components["schemas"]["OriginFilter"];
+            /**
+             * @description Every data origin with a row in the window, whichever was asked for — `["seeded"]`
+             *     beside a null figure is "no live data", not zero (DJ.2).
+             */
+            originsPresent: components["schemas"]["DataOrigin"][];
+            /** @description True only when `origin` is `all` and a figure sums more than one origin. */
+            mixed: boolean;
             /** @enum {string} */
             range: "7d" | "30d" | "90d";
             window: components["schemas"]["InsightsDaySpan"];
@@ -19029,6 +19066,8 @@ export interface components {
              * @enum {string}
              */
             aggregation: "sum" | "ratio" | "median";
+            /** @description How the metric treats data origin, in words (DJ.2) — printed beside the formula. */
+            originRule: string;
         };
         /**
          * InsightsMoney
@@ -19065,8 +19104,10 @@ export interface components {
         InsightsHead: {
             /** @enum {string} */
             range: "7d";
-            mergedPrs: number;
-            interventions: number;
+            /** @description Null — no data — when the week holds no loop PR of the asked origin (DJ.2). */
+            mergedPrs: number | null;
+            /** @description Null exactly when `mergedPrs` is. */
+            interventions: number | null;
         };
         /**
          * InsightsKpi
@@ -19078,8 +19119,14 @@ export interface components {
             key: "autonomous_merge_rate" | "merged_untouched_rate" | "cycle_time" | "cost_per_merged_pr" | "human_interventions";
             /** @enum {string} */
             unit: "count" | "pct" | "duration_ms" | "cents" | "tokens";
-            /** @description The figure; null when the window has nothing to compute it from. */
+            /** @description The figure; null — no data — when the window has nothing of the asked origin to compute it from. */
             value: number | null;
+            /**
+             * @description The count behind the figure (DJ.2): how many source rows — pull requests, runs, builds,
+             *     usage rows, test cases — the window's figure was computed from. `0` beside a null
+             *     `value` is no data, not zero; null when a seeded row did not record it.
+             */
+            n: number | null;
             /** @description The prior window's figure. */
             prior: number | null;
             /** @description `value − prior`, in `unit` — points for a `pct`. */
@@ -19214,6 +19261,12 @@ export interface components {
             /** @enum {string} */
             unit: "count" | "pct" | "duration_ms" | "cents" | "tokens";
             value: number | null;
+            /**
+             * @description The count behind the figure (DJ.2): how many source rows — pull requests, runs, builds,
+             *     usage rows, test cases — the window's figure was computed from. `0` beside a null
+             *     `value` is no data, not zero; null when a seeded row did not record it.
+             */
+            n: number | null;
             /** @description A rate's parts — succeeded builds over all builds, passing cases over cases run. */
             components?: {
                 numerator: number;
@@ -19279,6 +19332,12 @@ export interface components {
              */
             unit: "count" | "pct" | "duration_ms" | "cents" | "tokens" | "per_day";
             value: number | null;
+            /**
+             * @description The count behind the figure (DJ.2): how many source rows — pull requests, runs, builds,
+             *     usage rows, test cases — the window's figure was computed from. `0` beside a null
+             *     `value` is no data, not zero; null when a seeded row did not record it.
+             */
+            n: number | null;
             prior: number | null;
             delta: number | null;
             trend: components["schemas"]["InsightsTrend"];
@@ -19294,6 +19353,14 @@ export interface components {
          *     **absent** — not null, not empty — until that source exists.
          */
         Scoreboard: {
+            origin: components["schemas"]["OriginFilter"];
+            /**
+             * @description Every data origin with a row in the window, whichever was asked for — `["seeded"]`
+             *     beside a null figure is "no live data", not zero (DJ.2).
+             */
+            originsPresent: components["schemas"]["DataOrigin"][];
+            /** @description True only when `origin` is `all` and a figure sums more than one origin. */
+            mixed: boolean;
             /** @enum {string} */
             range: "7d" | "30d" | "90d";
             window: components["schemas"]["InsightsDaySpan"];
@@ -19360,6 +19427,14 @@ export interface components {
          *     nothing was estimated.
          */
         CalibrationReport: {
+            origin: components["schemas"]["OriginFilter"];
+            /**
+             * @description Every data origin with a row in the window, whichever was asked for — `["seeded"]`
+             *     beside a null figure is "no live data", not zero (DJ.2).
+             */
+            originsPresent: components["schemas"]["DataOrigin"][];
+            /** @description True only when `origin` is `all` and a figure sums more than one origin. */
+            mixed: boolean;
             /** @enum {string} */
             window: "7d" | "30d" | "90d";
             /**
@@ -33267,6 +33342,15 @@ export interface components {
          */
         InsightsRange: "7d" | "30d" | "90d";
         /**
+         * @description Which data origin the aggregates are computed from (DJ.2,
+         *     [#1315](https://github.com/NobuData/ouroboros/issues/1315)): `live` when absent —
+         *     `simulated` or `seeded` for those rows alone, or `all` for every origin summed, which the
+         *     answer then marks `mixed`. A window with no row of the asked origin answers **no data** (a
+         *     null figure), never zero and never another origin's rows.
+         * @example live
+         */
+        InsightsOrigin: components["schemas"]["OriginFilter"];
+        /**
          * @description One repository, as `owner/name` — `acme-robotics/helios-firmware`. The whole workspace when
          *     absent. Compared case-insensitively.
          * @example acme-robotics/helios-firmware
@@ -34290,7 +34374,17 @@ export interface operations {
     };
     readDashboard: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Which data origin the aggregates are computed from (DJ.2,
+                 *     [#1315](https://github.com/NobuData/ouroboros/issues/1315)): `live` when absent —
+                 *     `simulated` or `seeded` for those rows alone, or `all` for every origin summed, which the
+                 *     answer then marks `mixed`. A window with no row of the asked origin answers **no data** (a
+                 *     null figure), never zero and never another origin's rows.
+                 * @example live
+                 */
+                origin?: components["parameters"]["InsightsOrigin"];
+            };
             header?: {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
@@ -50653,6 +50747,15 @@ export interface operations {
                  * @example acme-robotics/helios-firmware
                  */
                 repo?: components["parameters"]["InsightsRepo"];
+                /**
+                 * @description Which data origin the aggregates are computed from (DJ.2,
+                 *     [#1315](https://github.com/NobuData/ouroboros/issues/1315)): `live` when absent —
+                 *     `simulated` or `seeded` for those rows alone, or `all` for every origin summed, which the
+                 *     answer then marks `mixed`. A window with no row of the asked origin answers **no data** (a
+                 *     null figure), never zero and never another origin's rows.
+                 * @example live
+                 */
+                origin?: components["parameters"]["InsightsOrigin"];
             };
             header?: {
                 /**
@@ -52352,6 +52455,15 @@ export interface operations {
                  * @example 30d
                  */
                 window?: components["parameters"]["CalibrationWindow"];
+                /**
+                 * @description Which data origin the aggregates are computed from (DJ.2,
+                 *     [#1315](https://github.com/NobuData/ouroboros/issues/1315)): `live` when absent —
+                 *     `simulated` or `seeded` for those rows alone, or `all` for every origin summed, which the
+                 *     answer then marks `mixed`. A window with no row of the asked origin answers **no data** (a
+                 *     null figure), never zero and never another origin's rows.
+                 * @example live
+                 */
+                origin?: components["parameters"]["InsightsOrigin"];
             };
             header?: {
                 /**
@@ -52542,6 +52654,15 @@ export interface operations {
                  * @example infra_rig
                  */
                 cause?: components["schemas"]["InterventionCause"];
+                /**
+                 * @description Which data origin the aggregates are computed from (DJ.2,
+                 *     [#1315](https://github.com/NobuData/ouroboros/issues/1315)): `live` when absent —
+                 *     `simulated` or `seeded` for those rows alone, or `all` for every origin summed, which the
+                 *     answer then marks `mixed`. A window with no row of the asked origin answers **no data** (a
+                 *     null figure), never zero and never another origin's rows.
+                 * @example live
+                 */
+                origin?: components["parameters"]["InsightsOrigin"];
             };
             header?: {
                 /**

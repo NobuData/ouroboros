@@ -44,8 +44,22 @@ describe("the extractors", () => {
   it("throughput: counts merges, re-sums both rates, and writes no untouched rate without a merge", async () => {
     database.answers({
       rows: [
-        { repo_ref: HELIOS, closed: "3", merged: "2", autonomous: "1", untouched: "1" },
-        { repo_ref: "acme/zephyr", closed: "1", merged: "0", autonomous: "0", untouched: "0" },
+        {
+          repo_ref: HELIOS,
+          origin: "live",
+          closed: "3",
+          merged: "2",
+          autonomous: "1",
+          untouched: "1",
+        },
+        {
+          repo_ref: "acme/zephyr",
+          origin: "live",
+          closed: "1",
+          merged: "0",
+          autonomous: "0",
+          untouched: "0",
+        },
       ],
     });
 
@@ -55,9 +69,18 @@ describe("the extractors", () => {
     expect(database.statements[0].sql).toContain("pr.run_id");
     expect(database.statements[0].sql).toContain("c.sha = v.head_sha");
     expect(rows).toEqual([
-      { repoRef: HELIOS, metricId: "merged_prs", dimension: "", value: 2 },
       {
         repoRef: HELIOS,
+        origin: "live",
+        population: 2,
+        metricId: "merged_prs",
+        dimension: "",
+        value: 2,
+      },
+      {
+        repoRef: HELIOS,
+        origin: "live",
+        population: 3,
         metricId: "merge_rate",
         dimension: "",
         value: 100 / 3,
@@ -66,15 +89,26 @@ describe("the extractors", () => {
       },
       {
         repoRef: HELIOS,
+        origin: "live",
+        population: 2,
         metricId: "merged_untouched_rate",
         dimension: "",
         value: 50,
         numerator: 1,
         denominator: 2,
       },
-      { repoRef: "acme/zephyr", metricId: "merged_prs", dimension: "", value: 0 },
       {
         repoRef: "acme/zephyr",
+        origin: "live",
+        population: 0,
+        metricId: "merged_prs",
+        dimension: "",
+        value: 0,
+      },
+      {
+        repoRef: "acme/zephyr",
+        origin: "live",
+        population: 1,
         metricId: "merge_rate",
         dimension: "",
         value: 0,
@@ -84,23 +118,41 @@ describe("the extractors", () => {
     ]);
   });
 
-  it("interventions: one sum row per repository and cause, read from V079's daily shape", async () => {
+  it("interventions: one sum row per repository, origin and cause, from V079's events", async () => {
     database.answers({
       rows: [
-        { repo_ref: HELIOS, cause: "infra_rig", events: "2" },
-        { repo_ref: HELIOS, cause: "other", events: "1" },
+        { repo_ref: HELIOS, origin: "live", cause: "infra_rig", events: "2" },
+        { repo_ref: HELIOS, origin: "live", cause: "other", events: "1" },
       ],
     });
 
     expect(await interventionsExtractor.extract(database.service.db, ORG, DAY)).toEqual([
-      { repoRef: HELIOS, metricId: "human_interventions", dimension: "infra_rig", value: 2 },
-      { repoRef: HELIOS, metricId: "human_interventions", dimension: "other", value: 1 },
+      {
+        repoRef: HELIOS,
+        origin: "live",
+        population: 2,
+        metricId: "human_interventions",
+        dimension: "infra_rig",
+        value: 2,
+      },
+      {
+        repoRef: HELIOS,
+        origin: "live",
+        population: 1,
+        metricId: "human_interventions",
+        dimension: "other",
+        value: 1,
+      },
     ]);
-    // Scoped to the workspace and the UTC day — the view buckets by day, so the day is the bound.
+    // Scoped to the workspace and the UTC day, bucketed as V079's daily view buckets, and grouped
+    // by the run's origin (DJ.2) — which the view does not carry.
     expect(database.statements).toHaveLength(1);
     expect(database.statements[0].parameters).toEqual([ORG, DAY]);
-    expect(database.statements[0].sql).toContain("ouroboros.intervention_cause_daily");
-    expect(database.statements[0].sql).toContain("r.day = $2::date");
+    expect(database.statements[0].sql).toContain("from ouroboros.intervention_events e");
+    expect(database.statements[0].sql).toContain(
+      "(e.detected_at at time zone 'UTC')::date = $2::date",
+    );
+    expect(database.statements[0].sql).toContain("r.origin");
   });
 
   it("interventions: a day with no events writes no rows", async () => {
@@ -109,22 +161,24 @@ describe("the extractors", () => {
     expect(await interventionsExtractor.extract(database.service.db, ORG, DAY)).toEqual([]);
   });
 
-  it("interventions: implements human_interventions version 2, the cause-dimensioned entry", () => {
-    expect(interventionsExtractor.metrics).toEqual({ human_interventions: 2 });
+  it("interventions: implements human_interventions version 3, the per-origin entry", () => {
+    expect(interventionsExtractor.metrics).toEqual({ human_interventions: 3 });
   });
 
   it("cycle: median rows per repository and per stage, samples kept", async () => {
     database.answers({
       rows: [
-        { repo_ref: HELIOS, stage_key: null, ms: "2400000" },
-        { repo_ref: HELIOS, stage_key: null, ms: "860000" },
-        { repo_ref: HELIOS, stage_key: "implement", ms: "360000" },
+        { repo_ref: HELIOS, origin: "live", stage_key: null, ms: "2400000" },
+        { repo_ref: HELIOS, origin: "live", stage_key: null, ms: "860000" },
+        { repo_ref: HELIOS, origin: "live", stage_key: "implement", ms: "360000" },
       ],
     });
 
     expect(await cycleExtractor.extract(database.service.db, ORG, DAY)).toEqual([
       {
         repoRef: HELIOS,
+        origin: "live",
+        population: 2,
         metricId: "cycle_time",
         dimension: "",
         value: 1_630_000,
@@ -132,6 +186,8 @@ describe("the extractors", () => {
       },
       {
         repoRef: HELIOS,
+        origin: "live",
+        population: 1,
         metricId: "stage_duration",
         dimension: "implement",
         value: 360_000,
@@ -147,28 +203,40 @@ describe("the extractors", () => {
       rows: [
         {
           repo_ref: HELIOS,
+          origin: "live",
           task_kind: "implement",
           tokens: "1500",
           unpriced_tokens: "0",
           local_tokens: "0",
+          events: "1",
+          unpriced_events: "0",
+          local_events: "0",
           priced_events: "1",
           cost_cents: "912.5000",
         },
         {
           repo_ref: HELIOS,
+          origin: "live",
           task_kind: null,
           tokens: "400",
           unpriced_tokens: "400",
           local_tokens: "0",
+          events: "2",
+          unpriced_events: "2",
+          local_events: "0",
           priced_events: "0",
           cost_cents: null,
         },
         {
           repo_ref: "acme/zephyr",
+          origin: "live",
           task_kind: "docs",
           tokens: "3000",
           unpriced_tokens: "3000",
           local_tokens: "3000",
+          events: "3",
+          unpriced_events: "3",
+          local_events: "3",
           priced_events: "0",
           cost_cents: null,
         },
@@ -176,16 +244,79 @@ describe("the extractors", () => {
     });
 
     expect(await costExtractor.extract(database.service.db, ORG, DAY)).toEqual([
-      { repoRef: HELIOS, metricId: "tokens", dimension: "", value: 1900 },
-      { repoRef: HELIOS, metricId: "unpriced_tokens", dimension: "", value: 400 },
-      { repoRef: HELIOS, metricId: "local_tokens", dimension: "", value: 0 },
-      { repoRef: HELIOS, metricId: "cost_cents", dimension: "", value: 912.5 },
+      {
+        repoRef: HELIOS,
+        origin: "live",
+        population: 3,
+        metricId: "tokens",
+        dimension: "",
+        value: 1900,
+      },
+      {
+        repoRef: HELIOS,
+        origin: "live",
+        population: 2,
+        metricId: "unpriced_tokens",
+        dimension: "",
+        value: 400,
+      },
+      {
+        repoRef: HELIOS,
+        origin: "live",
+        population: 0,
+        metricId: "local_tokens",
+        dimension: "",
+        value: 0,
+      },
+      {
+        repoRef: HELIOS,
+        origin: "live",
+        population: 1,
+        metricId: "cost_cents",
+        dimension: "",
+        value: 912.5,
+      },
       // The usage that named no task kind is in the total above and in no bar.
-      { repoRef: HELIOS, metricId: "tokens_by_task_kind", dimension: "implement", value: 1500 },
-      { repoRef: "acme/zephyr", metricId: "tokens", dimension: "", value: 3000 },
-      { repoRef: "acme/zephyr", metricId: "unpriced_tokens", dimension: "", value: 3000 },
-      { repoRef: "acme/zephyr", metricId: "local_tokens", dimension: "", value: 3000 },
-      { repoRef: "acme/zephyr", metricId: "tokens_by_task_kind", dimension: "docs", value: 3000 },
+      {
+        repoRef: HELIOS,
+        origin: "live",
+        population: 1,
+        metricId: "tokens_by_task_kind",
+        dimension: "implement",
+        value: 1500,
+      },
+      {
+        repoRef: "acme/zephyr",
+        origin: "live",
+        population: 3,
+        metricId: "tokens",
+        dimension: "",
+        value: 3000,
+      },
+      {
+        repoRef: "acme/zephyr",
+        origin: "live",
+        population: 3,
+        metricId: "unpriced_tokens",
+        dimension: "",
+        value: 3000,
+      },
+      {
+        repoRef: "acme/zephyr",
+        origin: "live",
+        population: 3,
+        metricId: "local_tokens",
+        dimension: "",
+        value: 3000,
+      },
+      {
+        repoRef: "acme/zephyr",
+        origin: "live",
+        population: 3,
+        metricId: "tokens_by_task_kind",
+        dimension: "docs",
+        value: 3000,
+      },
     ]);
     expectScoped();
     expect(database.statements[0].sql).toContain("filter (where tu.cost_cents is null)");
@@ -195,13 +326,29 @@ describe("the extractors", () => {
   });
 
   it("builds: totals, failures and the success rate", async () => {
-    database.answers({ rows: [{ repo_ref: HELIOS, builds: "4", succeeded: "2" }] });
+    database.answers({ rows: [{ repo_ref: HELIOS, origin: "live", builds: "4", succeeded: "2" }] });
 
     expect(await buildsExtractor.extract(database.service.db, ORG, DAY)).toEqual([
-      { repoRef: HELIOS, metricId: "builds", dimension: "", value: 4 },
-      { repoRef: HELIOS, metricId: "build_failures", dimension: "", value: 2 },
       {
         repoRef: HELIOS,
+        origin: "live",
+        population: 4,
+        metricId: "builds",
+        dimension: "",
+        value: 4,
+      },
+      {
+        repoRef: HELIOS,
+        origin: "live",
+        population: 4,
+        metricId: "build_failures",
+        dimension: "",
+        value: 2,
+      },
+      {
+        repoRef: HELIOS,
+        origin: "live",
+        population: 4,
         metricId: "build_success_rate",
         dimension: "",
         value: 50,
@@ -216,16 +363,18 @@ describe("the extractors", () => {
   it("build_duration: a median row per repository and job label, every succeeded build a sample", async () => {
     database.answers({
       rows: [
-        { repo_ref: HELIOS, label: "zephyr build", ms: "252000" },
-        { repo_ref: HELIOS, label: "native_sim", ms: "91000" },
-        { repo_ref: HELIOS, label: "zephyr build", ms: "238000" },
-        { repo_ref: HELIOS, label: "zephyr build", ms: "260500" },
+        { repo_ref: HELIOS, origin: "live", label: "zephyr build", ms: "252000" },
+        { repo_ref: HELIOS, origin: "live", label: "native_sim", ms: "91000" },
+        { repo_ref: HELIOS, origin: "live", label: "zephyr build", ms: "238000" },
+        { repo_ref: HELIOS, origin: "live", label: "zephyr build", ms: "260500" },
       ],
     });
 
     expect(await buildDurationExtractor.extract(database.service.db, ORG, DAY)).toEqual([
       {
         repoRef: HELIOS,
+        origin: "live",
+        population: 3,
         metricId: "build_duration",
         dimension: "zephyr build",
         value: 252_000,
@@ -233,6 +382,8 @@ describe("the extractors", () => {
       },
       {
         repoRef: HELIOS,
+        origin: "live",
+        population: 1,
         metricId: "build_duration",
         dimension: "native_sim",
         value: 91_000,
@@ -254,15 +405,17 @@ describe("the extractors", () => {
   it("queue_wait: a median row per repository and pool, every started job a sample", async () => {
     database.answers({
       rows: [
-        { repo_ref: HELIOS, pool: "pool-a", ms: "540000" },
-        { repo_ref: HELIOS, pool: "pool-b", ms: "12000" },
-        { repo_ref: HELIOS, pool: "pool-a", ms: "300000" },
+        { repo_ref: HELIOS, origin: "live", pool: "pool-a", ms: "540000" },
+        { repo_ref: HELIOS, origin: "live", pool: "pool-b", ms: "12000" },
+        { repo_ref: HELIOS, origin: "live", pool: "pool-a", ms: "300000" },
       ],
     });
 
     expect(await queueWaitExtractor.extract(database.service.db, ORG, DAY)).toEqual([
       {
         repoRef: HELIOS,
+        origin: "live",
+        population: 2,
         metricId: "queue_wait",
         dimension: "pool-a",
         value: 420_000,
@@ -270,6 +423,8 @@ describe("the extractors", () => {
       },
       {
         repoRef: HELIOS,
+        origin: "live",
+        population: 1,
         metricId: "queue_wait",
         dimension: "pool-b",
         value: 12_000,
@@ -291,29 +446,68 @@ describe("the extractors", () => {
   it("tests: suite rows only for failing suites; cases and pass rate per repository", async () => {
     database.answers({
       rows: [
-        { repo_ref: HELIOS, suite: "telemetry integration", ran: "13", passed: "11", failed: "2" },
-        { repo_ref: HELIOS, suite: "unit · drivers", ran: "20", passed: "20", failed: "0" },
-        { repo_ref: "acme/zephyr", suite: "unit", ran: "0", passed: "0", failed: "0" },
+        {
+          repo_ref: HELIOS,
+          origin: "live",
+          suite: "telemetry integration",
+          ran: "13",
+          passed: "11",
+          failed: "2",
+        },
+        {
+          repo_ref: HELIOS,
+          origin: "live",
+          suite: "unit · drivers",
+          ran: "20",
+          passed: "20",
+          failed: "0",
+        },
+        {
+          repo_ref: "acme/zephyr",
+          origin: "live",
+          suite: "unit",
+          ran: "0",
+          passed: "0",
+          failed: "0",
+        },
       ],
     });
 
     expect(await testsExtractor.extract(database.service.db, ORG, DAY)).toEqual([
       {
         repoRef: HELIOS,
+        origin: "live",
+        population: 13,
         metricId: "test_failures_by_suite",
         dimension: "telemetry integration",
         value: 2,
       },
-      { repoRef: HELIOS, metricId: "test_cases_run", dimension: "", value: 33 },
       {
         repoRef: HELIOS,
+        origin: "live",
+        population: 33,
+        metricId: "test_cases_run",
+        dimension: "",
+        value: 33,
+      },
+      {
+        repoRef: HELIOS,
+        origin: "live",
+        population: 33,
         metricId: "test_pass_rate",
         dimension: "",
         value: 100 * (31 / 33),
         numerator: 31,
         denominator: 33,
       },
-      { repoRef: "acme/zephyr", metricId: "test_cases_run", dimension: "", value: 0 },
+      {
+        repoRef: "acme/zephyr",
+        origin: "live",
+        population: 0,
+        metricId: "test_cases_run",
+        dimension: "",
+        value: 0,
+      },
     ]);
     expectScoped();
     expect(database.statements[0].sql).toContain("t.status <> 'running'");
@@ -322,15 +516,17 @@ describe("the extractors", () => {
   it("effort: one median row per predicted effort, a negative lead time clamped", async () => {
     database.answers({
       rows: [
-        { repo_ref: HELIOS, effort: "s", ms: "860000" },
-        { repo_ref: HELIOS, effort: "s", ms: "-5" },
-        { repo_ref: HELIOS, effort: "m", ms: "1800000" },
+        { repo_ref: HELIOS, origin: "live", effort: "s", ms: "860000" },
+        { repo_ref: HELIOS, origin: "live", effort: "s", ms: "-5" },
+        { repo_ref: HELIOS, origin: "live", effort: "m", ms: "1800000" },
       ],
     });
 
     expect(await effortExtractor.extract(database.service.db, ORG, DAY)).toEqual([
       {
         repoRef: HELIOS,
+        origin: "live",
+        population: 2,
         metricId: "completion_time_by_effort",
         dimension: "s",
         value: 430_000,
@@ -338,6 +534,8 @@ describe("the extractors", () => {
       },
       {
         repoRef: HELIOS,
+        origin: "live",
+        population: 1,
         metricId: "completion_time_by_effort",
         dimension: "m",
         value: 1_800_000,
@@ -352,11 +550,12 @@ describe("the extractors", () => {
     const mergedAt = new Date("2026-08-04T10:40:00.000Z");
 
     database.answers(
-      { rows: [{ repo_ref: HELIOS, deploys: "1" }] },
+      { rows: [{ repo_ref: HELIOS, origin: "live", deploys: "1" }] },
       {
         rows: [
           {
             repo_ref: HELIOS,
+            origin: "live",
             title: "Add telemetry",
             external_url: "https://github.com/acme/helios/pull/2",
             merged_at: mergedAt,
@@ -364,6 +563,7 @@ describe("the extractors", () => {
           },
           {
             repo_ref: HELIOS,
+            origin: "live",
             title: "Docs typo",
             external_url: "https://github.com/acme/helios/pull/6",
             merged_at: mergedAt,
@@ -384,6 +584,7 @@ describe("the extractors", () => {
         rows: [
           {
             repo_ref: HELIOS,
+            origin: "live",
             message: "revert: Add telemetry",
             committed_at: new Date("2026-08-05T09:00:00.000Z"),
           },
@@ -393,12 +594,14 @@ describe("the extractors", () => {
         rows: [
           {
             repo_ref: HELIOS,
+            origin: "live",
             run_id: "r1",
             status: "failed",
             finished_at: new Date("2026-08-04T09:05:00.000Z"),
           },
           {
             repo_ref: HELIOS,
+            origin: "live",
             run_id: "r1",
             status: "succeeded",
             finished_at: new Date("2026-08-04T09:10:00.000Z"),
@@ -408,9 +611,18 @@ describe("the extractors", () => {
     );
 
     expect(await doraExtractor.extract(database.service.db, ORG, DAY)).toEqual([
-      { repoRef: HELIOS, metricId: "deploy_frequency", dimension: "", value: 1 },
       {
         repoRef: HELIOS,
+        origin: "live",
+        population: 1,
+        metricId: "deploy_frequency",
+        dimension: "",
+        value: 1,
+      },
+      {
+        repoRef: HELIOS,
+        origin: "live",
+        population: 2,
         metricId: "lead_time",
         dimension: "",
         value: 1_800_000,
@@ -419,6 +631,8 @@ describe("the extractors", () => {
       },
       {
         repoRef: HELIOS,
+        origin: "live",
+        population: 2,
         metricId: "change_failure_rate",
         dimension: "",
         value: 50,
@@ -427,6 +641,8 @@ describe("the extractors", () => {
       },
       {
         repoRef: HELIOS,
+        origin: "live",
+        population: 1,
         metricId: "mttr",
         dimension: "",
         value: 300_000,
@@ -439,6 +655,81 @@ describe("the extractors", () => {
     expect(database.statements[1].sql).toContain(
       "ouroboros.lead_time_ms(r.started_at, pr.merged_at)",
     );
+  });
+
+  it("throughput: two origins on one day are two rows each, never one sum (DJ.2)", async () => {
+    database.answers({
+      rows: [
+        {
+          repo_ref: HELIOS,
+          origin: "live",
+          closed: "1",
+          merged: "1",
+          autonomous: "1",
+          untouched: "1",
+        },
+        {
+          repo_ref: HELIOS,
+          origin: "simulated",
+          closed: "40",
+          merged: "30",
+          autonomous: "30",
+          untouched: "30",
+        },
+      ],
+    });
+
+    const rows = await throughputExtractor.extract(database.service.db, ORG, DAY);
+    const merged = rows.filter((row) => row.metricId === "merged_prs");
+
+    expect(database.statements[0].sql).toContain("group by repo_ref, origin");
+    expect(merged).toEqual([
+      expect.objectContaining({ origin: "live", value: 1, population: 1 }),
+      expect.objectContaining({ origin: "simulated", value: 30, population: 30 }),
+    ]);
+  });
+
+  it("cycle: medians are pooled per origin, never across two", async () => {
+    database.answers({
+      rows: [
+        { repo_ref: HELIOS, origin: "live", stage_key: null, ms: "1000" },
+        { repo_ref: HELIOS, origin: "seeded", stage_key: null, ms: "9000" },
+        { repo_ref: HELIOS, origin: "seeded", stage_key: null, ms: "7000" },
+      ],
+    });
+
+    expect(await cycleExtractor.extract(database.service.db, ORG, DAY)).toEqual([
+      expect.objectContaining({ origin: "live", value: 1000, samples: [1000], population: 1 }),
+      expect.objectContaining({
+        origin: "seeded",
+        value: 8000,
+        samples: [7000, 9000],
+        population: 2,
+      }),
+    ]);
+  });
+
+  it("every extractor selects an origin, and no family is left at its pre-origin version", async () => {
+    const extractors = [
+      throughputExtractor,
+      interventionsExtractor,
+      cycleExtractor,
+      costExtractor,
+      buildsExtractor,
+      buildDurationExtractor,
+      queueWaitExtractor,
+      testsExtractor,
+      effortExtractor,
+      doraExtractor,
+    ];
+
+    for (const extractor of extractors) {
+      const recording = recordingDatabase();
+
+      await extractor.extract(recording.service.db, ORG, DAY);
+      expect(recording.statements[0].sql).toMatch(/\b(pr|b|r|t|tu)?\.?origin\b/);
+      expect(Math.min(...Object.values(extractor.metrics))).toBeGreaterThanOrEqual(2);
+    }
   });
 
   it("dora: skips the revert reads on a day with no merges", async () => {

@@ -8,6 +8,7 @@
 import { IsIn, IsOptional } from "class-validator";
 
 import { CALIBRATION_WINDOWS, type CalibrationWindow } from "./calibration.rules";
+import { ORIGIN_FILTERS, type OriginFilter } from "./metrics/metrics.origin";
 
 /** `GET /api/v1/insights/calibration?window=`. */
 export class CalibrationQuery {
@@ -15,4 +16,9 @@ export class CalibrationQuery {
   @IsOptional()
   @IsIn(CALIBRATION_WINDOWS)
   window?: CalibrationWindow;
+
+  /** Which data origin's merges to count (DJ.2): `live` when omitted, or `all`, marked mixed. */
+  @IsOptional()
+  @IsIn(ORIGIN_FILTERS)
+  origin?: OriginFilter;
 }

@@ -47,6 +47,7 @@
  */
 
 import { type ApiClient, unwrap } from "@/app/api/client";
+import { AGGREGATE_ORIGIN } from "@/app/api/origin";
 import type { components } from "@/app/api/schema";
 import { api } from "@/app/api/server";
 
@@ -119,7 +120,12 @@ export const insights = {
     client: ApiClient = api(),
     signal?: AbortSignal,
   ): Promise<InsightsPage> {
-    return unwrap(await client.GET("/api/v1/insights", { params: { query: { range } }, signal }));
+    return unwrap(
+      await client.GET("/api/v1/insights", {
+        params: { query: { range, origin: AGGREGATE_ORIGIN } },
+        signal,
+      }),
+    );
   },
 
   /**
@@ -138,7 +144,12 @@ export const insights = {
   ): Promise<InterventionList> {
     return unwrap(
       await client.GET("/api/v1/insights/interventions", {
-        params: { query: cause === undefined ? { range } : { range, cause } },
+        params: {
+          query:
+            cause === undefined
+              ? { range, origin: AGGREGATE_ORIGIN }
+              : { range, cause, origin: AGGREGATE_ORIGIN },
+        },
       }),
     );
   },

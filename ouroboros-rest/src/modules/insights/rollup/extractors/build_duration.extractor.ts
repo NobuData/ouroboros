@@ -15,6 +15,7 @@
 
 import { sql } from "kysely";
 
+import type { DataOrigin } from "../../../db/schema";
 import { dayBounds } from "../rollup.days";
 import { medianRow } from "../rollup.rows";
 import { joinRepo, num, REPO_REF } from "../rollup.sql";
@@ -23,19 +24,20 @@ import type { FamilyExtractor, RollupRow } from "../rollup.types";
 /** One succeeded build's duration. */
 interface DurationSample {
   repo_ref: string;
+  origin: DataOrigin;
   label: string;
   ms: string;
 }
 
 export const buildDurationExtractor: FamilyExtractor = {
   family: "build_duration",
-  metrics: { build_duration: 1 },
+  metrics: { build_duration: 2 },
 
   async extract(db, organizationId, day): Promise<RollupRow[]> {
     const { from, to } = dayBounds(day);
 
     const { rows } = await sql<DurationSample>`
-      select ${REPO_REF} as repo_ref, b.label,
+      select ${REPO_REF} as repo_ref, b.origin, b.label,
              round(extract(epoch from (b.finished_at - b.started_at)) * 1000)::bigint as ms
         from ouroboros.build_jobs b
         ${joinRepo("b")}
@@ -44,11 +46,19 @@ export const buildDurationExtractor: FamilyExtractor = {
          and b.started_at is not null
          and b.finished_at >= ${from} and b.finished_at < ${to}`.execute(db);
 
-    const groups = new Map<string, { repoRef: string; label: string; samples: number[] }>();
+    const groups = new Map<
+      string,
+      { repoRef: string; origin: DataOrigin; label: string; samples: number[] }
+    >();
 
     for (const row of rows) {
-      const key = JSON.stringify([row.repo_ref, row.label]);
-      const group = groups.get(key) ?? { repoRef: row.repo_ref, label: row.label, samples: [] };
+      const key = JSON.stringify([row.repo_ref, row.origin, row.label]);
+      const group = groups.get(key) ?? {
+        repoRef: row.repo_ref,
+        origin: row.origin,
+        label: row.label,
+        samples: [],
+      };
 
       group.samples.push(num(row.ms));
       groups.set(key, group);
@@ -56,7 +66,12 @@ export const buildDurationExtractor: FamilyExtractor = {
 
     return [...groups.values()].map((group) =>
       medianRow(
-        { repoRef: group.repoRef, metricId: "build_duration", dimension: group.label },
+        {
+          repoRef: group.repoRef,
+          origin: group.origin,
+          metricId: "build_duration",
+          dimension: group.label,
+        },
         group.samples,
       ),
     );

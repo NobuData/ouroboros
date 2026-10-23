@@ -1,7 +1,9 @@
 import {
   compose,
+  composeKept,
   deltaOf,
   planMetrics,
+  populationOf,
   seriesOf,
   unitScale,
   type MetricPlan,
@@ -25,6 +27,8 @@ function row(overrides: Partial<DailyRow>): DailyRow {
     metricId: "merge_rate",
     repoRef: "acme/helios",
     dimension: "",
+    origin: "live",
+    population: 1,
     value: 0,
     numerator: null,
     denominator: null,
@@ -220,5 +224,61 @@ describe("metrics window composition", () => {
     expect(unitScale("pct")).toBe(100);
     expect(unitScale("duration_ms")).toBe(1);
     expect(unitScale("cents")).toBe(1);
+  });
+
+  describe("no data (DJ.2)", () => {
+    const merged: MetricPlan = {
+      kind: "stored",
+      metricId: "merged_prs",
+      aggregation: "sum",
+      scale: 1,
+    };
+
+    it("answers null — not zero — for a sum over no rows", () => {
+      expect(compose(merged, []).value).toBe(0);
+      expect(composeKept(merged, [])).toEqual({ value: null });
+    });
+
+    it("ignores other metrics' rows when deciding whether there is data", () => {
+      expect(composeKept(merged, [row({ metricId: "tokens", value: 5 })])).toEqual({ value: null });
+    });
+
+    it("composes as usual once the plan has a row", () => {
+      expect(composeKept(merged, [row({ metricId: "merged_prs", value: 3 })]).value).toBe(3);
+      expect(composeKept(merged, [row({ metricId: "merged_prs", value: 0 })]).value).toBe(0);
+    });
+  });
+
+  describe("the count behind a figure", () => {
+    it("sums the populations of the metric's own rows", () => {
+      const rows = [
+        ratioDay("2026-08-01", 3, 4),
+        { ...ratioDay("2026-08-02", 1, 6), population: 6 },
+      ];
+
+      expect(populationOf(MERGE_RATE, rows)).toBe(7);
+      expect(populationOf(MERGE_RATE, [])).toBe(0);
+    });
+
+    it("counts a derived ratio by its denominator's rows", () => {
+      const plan: MetricPlan = {
+        kind: "derived",
+        numerator: "cost_cents",
+        denominator: "merged_prs",
+        scale: 1,
+      };
+      const rows = [
+        row({ metricId: "cost_cents", value: 900, population: 40 }),
+        row({ metricId: "merged_prs", value: 3, population: 3 }),
+      ];
+
+      expect(populationOf(plan, rows)).toBe(3);
+    });
+
+    it("is unknown when any row did not record its population", () => {
+      expect(
+        populationOf(MERGE_RATE, [ratioDay("2026-08-01", 1, 2), row({ population: null })]),
+      ).toBeNull();
+    });
   });
 });

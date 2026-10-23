@@ -81,7 +81,7 @@ describe("readDashboardSummary", () => {
 
     await readDashboardSummary({ fetcher, baseUrl: BASE });
 
-    expect(calls[0]?.[0]).toBe(`${BASE}${SUMMARY_PATH}`);
+    expect(calls[0]?.[0]).toBe(`${BASE}${SUMMARY_PATH}?origin=all`);
     expect(SUMMARY_PATH).toBe("/api/v1/dashboard");
   });
 

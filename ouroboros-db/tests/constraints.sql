@@ -26677,7 +26677,7 @@ returns void language plpgsql as $$
 begin
   insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, day, value)
   values ('org-v076', 'acme/zephyr', 'merged_prs', false, d, extract(day from d))
-  on conflict (organization_id, repo_ref, metric_id, dimension, day) do update
+  on conflict (organization_id, repo_ref, metric_id, dimension, origin, day) do update
     set value = excluded.value, computed_at = now();
 
   if crash then
@@ -27733,10 +27733,10 @@ select pg_temp.must_hold(
   'intervention_cause_daily counts events per UTC day and cause — #902''s handoff and its late call on their own days');
 
 select pg_temp.must_hold(
-  (select version = 2 and dimension_kind = 'cause' and aggregation = 'sum'
+  (select version = 3 and dimension_kind = 'cause' and aggregation = 'sum'
           and source_planes = '{runs,tests,interventions}'
      from ouroboros.metric_definitions where metric_id = 'human_interventions'),
-  'human_interventions is version 2, broken out by cause');
+  'human_interventions is version 3 (V154 raised it for origin), broken out by cause');
 
 insert into ouroboros.metric_daily
   (organization_id, repo_ref, metric_id, is_rate, dimension, day, value)
@@ -29149,7 +29149,7 @@ select pg_temp.must_hold(
 select pg_temp.must_hold(
   (select array_agg(metric_id || ':' || unit || ':' || is_rate::text order by metric_id)
             = '{scoreboard_cost_per_success:cents:false,scoreboard_merged:count:false,scoreboard_trend:pct:true}'
-          and bool_and(version = 1 and not proxy and dimension_kind is null
+          and bool_and(version = 2 and not proxy and dimension_kind is null
                        and 'resolution_snapshots' = any (source_planes)
                        and caveats <> '' and formula_text <> '')
      from ouroboros.metric_definitions where family = 'scoreboard'),
@@ -29183,7 +29183,7 @@ select pg_temp.must_hold(
   (select array_agg(metric_id || ':' || coalesce(dimension_kind, '-') order by metric_id)
             = '{local_tokens:-,tokens_by_task_kind:task_kind}'
           and bool_and(family = 'cost' and unit = 'tokens' and aggregation = 'sum'
-                       and version = 1 and not is_rate and not proxy
+                       and version = 2 and not is_rate and not proxy
                        and source_planes = '{usage}' and caveats <> '' and formula_text <> '')
      from ouroboros.metric_definitions
     where metric_id in ('tokens_by_task_kind', 'local_tokens')),
@@ -30636,7 +30636,7 @@ select pg_temp.must_hold(
 select pg_temp.must_hold(
   (select family = 'build_duration' and aggregation = 'median' and dimension_kind = 'job_label'
           and unit = 'duration_ms' and not is_rate and not proxy
-          and source_planes = '{builds}' and version = 1
+          and source_planes = '{builds}' and version = 2
      from ouroboros.metric_definitions where metric_id = 'build_duration'),
   'build_duration is registered: its own family, a median per job label, in milliseconds');
 
@@ -30650,7 +30650,7 @@ select pg_temp.must_hold(
 select pg_temp.must_hold(
   (select family = 'queue_wait' and aggregation = 'median' and dimension_kind = 'pool'
           and unit = 'duration_ms' and not is_rate and not proxy
-          and source_planes = '{builds}' and version = 1
+          and source_planes = '{builds}' and version = 2
      from ouroboros.metric_definitions where metric_id = 'queue_wait'),
   'queue_wait is registered: its own family, a median per pool, in milliseconds');
 
@@ -45275,6 +45275,68 @@ select pg_temp.must_hold(
   'a job detached from its run keeps the stage it built for, as history');
 
 delete from ouroboros.organization where "id" = 'org-v153';
+
+-- ===========================================================================
+-- V154 — origin-aware rollups: the Insights grain split per data origin (#1315, DJ.2).
+-- ===========================================================================
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v154', 'Origin Rollups', 'origin-rollups-v154', now());
+
+-- One day of `merged_prs` for one repository, once per origin: the grain keeps them apart.
+insert into ouroboros.metric_daily
+    (organization_id, repo_ref, metric_id, is_rate, day, value, origin, population)
+  values
+    ('org-v154', 'origin-v154/helios', 'merged_prs', false, '2026-10-01', 3, 'live', 3),
+    ('org-v154', 'origin-v154/helios', 'merged_prs', false, '2026-10-01', 40, 'simulated', 40),
+    ('org-v154', 'origin-v154/helios', 'merged_prs', false, '2026-10-01', 7, 'seeded', 7);
+
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.metric_daily where organization_id = 'org-v154'),
+  'one day of a metric holds a row per origin, never one sum of them');
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+        (organization_id, repo_ref, metric_id, is_rate, day, value, origin, population)
+      values ('org-v154', 'origin-v154/helios', 'merged_prs', false, '2026-10-01', 1, 'live', 1)$$,
+  'a second live row for the same grain collides — origin is part of the grain key',
+  'metric_daily_grain_key');
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+        (organization_id, repo_ref, metric_id, is_rate, day, value, origin)
+      values ('org-v154', 'origin-v154/helios', 'merged_prs', false, '2026-10-02', 1, 'imported')$$,
+  'an origin outside live, simulated and seeded is refused',
+  'metric_daily_origin_known');
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+        (organization_id, repo_ref, metric_id, is_rate, day, value, origin, population)
+      values ('org-v154', 'origin-v154/helios', 'merged_prs', false, '2026-10-02', 1, 'live', -1)$$,
+  'a population is a count — never negative',
+  'metric_daily_population_nonnegative');
+
+-- A row that states no origin is live outside a seed file, seeded inside one (V141's default).
+insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, day, value)
+  values ('org-v154', 'origin-v154/helios', 'merged_prs', false, '2026-10-03', 2);
+select pg_temp.must_hold(
+  (select origin = 'live' and population is null from ouroboros.metric_daily
+    where organization_id = 'org-v154' and day = '2026-10-03'),
+  'a row that states no origin outside a seed file is live, with no population recorded');
+
+select pg_temp.must_hold(
+  (select bool_and(btrim(origin_rule) <> '') from ouroboros.metric_definitions),
+  'every metric definition records its origin rule');
+select pg_temp.must_hold(
+  (select bool_and(origin_rule like 'Not split by origin%') from ouroboros.metric_definitions
+    where family = 'decisions'),
+  'the decisions family says it is not split — decisions carry no origin');
+select pg_temp.must_hold(
+  (select bool_and(version >= 2) from ouroboros.metric_definitions where family <> 'decisions'),
+  'every metric split per origin had its version raised');
+select pg_temp.must_hold(
+  (select count(*) = 1 from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'token_usage_daily'
+      and column_name = 'origin'),
+  'token_usage_daily keeps each origin''s usage on its own row');
+
+delete from ouroboros.organization where "id" = 'org-v154';
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

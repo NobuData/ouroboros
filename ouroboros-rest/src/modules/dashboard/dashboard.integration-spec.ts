@@ -232,7 +232,7 @@ describe("the dashboard endpoint", () => {
 
       expect(dashboard.activity.mergedSinceMorning).toBe(shared.mergedSinceMorning);
       expect(dashboard.activity.mergedSinceMorning).toBeLessThanOrEqual(
-        dashboard.stats.merged7d.count,
+        dashboard.stats.merged7d.count ?? 0,
       );
     });
 

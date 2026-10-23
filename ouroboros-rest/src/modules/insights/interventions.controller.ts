@@ -46,7 +46,12 @@ export class InterventionsController {
     @CurrentTenant() tenant: Organization,
     @Query() query: InterventionListQuery,
   ): Promise<InterventionListResource> {
-    return this.interventions.list(tenant.id, query.range ?? DEFAULT_INSIGHTS_RANGE, query.cause);
+    return this.interventions.list(
+      tenant.id,
+      query.range ?? DEFAULT_INSIGHTS_RANGE,
+      query.cause,
+      query.origin,
+    );
   }
 
   /**

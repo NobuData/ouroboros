@@ -25,8 +25,10 @@
  *     declared.
  */
 
+import type { OriginFilter } from "../insights/metrics/metrics.origin";
 import type {
   ActiveRunStatus,
+  DataOrigin,
   QueueEffort,
   QueueItem,
   QueueWorkflowPinReason,
@@ -169,29 +171,34 @@ export interface QueuedStat {
 export interface MergedSevenDaysStat {
   /**
    * Loop PRs merged over the last seven UTC days, today included — the registry's `merged_prs`,
-   * read through `MetricsService` (#437).
+   * read through `MetricsService` (#437). Null — no data — when the window holds no loop PR of
+   * the asked origin (DJ.2).
    */
-  readonly count: number;
+  readonly count: number | null;
   /**
    * This window's count less the seven UTC days before it — the card's `▲ 8 vs last week`.
    *
    * Signed: negative is a week that merged less than the one before, and the card renders
-   * the direction from the sign rather than from a separate flag.
+   * the direction from the sign rather than from a separate flag. Null when either week has no
+   * data.
    */
-  readonly deltaVsPrior: number;
+  readonly deltaVsPrior: number | null;
 }
 
 /** *Token spend · today* — the day's ledger, rolled up. */
 export interface TokensTodayStat {
-  /** Input plus output tokens across every provider — the card's `4.2M`. */
-  readonly tokens: number;
+  /**
+   * Input plus output tokens across every provider — the card's `4.2M`. Null — no data — when the
+   * day holds no usage of the asked origin (DJ.2); `costCents` is then null too.
+   */
+  readonly tokens: number | null;
   /**
    * What the day's **priced** events cost, in cents.
    *
    * Cents rather than a decimal currency amount, so nothing rounds on the way through JSON.
    * It is a **lower bound** whenever {@link TokensTodayStat.unpricedEvents} is non-zero.
    */
-  readonly costCents: number;
+  readonly costCents: number | null;
   /** How many distinct providers were paid — the `across 4 providers` in the subline. */
   readonly providers: number;
   /**
@@ -230,27 +237,27 @@ export interface LoopPulse {
    * fraction between 0 and 1. Recomposed from the days' components — Σ autonomous ÷ Σ closed —
    * never an average of daily rates.
    *
-   * `0` when no PR closed in the window. That is a floor rather than a measurement, and it is
-   * why an empty organization's meter is drawn as *no data* rather than as a bad week:
-   * `pulse.mergeRate === 0` with `merged7d.count === 0` and `interventions7d === 0` is an
-   * organization with no history, not one that merged nothing.
+   * Null — no data — when no PR of the asked origin closed in the window (DJ.2,
+   * [#1315](https://github.com/NobuData/ouroboros/issues/1315)): never a zero floor, so a
+   * workspace with no history cannot read as one that merged nothing.
    */
-  readonly mergeRate: number;
+  readonly mergeRate: number | null;
   /**
    * **Cycle time** (`cycle_time`): the **median** of `finishedAt − startedAt` over loops that
    * finished `merged` in the window, in seconds. The field keeps its name for compatibility; the
    * figure is the registry's median, pooled across the window's days.
    *
-   * `0` when nothing merged in the window — the same floor, and the same reading, as
+   * Null when nothing of the asked origin merged in the window — no data, as
    * {@link LoopPulse.mergeRate}.
    */
-  readonly avgCycleSeconds: number;
+  readonly avgCycleSeconds: number | null;
   /**
    * **Human interventions** (`human_interventions`): every moment a person stepped into a loop
    * in the window — a needs-human handoff, a human failure classification, a waiver, a failed
-   * gate, a blocking vote (V079's events), across every cause.
+   * gate, a blocking vote (V079's events), across every cause. Null when the window holds no
+   * intervention of the asked origin.
    */
-  readonly interventions7d: number;
+  readonly interventions7d: number | null;
   /**
    * Whether this workspace merges on green checks without asking — V011's
    * `auto_merge_on_checks`, read through `workspace_settings_effective`.
@@ -280,13 +287,24 @@ export interface DashboardActivity {
    * Today's point of the same `merged_prs` window `stats.merged7d` counts, so the subline and the
    * card cannot disagree. The morning is UTC's; `windows.ts` and `metrics.window.ts` are where
    * that is decided and the OpenAPI description is where it is published, because a reader in
-   * another zone is entitled to know whose morning is meant.
+   * another zone is entitled to know whose morning is meant. Null exactly when
+   * `stats.merged7d.count` is.
    */
-  readonly mergedSinceMorning: number;
+  readonly mergedSinceMorning: number | null;
 }
 
 /** What `GET /api/v1/dashboard` answers with — the whole page, in one round trip. */
 export interface DashboardResource {
+  /**
+   * The data origin every aggregate in the payload was computed from (DJ.2): `live` unless the
+   * request asked otherwise. The run lists and the queue are not filtered: they list rows, not
+   * aggregates (DJ.3 labels them).
+   */
+  readonly origin: OriginFilter;
+  /** Every origin with a row behind any aggregate here, whichever was asked for. */
+  readonly originsPresent: readonly DataOrigin[];
+  /** True only when `origin` is `all` and some aggregate sums more than one origin. */
+  readonly mixed: boolean;
   readonly stats: DashboardStats;
   readonly pulse: LoopPulse;
   /** Runs in flight, in lifecycle order, longest-running first within a stage. At most ten. */

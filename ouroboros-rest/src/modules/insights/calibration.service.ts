@@ -24,6 +24,7 @@ import {
   type CalibrationReport,
   type CalibrationWindow,
 } from "./calibration.rules";
+import { DEFAULT_ORIGIN, type OriginFilter } from "./metrics/metrics.origin";
 
 /** The clock's injection token — bound only by the suites; production reads `Date.now`. */
 export const CALIBRATION_CLOCK = Symbol("CALIBRATION_CLOCK");
@@ -49,12 +50,17 @@ export class CalibrationService implements CalibrationMergeObserver {
    *
    * @param organizationId - The workspace.
    * @param window - The window.
+   * @param origin - Which data origin's merges to count (DJ.2); `live` when omitted.
    * @returns The headline, the unestimated count and all five effort slices.
    */
-  async report(organizationId: string, window: CalibrationWindow): Promise<CalibrationReport> {
+  async report(
+    organizationId: string,
+    window: CalibrationWindow,
+    origin: OriginFilter = DEFAULT_ORIGIN,
+  ): Promise<CalibrationReport> {
     const range = windowRange(window, new Date(this.clock()));
     const sums = await this.store.sums(organizationId, range);
 
-    return calibrationReport(window, range, sums);
+    return calibrationReport(window, range, sums, origin);
   }
 }

@@ -14,7 +14,12 @@ import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
-import type { InterventionCause, InterventionEvent, InterventionOverride } from "../db/schema";
+import type {
+  DataOrigin,
+  InterventionCause,
+  InterventionEvent,
+  InterventionOverride,
+} from "../db/schema";
 import type { Day } from "./rollup/rollup.types";
 
 /** An event and the override that just set its cause. */
@@ -37,6 +42,8 @@ export interface InterventionListQuery {
   readonly to: Day;
   /** One cause, or undefined for every cause. */
   readonly cause?: InterventionCause;
+  /** The data origins of the runs whose events are listed (DJ.2) — as the card's bars count. */
+  readonly origins: readonly DataOrigin[];
   /** The most events to answer. */
   readonly limit: number;
 }
@@ -97,6 +104,7 @@ export class InterventionRepository implements InterventionStore {
       join ouroboros.github_repos gr on gr.id = r.github_repo_id
       join ouroboros.github_orgs gor on gor.id = gr.org_id
      where e.organization_id = ${organizationId}
+       and r.origin = any(${[...query.origins]}::text[])
        and (e.detected_at at time zone 'UTC')::date between ${query.from}::date and ${query.to}::date
        ${query.cause === undefined ? sql`` : sql`and e.cause = ${query.cause}`}`;
 

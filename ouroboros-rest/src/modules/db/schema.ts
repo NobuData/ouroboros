@@ -5135,6 +5135,8 @@ export interface TokenUsageDailyView {
   tokens_total: string;
   /** Cost of the day's **priced** events in cents, and null when none of them are priced. */
   cost_cents: string | null;
+  /** The usage rows' data origin (V154, DJ.2): one row per origin. */
+  origin: DataOrigin;
 }
 
 /**
@@ -7168,6 +7170,8 @@ export interface MetricDefinitionsTable {
   /** What `metric_daily.dimension` names for the metric, or null when undimensioned (V078). */
   dimension_kind:
     "stage" | "suite" | "effort" | "cause" | "task_kind" | "job_label" | "pool" | null;
+  /** How the metric treats data origin, in words (V154, DJ.2 #1315). */
+  origin_rule: Generated<string>;
   created_at: Stamped;
   updated_at: Stamped;
 }
@@ -7199,6 +7203,10 @@ export interface MetricDailyTable {
   denominator: ColumnType<string | null, number | null, number | null>;
   /** Raw numbers for the tooltip; a median row's ascending `samples`. */
   meta: ColumnType<Record<string, unknown>, string | undefined, string>;
+  /** The origin of every source row behind the figure (V154, DJ.2 #1315); part of the grain key. */
+  origin: ColumnType<DataOrigin, DataOrigin | undefined, never>;
+  /** How many source rows are behind the figure; a `bigint`, so a string when read. */
+  population: ColumnType<string | null, number | null | undefined, number | null>;
   computed_at: Generated<Date>;
 }
 
@@ -10731,6 +10739,7 @@ export const TABLE_COLUMNS = {
     "tokens_out",
     "tokens_total",
     "cost_cents",
+    "origin",
   ],
   workspace_settings_effective: [
     "organization_id",

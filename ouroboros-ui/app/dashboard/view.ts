@@ -485,13 +485,14 @@ export const LEVEL_WITH_LAST_WEEK = "Level with last week";
  * @returns The card.
  */
 export function mergedStat(merged: DashboardStats["merged7d"]): Stat {
-  const change = merged.deltaVsPrior;
+  // Null is no data (DJ.2), drawn as the zero it replaced until DJ.3 (#1316) draws it honestly.
+  const change = merged.deltaVsPrior ?? 0;
   const rose = change > 0;
 
   return {
     id: "merged",
     label: "PRs merged · 7d",
-    value: String(merged.count),
+    value: String(merged.count ?? 0),
     accent: false,
     delta:
       change === 0
@@ -517,7 +518,7 @@ export function tokensStat(today: DashboardStats["tokensToday"]): Stat {
   return {
     id: "tokens",
     label: "Token spend · today",
-    value: compactNumber(today.tokens),
+    value: compactNumber(today.tokens ?? 0),
     accent: false,
     delta: costLine(today),
     tone: "muted",
@@ -549,11 +550,13 @@ export function tokensStat(today: DashboardStats["tokensToday"]): Stat {
  */
 function costLine(today: DashboardStats["tokensToday"]): string | null {
   if (today.providers === 0) return NO_USAGE_TODAY;
-  if (today.costCents === 0 && today.unpricedEvents > 0) return null;
+  const costCents = today.costCents ?? 0;
+
+  if (costCents === 0 && today.unpricedEvents > 0) return null;
 
   const approximately = today.unpricedEvents > 0 ? "≈ " : "";
 
-  return `${approximately}${moneyOfCents(today.costCents)} across ${countOf(today.providers, "provider")}`;
+  return `${approximately}${moneyOfCents(costCents)} across ${countOf(today.providers, "provider")}`;
 }
 
 /**
@@ -896,8 +899,10 @@ export const PULSE_UNMEASURED =
  * @param value Whatever arrived.
  * @returns It, or `0` when it is not a finite number.
  */
-function measured(value: number): number {
-  return Number.isFinite(value) ? value : 0;
+function measured(value: number | null): number {
+  // Null is ouroboros-rest's no data (DJ.2); the meters draw it as the empty bar they drew for
+  // the old zero floor until DJ.3 (#1316) gives them an honest empty state.
+  return value !== null && Number.isFinite(value) ? value : 0;
 }
 
 /**
@@ -969,11 +974,11 @@ export function pulseMeters(pulse: LoopPulse): readonly PulseMeter[] {
       // The registry's `cycle_time`: a median over merged loops (#437), so the label says so.
       label: "Median cycle time",
       window: PULSE_WINDOW,
-      value: elapsedOfSeconds(pulse.avgCycleSeconds),
-      fill: barFill(pulse.avgCycleSeconds, CYCLE_TIME_TARGET_SECONDS),
+      value: elapsedOfSeconds(measured(pulse.avgCycleSeconds)),
+      fill: barFill(measured(pulse.avgCycleSeconds), CYCLE_TIME_TARGET_SECONDS),
       tone: "accent",
       valueText:
-        `${elapsedOfSeconds(pulse.avgCycleSeconds)} of the ` +
+        `${elapsedOfSeconds(measured(pulse.avgCycleSeconds))} of the ` +
         `${elapsedOfSeconds(CYCLE_TIME_TARGET_SECONDS)} target, over ${PULSE_WINDOW}`,
     },
     {
@@ -1608,7 +1613,9 @@ export interface Subline {
 export function pageSubline(aggregate: Reading<Dashboard>): Subline {
   if (!aggregate.ok) return { text: ACTIVITY_NOT_READ, failed: true };
 
-  const { inFlight, queued, mergedSinceMorning } = aggregate.value.activity;
+  const { inFlight, queued } = aggregate.value.activity;
+  // Null is no data (DJ.2) — nothing merged that the reads count — until DJ.3 (#1316).
+  const mergedSinceMorning = aggregate.value.activity.mergedSinceMorning ?? 0;
 
   if (inFlight === 0 && queued === 0 && mergedSinceMorning === 0) {
     return { text: QUIET_SUBLINE, failed: false };

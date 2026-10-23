@@ -19,6 +19,7 @@ describe("CalibrationService", () => {
       sums: jest.fn().mockResolvedValue([
         {
           effort: "s",
+          origin: "live",
           merged: 9,
           withinBand: 8,
           over: 1,
@@ -28,6 +29,7 @@ describe("CalibrationService", () => {
         },
         {
           effort: null,
+          origin: "live",
           merged: 1,
           withinBand: 0,
           over: 0,
@@ -64,6 +66,15 @@ describe("CalibrationService", () => {
       estimated: 9,
       unestimated: 1,
       withinBandPct: 88.9,
+    });
+  });
+
+  it("reports the origin asked for, live by default (DJ.2)", async () => {
+    expect(await service.report(ORG, "7d")).toMatchObject({ origin: "live", merged: 10 });
+    expect(await service.report(ORG, "7d", "seeded")).toMatchObject({
+      origin: "seeded",
+      merged: 0,
+      originsPresent: ["live"],
     });
   });
 

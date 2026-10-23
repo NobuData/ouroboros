@@ -4,11 +4,12 @@ import { SCOREBOARD_MIN_SAMPLE } from "./scoreboard.compose";
 import type { ScoreboardRepository } from "./scoreboard.repository";
 import {
   instantsOf,
+  mergeOrigins,
   SCOREBOARD_METRICS,
   ScoreboardRegistryError,
   ScoreboardService,
 } from "./scoreboard.service";
-import type { ScoreboardSuggestionSource } from "./scoreboard.types";
+import type { ScoreboardSuggestionSource, ScoreboardTally } from "./scoreboard.types";
 
 /**
  * The scoreboard service (BJ.3, #439): windows of equal length, a methodology for every column,
@@ -39,6 +40,7 @@ function definition(metricId: string, unit: MetricDefinition["unit"]): MetricDef
     proxy: false,
     aggregation: unit === "pct" ? "ratio" : "sum",
     dimensionKind: null,
+    originRule: `Origin rule of ${metricId}`,
   };
 }
 
@@ -150,6 +152,86 @@ describe("the scoreboard service", () => {
         ["docs", "ollama/qwen3-coder", "primary"],
         ["review", "claude-fable-5", "primary"],
       ]);
+    });
+  });
+
+  describe("data origin (DJ.2)", () => {
+    /** The mockup's tallies, restated as another origin's. */
+    const as = (
+      origin: ScoreboardTally["origin"],
+      window: "current" | "prior",
+    ): ScoreboardTally[] =>
+      mockupTallies(MOCKUP_15_SCOREBOARD, window).map((row) => ({ ...row, origin }));
+
+    it("counts live merges and usage by default, and says what else is there", async () => {
+      tallies = jest
+        .fn()
+        .mockResolvedValueOnce(as("seeded", "current"))
+        .mockResolvedValueOnce(as("seeded", "prior"));
+
+      const board = await service().scoreboard({ organizationId: ORG, range: "30d" });
+
+      expect(board).toMatchObject({ origin: "live", originsPresent: ["seeded"], mixed: false });
+      expect(board.rows).toEqual([]);
+    });
+
+    it("sums the origins per row only for all, and marks the board mixed", async () => {
+      tallies = jest
+        .fn()
+        .mockResolvedValueOnce([...as("live", "current"), ...as("seeded", "current")])
+        .mockResolvedValueOnce([...as("live", "prior"), ...as("seeded", "prior")]);
+
+      const board = await service().scoreboard({
+        organizationId: ORG,
+        range: "30d",
+        origin: "all",
+      });
+      const single = await (() => {
+        tallies = jest
+          .fn()
+          .mockResolvedValueOnce(as("live", "current"))
+          .mockResolvedValueOnce(as("live", "prior"));
+        return service().scoreboard({ organizationId: ORG, range: "30d" });
+      })();
+
+      expect(board).toMatchObject({
+        origin: "all",
+        originsPresent: ["live", "seeded"],
+        mixed: true,
+      });
+      expect(board.rows).toHaveLength(single.rows.length);
+      expect(board.rows.map((row) => row.merged)).toEqual(single.rows.map((row) => row.merged * 2));
+      expect(single.mixed).toBe(false);
+    });
+
+    it("merges one key's tallies across origins, keeping unpriced usage unpriced", () => {
+      const row = {
+        taskKind: "implement",
+        model: "m",
+        hop: 1,
+        merged: 2,
+        untouched: 1,
+        tokens: 10,
+        unpricedTokens: 10,
+        costCents: null,
+      };
+
+      expect(
+        mergeOrigins([
+          { ...row, origin: "live" },
+          { ...row, origin: "seeded" },
+          { ...row, hop: 2, origin: "seeded", costCents: 5 },
+        ]),
+      ).toEqual([
+        { ...row, origin: "live", merged: 4, untouched: 2, tokens: 20, unpricedTokens: 20 },
+        { ...row, hop: 2, origin: "seeded", costCents: 5 },
+      ]);
+      expect(
+        mergeOrigins([
+          { ...row, origin: "live", costCents: 3 },
+          { ...row, origin: "seeded" },
+        ])[0].costCents,
+      ).toBe(3);
     });
   });
 

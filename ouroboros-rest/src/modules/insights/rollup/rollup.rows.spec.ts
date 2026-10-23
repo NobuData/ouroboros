@@ -6,20 +6,30 @@ import { median, medianRow, ratioRow, sumRow } from "./rollup.rows";
  * the row.
  */
 
-const KEY = { repoRef: "acme/helios", metricId: "probe" };
+const KEY = { repoRef: "acme/helios", metricId: "probe", origin: "live" } as const;
 
 describe("sum rows", () => {
-  it("carry the value and an empty dimension by default", () => {
-    expect(sumRow(KEY, 6)).toEqual({ ...KEY, dimension: "", value: 6 });
-    expect(sumRow({ ...KEY, dimension: "unit" }, 0)).toEqual({
+  it("carry the value, origin, population and an empty dimension by default", () => {
+    expect(sumRow(KEY, 6, 6)).toEqual({ ...KEY, dimension: "", value: 6, population: 6 });
+    expect(sumRow({ ...KEY, dimension: "unit" }, 0, 12)).toEqual({
       ...KEY,
       dimension: "unit",
       value: 0,
+      population: 12,
     });
   });
 
+  it("keep the origin they are given — a simulated row is never filed as live (DJ.2)", () => {
+    expect(sumRow({ ...KEY, origin: "simulated" }, 3, 3).origin).toBe("simulated");
+    expect(sumRow({ ...KEY, origin: "seeded" }, 3, 3).origin).toBe("seeded");
+  });
+
   it.each([-1, Number.NaN, Infinity])("refuse %p — the grain stores neither", (value) => {
-    expect(() => sumRow(KEY, value)).toThrow(RangeError);
+    expect(() => sumRow(KEY, value, 1)).toThrow(RangeError);
+  });
+
+  it.each([-1, 1.5, Number.NaN, Infinity])("refuse a population of %p", (population) => {
+    expect(() => sumRow(KEY, 1, population)).toThrow(RangeError);
   });
 });
 
@@ -31,8 +41,15 @@ describe("ratio rows", () => {
       value: 100 / 3,
       numerator: 1,
       denominator: 3,
+      population: 3,
     });
     expect(ratioRow(KEY, 900_000, 2, 1).value).toBe(450_000);
+  });
+
+  it("take the denominator as their population unless told another", () => {
+    expect(ratioRow(KEY, 900_000, 2, 1).population).toBe(2);
+    expect(ratioRow(KEY, 1, 4, 100, 7).population).toBe(7);
+    expect(() => ratioRow(KEY, 1, 4, 100, -1)).toThrow(RangeError);
   });
 
   it.each([0, -1, Number.NaN, Infinity])("refuse a denominator of %p", (denominator) => {
@@ -51,6 +68,7 @@ describe("median rows", () => {
       dimension: "",
       value: 20,
       samples: [10, 20, 40],
+      population: 3,
     });
   });
 

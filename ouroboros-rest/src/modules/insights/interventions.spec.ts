@@ -211,6 +211,7 @@ describe("the interventions service", () => {
 
     await expect(service.list(ORG, "7d", "infra_rig")).resolves.toEqual({
       range: "7d",
+      origin: "live",
       window: { from: "2026-09-04", to: "2026-09-10" },
       cause: "infra_rig",
       total: 8,
@@ -220,8 +221,21 @@ describe("the interventions service", () => {
       from: "2026-09-04",
       to: "2026-09-10",
       cause: "infra_rig",
+      origins: ["live"],
       limit: INTERVENTION_LIST_LIMIT,
     });
+  });
+
+  it("lists the events of the asked origin's runs, as the card's bars count them (DJ.2)", async () => {
+    store.list.mockResolvedValue({ total: 0, items: [] });
+
+    await expect(service.list(ORG, "30d", undefined, "all")).resolves.toMatchObject({
+      origin: "all",
+    });
+    expect(store.list).toHaveBeenCalledWith(
+      ORG,
+      expect.objectContaining({ origins: ["live", "simulated", "seeded"] }),
+    );
   });
 
   it("lists every cause when none is named, and says so", async () => {
@@ -364,7 +378,13 @@ describe("the interventions repository", () => {
     );
 
     await expect(
-      repository.list(ORG, { from: "2026-09-04", to: "2026-09-10", cause: "infra_rig", limit: 50 }),
+      repository.list(ORG, {
+        from: "2026-09-04",
+        to: "2026-09-10",
+        cause: "infra_rig",
+        origins: ["live"],
+        limit: 50,
+      }),
     ).resolves.toEqual({
       total: 9,
       items: [
@@ -379,9 +399,10 @@ describe("the interventions repository", () => {
     expect(count.sql).toContain("join ouroboros.github_repos gr on gr.id = r.github_repo_id");
     expect(count.sql).toContain("(e.detected_at at time zone 'UTC')::date between");
     expect(count.sql).toContain("and e.cause =");
-    expect(count.parameters).toEqual([ORG, "2026-09-04", "2026-09-10", "infra_rig"]);
+    expect(count.sql).toContain("r.origin = any(");
+    expect(count.parameters).toEqual([ORG, ["live"], "2026-09-04", "2026-09-10", "infra_rig"]);
     expect(select.sql).toContain("order by e.detected_at desc, e.id desc");
-    expect(select.parameters).toEqual([ORG, "2026-09-04", "2026-09-10", "infra_rig", 50]);
+    expect(select.parameters).toEqual([ORG, ["live"], "2026-09-04", "2026-09-10", "infra_rig", 50]);
     expect(overrides.sql).toContain('from "ouroboros"."intervention_overrides"');
     expect(overrides.parameters).toEqual([EVENT_ID, other.id]);
   });
@@ -390,7 +411,7 @@ describe("the interventions repository", () => {
     database.answers({ rows: [{ total: "0" }] }, { rows: [] });
 
     await expect(
-      repository.list(ORG, { from: "2026-09-04", to: "2026-09-10", limit: 50 }),
+      repository.list(ORG, { from: "2026-09-04", to: "2026-09-10", origins: ["live"], limit: 50 }),
     ).resolves.toEqual({ total: 0, items: [] });
     expect(database.statements).toHaveLength(2);
     expect(database.statements[0].sql).not.toContain("e.cause =");
@@ -439,8 +460,8 @@ describe("the interventions controller", () => {
     await controller.list({ id: ORG } as Organization, {});
     await controller.list({ id: ORG } as Organization, { range: "7d", cause: "other" });
 
-    expect(service.list).toHaveBeenNthCalledWith(1, ORG, "30d", undefined);
-    expect(service.list).toHaveBeenNthCalledWith(2, ORG, "7d", "other");
+    expect(service.list).toHaveBeenNthCalledWith(1, ORG, "30d", undefined, undefined);
+    expect(service.list).toHaveBeenNthCalledWith(2, ORG, "7d", "other", undefined);
   });
 
   it("lets every member list — a viewer included", () => {

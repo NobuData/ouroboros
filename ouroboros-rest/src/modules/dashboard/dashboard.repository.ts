@@ -40,7 +40,13 @@ import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
-import { ACTIVE_RUN_STATUSES, type ActiveRunStatus, type QueueItem, type Run } from "../db/schema";
+import {
+  ACTIVE_RUN_STATUSES,
+  type ActiveRunStatus,
+  type DataOrigin,
+  type QueueItem,
+  type Run,
+} from "../db/schema";
 
 /** How many runs in flight the aggregate carries. The card draws what it has room for. */
 export const ACTIVE_RUNS_LIMIT = 10;
@@ -63,8 +69,12 @@ export interface RunStatistics {
   readonly live: Readonly<Record<ActiveRunStatus, number>>;
 }
 
-/** The day's token ledger, rolled up across providers. */
+/** The day's token ledger, rolled up across providers, for the origins asked for. */
 export interface TokenTotals {
+  /** How many usage rows of the asked origins the day holds; 0 is no data (DJ.2). */
+  readonly events: number;
+  /** Every origin with usage on the day, whichever was asked for. */
+  readonly originsPresent: DataOrigin[];
   /** Input plus output across the day, as text: a `bigint` `pg` will not narrow on its own. */
   readonly tokens: string;
   /** What the day's priced events cost, in cents, as `numeric` text. */
@@ -213,12 +223,17 @@ export class DashboardRepository {
    * status has to be a key.
    *
    * @param organizationId - The workspace, from the tenant context.
+   * @param origins - The data origins to count (DJ.2) — `live` alone unless asked otherwise.
    * @returns The live split. An empty workspace's row is zeros.
    */
-  async runStatistics(organizationId: string): Promise<RunStatistics> {
+  async runStatistics(
+    organizationId: string,
+    origins: readonly DataOrigin[],
+  ): Promise<RunStatistics> {
     const row = await this.database.db
       .selectFrom("runs")
       .where("organization_id", "=", organizationId)
+      .where("origin", "in", [...origins])
       .select([
         sql<number>`count(*) filter (where status = ${"coding"})::int`.as("live_coding"),
         sql<number>`count(*) filter (where status = ${"building"})::int`.as("live_building"),
@@ -339,9 +354,17 @@ export class DashboardRepository {
    *
    * @param organizationId - The workspace, from the tenant context.
    * @param day - The UTC calendar day, `YYYY-MM-DD`.
-   * @returns The totals. A day with no events is zeros and no providers.
+   * @param origins - The data origins to total (DJ.2); the others are only reported present.
+   * @returns The totals. A day with no events of the asked origins is zeros, no providers and
+   *   `events` 0 — which the service reports as no data.
    */
-  async tokenTotals(organizationId: string, day: string): Promise<TokenTotals> {
+  async tokenTotals(
+    organizationId: string,
+    day: string,
+    origins: readonly DataOrigin[],
+  ): Promise<TokenTotals> {
+    const kept = sql<boolean>`origin = any(${[...origins]}::text[])`;
+
     return this.database.db
       .selectFrom("token_usage_daily")
       .where("organization_id", "=", organizationId)
@@ -349,10 +372,18 @@ export class DashboardRepository {
       .select([
         // A `bigint` and a `numeric` are handed back as text and stay text until the service
         // converts them once — see this file's header on where a cast belongs.
-        sql<string>`coalesce(sum(tokens_total), 0)::bigint::text`.as("tokens"),
-        sql<string>`coalesce(sum(cost_cents), 0)::numeric(14, 4)::text`.as("costCents"),
-        sql<number>`count(distinct provider)::int`.as("providers"),
-        sql<number>`coalesce(sum(unpriced_events), 0)::int`.as("unpricedEvents"),
+        sql<string>`coalesce(sum(tokens_total) filter (where ${kept}), 0)::bigint::text`.as(
+          "tokens",
+        ),
+        sql<string>`coalesce(sum(cost_cents) filter (where ${kept}), 0)::numeric(14, 4)::text`.as(
+          "costCents",
+        ),
+        sql<number>`count(distinct provider) filter (where ${kept})::int`.as("providers"),
+        sql<number>`coalesce(sum(unpriced_events) filter (where ${kept}), 0)::int`.as(
+          "unpricedEvents",
+        ),
+        sql<number>`coalesce(sum(events) filter (where ${kept}), 0)::int`.as("events"),
+        sql<DataOrigin[]>`coalesce(array_agg(distinct origin), '{}')`.as("originsPresent"),
       ])
       .executeTakeFirstOrThrow();
   }

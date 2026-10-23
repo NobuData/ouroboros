@@ -32,6 +32,10 @@ export class CalibrationController {
     @CurrentTenant() tenant: Organization,
     @Query() query: CalibrationQuery,
   ): Promise<CalibrationReport> {
-    return this.calibration.report(tenant.id, query.window ?? DEFAULT_CALIBRATION_WINDOW);
+    return this.calibration.report(
+      tenant.id,
+      query.window ?? DEFAULT_CALIBRATION_WINDOW,
+      query.origin,
+    );
   }
 }

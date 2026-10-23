@@ -11,6 +11,7 @@
 
 import { sql } from "kysely";
 
+import type { DataOrigin } from "../../../db/schema";
 import { dayBounds } from "../rollup.days";
 import { medianRow } from "../rollup.rows";
 import { joinRepo, num, REPO_REF } from "../rollup.sql";
@@ -19,19 +20,20 @@ import type { FamilyExtractor, RollupRow } from "../rollup.types";
 /** One graded merge. */
 interface EffortSample {
   repo_ref: string;
+  origin: DataOrigin;
   effort: string;
   ms: string;
 }
 
 export const effortExtractor: FamilyExtractor = {
   family: "effort",
-  metrics: { completion_time_by_effort: 1 },
+  metrics: { completion_time_by_effort: 2 },
 
   async extract(db, organizationId, day): Promise<RollupRow[]> {
     const { from, to } = dayBounds(day);
 
     const { rows } = await sql<EffortSample>`
-      select ${REPO_REF} as repo_ref, eo.predicted_effort as effort, eo.actual_duration_ms as ms
+      select ${REPO_REF} as repo_ref, pr.origin, eo.predicted_effort as effort, eo.actual_duration_ms as ms
         from ouroboros.estimate_outcomes eo
         join ouroboros.pull_requests pr on pr.id = eo.pr_id
         join ouroboros.runs r on r.id = pr.run_id
@@ -39,11 +41,19 @@ export const effortExtractor: FamilyExtractor = {
        where eo.organization_id = ${organizationId} and eo.predicted_effort is not null
          and eo.merged_at >= ${from} and eo.merged_at < ${to}`.execute(db);
 
-    const groups = new Map<string, { repoRef: string; effort: string; samples: number[] }>();
+    const groups = new Map<
+      string,
+      { repoRef: string; origin: DataOrigin; effort: string; samples: number[] }
+    >();
 
     for (const row of rows) {
-      const key = JSON.stringify([row.repo_ref, row.effort]);
-      const group = groups.get(key) ?? { repoRef: row.repo_ref, effort: row.effort, samples: [] };
+      const key = JSON.stringify([row.repo_ref, row.origin, row.effort]);
+      const group = groups.get(key) ?? {
+        repoRef: row.repo_ref,
+        origin: row.origin,
+        effort: row.effort,
+        samples: [],
+      };
 
       // A lead time is never negative in practice; clamped so a clock skew between the loop and
       // the host cannot make the whole day's fill refuse.
@@ -53,7 +63,12 @@ export const effortExtractor: FamilyExtractor = {
 
     return [...groups.values()].map((group) =>
       medianRow(
-        { repoRef: group.repoRef, metricId: "completion_time_by_effort", dimension: group.effort },
+        {
+          repoRef: group.repoRef,
+          origin: group.origin,
+          metricId: "completion_time_by_effort",
+          dimension: group.effort,
+        },
         group.samples,
       ),
     );

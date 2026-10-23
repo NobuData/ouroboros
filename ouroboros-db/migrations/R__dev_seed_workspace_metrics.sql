@@ -8,6 +8,10 @@
 -- `acme-robotics`. That covers the 30-day window the page opens on, the 30 days before it (every
 -- delta's prior window) and 30 more, so 7d, 30d and 90d each read a whole window.
 --
+-- **Origin (DJ.2, #1315).** Every `metric_daily` row here is `seeded`: it states no origin and
+-- `ouroboros.data_origin_default()` reads this file's `ouroboros.seed_origin`. V154 deleted the
+-- rollup history and its bookkeeping to rebuild them per origin; this file writes both again.
+--
 -- ---------------------------------------------------------------------------
 -- **Components are seeded. Values are computed.**
 -- ---------------------------------------------------------------------------

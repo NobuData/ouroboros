@@ -15,7 +15,7 @@ import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
 
 import { DatabaseService } from "../../db/db.service";
-import type { MetricAggregation, MetricDefinitionsTable } from "../../db/schema";
+import type { DataOrigin, MetricAggregation, MetricDefinitionsTable } from "../../db/schema";
 import type { Day, FamilyExtractor, RollupRow } from "../rollup/rollup.types";
 import type { DailyRow } from "./metrics.types";
 import type { DaySpan } from "./metrics.window";
@@ -34,6 +34,7 @@ export interface MetricDefinition {
   readonly proxy: boolean;
   readonly aggregation: MetricAggregation;
   readonly dimensionKind: MetricDefinitionsTable["dimension_kind"];
+  readonly originRule: string;
 }
 
 /** Which rows a scan or a tail keeps. */
@@ -56,6 +57,8 @@ interface StoredRow {
   numerator: string | null;
   denominator: string | null;
   meta: Record<string, unknown>;
+  origin: DataOrigin;
+  population: string | null;
 }
 
 @Injectable()
@@ -86,6 +89,7 @@ export class MetricsRepository {
         "proxy",
         "aggregation",
         "dimension_kind",
+        "origin_rule",
       ])
       .execute();
 
@@ -105,6 +109,7 @@ export class MetricsRepository {
           proxy: row.proxy,
           aggregation: row.aggregation,
           dimensionKind: row.dimension_kind,
+          originRule: row.origin_rule,
         },
       ]),
     );
@@ -135,7 +140,8 @@ export class MetricsRepository {
   }
 
   /**
-   * The stored daily rows over a span of days.
+   * The stored daily rows over a span of days, of **every** origin: the caller keeps the origin it
+   * was asked for and reports the others as present (DJ.2).
    *
    * @param organizationId - The workspace.
    * @param filter - Which metrics, repository and dimension.
@@ -158,6 +164,8 @@ export class MetricsRepository {
         "numerator",
         "denominator",
         "meta",
+        "origin",
+        "population",
       ])
       .where("organization_id", "=", organizationId)
       .where("metric_id", "in", [...filter.metricIds])
@@ -231,6 +239,8 @@ export function storedRow(row: StoredRow): DailyRow {
     metricId: row.metric_id,
     repoRef: row.repo_ref,
     dimension: row.dimension,
+    origin: row.origin,
+    population: row.population === null ? null : Number(row.population),
     value: Number(row.value),
     numerator: row.numerator === null ? null : Number(row.numerator),
     denominator: row.denominator === null ? null : Number(row.denominator),
@@ -252,6 +262,8 @@ function liveRow(day: Day, row: RollupRow): DailyRow {
     metricId: row.metricId,
     repoRef: row.repoRef,
     dimension: row.dimension,
+    origin: row.origin,
+    population: row.population,
     value: row.value,
     numerator: row.numerator ?? null,
     denominator: row.denominator ?? null,

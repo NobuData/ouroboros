@@ -47,12 +47,12 @@ describe("the dashboard repository", () => {
      */
     const everyRead: readonly [string, (repository: DashboardRepository) => Promise<unknown>][] = [
       ["version", (repository) => repository.version(WORKSPACE)],
-      ["runStatistics", (repository) => repository.runStatistics(WORKSPACE)],
+      ["runStatistics", (repository) => repository.runStatistics(WORKSPACE, ["live"])],
       ["activeRuns", (repository) => repository.activeRuns(WORKSPACE)],
       ["recentRuns", (repository) => repository.recentRuns(WORKSPACE)],
       ["queueTotals", (repository) => repository.queueTotals(WORKSPACE)],
       ["queueHead", (repository) => repository.queueHead(WORKSPACE)],
-      ["tokenTotals", (repository) => repository.tokenTotals(WORKSPACE, WINDOWS.day)],
+      ["tokenTotals", (repository) => repository.tokenTotals(WORKSPACE, WINDOWS.day, ["live"])],
       ["autoMerge", (repository) => repository.autoMerge(WORKSPACE)],
     ];
 
@@ -132,7 +132,7 @@ describe("the dashboard repository", () => {
     });
 
     it("counts every active status in a single pass", async () => {
-      await dashboard.runStatistics(WORKSPACE);
+      await dashboard.runStatistics(WORKSPACE, ["live"]);
 
       expect(database.statements).toHaveLength(1);
       expect(database.statements[0].sql.match(/filter \(/g)).toHaveLength(3);
@@ -141,15 +141,23 @@ describe("the dashboard repository", () => {
     it("computes no shared metric — those are the metrics service's (#437)", async () => {
       // A merged count, a mean cycle or a rate here would be a second implementation of a
       // registry metric, which is exactly what the amendment removed.
-      await dashboard.runStatistics(WORKSPACE);
+      await dashboard.runStatistics(WORKSPACE, ["live"]);
 
       const { sql } = database.statements[0];
       expect(sql).not.toContain("finished_at");
       expect(sql).not.toContain("avg(");
     });
 
+    it("counts the asked origins' runs only (DJ.2)", async () => {
+      await dashboard.runStatistics(WORKSPACE, ["live"]);
+
+      const { sql, parameters } = database.statements[0];
+      expect(sql).toContain('"origin" in ($');
+      expect(parameters).toContain("live");
+    });
+
     it("maps the row onto a record with every active status in it", async () => {
-      const statistics = await dashboard.runStatistics(WORKSPACE);
+      const statistics = await dashboard.runStatistics(WORKSPACE, ["live"]);
 
       expect(Object.keys(statistics.live).sort()).toEqual([...ACTIVE_RUN_STATUSES].sort());
       expect(statistics.live).toEqual({ coding: 1, building: 2, review: 3 });
@@ -214,16 +222,27 @@ describe("the dashboard repository", () => {
   describe("the day's token spend", () => {
     it("reads the view, which is what fixes the day to UTC", async () => {
       database.answers({
-        rows: [{ tokens: "4200000", costCents: "1860.0000", providers: 4, unpricedEvents: 3 }],
+        rows: [
+          {
+            tokens: "4200000",
+            costCents: "1860.0000",
+            providers: 4,
+            unpricedEvents: 3,
+            events: 12,
+            originsPresent: ["live", "seeded"],
+          },
+        ],
       });
 
-      const totals = await dashboard.tokenTotals(WORKSPACE, "2026-08-13");
+      const totals = await dashboard.tokenTotals(WORKSPACE, "2026-08-13", ["live"]);
 
       expect(totals).toEqual({
         tokens: "4200000",
         costCents: "1860.0000",
         providers: 4,
         unpricedEvents: 3,
+        events: 12,
+        originsPresent: ["live", "seeded"],
       });
       expect(database.statements[0].sql).toContain('"ouroboros"."token_usage_daily"');
     });
@@ -234,17 +253,29 @@ describe("the dashboard repository", () => {
       // any machine whose `TZ` is not UTC — silently, and only for part of the day.
       database.answers({ rows: [{}] });
 
-      await dashboard.tokenTotals(WORKSPACE, "2026-08-13");
+      await dashboard.tokenTotals(WORKSPACE, "2026-08-13", ["live"]);
 
       const { sql, parameters } = database.statements[0];
-      expect(sql).toContain('"day" = $2::date');
-      expect(parameters).toEqual([WORKSPACE, "2026-08-13"]);
+      expect(sql).toContain('"day" = $');
+      expect(sql).toMatch(/"day" = \$\d+::date/);
+      expect(parameters).toEqual(expect.arrayContaining([WORKSPACE, "2026-08-13"]));
+    });
+
+    it("totals only the asked origins, and reports every origin the day holds (DJ.2)", async () => {
+      database.answers({ rows: [{}] });
+
+      await dashboard.tokenTotals(WORKSPACE, "2026-08-13", ["simulated"]);
+
+      const { sql, parameters } = database.statements[0];
+      expect(sql).toContain("filter (where origin = any(");
+      expect(sql).toContain("array_agg(distinct origin)");
+      expect(parameters).toContainEqual(["simulated"]);
     });
 
     it("counts providers rather than events, which is what the subline says", async () => {
       database.answers({ rows: [{}] });
 
-      await dashboard.tokenTotals(WORKSPACE, "2026-08-13");
+      await dashboard.tokenTotals(WORKSPACE, "2026-08-13", ["live"]);
 
       expect(database.statements[0].sql).toContain("count(distinct provider)");
     });
@@ -252,7 +283,7 @@ describe("the dashboard repository", () => {
     it("leaves the wide numbers as text for the service to convert exactly once", async () => {
       database.answers({ rows: [{}] });
 
-      await dashboard.tokenTotals(WORKSPACE, "2026-08-13");
+      await dashboard.tokenTotals(WORKSPACE, "2026-08-13", ["live"]);
 
       const { sql } = database.statements[0];
       expect(sql).toContain("::bigint::text");
@@ -284,7 +315,7 @@ describe("the dashboard repository", () => {
       await dashboard.autoMerge(WORKSPACE);
       await dashboard.queueHead(WORKSPACE);
       await dashboard.version(WORKSPACE);
-      await dashboard.runStatistics(WORKSPACE);
+      await dashboard.runStatistics(WORKSPACE, ["live"]);
 
       for (const statement of database.sql()) {
         expect(statement).toMatch(/^select /);

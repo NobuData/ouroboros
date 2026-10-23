@@ -13,6 +13,10 @@
  * detection, MTTR's streaks, a median — the twin decides it in SQL: regular expressions, window
  * functions, `percentile_cont`. Only the definitions are shared, and those are the registry's.
  *
+ * **Per origin** (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315)): every twin
+ * groups by the origin of the row that defines its population — the PR, the build job, the usage
+ * row, the test run, the run — so a window is compared per (repository, dimension, origin).
+ *
  * Not shipped: `*.fixture.ts` is excluded from the build.
  */
 
@@ -22,19 +26,20 @@ import type { MetricAggregation } from "../../db/schema";
 import { addDays } from "./rollup.days";
 import type { Day } from "./rollup.types";
 
-/** A window's value for one (repository, dimension): a number, or a rate's components. */
+/** A window's value for one (repository, dimension, origin): a number, or a rate's components. */
 export type WindowValue = { value: number } | { numerator: number; denominator: number };
 
 /** A window's values, keyed by {@link windowKey}. */
 export type WindowValues = Map<string, WindowValue>;
 
-/** One twin: the metric over `[from, to]` (whole UTC days), per repository and dimension. */
+/** One twin: the metric over `[from, to]` (whole UTC days), per repository, dimension and origin. */
 type Oracle = (sql: Pool, organizationId: string, from: Date, to: Date) => Promise<WindowValues>;
 
 /** A grouped row as the twins and the re-derivation return it. */
 interface GroupRow {
   repo_ref: string;
   dimension: string;
+  origin: string;
   value?: string | number | null;
   numerator?: string | number | null;
   denominator?: string | number | null;
@@ -45,10 +50,12 @@ interface GroupRow {
  *
  * @param repoRef - The repository.
  * @param dimension - The dimension, `""` when none.
- * @returns `repo|dimension`.
+ * @param origin - The data origin of the rows behind the value; `live` — what a fixture's runs are
+ *   unless it says otherwise — when omitted.
+ * @returns `repo|dimension|origin`.
  */
-export function windowKey(repoRef: string, dimension: string): string {
-  return `${repoRef}|${dimension}`;
+export function windowKey(repoRef: string, dimension: string, origin = "live"): string {
+  return `${repoRef}|${dimension}|${origin}`;
 }
 
 /**
@@ -65,7 +72,7 @@ async function grouped(sql: Pool, text: string, params: unknown[]): Promise<Wind
   const out: WindowValues = new Map();
 
   for (const row of rows) {
-    const key = windowKey(row.repo_ref, row.dimension);
+    const key = windowKey(row.repo_ref, row.dimension, row.origin);
 
     if (row.denominator !== undefined) {
       if (Number(row.denominator) > 0) {
@@ -127,17 +134,17 @@ export const ORACLES: Readonly<Record<string, Oracle>> = {
   merged_prs: (sql, org, from, to) =>
     grouped(
       sql,
-      `select repo as repo_ref, '' as dimension, count(*) as value
-                    from (${MERGED_LOOP_PRS}) m group by repo`,
+      `select repo as repo_ref, '' as dimension, m.origin, count(*) as value
+                    from (${MERGED_LOOP_PRS}) m group by repo, m.origin`,
       [org, from, to],
     ),
 
   merge_rate: (sql, org, from, to) =>
     grouped(
       sql,
-      `select repo as repo_ref, '' as dimension,
+      `select repo as repo_ref, '' as dimension, origin,
               sum(case when autonomous then 1 else 0 end) as numerator, count(*) as denominator
-         from (select ${REPO} as repo,
+         from (select ${REPO} as repo, pr.origin,
                       pr.state = 'merged' and r.status = 'merged'
                         and (select count(*) from ouroboros.guardrail_evaluations g
                               where g.run_id = r.id and g.verdict = 'fail') = 0 as autonomous
@@ -150,56 +157,56 @@ export const ORACLES: Readonly<Record<string, Oracle>> = {
                         when 'closed' then r.finished_at >= $2 and r.finished_at < $3
                         else false
                       end) closed
-        group by repo`,
+        group by repo, origin`,
       [org, from, to],
     ),
 
   merged_untouched_rate: (sql, org, from, to) =>
     grouped(
       sql,
-      `select repo as repo_ref, '' as dimension,
+      `select repo as repo_ref, '' as dimension, origin,
               count(*) filter (where human_pushes = 0) as numerator, count(*) as denominator
-         from (select m.repo,
+         from (select m.repo, m.origin,
                       (select count(*) from ouroboros.pr_revisions v
                         where v.pr_id = m.id
                           and v.head_sha not in (select c.sha from ouroboros.run_commits c
                                                   where c.run_id = m.run_id)) as human_pushes
                  from (${MERGED_LOOP_PRS}) m) graded
-        group by repo`,
+        group by repo, origin`,
       [org, from, to],
     ),
 
   human_interventions: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, e.cause as dimension, count(*) as value
+      `select ${REPO} as repo_ref, e.cause as dimension, r.origin, count(*) as value
          from ouroboros.intervention_events e
          join ouroboros.runs r on r.id = e.run_id
          ${RUN_REPO}
         where e.organization_id = $1 and e.detected_at >= $2 and e.detected_at < $3
-        group by 1, 2`,
+        group by 1, 2, r.origin`,
       [org, from, to],
     ),
 
   cycle_time: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, '' as dimension,
+      `select ${REPO} as repo_ref, '' as dimension, r.origin,
               percentile_cont(0.5) within group (order by ${elapsedMs("r.started_at", "r.finished_at")}) as value
          from ouroboros.runs r
          ${RUN_REPO}
         where r.organization_id = $1 and r.status = 'merged'
           and r.finished_at >= $2 and r.finished_at < $3
-        group by 1`,
+        group by 1, r.origin`,
       [org, from, to],
     ),
 
   stage_duration: (sql, org, from, to) =>
     grouped(
       sql,
-      `select repo as repo_ref, stage_key as dimension,
+      `select repo as repo_ref, stage_key as dimension, origin,
               percentile_cont(0.5) within group (order by ms) as value
-         from (select ${REPO} as repo, s.stage_key,
+         from (select ${REPO} as repo, r.origin, s.stage_key,
                       sum(${elapsedMs("s.started_at", "s.finished_at")}) as ms
                  from ouroboros.runs r
                  join ouroboros.run_stages s on s.run_id = r.id
@@ -207,175 +214,177 @@ export const ORACLES: Readonly<Record<string, Oracle>> = {
                 where r.organization_id = $1 and r.status = 'merged'
                   and r.finished_at >= $2 and r.finished_at < $3
                   and s.started_at is not null and s.finished_at is not null
-                group by 1, r.id, s.stage_key) per_loop
-        group by repo, stage_key`,
+                group by 1, r.origin, r.id, s.stage_key) per_loop
+        group by repo, stage_key, origin`,
       [org, from, to],
     ),
 
   cost_cents: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, '' as dimension, sum(tu.cost_cents) as value
+      `select ${REPO} as repo_ref, '' as dimension, tu.origin, sum(tu.cost_cents) as value
          from ouroboros.token_usage tu
          join ouroboros.runs r on r.id = tu.run_id
          ${RUN_REPO}
         where tu.organization_id = $1 and tu.cost_cents is not null
           and tu.occurred_at >= $2 and tu.occurred_at < $3
-        group by 1`,
+        group by 1, tu.origin`,
       [org, from, to],
     ),
 
   tokens: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, '' as dimension, sum(tu.tokens_in + tu.tokens_out) as value
+      `select ${REPO} as repo_ref, '' as dimension, tu.origin, sum(tu.tokens_in + tu.tokens_out) as value
          from ouroboros.token_usage tu
          join ouroboros.runs r on r.id = tu.run_id
          ${RUN_REPO}
         where tu.organization_id = $1 and tu.occurred_at >= $2 and tu.occurred_at < $3
-        group by 1`,
+        group by 1, tu.origin`,
       [org, from, to],
     ),
 
   tokens_by_task_kind: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, btrim(tu.task_kind) as dimension,
+      `select ${REPO} as repo_ref, btrim(tu.task_kind) as dimension, tu.origin,
               sum(tu.tokens_in + tu.tokens_out) as value
          from ouroboros.token_usage tu
          join ouroboros.runs r on r.id = tu.run_id
          ${RUN_REPO}
         where tu.organization_id = $1 and btrim(tu.task_kind) <> ''
           and tu.occurred_at >= $2 and tu.occurred_at < $3
-        group by 1, 2`,
+        group by 1, 2, tu.origin`,
       [org, from, to],
     ),
 
   local_tokens: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, '' as dimension, sum(tu.tokens_in + tu.tokens_out) as value
+      `select ${REPO} as repo_ref, '' as dimension, tu.origin, sum(tu.tokens_in + tu.tokens_out) as value
          from ouroboros.token_usage tu
          join ouroboros.runs r on r.id = tu.run_id
          ${RUN_REPO}
         where tu.organization_id = $1 and tu.provider in ('ollama', 'openai_compatible')
           and tu.occurred_at >= $2 and tu.occurred_at < $3
-        group by 1`,
+        group by 1, tu.origin`,
       [org, from, to],
     ),
 
   unpriced_tokens: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, '' as dimension, sum(tu.tokens_in + tu.tokens_out) as value
+      `select ${REPO} as repo_ref, '' as dimension, tu.origin, sum(tu.tokens_in + tu.tokens_out) as value
          from ouroboros.token_usage tu
          join ouroboros.runs r on r.id = tu.run_id
          ${RUN_REPO}
         where tu.organization_id = $1 and tu.cost_cents is null
           and tu.occurred_at >= $2 and tu.occurred_at < $3
-        group by 1`,
+        group by 1, tu.origin`,
       [org, from, to],
     ),
 
   cost_per_merged_pr: (sql, org, from, to) =>
     grouped(
       sql,
-      `select spend.repo as repo_ref, '' as dimension, spend.cents as numerator, merged.n as denominator
-         from (select ${REPO} as repo, sum(tu.cost_cents) as cents
+      `select spend.repo as repo_ref, '' as dimension, spend.origin,
+              spend.cents as numerator, merged.n as denominator
+         from (select ${REPO} as repo, tu.origin, sum(tu.cost_cents) as cents
                  from ouroboros.token_usage tu
                  join ouroboros.runs r on r.id = tu.run_id
                  ${RUN_REPO}
                 where tu.organization_id = $1 and tu.cost_cents is not null
                   and tu.occurred_at >= $2 and tu.occurred_at < $3
-                group by 1) spend
-         join (select repo, count(*) as n from (${MERGED_LOOP_PRS}) m group by repo) merged
-           on merged.repo = spend.repo`,
+                group by 1, tu.origin) spend
+         join (select repo, m.origin, count(*) as n from (${MERGED_LOOP_PRS}) m
+                group by repo, m.origin) merged
+           on merged.repo = spend.repo and merged.origin = spend.origin`,
       [org, from, to],
     ),
 
   builds: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, '' as dimension, count(*) as value
+      `select ${REPO} as repo_ref, '' as dimension, b.origin, count(*) as value
          from ouroboros.build_jobs b
          ${JOB_REPO}
         where b.organization_id = $1 and b.status in ('succeeded', 'failed', 'retried')
           and b.finished_at >= $2 and b.finished_at < $3
-        group by 1`,
+        group by 1, b.origin`,
       [org, from, to],
     ),
 
   build_failures: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, '' as dimension, count(*) as value
+      `select ${REPO} as repo_ref, '' as dimension, b.origin, count(*) as value
          from ouroboros.build_jobs b
          ${JOB_REPO}
         where b.organization_id = $1 and b.status in ('failed', 'retried')
           and b.finished_at >= $2 and b.finished_at < $3
-        group by 1`,
+        group by 1, b.origin`,
       [org, from, to],
     ),
 
   build_duration: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, b.label as dimension,
+      `select ${REPO} as repo_ref, b.label as dimension, b.origin,
               percentile_cont(0.5) within group (
                 order by round(extract(epoch from (b.finished_at - b.started_at)) * 1000)) as value
          from ouroboros.build_jobs b
          ${JOB_REPO}
         where b.organization_id = $1 and b.status = 'succeeded' and b.started_at is not null
           and b.finished_at >= $2 and b.finished_at < $3
-        group by 1, b.label`,
+        group by 1, b.label, b.origin`,
       [org, from, to],
     ),
 
   queue_wait: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, p.name as dimension,
+      `select ${REPO} as repo_ref, p.name as dimension, b.origin,
               percentile_cont(0.5) within group (
                 order by greatest(round(extract(epoch from (b.started_at - b.queued_at)) * 1000), 0)) as value
          from ouroboros.build_jobs b
          ${JOB_REPO}
          join ouroboros.runner_pools p on p.id = b.pool_id
         where b.organization_id = $1 and b.started_at >= $2 and b.started_at < $3
-        group by 1, p.name`,
+        group by 1, p.name, b.origin`,
       [org, from, to],
     ),
 
   build_success_rate: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, '' as dimension,
+      `select ${REPO} as repo_ref, '' as dimension, b.origin,
               sum((b.status = 'succeeded')::int) as numerator, count(*) as denominator
          from ouroboros.build_jobs b
          ${JOB_REPO}
         where b.organization_id = $1 and b.status in ('succeeded', 'failed', 'retried')
           and b.finished_at >= $2 and b.finished_at < $3
-        group by 1`,
+        group by 1, b.origin`,
       [org, from, to],
     ),
 
   test_cases_run: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, '' as dimension, sum(s.total - s.skipped) as value
+      `select ${REPO} as repo_ref, '' as dimension, t.origin, sum(s.total - s.skipped) as value
          from ouroboros.test_suites s
          join ouroboros.test_runs t on t.id = s.test_run_id
          join ouroboros.runs r on r.id = t.run_id
          ${RUN_REPO}
         where t.organization_id = $1 and t.status in ('complete', 'error')
           and t.started_at >= $2 and t.started_at < $3
-        group by 1`,
+        group by 1, t.origin`,
       [org, from, to],
     ),
 
   test_pass_rate: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, '' as dimension,
+      `select ${REPO} as repo_ref, '' as dimension, t.origin,
               sum(s.total - s.skipped - s.failed) as numerator, sum(s.total - s.skipped) as denominator
          from ouroboros.test_suites s
          join ouroboros.test_runs t on t.id = s.test_run_id
@@ -383,21 +392,22 @@ export const ORACLES: Readonly<Record<string, Oracle>> = {
          ${RUN_REPO}
         where t.organization_id = $1 and t.status in ('complete', 'error')
           and t.started_at >= $2 and t.started_at < $3
-        group by 1`,
+        group by 1, t.origin`,
       [org, from, to],
     ),
 
   test_failures_by_suite: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, btrim(left(btrim(s.name), 200)) as dimension, sum(s.failed) as value
+      `select ${REPO} as repo_ref, btrim(left(btrim(s.name), 200)) as dimension, t.origin,
+              sum(s.failed) as value
          from ouroboros.test_suites s
          join ouroboros.test_runs t on t.id = s.test_run_id
          join ouroboros.runs r on r.id = t.run_id
          ${RUN_REPO}
         where t.organization_id = $1 and t.status in ('complete', 'error')
           and t.started_at >= $2 and t.started_at < $3
-        group by 1, 2
+        group by 1, 2, t.origin
        having sum(s.failed) > 0`,
       [org, from, to],
     ),
@@ -405,7 +415,7 @@ export const ORACLES: Readonly<Record<string, Oracle>> = {
   completion_time_by_effort: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, eo.predicted_effort as dimension,
+      `select ${REPO} as repo_ref, eo.predicted_effort as dimension, pr.origin,
               percentile_cont(0.5) within group (order by greatest(0, eo.actual_duration_ms)) as value
          from ouroboros.estimate_outcomes eo
          join ouroboros.pull_requests pr on pr.id = eo.pr_id
@@ -413,30 +423,30 @@ export const ORACLES: Readonly<Record<string, Oracle>> = {
          ${RUN_REPO}
         where eo.organization_id = $1 and eo.predicted_effort is not null
           and eo.merged_at >= $2 and eo.merged_at < $3
-        group by 1, 2`,
+        group by 1, 2, pr.origin`,
       [org, from, to],
     ),
 
   deploy_frequency: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, '' as dimension, count(*) as value
+      `select ${REPO} as repo_ref, '' as dimension, b.origin, count(*) as value
          from ouroboros.build_jobs b
          ${JOB_REPO}
         where b.organization_id = $1 and b.status = 'succeeded'
           and b.finished_at >= $2 and b.finished_at < $3
           and regexp_replace(b.git_ref, '^refs/heads/', '') = gr.default_branch
-        group by 1`,
+        group by 1, b.origin`,
       [org, from, to],
     ),
 
   lead_time: (sql, org, from, to) =>
     grouped(
       sql,
-      `select repo as repo_ref, '' as dimension,
+      `select repo as repo_ref, '' as dimension, m.origin,
               sum(${elapsedMs("m.run_started_at", "m.merged_at")}) as numerator, count(*) as denominator
          from (${MERGED_LOOP_PRS}) m
-        group by repo`,
+        group by repo, m.origin`,
       [org, from, to],
     ),
 
@@ -456,7 +466,7 @@ export const ORACLES: Readonly<Record<string, Oracle>> = {
            ${RUN_REPO}
           where r.organization_id = $1
        )
-       select m.repo as repo_ref, '' as dimension,
+       select m.repo as repo_ref, '' as dimension, m.origin,
               count(*) filter (where exists (
                 select 1 from reverts v
                  where v.target = btrim(m.title) and v.at > m.merged_at
@@ -466,7 +476,7 @@ export const ORACLES: Readonly<Record<string, Oracle>> = {
               )) as numerator,
               count(*) as denominator
          from (${MERGED_LOOP_PRS}) m
-        group by m.repo`,
+        group by m.repo, m.origin`,
       [org, from, to],
     ),
 
@@ -474,7 +484,7 @@ export const ORACLES: Readonly<Record<string, Oracle>> = {
     grouped(
       sql,
       `with jobs as (
-         select b.run_id, ${REPO} as repo, b.status, b.finished_at,
+         select b.run_id, ${REPO} as repo, b.origin, b.status, b.finished_at,
                 count(*) filter (where b.status = 'succeeded')
                   over (partition by b.run_id order by b.finished_at, b.number
                         rows between unbounded preceding and 1 preceding) as greens_before
@@ -487,12 +497,12 @@ export const ORACLES: Readonly<Record<string, Oracle>> = {
          select run_id, greens_before, min(finished_at) as first_red
            from jobs where status <> 'succeeded' group by run_id, greens_before
        )
-       select g.repo as repo_ref, '' as dimension,
+       select g.repo as repo_ref, '' as dimension, g.origin,
               sum(${elapsedMs("s.first_red", "g.finished_at")}) as numerator, count(*) as denominator
          from jobs g
          join streaks s on s.run_id = g.run_id and s.greens_before = g.greens_before
         where g.status = 'succeeded' and g.finished_at >= $2 and g.finished_at < $3
-        group by g.repo`,
+        group by g.repo, g.origin`,
       [org, from, to],
     ),
 };
@@ -506,7 +516,7 @@ export const ORACLES: Readonly<Record<string, Oracle>> = {
  * @param aggregation - Its registry aggregation.
  * @param from - The window's first day.
  * @param to - Its last day, inclusive.
- * @returns The window per (repository, dimension).
+ * @returns The window per (repository, dimension, origin).
  */
 export function rewindow(
   sql: Pool,
@@ -523,29 +533,29 @@ export function rewindow(
     case "sum":
       return grouped(
         sql,
-        `select d.repo_ref, d.dimension, sum(d.value) as value
+        `select d.repo_ref, d.dimension, d.origin, sum(d.value) as value
                              from ouroboros.metric_daily d where ${where}
-                            group by 1, 2`,
+                            group by 1, 2, 3`,
         params,
       );
     case "ratio":
       return grouped(
         sql,
-        `select d.repo_ref, d.dimension,
+        `select d.repo_ref, d.dimension, d.origin,
                                   sum(d.numerator) as numerator, sum(d.denominator) as denominator
                              from ouroboros.metric_daily d where ${where}
-                            group by 1, 2`,
+                            group by 1, 2, 3`,
         params,
       );
     case "median":
       return grouped(
         sql,
-        `select d.repo_ref, d.dimension,
+        `select d.repo_ref, d.dimension, d.origin,
                                   percentile_cont(0.5) within group (order by s::numeric) as value
                              from ouroboros.metric_daily d,
                                   jsonb_array_elements_text(d.meta -> 'samples') s
                             where ${where}
-                            group by 1, 2`,
+                            group by 1, 2, 3`,
         params,
       );
   }

@@ -73,6 +73,16 @@ describe("the metrics repository", () => {
       );
     });
 
+    it("reads every origin's rows, so the service can say which are present (DJ.2)", async () => {
+      await repository.scan(ORG, FILTER, SPAN);
+
+      const { sql } = database.statements[0];
+
+      expect(sql).toContain('"origin"');
+      expect(sql).toContain('"population"');
+      expect(sql).not.toContain('"origin" =');
+    });
+
     it("issues nothing for an empty span or no metrics", async () => {
       expect(await repository.scan(ORG, FILTER, { from: "2026-09-02", to: "2026-09-01" })).toEqual(
         [],
@@ -93,6 +103,8 @@ describe("the metrics repository", () => {
             numerator: null,
             denominator: null,
             meta: { samples: [800000, 860000, 900000], label: "x", cost_cents: 912 },
+            origin: "seeded",
+            population: "3",
           },
         ],
       });
@@ -104,6 +116,8 @@ describe("the metrics repository", () => {
         metricId: "cycle_time",
         repoRef: "acme/helios",
         dimension: "",
+        origin: "seeded",
+        population: 3,
         value: 860000,
         numerator: null,
         denominator: null,
@@ -119,16 +133,32 @@ describe("the metrics repository", () => {
       family: "throughput",
       metrics: { merged_prs: 1, merge_rate: 1 },
       extract: jest.fn().mockResolvedValue([
-        { repoRef: "acme/helios", metricId: "merged_prs", dimension: "", value: 2 },
+        {
+          repoRef: "acme/helios",
+          metricId: "merged_prs",
+          dimension: "",
+          origin: "live",
+          population: 2,
+          value: 2,
+        },
         {
           repoRef: "acme/helios",
           metricId: "merge_rate",
           dimension: "",
+          origin: "live",
+          population: 2,
           value: 50,
           numerator: 1,
           denominator: 2,
         },
-        { repoRef: "acme/zephyr", metricId: "merged_prs", dimension: "", value: 1 },
+        {
+          repoRef: "acme/zephyr",
+          metricId: "merged_prs",
+          dimension: "",
+          origin: "simulated",
+          population: 1,
+          value: 1,
+        },
       ]),
     };
 
@@ -152,6 +182,8 @@ describe("the metrics repository", () => {
           metricId: "merged_prs",
           repoRef: "acme/zephyr",
           dimension: "",
+          origin: "simulated",
+          population: 1,
           value: 1,
           numerator: null,
           denominator: null,
@@ -186,6 +218,7 @@ describe("the metrics repository", () => {
           proxy: false,
           aggregation: "ratio",
           dimension_kind: null,
+          origin_rule: "Split per origin.",
         },
       ],
     });
@@ -205,6 +238,7 @@ describe("the metrics repository", () => {
       proxy: false,
       aggregation: "ratio",
       dimensionKind: null,
+      originRule: "Split per origin.",
     });
   });
 
@@ -219,6 +253,8 @@ describe("the metrics repository", () => {
         numerator: "3",
         denominator: "4",
         meta: {},
+        origin: "live",
+        population: null,
       }),
     ).toMatchObject({ repoRef: null, value: 75, numerator: 3, denominator: 4, samples: [] });
   });

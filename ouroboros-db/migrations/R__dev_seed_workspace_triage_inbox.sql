@@ -782,3 +782,36 @@ select item.id, item.organization_id, seed.action_id, seed.resolver, person."id"
    and not exists (select 1 from ouroboros.decision_resolutions r where r.item_id = item.id)
    and ${ouro_dev_seed}
 on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- The count behind each seeded rollup number (DJ.2, #1315).
+--
+-- The rollup job records how many source rows are behind every row it writes
+-- (`metric_daily.population`, V154). The seeded ledgers above and in the two metrics seeds state
+-- figures, not populations, so they are given the one each figure implies: a rate's denominator, a
+-- median's sample count, and a count's own value. A total of cents, tokens or milliseconds implies
+-- none and stays null. This file runs last of the three (Flyway orders repeatables by
+-- description), and the statement is dynamic so the file still parses against a pre-V154 schema
+-- (ci/db rehearses V141 against V140 with every seed applied).
+-- ---------------------------------------------------------------------------
+do $seed$
+begin
+  if ${ouro_dev_seed}
+     and exists (select 1 from information_schema.columns
+                  where table_schema = 'ouroboros' and table_name = 'metric_daily'
+                    and column_name = 'population') then
+    execute $q$
+      update ouroboros.metric_daily d
+         set population = case
+               when d.is_rate then ceil(d.denominator)::bigint
+               when d.meta ? 'samples' then jsonb_array_length(d.meta -> 'samples')
+               when def.unit = 'count' then ceil(d.value)::bigint
+             end
+        from ouroboros.metric_definitions def
+       where def.metric_id = d.metric_id
+         and d.origin = 'seeded'
+         and d.population is null
+    $q$;
+  end if;
+end
+$seed$;

@@ -168,13 +168,25 @@ export function spikeOf(points: readonly InsightsCostPoint[]): InsightsCostSpike
 }
 
 /**
+ * Whether a window holds no data of the asked origin (DJ.2) — its chart then has no points rather
+ * than a line of zeros.
+ *
+ * @param window - The window.
+ * @returns True when the figure is null over no source rows.
+ */
+function noData(window: MetricWindow): boolean {
+  return window.value === null && window.n === 0;
+}
+
+/**
  * The page's three series.
  *
  * @param windows - The range's windows.
  * @param quarter - The 90-day cost windows the projection reads.
  * @param caps - The workspace's provider caps.
  * @param usage - The window's money state: with no priced usage there is no guide to compare to.
- * @returns Throughput, cost and builds.
+ * @returns Throughput, cost and builds. A chart whose window holds no data of the asked origin
+ *   has no points (DJ.2): never a line of zeros.
  */
 export function seriesOf(
   windows: Windows,
@@ -186,17 +198,22 @@ export function seriesOf(
   const cost = windowOf(windows, "cost_cents");
   const builds = windowOf(windows, "builds");
   const failures = windowOf(windows, "build_failures").series;
-  const points: InsightsCostPoint[] = dailyMoney(windows).map(({ day, money }) => ({
-    day,
-    tokens: money.tokens,
-    ...(money.costCents === undefined ? {} : { costCents: money.costCents }),
-  }));
+  const points: InsightsCostPoint[] = noData(windowOf(windows, "tokens"))
+    ? []
+    : dailyMoney(windows).map(({ day, money }) => ({
+        day,
+        tokens: money.tokens,
+        ...(money.costCents === undefined ? {} : { costCents: money.costCents }),
+      }));
   const budget = usage.pricing === "priced" ? budgetOf(caps, cost.to) : undefined;
   const projection = projectionOf(quarter, cost.to);
   const spike = spikeOf(points);
 
   return {
-    throughput: { points: throughputPoints(windows), methodology: merged.methodology },
+    throughput: {
+      points: noData(merged) ? [] : throughputPoints(windows),
+      methodology: merged.methodology,
+    },
     cost: {
       points,
       ...(budget ? { budget } : {}),
@@ -205,11 +222,13 @@ export function seriesOf(
       methodology: cost.methodology,
     },
     builds: {
-      points: builds.series.map((point, index) => {
-        const failed = failures[index].value ?? 0;
+      points: noData(builds)
+        ? []
+        : builds.series.map((point, index) => {
+            const failed = failures[index].value ?? 0;
 
-        return { day: point.day, succeeded: (point.value ?? 0) - failed, failed };
-      }),
+            return { day: point.day, succeeded: (point.value ?? 0) - failed, failed };
+          }),
       methodology: builds.methodology,
     },
   };

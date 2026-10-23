@@ -24,6 +24,7 @@ import { Inject, Injectable, Optional } from "@nestjs/common";
 
 import { FlakeStateService } from "../../flakes/flake-state.service";
 import { CalibrationService } from "../calibration.service";
+import { DEFAULT_ORIGIN, type OriginFilter } from "../metrics/metrics.origin";
 import { METRICS_CLOCK, MetricsService } from "../metrics/metrics.service";
 import type { MetricRange } from "../metrics/metrics.window";
 import { dayBounds } from "../rollup/rollup.days";
@@ -79,6 +80,8 @@ export interface InsightsRequest {
   readonly range: MetricRange;
   /** One repository's `owner/name`, or undefined for the whole workspace. */
   readonly repo?: string;
+  /** Which data origin the figures are computed from (DJ.2); `live` when omitted. */
+  readonly origin?: OriginFilter;
   /**
    * The instant to read as of, instead of the clock's. The weekly digest (#440) passes its
    * scheduled slot, so a run that starts late still reports the week its slot names. No route
@@ -117,7 +120,8 @@ export class InsightsPageService {
     const now = request.now ?? new Date(this.clock());
     // The mirror stores accounts and repositories lower-case, so the grain's `repo_ref` is too.
     const repo = request.repo?.toLowerCase();
-    const scope = { organizationId, repo, range: request.range, now };
+    const origin = request.origin ?? DEFAULT_ORIGIN;
+    const scope = { organizationId, repo, origin, range: request.range, now };
 
     const [
       week,
@@ -142,7 +146,7 @@ export class InsightsPageService {
       this.metrics.breakdown("completion_time_by_effort", scope),
       this.metrics.breakdown("tokens_by_task_kind", scope),
       this.scoreboard.scoreboard(scope),
-      this.calibration.report(organizationId, request.range),
+      this.calibration.report(organizationId, request.range, origin),
       this.repository.caps(organizationId),
       this.repository.freshness(organizationId),
     ]);
@@ -157,6 +161,7 @@ export class InsightsPageService {
 
     return insightsResource({
       range: request.range,
+      origin,
       repo: repo ?? null,
       week,
       windows,

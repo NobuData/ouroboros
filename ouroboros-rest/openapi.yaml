@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.42.2"
+  version: "0.43.0"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -1714,6 +1714,7 @@ paths:
         what it was sent.
       operationId: readDashboard
       parameters:
+        - $ref: "#/components/parameters/InsightsOrigin"
         - $ref: "#/components/parameters/TenantHeader"
       responses:
         "200":
@@ -1747,6 +1748,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/Dashboard"
               example:
+                origin: "live"
+                originsPresent: ["live"]
+                mixed: false
                 stats:
                   loopsLive:
                     total: 3
@@ -12532,6 +12536,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/InsightsRange"
         - $ref: "#/components/parameters/InsightsRepo"
+        - $ref: "#/components/parameters/InsightsOrigin"
         - $ref: "#/components/parameters/TenantHeader"
       responses:
         "200":
@@ -12541,6 +12546,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/Insights"
               example:
+                origin: "live"
+                originsPresent: ["live"]
+                mixed: false
                 range: "7d"
                 window:
                   from: "2026-09-25"
@@ -12559,6 +12567,7 @@ paths:
                   - key: "autonomous_merge_rate"
                     unit: "pct"
                     value: 95.45454545454545
+                    n: 22
                     prior: 92.5925925925926
                     delta: 2.861952861952858
                     trend:
@@ -12580,9 +12589,11 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "ratio"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   - key: "merged_untouched_rate"
                     unit: "pct"
                     value: 76.19047619047619
+                    n: 22
                     prior: 80
                     delta: -3.80952380952381
                     trend:
@@ -12603,9 +12614,11 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "ratio"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   - key: "cycle_time"
                     unit: "duration_ms"
                     value: 820000
+                    n: 22
                     prior: 860000
                     delta: -40000
                     trend:
@@ -12627,9 +12640,11 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "median"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   - key: "cost_per_merged_pr"
                     unit: "cents"
                     value: 203.61904761904762
+                    n: 22
                     prior: 242.12
                     delta: -38.500952380952384
                     trend:
@@ -12650,9 +12665,11 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "ratio"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   - key: "human_interventions"
                     unit: "count"
                     value: 8
+                    n: 22
                     prior: 2
                     delta: 6
                     trend:
@@ -12678,6 +12695,7 @@ paths:
                       version: 2
                       proxy: false
                       aggregation: "sum"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                 series:
                   throughput:
                     points:
@@ -12720,6 +12738,7 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "sum"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   cost:
                     points:
                       - day: "2026-09-25"
@@ -12764,6 +12783,7 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "sum"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   builds:
                     points:
                       - day: "2026-09-25"
@@ -12802,6 +12822,7 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "sum"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                 hbars:
                   interventions:
                     unit: "count"
@@ -12837,6 +12858,7 @@ paths:
                       version: 2
                       proxy: false
                       aggregation: "sum"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   stages:
                     unit: "duration_ms"
                     total: null
@@ -12876,6 +12898,7 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "median"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   suites:
                     unit: "count"
                     total: 21
@@ -12909,6 +12932,7 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "sum"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   effort:
                     unit: "duration_ms"
                     total: null
@@ -12947,6 +12971,7 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "median"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   tokens:
                     unit: "tokens"
                     total: 27846076
@@ -12989,10 +13014,12 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "sum"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                 performance:
                   - key: "builds"
                     unit: "count"
                     value: 110
+                    n: 22
                     methodology:
                       metricId: "builds"
                       title: "Builds"
@@ -13008,9 +13035,11 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "sum"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   - key: "build_success_rate"
                     unit: "pct"
                     value: 93.63636363636364
+                    n: 22
                     components:
                       numerator: 103
                       denominator: 110
@@ -13027,9 +13056,11 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "ratio"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   - key: "test_cases_run"
                     unit: "count"
                     value: 5622
+                    n: 22
                     methodology:
                       metricId: "test_cases_run"
                       title: "Test cases run"
@@ -13043,9 +13074,11 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "sum"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   - key: "test_pass_rate"
                     unit: "pct"
                     value: 99.62646744930629
+                    n: 22
                     components:
                       numerator: 5601
                       denominator: 5622
@@ -13062,9 +13095,11 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "ratio"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   - key: "tokens"
                     unit: "tokens"
                     value: 27846076
+                    n: 22
                     methodology:
                       metricId: "tokens"
                       title: "Tokens"
@@ -13076,9 +13111,11 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "sum"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   - key: "total_cost"
                     unit: "cents"
                     value: 4276
+                    n: 22
                     methodology:
                       metricId: "cost_cents"
                       title: "Total cost"
@@ -13090,6 +13127,7 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "sum"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                 flaky:
                   cases:
                     - caseKey: "79275912bb600b59a37eeb9af39ccef4db60dc3f3843ce53f5c80add49ac583c"
@@ -13116,6 +13154,9 @@ paths:
                           ratePct: 40
                       platform: "qemu_cortex_m3"
                 scoreboard:
+                  origin: "live"
+                  originsPresent: ["live"]
+                  mixed: false
                   range: "7d"
                   window:
                     from: "2026-09-25"
@@ -13141,6 +13182,7 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "ratio"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                     costPerSuccess:
                       metricId: "scoreboard_cost_per_success"
                       title: "Cost per success"
@@ -13161,6 +13203,7 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "sum"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                     trend:
                       metricId: "scoreboard_trend"
                       title: "Scoreboard trend"
@@ -13179,6 +13222,7 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "ratio"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                     sample:
                       metricId: "scoreboard_merged"
                       title: "Scoreboard sample"
@@ -13200,10 +13244,12 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "sum"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                 dora:
                   - key: "deploy_frequency"
                     unit: "per_day"
                     value: 7.285714285714286
+                    n: 22
                     prior: 4.428571428571429
                     delta: 2.8571428571428568
                     trend:
@@ -13231,9 +13277,11 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "sum"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   - key: "lead_time"
                     unit: "duration_ms"
                     value: 1613333.3333333333
+                    n: 22
                     prior: 1371200
                     delta: 242133.33333333326
                     trend:
@@ -13262,9 +13310,11 @@ paths:
                       version: 1
                       proxy: false
                       aggregation: "ratio"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   - key: "change_failure_rate"
                     unit: "pct"
                     value: 4.761904761904762
+                    n: 22
                     prior: 0
                     delta: 4.761904761904762
                     trend:
@@ -13292,9 +13342,11 @@ paths:
                       version: 1
                       proxy: true
                       aggregation: "ratio"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                   - key: "mttr"
                     unit: "duration_ms"
                     value: 1135500
+                    n: 22
                     prior: 1247916.6666666667
                     delta: -112416.66666666674
                     trend:
@@ -13325,6 +13377,7 @@ paths:
                       version: 1
                       proxy: true
                       aggregation: "ratio"
+                      originRule: "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                 freshness:
                   filledThrough: "2026-08-08"
                   lastFilledAt: "2026-08-09T11:00:00.000Z"
@@ -13803,6 +13856,7 @@ paths:
       operationId: getEstimatorCalibration
       parameters:
         - $ref: "#/components/parameters/CalibrationWindow"
+        - $ref: "#/components/parameters/InsightsOrigin"
         - $ref: "#/components/parameters/TenantHeader"
       responses:
         "200":
@@ -13812,6 +13866,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/CalibrationReport"
               example:
+                origin: "live"
+                originsPresent: ["live"]
+                mixed: false
                 window: 30d
                 from: "2026-09-01T12:00:00.000Z"
                 to: "2026-10-01T12:00:00.000Z"
@@ -13940,6 +13997,7 @@ paths:
           schema:
             $ref: "#/components/schemas/InterventionCause"
           example: infra_rig
+        - $ref: "#/components/parameters/InsightsOrigin"
         - $ref: "#/components/parameters/TenantHeader"
       responses:
         "200":
@@ -13950,6 +14008,7 @@ paths:
                 $ref: "#/components/schemas/InterventionList"
               example:
                 range: 30d
+                origin: "live"
                 window: { from: "2026-09-02", to: "2026-10-01" }
                 cause: infra_rig
                 total: 1
@@ -43859,6 +43918,19 @@ components:
         enum: [7d, 30d, 90d]
         default: 30d
       example: 30d
+    InsightsOrigin:
+      name: origin
+      in: query
+      required: false
+      description: |-
+        Which data origin the aggregates are computed from (DJ.2,
+        [#1315](https://github.com/NobuData/ouroboros/issues/1315)): `live` when absent —
+        `simulated` or `seeded` for those rows alone, or `all` for every origin summed, which the
+        answer then marks `mixed`. A window with no row of the asked origin answers **no data** (a
+        null figure), never zero and never another origin's rows.
+      schema:
+        $ref: "#/components/schemas/OriginFilter"
+      example: live
     InsightsRepo:
       name: repo
       in: query
@@ -44420,6 +44492,15 @@ components:
         `live` — a real executor or a person; `simulated` — the run simulator; `seeded` — a seed
         file (development and e2e only). Set once by the path that wrote the row, inherited from
         the run where there is one, and never accepted from a caller.
+
+    OriginFilter:
+      type: string
+      title: OriginFilter
+      enum: [live, simulated, seeded, all]
+      default: live
+      description: |-
+        Which data origin an aggregate reads (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315)):
+        one `DataOrigin`, or `all` — every origin summed, and the answer marked `mixed`.
 
     Error:
       type: object
@@ -50117,14 +50198,17 @@ components:
       required: [count, deltaVsPrior]
       properties:
         count:
-          type: integer
+          type: [integer, "null"]
           minimum: 0
           description: |-
             Loop PRs merged over the last seven UTC days, today included — the registry's
-            `merged_prs`, from the shared windowed metrics service.
+            `merged_prs`, from the shared windowed metrics service. Null — no data — when the
+            window holds no loop PR of the asked origin (DJ.2).
         deltaVsPrior:
-          type: integer
+          type: [integer, "null"]
           description: |-
+            Null when either week has no data.
+
             This window's count less the seven UTC days before it — rendered as
             `▲ 8 vs last week`.
             **Signed**: a negative value is a week that merged less than the one before, and
@@ -50142,11 +50226,13 @@ components:
       required: [tokens, costCents, providers, unpricedEvents]
       properties:
         tokens:
-          type: integer
+          type: [integer, "null"]
           minimum: 0
-          description: Input plus output tokens across every provider — rendered as `4.2M`.
+          description: |-
+            Input plus output tokens across every provider — rendered as `4.2M`. Null — no data —
+            when the day holds no usage of the asked origin (DJ.2); `costCents` is then null too.
         costCents:
-          type: number
+          type: [number, "null"]
           minimum: 0
           description: |-
             What the day's **priced** events cost, in cents. Cents rather than a decimal
@@ -50201,7 +50287,7 @@ components:
       required: [mergeRate, avgCycleSeconds, interventions7d, autoMerge]
       properties:
         mergeRate:
-          type: number
+          type: [number, "null"]
           minimum: 0
           maximum: 1
           description: |-
@@ -50210,12 +50296,11 @@ components:
             as a fraction between 0 and 1. Recomposed from the days' components — Σ autonomous
             ÷ Σ closed — never an average of daily rates.
 
-            **`0` when no PR closed in the window.** That is a floor rather than a measurement:
-            an organization with no history reads `0` here with `0` merged and `0`
-            interventions, and a meter should render *no data* rather than a bad week.
+            **Null — no data — when no PR of the asked origin closed in the window** (DJ.2): never
+            a zero floor, so a workspace with no history cannot read as one that merged nothing.
           example: 0.92
         avgCycleSeconds:
-          type: number
+          type: [number, "null"]
           minimum: 0
           description: |-
             **Cycle time** (`cycle_time`): the **median** of `finishedAt − startedAt` over loops
@@ -50223,15 +50308,16 @@ components:
             field keeps its name for compatibility; since 0.38.0 the figure is the registry's
             median rather than a mean over every terminal run.
 
-            `0` when nothing merged in the window, with the same reading as `mergeRate`'s zero.
+            Null when nothing of the asked origin merged in the window — no data, as `mergeRate`.
           example: 860
         interventions7d:
-          type: integer
+          type: [integer, "null"]
           minimum: 0
           description: |-
             **Human interventions** (`human_interventions`): every moment a person stepped into
             a loop in the window — a needs-human handoff, a human failure classification, a
-            waiver, a failed gate, a blocking vote — across every cause.
+            waiver, a failed gate, a blocking vote — across every cause. Null when the window
+            holds no intervention of the asked origin.
         autoMerge:
           type: boolean
           description: |-
@@ -50267,13 +50353,13 @@ components:
           minimum: 0
           description: Issues waiting — the same number as `stats.queued.count`.
         mergedSinceMorning:
-          type: integer
+          type: [integer, "null"]
           minimum: 0
           description: |-
             Loop PRs merged since **midnight UTC** — today's point of the same `merged_prs`
             window `stats.merged7d` counts, so the sentence and the card cannot disagree. It is
             the same day boundary `stats.tokensToday` uses, so the two cannot mean different
-            mornings.
+            mornings. Null exactly when `stats.merged7d.count` is.
 
     Dashboard:
       type: object
@@ -50281,14 +50367,28 @@ components:
       description: |-
         The whole dashboard for one workspace, measured between one set of boundaries.
 
-        **Every field is always present.** An organization with nothing in it answers zeros
-        and empty arrays — never `null`, and never an absent key — so a card renders from this
-        without a fallback branch. The nullable values are all *inside* a row, where a null is
-        a fact about that row: a run in flight has no `finishedAt`, a queued issue may carry no
-        estimate.
+        **Every field is always present.** Lists are lists, and counts of what is in flight or
+        queued are numbers. A windowed aggregate with no row of the asked origin is **null** — no
+        data, never a zero floor (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315))
+        — and `originsPresent` says what the workspace does hold. Aggregates count `live` rows
+        unless `origin` asks otherwise; the run lists and the queue are rows, not aggregates, and
+        are not filtered.
       additionalProperties: false
-      required: [stats, pulse, activeRuns, recentRuns, queueHead, activity]
+      required:
+        [origin, originsPresent, mixed, stats, pulse, activeRuns, recentRuns, queueHead, activity]
       properties:
+        origin:
+          $ref: "#/components/schemas/OriginFilter"
+        originsPresent:
+          type: array
+          description: |-
+            Every data origin with a row in the window, whichever was asked for — `["seeded"]`
+            beside a null figure is "no live data", not zero (DJ.2).
+          items:
+            $ref: "#/components/schemas/DataOrigin"
+        mixed:
+          type: boolean
+          description: True only when `origin` is `all` and a figure sums more than one origin.
         stats:
           $ref: "#/components/schemas/DashboardStats"
         pulse:
@@ -52864,11 +52964,13 @@ components:
       additionalProperties: false
       description: |-
         The intervention events behind the Insights card's bars over one range (#445), newest first.
-      required: [range, window, cause, total, interventions]
+      required: [range, origin, window, cause, total, interventions]
       properties:
         range:
           type: string
           enum: [7d, 30d, 90d]
+        origin:
+          $ref: "#/components/schemas/OriginFilter"
         window:
           $ref: "#/components/schemas/InsightsDaySpan"
         cause:
@@ -52914,8 +53016,16 @@ components:
         carries `costCents` only when the usage it covers was priced — otherwise the key is absent,
         never `0`. Claims whose source does not exist yet (cap alerts, the routing suggestion, the
         analyzer's cluster note) have no key at all.
+
+        **Live data by default** (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315)):
+        every figure is computed from the asked `origin`'s rows alone. A figure with none is null and
+        a chart with none has no points — never zeros — and `originsPresent` names what the
+        workspace does hold.
       required:
         [
+          origin,
+          originsPresent,
+          mixed,
           range,
           window,
           repo,
@@ -52931,6 +53041,18 @@ components:
           freshness,
         ]
       properties:
+        origin:
+          $ref: "#/components/schemas/OriginFilter"
+        originsPresent:
+          type: array
+          description: |-
+            Every data origin with a row in the window, whichever was asked for — `["seeded"]`
+            beside a null figure is "no live data", not zero (DJ.2).
+          items:
+            $ref: "#/components/schemas/DataOrigin"
+        mixed:
+          type: boolean
+          description: True only when `origin` is `all` and a figure sums more than one origin.
         range:
           type: string
           enum: [7d, 30d, 90d]
@@ -53125,7 +53247,8 @@ components:
       description: |-
         The methodology registry's entry behind a number (#432, decision I1) — everything its
         popover prints. `version` moves whenever the formula does.
-      required: [metricId, title, formula, sources, caveats, unit, version, proxy, aggregation]
+      required:
+        [metricId, title, formula, sources, caveats, unit, version, proxy, aggregation, originRule]
       properties:
         metricId:
           type: string
@@ -53154,6 +53277,9 @@ components:
           type: string
           enum: [sum, ratio, median]
           description: How a window re-derives the metric from days — never an average of daily values.
+        originRule:
+          type: string
+          description: How the metric treats data origin, in words (DJ.2) — printed beside the formula.
     InsightsMoney:
       type: object
       title: InsightsMoney
@@ -53206,11 +53332,13 @@ components:
           type: string
           enum: [7d]
         mergedPrs:
-          type: number
+          type: [number, "null"]
           minimum: 0
+          description: Null — no data — when the week holds no loop PR of the asked origin (DJ.2).
         interventions:
-          type: number
+          type: [number, "null"]
           minimum: 0
+          description: Null exactly when `mergedPrs` is.
     InsightsKpi:
       type: object
       title: InsightsKpi
@@ -53218,7 +53346,7 @@ components:
       description: |-
         One KPI card. `cost_per_merged_pr` is in `cents` when the window's usage was priced and in
         `tokens` (tokens per merged PR, under the `tokens` methodology) when it was not.
-      required: [key, unit, value, prior, delta, trend, methodology]
+      required: [key, unit, value, n, prior, delta, trend, methodology]
       properties:
         key:
           type: string
@@ -53235,7 +53363,14 @@ components:
           enum: [count, pct, duration_ms, cents, tokens]
         value:
           type: [number, "null"]
-          description: The figure; null when the window has nothing to compute it from.
+          description: The figure; null — no data — when the window has nothing of the asked origin to compute it from.
+        n:
+          type: [integer, "null"]
+          minimum: 0
+          description: |-
+            The count behind the figure (DJ.2): how many source rows — pull requests, runs, builds,
+            usage rows, test cases — the window's figure was computed from. `0` beside a null
+            `value` is no data, not zero; null when a seeded row did not record it.
         prior:
           type: [number, "null"]
           description: The prior window's figure.
@@ -53460,7 +53595,7 @@ components:
       title: InsightsPerformanceCell
       additionalProperties: false
       description: One cell of the build & test strip. `total_cost` is null — not zero — when the window's usage was not priced.
-      required: [key, unit, value, methodology]
+      required: [key, unit, value, n, methodology]
       properties:
         key:
           type: string
@@ -53470,6 +53605,13 @@ components:
           enum: [count, pct, duration_ms, cents, tokens]
         value:
           type: [number, "null"]
+        n:
+          type: [integer, "null"]
+          minimum: 0
+          description: |-
+            The count behind the figure (DJ.2): how many source rows — pull requests, runs, builds,
+            usage rows, test cases — the window's figure was computed from. `0` beside a null
+            `value` is no data, not zero; null when a seeded row did not record it.
         components:
           type: object
           additionalProperties: false
@@ -53564,7 +53706,7 @@ components:
       description: |-
         One delivery-health cell. `proxy` is the registry's flag: change failure rate and MTTR are
         stand-ins, and a client must not draw a proxy as though it were measured.
-      required: [key, unit, value, prior, delta, trend, sparkline, proxy, methodology]
+      required: [key, unit, value, n, prior, delta, trend, sparkline, proxy, methodology]
       properties:
         key:
           type: string
@@ -53575,6 +53717,13 @@ components:
           description: "`per_day` for deploy frequency — the window's deploys over its days."
         value:
           type: [number, "null"]
+        n:
+          type: [integer, "null"]
+          minimum: 0
+          description: |-
+            The count behind the figure (DJ.2): how many source rows — pull requests, runs, builds,
+            usage rows, test cases — the window's figure was computed from. `0` beside a null
+            `value` is no data, not zero; null when a seeded row did not record it.
         prior:
           type: [number, "null"]
         delta:
@@ -53598,8 +53747,20 @@ components:
         Mockup 15's model scoreboard (#439): one row per task kind × the model of the hop that
         served it. `suggestion` is the learned routing suggestion's payload (#209) and is
         **absent** — not null, not empty — until that source exists.
-      required: [range, window, prior, minSample, rows, methodology]
+      required: [origin, originsPresent, mixed, range, window, prior, minSample, rows, methodology]
       properties:
+        origin:
+          $ref: "#/components/schemas/OriginFilter"
+        originsPresent:
+          type: array
+          description: |-
+            Every data origin with a row in the window, whichever was asked for — `["seeded"]`
+            beside a null figure is "no live data", not zero (DJ.2).
+          items:
+            $ref: "#/components/schemas/DataOrigin"
+        mixed:
+          type: boolean
+          description: True only when `origin` is `all` and a figure sums more than one origin.
         range:
           type: string
           enum: [7d, 30d, 90d]
@@ -53723,8 +53884,33 @@ components:
         Estimator calibration over a window (#435). Rates are percentages to one decimal, null when
         nothing was estimated.
       required:
-        [window, from, to, merged, estimated, unestimated, withinBand, withinBandPct, efforts]
+        [
+          origin,
+          originsPresent,
+          mixed,
+          window,
+          from,
+          to,
+          merged,
+          estimated,
+          unestimated,
+          withinBand,
+          withinBandPct,
+          efforts,
+        ]
       properties:
+        origin:
+          $ref: "#/components/schemas/OriginFilter"
+        originsPresent:
+          type: array
+          description: |-
+            Every data origin with a row in the window, whichever was asked for — `["seeded"]`
+            beside a null figure is "no live data", not zero (DJ.2).
+          items:
+            $ref: "#/components/schemas/DataOrigin"
+        mixed:
+          type: boolean
+          description: True only when `origin` is `all` and a figure sums more than one origin.
         window:
           type: string
           enum: [7d, 30d, 90d]

@@ -354,6 +354,7 @@ export class MemoryMetrics implements MetricSpanReader {
       ...(found?.components ? { components: found.components } : {}),
       samples: found?.samples ?? [],
       days: found?.days ?? 0,
+      originsPresent: found === undefined ? [] : ["live"],
       methodology: {
         metricId,
         title: metricId,
@@ -364,6 +365,7 @@ export class MemoryMetrics implements MetricSpanReader {
         version: 1,
         proxy: false,
         aggregation,
+        originRule: "Computed separately for each data origin.",
       },
     });
   }

@@ -405,6 +405,9 @@ export const SEEDED_QUEUE: readonly QueueItemSummary[] = [
  */
 export function dashboardPayload(over: Partial<Dashboard> = {}): Dashboard {
   return {
+    origin: "all",
+    originsPresent: ["seeded"],
+    mixed: false,
     stats: {
       loopsLive: { total: 3, byStatus: { coding: 1, building: 1, review: 1 } },
       // `est. 9h 40m of autonomous work`, in the minutes the contract carries.
@@ -490,6 +493,9 @@ export function failed<T>(reason: string): Reading<T> {
  */
 export function summary(over: Partial<DashboardSummary> = {}): DashboardSummary {
   return {
+    origin: "all",
+    originsPresent: ["seeded"],
+    mixed: false,
     stats: {
       loopsLive: { total: 3, byStatus: { coding: 1, building: 1, review: 1 } },
       queued: { count: 12, estMinutes: 580 },

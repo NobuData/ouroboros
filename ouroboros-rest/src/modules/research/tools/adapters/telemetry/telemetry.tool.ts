@@ -583,6 +583,8 @@ export class TelemetryResearchTool implements QueryCapableTool, FetchCapableTool
           repo: scope.repo,
           dimension: scope.dimension,
           span: daySpan(window),
+          // Investigations cite real runs only (DJ.2) — also the span's default, stated here.
+          origin: "live",
           now: this.now(),
         }),
         window.text,

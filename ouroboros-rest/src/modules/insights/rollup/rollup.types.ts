@@ -9,7 +9,7 @@
 
 import type { Kysely } from "kysely";
 
-import type { Database } from "../../db/schema";
+import type { Database, DataOrigin } from "../../db/schema";
 
 /** A UTC calendar day, `YYYY-MM-DD` — the grain's `day` column. */
 export type Day = string;
@@ -28,6 +28,14 @@ export interface RollupRow {
   readonly metricId: string;
   /** The dimension label — a suite, stage or effort — or `""` for an undimensioned metric. */
   readonly dimension: string;
+  /**
+   * The origin of every source row behind the figure (V154, DJ.2
+   * [#1315](https://github.com/NobuData/ouroboros/issues/1315)). An extractor groups by it, so
+   * one row never sums two origins.
+   */
+  readonly origin: DataOrigin;
+  /** How many source rows are behind the figure — runs, builds, usage rows, test cases. */
+  readonly population: number;
   /** The day's number. Never negative. */
   readonly value: number;
   /** A rate's numerator; present exactly on rate rows. */
@@ -59,7 +67,8 @@ export interface FamilyExtractor {
    * @param db - The connection — or the transaction the day is written in.
    * @param organizationId - The workspace.
    * @param day - The UTC day.
-   * @returns Every row the day should hold. A repository with no activity in the family's
+   * @returns Every row the day should hold, one set per origin that had activity. A repository
+   *   with no activity in the family's
    *   population that day has no rows; a rate with no denominator and a median with no samples
    *   have none either, because the grain cannot store them. A count over a non-empty population
    *   may be zero (a day of builds with no failures).
