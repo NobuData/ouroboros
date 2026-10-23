@@ -45,6 +45,8 @@
 import { readDashboardSummary } from "@/app/api/dashboard-summary";
 import { pollResponse } from "@/app/api/poll-response";
 import { IF_NONE_MATCH_HEADER } from "@/app/dashboard/summary";
+import { ORIGIN_PARAM } from "@/app/origin/origin";
+import { readOriginFilter } from "@/app/origin/origin-server";
 
 export { CACHE_CONTROL } from "@/app/api/poll-response";
 
@@ -61,6 +63,9 @@ export const DASHBOARD_UNAVAILABLE_CODE = "dashboard_unavailable";
 export async function GET(request: Request): Promise<Response> {
   const answer = await readDashboardSummary({
     etag: request.headers.get(IF_NONE_MATCH_HEADER),
+    // The address's `?origin=` when a caller names one, else the reader's remembered choice
+    // (DJ.3) — so the shell's loop pills count what the dashboard shows.
+    origin: await readOriginFilter(new URL(request.url).searchParams.get(ORIGIN_PARAM)),
   });
 
   return pollResponse(answer, DASHBOARD_UNAVAILABLE_CODE);

@@ -112,6 +112,25 @@ describe("the runs repository", () => {
     });
   });
 
+  describe("the origin filter (DJ.3)", () => {
+    it("narrows both the page and the total to one origin", async () => {
+      await runs.list(WORKSPACE, { status: "terminal", origin: "seeded" }, WINDOW);
+      database.answers({ rows: [{ total: "0" }] });
+      await runs.count(WORKSPACE, { status: "terminal", origin: "seeded" });
+
+      for (const statement of database.statements) {
+        expect(statement.sql).toContain('"origin" = $');
+        expect(statement.parameters).toContain("seeded");
+      }
+    });
+
+    it("is absent when no origin narrows", async () => {
+      await runs.list(WORKSPACE, { status: "active" }, WINDOW);
+
+      expect(database.statements[0].sql).not.toContain('"origin"');
+    });
+  });
+
   describe("the count", () => {
     it("branches on the family exactly as the listing does", async () => {
       // The property the file header promises: the count and the page agree about what

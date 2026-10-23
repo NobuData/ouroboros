@@ -1,3 +1,4 @@
+import { OriginBadge } from "@/app/origin/origin-badge";
 import { StatCard as StatTile } from "@/app/ui";
 
 import type { Stat } from "./view";
@@ -23,6 +24,13 @@ export function StatCard({ stat }: Readonly<{ stat: Stat }>) {
   return (
     <StatTile
       accent={stat.accent}
+      caption={
+        stat.origin === undefined ? undefined : (
+          <>
+            {stat.label} <OriginBadge origin={stat.origin} />
+          </>
+        )
+      }
       className="dash-col--3"
       delta={stat.delta}
       label={stat.label}

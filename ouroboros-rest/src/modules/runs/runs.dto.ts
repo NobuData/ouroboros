@@ -13,6 +13,7 @@
 import { Type } from "class-transformer";
 import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from "class-validator";
 
+import { ORIGIN_FILTERS, type OriginFilter } from "../insights/metrics/metrics.origin";
 import { PageQuery } from "../tenancy/pagination";
 import { RUN_EVENTS_PAGE_MAX } from "./console.policy";
 
@@ -56,6 +57,14 @@ export class ListRunsQuery extends PageQuery {
   @IsOptional()
   @IsUUID()
   repo?: string;
+
+  /**
+   * One data origin's runs (DJ.3, [#1316](https://github.com/NobuData/ouroboros/issues/1316)) —
+   * `live`, `simulated` or `seeded`. Absent or `all` lists every origin, as before.
+   */
+  @IsOptional()
+  @IsIn(ORIGIN_FILTERS)
+  origin?: OriginFilter;
 }
 
 /** The path of `GET /api/v1/runs/{id}`. */

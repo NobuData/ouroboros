@@ -28,6 +28,9 @@
 #   scripts/run.sh                 # cold build, run, tear down
 #   scripts/run.sh --keep          # leave the stack up afterwards (for debugging)
 #   scripts/run.sh --no-build      # reuse the images already built
+#   scripts/run.sh --unseeded      # the stack WITHOUT the development seed, and the unseeded leg
+#                                  # (playwright.unseeded.config.ts; DJ.3, #1316) — under its own
+#                                  # compose project, so its volume is never the seeded one
 #   scripts/run.sh -- --grep @foo  # everything after -- goes to playwright
 #
 # Exit status:
@@ -44,11 +47,13 @@ ROOT=$(cd -- "$E2E_DIR/../.." && pwd)
 
 KEEP=0
 BUILD=--build
+UNSEEDED=0
 
 while [ $# -gt 0 ]; do
   case $1 in
     --keep) KEEP=1; shift ;;
     --no-build) BUILD=''; shift ;;
+    --unseeded) UNSEEDED=1; shift ;;
     --) shift; break ;;
     -h | --help) sed -n '2,30p' "$0" | cut -c 3-; exit 0 ;;
     *) printf 'run.sh: unknown argument: %s\n' "$1" >&2; exit 2 ;;
@@ -62,7 +67,12 @@ cd "$ROOT"
 # reach it (#647 — the file's own header says why that is safe). Spelled as a function so
 # every invocation below composes the same pair of files and none can quietly drop one.
 compose() {
-  docker compose -f docker-compose.yml -f docker-compose.e2e.yml "$@"
+  if [ "$UNSEEDED" -eq 1 ]; then
+    docker compose -p ouroboros-unseeded -f docker-compose.yml -f docker-compose.e2e.yml \
+      -f docker-compose.e2e-unseeded.yml "$@"
+  else
+    docker compose -f docker-compose.yml -f docker-compose.e2e.yml "$@"
+  fi
 }
 
 teardown() {
@@ -91,6 +101,10 @@ cd "$E2E_DIR"
 # suite would leave the stack running and a passing one would too. The status is carried
 # out by hand instead, which is what makes the teardown unconditional.
 status=0
-yarn playwright test "$@" || status=$?
+if [ "$UNSEEDED" -eq 1 ]; then
+  yarn playwright test --config playwright.unseeded.config.ts "$@" || status=$?
+else
+  yarn playwright test "$@" || status=$?
+fi
 
 exit "$status"

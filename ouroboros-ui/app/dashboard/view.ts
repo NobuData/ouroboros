@@ -28,6 +28,7 @@ import type { EngineStatus } from "@/app/api/engine";
 import type { DependencyStatus, HealthReport } from "@/app/api/health";
 import type { Membership } from "@/app/api/membership";
 import type { GetStartedOffer } from "@/app/get-started/view";
+import type { DataOrigin, OriginFilter } from "@/app/origin/origin";
 import type { Reading } from "@/app/api/reading";
 import type { SessionUser } from "@/app/api/identity";
 import {
@@ -87,6 +88,8 @@ export interface DashboardReadings {
    * it needs no clock at all. Only a duration that is still running needs a *now*.
    */
   readonly readAt: number;
+  /** The data origin the reader chose (DJ.3) — what the filter shows pressed, read or not. */
+  readonly origin: OriginFilter;
   /**
    * The dashboard aggregate ([#70](https://github.com/NobuData/ouroboros/issues/70)), or why
    * it could not be read — every number, list and switch mockup 02 draws, in one payload.
@@ -353,6 +356,12 @@ export interface Stat {
   readonly delta: string | null;
   /** How that line is drawn. */
   readonly tone: DeltaTone;
+  /**
+   * The non-live origin the figure counts, which the card badges beside its caption (DJ.3,
+   * [#1316](https://github.com/NobuData/ouroboros/issues/1316)) — absent for a live figure, and for
+   * the queue, which holds issues rather than runs.
+   */
+  readonly origin?: DataOrigin;
 }
 
 /**
@@ -484,15 +493,29 @@ export const LEVEL_WITH_LAST_WEEK = "Level with last week";
  * @param merged The aggregate's `stats.merged7d`.
  * @returns The card.
  */
-export function mergedStat(merged: DashboardStats["merged7d"]): Stat {
-  // Null is no data (DJ.2), drawn as the zero it replaced until DJ.3 (#1316) draws it honestly.
+export function mergedStat(
+  merged: DashboardStats["merged7d"],
+  filter: OriginFilter = "live",
+): Stat {
+  if (merged.count === null) {
+    // No data of the asked origin (DJ.2) — an em dash and what would fill it, never a zero.
+    return {
+      id: "merged",
+      label: "PRs merged · 7d",
+      value: NO_VALUE,
+      accent: false,
+      delta: filter === "live" ? NO_LIVE_MERGES : NO_MERGES_7D,
+      tone: "muted",
+    };
+  }
+
   const change = merged.deltaVsPrior ?? 0;
   const rose = change > 0;
 
   return {
     id: "merged",
     label: "PRs merged · 7d",
-    value: String(merged.count ?? 0),
+    value: String(merged.count),
     accent: false,
     delta:
       change === 0
@@ -502,8 +525,17 @@ export function mergedStat(merged: DashboardStats["merged7d"]): Stat {
   };
 }
 
+/** What the merged card says when no live loop PR has merged in the window (DJ.3). */
+export const NO_LIVE_MERGES = "No live loop has merged yet.";
+
+/** What it says for another origin with nothing merged in the window. */
+export const NO_MERGES_7D = "Nothing merged in the last 7 days.";
+
 /** What the token card says on a day nothing has been spent on. */
 export const NO_USAGE_TODAY = "No usage recorded today.";
+
+/** What it says on a day with no live usage (DJ.3) — the figure is an em dash, not `0`. */
+export const NO_LIVE_USAGE_TODAY = "No live usage today.";
 
 /**
  * *Token spend · today* — the day's tokens, and what they cost.
@@ -514,11 +546,25 @@ export const NO_USAGE_TODAY = "No usage recorded today.";
  * @param today The aggregate's `stats.tokensToday`.
  * @returns The card.
  */
-export function tokensStat(today: DashboardStats["tokensToday"]): Stat {
+export function tokensStat(
+  today: DashboardStats["tokensToday"],
+  filter: OriginFilter = "live",
+): Stat {
+  if (today.tokens === null) {
+    return {
+      id: "tokens",
+      label: "Token spend · today",
+      value: NO_VALUE,
+      accent: false,
+      delta: filter === "live" ? NO_LIVE_USAGE_TODAY : NO_USAGE_TODAY,
+      tone: "muted",
+    };
+  }
+
   return {
     id: "tokens",
     label: "Token spend · today",
-    value: compactNumber(today.tokens ?? 0),
+    value: compactNumber(today.tokens),
     accent: false,
     delta: costLine(today),
     tone: "muted",
@@ -583,13 +629,54 @@ export function statRow(aggregate: Reading<Dashboard>): readonly Stat[] {
     return FAILED_ROW.map(([id, label]) => failedStat(id, label));
   }
 
-  const { stats } = aggregate.value;
+  const { stats, origin } = aggregate.value;
+  const shown = shownOrigin(aggregate.value);
+  const badged = (stat: Stat): Stat => (shown === null ? stat : { ...stat, origin: shown });
 
   return [
-    loopsLiveStat(stats.loopsLive),
+    badged(loopsLiveStat(stats.loopsLive)),
     queuedStat(stats.queued),
-    mergedStat(stats.merged7d),
-    tokensStat(stats.tokensToday),
+    badged(mergedStat(stats.merged7d, origin)),
+    badged(tokensStat(stats.tokensToday, origin)),
+  ];
+}
+
+/**
+ * The non-live origin the dashboard's figures count, if any — what a stat card or the pulse badges
+ * (DJ.3, [#1316](https://github.com/NobuData/ouroboros/issues/1316)).
+ *
+ * - **Live** asked for: nothing — live figures carry no badge.
+ * - **Demo data** or **Simulated** asked for: that origin, when the workspace holds any of it.
+ * - **All origins**: the first non-live origin the workspace holds, since the figures sum it in.
+ *
+ * @param dashboard The aggregate's origin facts.
+ * @returns The origin to badge, or null.
+ */
+export function shownOrigin(
+  dashboard: Pick<Dashboard, "origin" | "originsPresent">,
+): DataOrigin | null {
+  const { origin, originsPresent } = dashboard;
+
+  if (origin === "live") return null;
+  if (origin !== "all") return originsPresent.includes(origin) ? origin : null;
+
+  return originsPresent.find((present) => present !== "live") ?? null;
+}
+
+/**
+ * Every origin the page holds — the aggregate's `originsPresent` and each listed run's own — which
+ * decides the page-level strip (`app/origin/origin-strip.tsx`).
+ *
+ * @param dashboard The aggregate.
+ * @returns The origins, without repeats.
+ */
+export function pageOrigins(dashboard: Dashboard): readonly DataOrigin[] {
+  return [
+    ...new Set<DataOrigin>([
+      ...dashboard.originsPresent,
+      ...dashboard.activeRuns.map((run) => run.origin),
+      ...dashboard.recentRuns.map((run) => run.origin),
+    ]),
   ];
 }
 
@@ -648,6 +735,8 @@ export interface ActiveLoop {
   readonly model: string;
   /** What the run is doing, which decides its pill and its meter. */
   readonly status: RunStatus;
+  /** Where the run came from — a non-live row carries the origin badge (DJ.3). */
+  readonly origin: DataOrigin;
   /** The caption over the meter — `Implementing · 4/6`. */
   readonly stageCaption: string;
   /** How far through its workflow it is, `0`–`100`. See {@link stagePercent}. */
@@ -763,6 +852,7 @@ export function activeLoops(
       workflowTag: run.workflowTag,
       model: run.model,
       status: run.status,
+      origin: run.origin,
       stageCaption: stageCaption(run.stageLabel, run.stageIndex, run.stageTotal),
       stagePercent: stagePercent(run.stageIndex, run.stageTotal),
       startedAtSeconds: started,
@@ -888,6 +978,16 @@ export const INTERVENTION_BUDGET_7D = 25;
 export const PULSE_UNMEASURED =
   "No runs have finished yet, so these three have nothing to measure.";
 
+/** What it says when no live loop has closed in the window (DJ.3) — the meters read an em dash. */
+export const PULSE_NO_LIVE =
+  "No live loop has finished yet, so these three have nothing to measure.";
+
+/** What a meter with no data of the asked origin says to a screen reader (DJ.3). */
+export const NO_LIVE_DATA_YET = "no live data yet";
+
+/** The same for another origin. */
+export const NO_DATA_YET = "no data yet";
+
 /**
  * A number the contract promised, or zero.
  *
@@ -900,8 +1000,7 @@ export const PULSE_UNMEASURED =
  * @returns It, or `0` when it is not a finite number.
  */
 function measured(value: number | null): number {
-  // Null is ouroboros-rest's no data (DJ.2); the meters draw it as the empty bar they drew for
-  // the old zero floor until DJ.3 (#1316) gives them an honest empty state.
+  // Null is ouroboros-rest's no data (DJ.2): an empty bar, beside an em dash (`pulseMeters`).
   return value !== null && Number.isFinite(value) ? value : 0;
 }
 
@@ -938,7 +1037,21 @@ function barFill(part: number, whole: number): number {
  * @returns Whether every one of them is a floor.
  */
 export function pulseIsUnmeasured(pulse: LoopPulse): boolean {
-  return pulse.mergeRate === 0 && pulse.avgCycleSeconds === 0 && pulse.interventions7d === 0;
+  const none = (value: number | null): boolean => value === null || value === 0;
+
+  return none(pulse.mergeRate) && none(pulse.avgCycleSeconds) && none(pulse.interventions7d);
+}
+
+/**
+ * The note under an unmeasured pulse — {@link PULSE_NO_LIVE} when live data was asked for and
+ * the window had none, {@link PULSE_UNMEASURED} otherwise.
+ *
+ * @param pulse The pulse figures.
+ * @param filter The origin the dashboard shows.
+ * @returns The note.
+ */
+export function pulseNote(pulse: LoopPulse, filter: OriginFilter = "live"): string {
+  return filter === "live" && pulse.mergeRate === null ? PULSE_NO_LIVE : PULSE_UNMEASURED;
 }
 
 /**
@@ -952,11 +1065,20 @@ export function pulseIsUnmeasured(pulse: LoopPulse): boolean {
  * @param pulse The aggregate's pulse figures.
  * @returns The three rows, each with its figure and its bar.
  */
-export function pulseMeters(pulse: LoopPulse): readonly PulseMeter[] {
+export function pulseMeters(
+  pulse: LoopPulse,
+  filter: OriginFilter = "live",
+): readonly PulseMeter[] {
   const rate = Math.round(measured(pulse.mergeRate) * 100);
   const interventions = measured(pulse.interventions7d);
+  const noData = filter === "live" ? NO_LIVE_DATA_YET : NO_DATA_YET;
+  // A meter with no data of the asked origin (DJ.2): an em dash and an empty bar, never `0%`.
+  const unread = (meter: PulseMeter, value: number | null): PulseMeter =>
+    value === null
+      ? { ...meter, value: NO_VALUE, fill: 0, valueText: `${meter.label}: ${noData}` }
+      : meter;
 
-  return [
+  const meters: readonly PulseMeter[] = [
     {
       id: "merge-rate",
       label: "Autonomous merge rate",
@@ -994,6 +1116,12 @@ export function pulseMeters(pulse: LoopPulse): readonly PulseMeter[] {
         `${countOf(interventions, "intervention")} by a person, of the ` +
         `${INTERVENTION_BUDGET_7D} this workspace allows for in ${PULSE_WINDOW}`,
     },
+  ];
+
+  return [
+    unread(meters[0], pulse.mergeRate),
+    unread(meters[1], pulse.avgCycleSeconds),
+    unread(meters[2], pulse.interventions7d),
   ];
 }
 
@@ -1071,6 +1199,8 @@ export interface Completion {
   readonly model: string;
   /** How the run ended, which decides its outcome pill. */
   readonly status: RunStatus;
+  /** Where the run came from — a non-live row carries the origin badge (DJ.3). */
+  readonly origin: DataOrigin;
   /** How long the run took, start to finish — {@link NO_VALUE} when it cannot be measured. */
   readonly cycle: string;
   /** The checks that passed over the checks there were — `14/14`, or {@link NO_VALUE}. */
@@ -1293,6 +1423,7 @@ export function recentCompletions(
       issueTitle: run.issueTitle,
       model: run.model,
       status: run.status,
+      origin: run.origin,
       cycle: cycleTime(run.startedAt, run.finishedAt),
       checks: checksLabel(run.checksPassed, run.checksTotal),
       checksShort: shortfall !== null,
@@ -1614,7 +1745,8 @@ export function pageSubline(aggregate: Reading<Dashboard>): Subline {
   if (!aggregate.ok) return { text: ACTIVITY_NOT_READ, failed: true };
 
   const { inFlight, queued } = aggregate.value.activity;
-  // Null is no data (DJ.2) — nothing merged that the reads count — until DJ.3 (#1316).
+  // Null is no data of the asked origin (DJ.2): nothing of it merged, so the sentence claims no
+  // merge — the quiet line, or "Nothing has merged since midnight UTC."
   const mergedSinceMorning = aggregate.value.activity.mergedSinceMorning ?? 0;
 
   if (inFlight === 0 && queued === 0 && mergedSinceMorning === 0) {

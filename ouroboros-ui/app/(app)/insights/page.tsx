@@ -2,6 +2,8 @@ import { requireWorkspace } from "@/app/api/access";
 import { readInsights } from "@/app/insights/data";
 import { InsightsScreen } from "@/app/insights/insights-screen";
 import { RANGE_PARAM, parseRange } from "@/app/insights/range";
+import { ORIGIN_PARAM } from "@/app/origin/origin";
+import { readOriginFilter } from "@/app/origin/origin-server";
 
 /**
  * Insights (BK.2, [#443](https://github.com/NobuData/ouroboros/issues/443)) — mockup 15's
@@ -28,5 +30,8 @@ export default async function Page({
   const access = await requireWorkspace();
   const params = (await searchParams) ?? {};
 
-  return <InsightsScreen readings={await readInsights(access, parseRange(params[RANGE_PARAM]))} />;
+  const range = parseRange(params[RANGE_PARAM]);
+  const origin = await readOriginFilter(params[ORIGIN_PARAM]);
+
+  return <InsightsScreen readings={await readInsights(access, range, origin)} />;
 }

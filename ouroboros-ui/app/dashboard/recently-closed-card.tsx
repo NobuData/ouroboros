@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import type { Dashboard, RunStatus } from "@/app/api/dashboard";
 import type { PullRequestRef } from "@/app/api/pull-requests";
+import { OriginBadge } from "@/app/origin/origin-badge";
 import { INBOX_PATH, ISSUES_PATH } from "@/app/paths";
 import {
   Button,
@@ -113,6 +114,9 @@ const REVIEW_LABEL = "Review →";
 /** What the card says when the workspace has closed nothing. */
 const NOTHING_CLOSED = "Nothing closed yet";
 
+/** The empty card under the live filter (DJ.3). */
+export const NO_LIVE_CLOSED = "No live loop has closed yet";
+
 /**
  * The note under {@link NOTHING_CLOSED} — what would put a row here.
  *
@@ -148,9 +152,12 @@ const COMPLETIONS_NOT_READ = "The completions could not be read";
 function emptyPanel(
   aggregate: Reading<Dashboard>,
 ): Readonly<{ title: string; note?: string }> {
-  return aggregate.ok
-    ? { title: NOTHING_CLOSED, note: NOTHING_CLOSED_NOTE }
-    : { title: COMPLETIONS_NOT_READ };
+  if (!aggregate.ok) return { title: COMPLETIONS_NOT_READ };
+
+  return {
+    title: aggregate.value.origin === "live" ? NO_LIVE_CLOSED : NOTHING_CLOSED,
+    note: NOTHING_CLOSED_NOTE,
+  };
 }
 
 /**
@@ -229,6 +236,13 @@ const COLUMNS: readonly Column<Completion>[] = [
           mockup's own `&nbsp;`, in the one form that survives both layouts.
         */}{" "}
         <span className="dash-closed__title">{run.issueTitle}</span>
+        {/* A non-live row says so in words beside its title (DJ.3); a live row carries nothing. */}
+        {run.origin !== "live" && (
+          <>
+            {" "}
+            <OriginBadge className="dash-closed__origin" origin={run.origin} />
+          </>
+        )}
       </span>
     ),
   },

@@ -3,7 +3,7 @@
   "entries": [
     {
       "id": "home.dashboard",
-      "route": "/dashboard",
+      "route": "/dashboard?origin=seeded",
       "workspace": "acme-robotics",
       "ready": "text=3 issues in flight, 12 queued behind them.",
       "clip": "page",
@@ -11,10 +11,10 @@
         ".dash-runs td.ou-table__cell--mono.ou-table__cell--end"
       ],
       "caption": "Mission Control — live loops, the queue, the build farm and what needs you, at a glance.",
-      "alt": "The Ouroboros Mission Control dashboard for the Acme Robotics workspace, showing active loops, the queue and farm status.",
-      "capturedAt": "2026-10-08T17:52:11.794Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "a8b81e884b74691df850d40e33c7bf5e845c192f"
+      "alt": "The Ouroboros Mission Control dashboard for the Acme Robotics workspace showing its demo data: the Data origin control on Demo data, a note that the page is showing demo data, and the figures, active loops and loop pulse, each labelled Demo data.",
+      "capturedAt": "2026-10-23T06:08:03.504Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
       "id": "user-guide.concepts.loop-in-app",
@@ -27,10 +27,10 @@
         ".run-transcript__list > li:nth-last-child(-n+5) .run-entry__time"
       ],
       "caption": "One loop in the run console: its stage timeline, the agent's transcript and the changes so far.",
-      "alt": "The run console for a loop fixing a flaky CAN-bus telemetry test: the stage timeline with three stages done and Implementing on attempt 2 of 3, the agent transcript, and three changed files.",
-      "capturedAt": "2026-10-15T03:58:22.637Z",
-      "uiVersion": "0.167.3",
-      "seedRef": "55e68fdca11d7d27f787e101a4eb3ac116e772a2"
+      "alt": "The run console for a loop fixing a flaky CAN-bus telemetry test, labelled Demo data: the stage timeline with three stages done and Implementing on attempt 2 of 3, the agent transcript, and three changed files.",
+      "capturedAt": "2026-10-23T06:05:41.647Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
       "id": "user-guide.concepts.loop-unavailable",
@@ -44,10 +44,25 @@
         ".run-resources__line:has-text('Wall clock') .run-resources__figure"
       ],
       "caption": "A run on a deployment with live execution off: the notice names the reason and links how to enable it.",
-      "alt": "The run console for a building loop, with a notice above the head reading Live execution is off for this deployment — ask an administrator, followed by a How to enable link.",
-      "capturedAt": "2026-10-15T03:58:43.029Z",
-      "uiVersion": "0.167.3",
-      "seedRef": "55e68fdca11d7d27f787e101a4eb3ac116e772a2"
+      "alt": "The run console for a building loop, labelled Demo data,, with a notice above the head reading Live execution is off for this deployment — ask an administrator, followed by a How to enable link.",
+      "capturedAt": "2026-10-23T06:05:44.282Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
+    },
+    {
+      "id": "user-guide.concepts.origin-badges",
+      "route": "/dashboard?origin=all",
+      "workspace": "acme-robotics",
+      "ready": ".dash-runs",
+      "clip": ".dash-col--8:has(.dash-runs)",
+      "caption": "Demo data is labelled in words — never by colour alone — wherever it is shown or counted.",
+      "alt": "The Active loops card showing all origins: three loops, #482 Fix flaky CAN-bus telemetry test, #479 Add OTA rollback on failed checksum and #476 Bump MQTT client, migrate deprecated API, each with a dashed Demo data label under its title. The elapsed column is masked.",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01",
+      "masks": [
+        ".dash-runs tbody tr td:nth-child(5)"
+      ],
+      "capturedAt": "2026-10-23T06:08:16.151Z",
+      "uiVersion": "0.170.0"
     },
     {
       "id": "user-guide.sign-in",
@@ -144,14 +159,14 @@
       "ready": "section.offer-banner",
       "clip": "page",
       "caption": "A new workspace's dashboard offers the Get Started wizard until you run a first loop or dismiss it.",
-      "alt": "The Mission Control dashboard of a new workspace, with a banner reading New workspace — your first loop in about 4 minutes, and Get started and Dismiss buttons.",
-      "capturedAt": "2026-10-09T01:23:03.050Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "2631a297583496a87a0ddace271b0fb29777909f"
+      "alt": "The Mission Control dashboard of a new workspace, with the Data origin control on Live, a banner reading New workspace — your first loop in about 4 minutes, and Get started and Dismiss buttons; Loops live and Queued issues read 0 and PRs merged and Token spend read — with No live loop has merged yet. and No live usage today.",
+      "capturedAt": "2026-10-23T06:05:20.882Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
       "id": "user-guide.shell",
-      "route": "/dashboard",
+      "route": "/dashboard?origin=seeded",
       "workspace": "acme-robotics",
       "ready": "nav#shell-sidebar a[aria-current=\"page\"]",
       "clip": "page",
@@ -159,10 +174,10 @@
         ".dash-runs td.ou-table__cell--mono.ou-table__cell--end"
       ],
       "caption": "The app shell: the sidebar on the left, the header across the top, and the screen you are on in between.",
-      "alt": "The Ouroboros app on the Mission Control dashboard: the sidebar listing Dashboard to Insights with Needs You and Settings at its foot, and the header with the workspace chip, Search, the live-loop and Needs you pills, the Help button, the bell and the account avatar.",
-      "capturedAt": "2026-10-14T03:59:03.579Z",
-      "uiVersion": "0.166.0",
-      "seedRef": "50206e0b9cdd44e2336e458eac466816fff0ddc2"
+      "alt": "The Ouroboros app on the Mission Control dashboard: the sidebar listing Dashboard to Insights with Needs You and Settings at its foot, and the header with the workspace chip, Search, the live-loop and Needs you pills, the Help button, the bell and the account avatar; the page shows its demo data, labelled Demo data.",
+      "capturedAt": "2026-10-23T06:08:06.188Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
       "id": "user-guide.command-palette",
@@ -547,10 +562,10 @@
         ".run-transcript__list > li:nth-last-child(-n+5) .run-entry__time"
       ],
       "caption": "A live loop in the run console: the stage timeline, the agent's transcript, and the changes, resources and guardrails beside it.",
-      "alt": "The run console for Loop #1847, #482 Fix flaky CAN-bus telemetry test, marked as a simulated run: the header with its coding status, standard-fix v14, claude-fable-5, the elapsed time, the branch, a PR verification link and the Pause loop, Take over in IDE and Abort run controls; the stage timeline with Queued, Analyze and Plan done and Implementing on attempt 2/3 after an attempt failed its tests; the streaming agent transcript with tool, gate and model entries; and the Changes so far card listing three files and two commits.",
-      "capturedAt": "2026-10-09T00:16:13.070Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "5a61bd193e8b806e20bfea70bddd1d3860c9509c"
+      "alt": "The run console for Loop #1847, #482 Fix flaky CAN-bus telemetry test, marked as a simulated run: the header with its coding status, labelled Demo data,, standard-fix v14, claude-fable-5, the elapsed time, the branch, a PR verification link and the Pause loop, Take over in IDE and Abort run controls; the stage timeline with Queued, Analyze and Plan done and Implementing on attempt 2/3 after an attempt failed its tests; the streaming agent transcript with tool, gate and model entries; and the Changes so far card listing three files and two commits.",
+      "capturedAt": "2026-10-23T06:05:47.003Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
       "id": "user-guide.run.completed",
@@ -559,10 +574,10 @@
       "ready": ".run-head__meta :text('PR #512')",
       "clip": "page",
       "caption": "A finished loop: merged, with its pull request linked, and no controls or steering left to offer.",
-      "alt": "The run console for Loop #1839, #474 Debounce e-stop interrupt handler: the merged status, standard-fix, claude-fable-5, a fixed elapsed time of 11m 00s and a PR #512 link; a stage timeline and a transcript with nothing recorded, the steer box closed because the run has ended; and the Changes so far, Resources and Guardrails cards.",
-      "capturedAt": "2026-10-09T00:16:15.564Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "5a61bd193e8b806e20bfea70bddd1d3860c9509c"
+      "alt": "The run console for Loop #1839, #474 Debounce e-stop interrupt handler: the merged status, a Demo data label, standard-fix, claude-fable-5, a fixed elapsed time of 11m 00s and a PR #512 link; a stage timeline and a transcript with nothing recorded, the steer box closed because the run has ended; and the Changes so far, Resources and Guardrails cards.",
+      "capturedAt": "2026-10-23T06:05:49.469Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
       "id": "user-guide.run.guardrail",
@@ -586,10 +601,10 @@
         ".run-head__elapsed"
       ],
       "caption": "The run header: the loop's status, workflow, model and branch, and the controls an owner or admin has over a live run.",
-      "alt": "The run header for Loop #1847, #482 Fix flaky CAN-bus telemetry test: the coding status, standard-fix v14, claude-fable-5, the elapsed time, the branch loop/482-canbus-flake with a copy button, a PR verification link, and the Pause loop, Take over in IDE and Abort run buttons.",
-      "capturedAt": "2026-10-09T00:16:22.967Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "5a61bd193e8b806e20bfea70bddd1d3860c9509c"
+      "alt": "The run header for Loop #1847, #482 Fix flaky CAN-bus telemetry test: the coding status, a Demo data label, standard-fix v14, claude-fable-5, the elapsed time, the branch loop/482-canbus-flake with a copy button, a PR verification link, and the Pause loop, Take over in IDE and Abort run buttons.",
+      "capturedAt": "2026-10-23T06:05:51.714Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
       "id": "user-guide.tests",
@@ -638,10 +653,10 @@
       "ready": "section.prv-gates",
       "clip": "page",
       "caption": "PR verification: the revision cycle and the gates the pull request must pass before it merges.",
-      "alt": "The PR verification page for PR #514, can: fix flaky telemetry frame order under ISR load: a banner saying PR #514 has never been synced with its host, with Check again; the header with loop #1847, issue #482, verifying — 5 of 7 gates green, the branch loop/482-canbus-flake into main and +68 −15 across 3 files, and the Request human review, Return to loop and Merge when all gates green buttons; the revision cycle from Revision 1, blocked on Test suite and Physical HIL, through a correction round to Revision 2 re-verifying; and the verification gates, with Build, Test suite, Physical HIL, Diff-vs-plan conformance and Secrets & license scan green, Second-model review unavailable, and Human approval not required by policy and auto-merge eligible.",
-      "capturedAt": "2026-10-09T00:33:59.544Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "d99f80084fc24397f66aea98c83b9915cb4f175d"
+      "alt": "The PR verification page for PR #514, can: fix flaky telemetry frame order under ISR load: a banner saying PR #514 has never been synced with its host, with Check again; the header with loop #1847, issue #482, a Demo data label, verifying — 5 of 7 gates green, the branch loop/482-canbus-flake into main and +68 −15 across 3 files, and the Request human review, Return to loop and Merge when all gates green buttons; the revision cycle from Revision 1, blocked on Test suite and Physical HIL, through a correction round to Revision 2 re-verifying; and the verification gates, with Build, Test suite, Physical HIL, Diff-vs-plan conformance and Secrets & license scan green, Second-model review unavailable, and Human approval not required by policy and auto-merge eligible.",
+      "capturedAt": "2026-10-23T06:05:54.319Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
       "id": "user-guide.pr.loop-draft",
@@ -650,10 +665,10 @@
       "ready": "section.prv-gates",
       "clip": ".prv-head",
       "caption": "A pull request a loop opened: always a draft, linked to the loop that opened it.",
-      "alt": "The header of PR #504, telemetry: allocate frame buffers from a fixed pool, at Revision 1: the tag loop #1830 · issue #465, a Draft chip, verifying — 13 of 14 gates green, the branch loop/465-telemetry-buffer-pool into main and +214 −180 across 6 files, beside the Request human review, Return to loop and Merge when all gates green buttons and the note Loop #1830 has finished, so it cannot take a correction round.",
-      "capturedAt": "2026-10-16T22:38:44.426Z",
-      "uiVersion": "0.169.9",
-      "seedRef": "3e0f7d83c0ccb6adba45908bdb83986fe9a94ad7"
+      "alt": "The header of PR #504, telemetry: allocate frame buffers from a fixed pool, at Revision 1: the tag loop #1830 · issue #465, a Draft chip, a Demo data label, verifying — 13 of 14 gates green, the branch loop/465-telemetry-buffer-pool into main and +214 −180 across 6 files, beside the Request human review, Return to loop and Merge when all gates green buttons and the note Loop #1830 has finished, so it cannot take a correction round.",
+      "capturedAt": "2026-10-23T06:05:56.727Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
       "id": "user-guide.pr.criteria",
@@ -1005,27 +1020,27 @@
     },
     {
       "id": "user-guide.insights",
-      "route": "/insights",
+      "route": "/insights?origin=seeded",
       "workspace": "acme-robotics",
       "ready": ".insights-kpi",
       "clip": "page",
       "caption": "Insights: what merged untouched, what it cost and where humans still stepped in, over the range you choose.",
-      "alt": "The Insights page at 30 days, headed 21 PRs merged this week. 15 needed a human., with the Time range control on 30d and the ✦ Build Analyzer, Email weekly digest and Weekly digest in Slack buttons; five cards — Autonomous merge rate 92% ▲ 3pts vs prior 30d, Merged w/o human edits 78% of all merged PRs, Median cycle 14m 20s ▼ 2m faster, Cost per merged PR $1.87 ▼ $0.41 vs prior 30d, and Human interventions 5/wk ▼ 0.9/wk vs prior 30d; a line of merged PRs per day from Sep 10 to Oct 9; Where loops still need humans, 30d · 21 total, led by Flaky env / rig, with Fix the top row and interventions drop ~38%. and Re-categorize…; and the tops of Cycle time by stage · median and Model scoreboard.",
-      "capturedAt": "2026-10-13T02:09:14.191Z",
-      "uiVersion": "0.157.0",
-      "seedRef": "c6994c0a81655b77a6c4ba67b509d3d367379838"
+      "alt": "The Insights page at 30 days showing its demo data: the note This page is showing demo data. No real loop has run in this workspace yet. with Check readiness → above the headline 21 PRs merged this week. 15 needed a human.; the Time range control on 30d and the Data origin control on Demo data; the ✦ Build Analyzer, Email weekly digest and Weekly digest in Slack buttons; five cards, each labelled Demo data — Autonomous merge rate 92% ▲ 3pts vs prior 30d, Merged w/o human edits 78% of all merged PRs, Median cycle 14m 20s ▼ 2m faster, Cost per merged PR $1.87 ▼ $0.41 vs prior 30d, and Human interventions 5/wk ▼ 0.9/wk vs prior 30d; a line of merged PRs per day over the last 30 days; Where loops still need humans, 30d · 21 total, led by Flaky env / rig, with Fix the top row and interventions drop ~38%. and Re-categorize…; and the tops of Cycle time by stage · median and Model scoreboard, all labelled Demo data.",
+      "capturedAt": "2026-10-23T06:05:36.316Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
       "id": "user-guide.insights.range",
-      "route": "/insights?range=90d",
+      "route": "/insights?range=90d&origin=seeded",
       "workspace": "acme-robotics",
       "ready": ".insights-kpi",
       "clip": "page",
       "caption": "The same page over 90 days: every card and its comparison follow the range; the headline stays on this week.",
-      "alt": "The same page with 90d chosen: the headline still reads 21 PRs merged this week. 15 needed a human.; Autonomous merge rate 89%, Median cycle 16m 20s and Cost per merged PR $2.19 each say No prior 90d to compare.; Human interventions 6/wk is marked ▲ 6/wk vs prior 90d in red; the merged-PRs chart runs from Jul 12 to Oct 9; and Where loops still need humans reads 90d · 73 total.",
-      "capturedAt": "2026-10-09T00:57:29.751Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "0c60e4e7139622b20e51dfbca54b2b0b93fcf306"
+      "alt": "The same page with 90d chosen and Demo data shown: the demo-data note stays at the top; the headline still reads 21 PRs merged this week. 15 needed a human.; Autonomous merge rate 89%, Median cycle 16m 20s and Cost per merged PR $2.19 each say No prior 90d to compare.; Human interventions 6/wk is marked ▲ 6/wk vs prior 90d in red; the merged-PRs chart covers the last 90 days; Where loops still need humans reads 90d · 73 total; and every card is labelled Demo data.",
+      "capturedAt": "2026-10-23T06:05:38.974Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
       "id": "user-guide.analyzer",
@@ -1203,45 +1218,45 @@
     },
     {
       "id": "user-guide.dashboard",
-      "route": "/dashboard",
+      "route": "/dashboard?origin=seeded",
       "workspace": "acme-robotics",
       "ready": ".dash-runs",
       "clip": "page",
       "caption": "Mission Control: what the loops are doing now, what is waiting, and how the week is going.",
-      "alt": "Mission Control for acme-robotics, headed Good evening, Ken — the loop is turning., with 3 issues in flight, 12 queued behind them. Nothing has merged since midnight UTC., and the Edit workflows and Pull next issue buttons; the figures Loops live 3 (1 coding · 1 building · 1 in review), Queued issues 12 (est. 9h 40m of autonomous work), PRs merged · 7d 21 (▼ 4 vs last week) and Token spend · today 4.2M (≈ $18.60 across 4 providers); Active loops with three running loops; Loop pulse with its three bars and the auto-merge switch on; and the tops of System and Recently closed by the loop.",
-      "capturedAt": "2026-10-09T01:24:07.579Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "2631a297583496a87a0ddace271b0fb29777909f",
+      "alt": "Mission Control for acme-robotics, headed Good morning, Ken — the loop is turning., with 3 issues in flight, 12 queued behind them. Nothing has merged since midnight UTC., the Edit workflows and Pull next issue buttons, and the Data origin control on Demo data; the note This page is showing demo data. No real loop has run in this workspace yet. with Check readiness →; the figures Loops live 3, Queued issues 12, PRs merged · 7d 21 (▼ 4 vs last week) and Token spend · today 4.2M (≈ $18.60 across 4 providers), all but the queue labelled Demo data; Active loops with three running loops, each labelled Demo data; and Loop pulse, labelled Demo data, with its three bars and the auto-merge switch on.",
+      "capturedAt": "2026-10-23T06:08:08.799Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01",
       "masks": [
         ".dash-runs tbody tr td:nth-child(5)"
       ]
     },
     {
       "id": "user-guide.dashboard.loops",
-      "route": "/dashboard",
+      "route": "/dashboard?origin=seeded",
       "workspace": "acme-robotics",
       "ready": ".dash-runs",
       "clip": ".dash-col--8:has(.dash-runs)",
       "caption": "Active loops: each running loop, the stage it is in and how long it has been going.",
-      "alt": "Active loops, live, with Open run console: #482 Fix flaky CAN-bus telemetry test on standard-fix, Implementing · 4/6, claude-fable-5, coding; #479 Add OTA rollback on failed checksum on feature-loop, Build farm · 5/7, claude-sonnet-5, building; and #476 Bump MQTT client, migrate deprecated API on deps-refresh, Self-review · 6/6, ollama/qwen3-coder, review. The elapsed column is masked.",
-      "capturedAt": "2026-10-09T01:24:04.945Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "2631a297583496a87a0ddace271b0fb29777909f",
+      "alt": "Active loops, live, with Open run console: #482 Fix flaky CAN-bus telemetry test on standard-fix, Implementing · 4/6, claude-fable-5, coding; #479 Add OTA rollback on failed checksum on feature-loop, Build farm · 5/7, claude-sonnet-5, building; and #476 Bump MQTT client, migrate deprecated API on deps-refresh, Self-review · 6/6, ollama/qwen3-coder, review — each labelled Demo data under its title. The elapsed column is masked.",
+      "capturedAt": "2026-10-23T06:08:11.223Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01",
       "masks": [
         ".dash-runs tbody tr td:nth-child(5)"
       ]
     },
     {
       "id": "user-guide.dashboard.pulse",
-      "route": "/dashboard",
+      "route": "/dashboard?origin=seeded",
       "workspace": "acme-robotics",
       "ready": ".dash-pulse",
       "clip": ".dash-col--4:has(.dash-pulse)",
       "caption": "The week's pulse, with the workspace's auto-merge switch.",
-      "alt": "Loop pulse over 7 days: Autonomous merge rate 95%, Median cycle time 12m 40s and Human interventions 15 this week, each with a bar, and Auto-merge when checks pass switched on.",
-      "capturedAt": "2026-10-09T01:23:03.050Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "2631a297583496a87a0ddace271b0fb29777909f"
+      "alt": "Loop pulse over 7 days, labelled Demo data: Autonomous merge rate 95%, Median cycle time 12m 40s and Human interventions 15 this week, each with a bar, and Auto-merge when checks pass switched on.",
+      "capturedAt": "2026-10-23T06:05:28.717Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
       "id": "user-guide.dashboard.system",
@@ -1257,15 +1272,15 @@
     },
     {
       "id": "user-guide.dashboard.closed",
-      "route": "/dashboard",
+      "route": "/dashboard?origin=seeded",
       "workspace": "acme-robotics",
       "ready": ".dash-closed",
       "clip": ".dash-col--7:has(.dash-closed)",
       "caption": "Recently closed: the loops that finished, and what became of them.",
-      "alt": "Recently closed by the loop, with All issues: #474 → PR #512 Debounce e-stop interrupt handler, claude-fable-5, 11m, 14/14, merged; #471 → PR #509 Unit tests for motor PID edge cases, 19m, 14/14, merged; #468 → PR #507 i18n strings for pairing screen, 6m, 12/12, merged; and #465 → PR #504 Refactor telemetry buffer allocation, claude-sonnet-5, 42m, 13/14 tinted, needs human.",
-      "capturedAt": "2026-10-09T01:23:03.050Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "2631a297583496a87a0ddace271b0fb29777909f"
+      "alt": "Recently closed by the loop, with All issues: #474 → PR #512 Debounce e-stop interrupt handler, claude-fable-5, 11m, 14/14, merged; #471 → PR #509 Unit tests for motor PID edge cases, 19m, 14/14, merged; #468 → PR #507 i18n strings for pairing screen, 6m, 12/12, merged; and #465 → PR #504 Refactor telemetry buffer allocation, claude-sonnet-5, 42m, 13/14 tinted, needs human — each labelled Demo data under its title.",
+      "capturedAt": "2026-10-23T06:08:13.701Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
       "id": "user-guide.dashboard.queue",
@@ -1282,14 +1297,14 @@
     {
       "id": "user-guide.dashboard.empty",
       "route": "/dashboard",
-      "workspace": "kensuenobu",
+      "workspace": "ken-suenobu",
       "ready": "section.offer-banner",
       "clip": "page",
       "caption": "A fresh workspace: every card says what will fill it, and the banner offers the Get Started wizard.",
-      "alt": "Mission Control for a new workspace, headed Good evening, Ken — the loop is idle., with the banner New workspace — your first loop in about 4 minutes. and its Get started and Dismiss buttons; every figure reads 0 with a line saying what will fill it; Active loops reads Nothing is running right now; and Loop pulse reads No runs have finished yet, so these three have nothing to measure.",
-      "capturedAt": "2026-10-09T01:23:03.050Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "2631a297583496a87a0ddace271b0fb29777909f"
+      "alt": "Mission Control for a new workspace on a deployment with no demo data, headed Good morning, Ken — the loop is idle., with the Data origin control on Live and the banner New workspace — your first loop in about 4 minutes. with Get started and Dismiss; Loops live and Queued issues read 0, PRs merged · 7d reads — with No live loop has merged yet., Token spend · today reads — with No live usage today.; Active loops reads No live loops are running; and Loop pulse shows — for all three with No live loop has finished yet, so these three have nothing to measure.",
+      "capturedAt": "2026-10-23T06:06:09.024Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
       "id": "user-guide.models.routing",
@@ -1620,10 +1635,10 @@
       "ready": "text=forge-02",
       "clip": "page",
       "caption": "The build farm: the fleet's figures, the live build, the runners table, the pools and the enroll card.",
-      "alt": "The Build Farm page for Acme Robotics, headed 5 runners. 2 pools. 78% cache hits., with Submit build, Build Analyzer, Pool settings and + Enroll runner. Four figures read Runners online 4/5 with forge-03 offline · 2h, Builds today 25, Avg build time 4m 00s and Cache hit rate 78%. The Runners table lists forge-01 building #479 zephyr build, forge-02 idle, forge-03 offline last seen 2h ago, anvil-mac idle with a shield mark, and bigiron draining #472 HIL test rig · finishing, with their pools and CPU. Beside it the Enroll a runner card shows the pool picker set to pool-a, the enroll command with a masked token, Copy command and Manage tokens, and the Pools card begins below.",
-      "capturedAt": "2026-10-09T03:05:51.567Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "7203ed53486e6e861a848b47897eb8cab75dd082"
+      "alt": "The Build Farm page for Acme Robotics, headed 5 runners. 2 pools. 78% cache hits., with Submit build, Build Analyzer, Pool settings and + Enroll runner. Four figures read Runners online 4/5 with forge-03 offline · 2h, Builds today 25, Avg build time 4m 00s and Cache hit rate 78%. The Runners table lists forge-01 building #479 zephyr build, forge-02 idle, forge-03 offline last seen 2h ago, anvil-mac idle with a shield mark, and bigiron draining #472 HIL test rig · finishing, each job labelled Demo data, with their pools and CPU. Beside it the Enroll a runner card shows the pool picker set to pool-a, the enroll command with a masked token, Copy command and Manage tokens, and the Pools card begins below.",
+      "capturedAt": "2026-10-23T06:05:59.128Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
       "id": "administration.build-farm.runner-detail",
@@ -1641,9 +1656,9 @@
       ],
       "caption": "A runner's details: the machine, how it authenticates, and its last telemetry.",
       "alt": "The details of runner anvil-mac. Machine: pool-b, idle, darwin/arm64, agent version 1.0.0, enrolled Sep 19, 2026, last seen 0s ago. Security: Bearer-token fallback — this runner connected without a client certificate, which is less secure than mTLS; certificate None — a runner on the bearer-token fallback holds no certificate. Telemetry snapshot: CPU 6%, RAM 5.0/64 GB, queues 0 and uptime 12d. A Close button.",
-      "capturedAt": "2026-10-09T03:06:08.470Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "7203ed53486e6e861a848b47897eb8cab75dd082"
+      "capturedAt": "2026-10-23T06:06:02.930Z",
+      "uiVersion": "0.170.0",
+      "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
       "id": "administration.farm-tokens",

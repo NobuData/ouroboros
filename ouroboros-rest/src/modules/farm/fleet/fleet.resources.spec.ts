@@ -70,6 +70,7 @@ describe("a runner", () => {
       title: "Add OTA rollback on failed checksum",
       startedAt: "2026-09-19T11:56:19.000Z",
       runId: null,
+      origin: "live",
     });
   });
 
@@ -349,6 +350,7 @@ describe("the live build", () => {
       runner: "forge-01",
       runnerId: "7f000002-0000-4000-8000-000000000001",
       startedAt: "2026-09-19T11:56:19.000Z",
+      origin: "live",
     });
   });
 });

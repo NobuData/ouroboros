@@ -112,6 +112,7 @@ describe("the head (mockup 12)", () => {
       headline: "can: fix flaky telemetry frame order under ISR load",
       hostUrl: HOST_URL,
       draft: false,
+      origin: "live",
       loop: { label: "loop #1847", href: runPath(SEEDED_RUN_ID, "dashboard"), external: false },
       issue: { label: "issue #482", href: TICKET_URL, external: true },
       pill: { label: "verifying — 5 of 7 gates green", tone: "warn", dot: undefined },

@@ -82,7 +82,8 @@ function main(page: Page): Locator {
  * @param range The window.
  */
 async function openInsights(page: Page, range = "30d"): Promise<void> {
-  await page.goto(`${INSIGHTS_PATH}?range=${range}`);
+  // The seed is demo data and Insights reads live data by default (DJ.3, #1316).
+  await page.goto(`${INSIGHTS_PATH}?range=${range}&origin=seeded`);
   await expect(main(page).locator(".insights__grid")).toHaveAttribute("aria-busy", "false");
 }
 

@@ -48,8 +48,8 @@ describe("the dashboard repository", () => {
     const everyRead: readonly [string, (repository: DashboardRepository) => Promise<unknown>][] = [
       ["version", (repository) => repository.version(WORKSPACE)],
       ["runStatistics", (repository) => repository.runStatistics(WORKSPACE, ["live"])],
-      ["activeRuns", (repository) => repository.activeRuns(WORKSPACE)],
-      ["recentRuns", (repository) => repository.recentRuns(WORKSPACE)],
+      ["activeRuns", (repository) => repository.activeRuns(WORKSPACE, ["live"])],
+      ["recentRuns", (repository) => repository.recentRuns(WORKSPACE, ["live"])],
       ["queueTotals", (repository) => repository.queueTotals(WORKSPACE)],
       ["queueHead", (repository) => repository.queueHead(WORKSPACE)],
       ["tokenTotals", (repository) => repository.tokenTotals(WORKSPACE, WINDOWS.day, ["live"])],
@@ -166,7 +166,7 @@ describe("the dashboard repository", () => {
 
   describe("the two run lists", () => {
     it("draws the active card in lifecycle order, longest-running first", async () => {
-      await dashboard.activeRuns(WORKSPACE);
+      await dashboard.activeRuns(WORKSPACE, ["live"]);
 
       const { sql, parameters } = database.statements[0];
       // The rank comes from the constant rather than from a hand-written `case`, so widening
@@ -184,18 +184,35 @@ describe("the dashboard repository", () => {
     });
 
     it("selects only the runs that are still in flight", async () => {
-      await dashboard.activeRuns(WORKSPACE);
+      await dashboard.activeRuns(WORKSPACE, ["live"]);
 
       expect(database.statements[0].sql).toContain('"status" in (');
     });
 
     it("draws the completions card newest first, off the index that orders it", async () => {
-      await dashboard.recentRuns(WORKSPACE);
+      await dashboard.recentRuns(WORKSPACE, ["live"]);
 
       const { sql } = database.statements[0];
       expect(sql).toContain('"finished_at" is not null');
       expect(sql).toContain('order by "finished_at" desc');
       expect(database.statements[0].parameters).toContain(RECENT_RUNS_LIMIT);
+    });
+
+    it.each([
+      [
+        "activeRuns",
+        (repository: DashboardRepository) => repository.activeRuns(WORKSPACE, ["seeded", "live"]),
+      ],
+      [
+        "recentRuns",
+        (repository: DashboardRepository) => repository.recentRuns(WORKSPACE, ["seeded", "live"]),
+      ],
+    ])("keeps %s to the origins the dashboard was asked for (DJ.3)", async (_name, read) => {
+      await read(dashboard);
+
+      const { sql, parameters } = database.statements[0];
+      expect(sql).toContain('"origin" in (');
+      expect(parameters).toEqual(expect.arrayContaining(["seeded", "live"]));
     });
   });
 

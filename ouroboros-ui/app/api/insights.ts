@@ -47,7 +47,7 @@
  */
 
 import { type ApiClient, unwrap } from "@/app/api/client";
-import { AGGREGATE_ORIGIN } from "@/app/api/origin";
+import type { OriginFilter } from "@/app/origin/origin";
 import type { components } from "@/app/api/schema";
 import { api } from "@/app/api/server";
 
@@ -109,6 +109,8 @@ export const insights = {
    *
    * @param range The window. The service's default (`30d`) is never relied on: the caller always
    *   names the range it is drawing, so the answer and the segment cannot disagree.
+   * @param origin The data origin the figures are computed from (DJ.3) — named always, for the
+   *   same reason.
    * @param client The client to read through. Defaults to the server's own, which redirects a
    *   `401` to the login screen — right for a render. A poll passes `anonymousApi()`.
    * @param signal A way to give up on the read — a poll's deadline.
@@ -117,12 +119,13 @@ export const insights = {
    */
   async page(
     range: InsightsRange,
+    origin: OriginFilter,
     client: ApiClient = api(),
     signal?: AbortSignal,
   ): Promise<InsightsPage> {
     return unwrap(
       await client.GET("/api/v1/insights", {
-        params: { query: { range, origin: AGGREGATE_ORIGIN } },
+        params: { query: { range, origin } },
         signal,
       }),
     );
@@ -133,23 +136,21 @@ export const insights = {
    *
    * @param range The page's range, so the list covers the bars' own window.
    * @param cause One cause, or `undefined` for every cause.
+   * @param origin The data origin whose runs' events to list — the page's own, so the list
+   *   matches the bar (DJ.3).
    * @param client The client to read through. Defaults to the server's own.
    * @returns The window, how many matched and the newest of them.
    * @throws {ApiError} When the service refuses.
    */
   async interventions(
     range: InsightsRange,
-    cause?: InterventionCause,
+    cause: InterventionCause | undefined,
+    origin: OriginFilter,
     client: ApiClient = api(),
   ): Promise<InterventionList> {
     return unwrap(
       await client.GET("/api/v1/insights/interventions", {
-        params: {
-          query:
-            cause === undefined
-              ? { range, origin: AGGREGATE_ORIGIN }
-              : { range, cause, origin: AGGREGATE_ORIGIN },
-        },
+        params: { query: cause === undefined ? { range, origin } : { range, cause, origin } },
       }),
     );
   },

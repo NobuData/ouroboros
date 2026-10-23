@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { OriginBadge } from "@/app/origin/origin-badge";
 import { Chip, Eyebrow, Tag } from "@/app/ui";
 
 import { DRAFT_LABEL, type PrHeadView, type TagLink } from "./view";
@@ -83,6 +84,7 @@ export function PrHead({
             </Tag>
           )}
           {view.draft && <Chip tone="neutral">{DRAFT_LABEL}</Chip>}
+          <OriginBadge origin={view.origin} />
           <Chip dot={view.pill.dot} tone={view.pill.tone}>
             {view.pill.label}
           </Chip>

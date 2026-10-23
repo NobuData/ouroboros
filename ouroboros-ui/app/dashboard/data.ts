@@ -74,6 +74,7 @@ import { engine } from "@/app/api/engine";
 import { readReadiness } from "@/app/api/health";
 import { attempt } from "@/app/api/reading";
 import { readGetStartedOffer } from "@/app/get-started/data";
+import { DEFAULT_ORIGIN, type OriginFilter } from "@/app/origin/origin";
 import { runPullRequests } from "@/app/prs/data";
 
 import { type DashboardReadings, NO_PULL_REQUESTS, completionRunIds } from "./view";
@@ -85,13 +86,18 @@ import { type DashboardReadings, NO_PULL_REQUESTS, completionRunIds } from "./vi
  *   than re-read here so that the page's authorization and the page's data are one
  *   decision: the caller has already been sent to the login screen if it had no business
  *   asking.
+ * @param origin Which data origin the aggregates and run lists count (DJ.3) — the address's or
+ *   the remembered choice; live by default.
  * @returns Everything the screen draws, each part either read or explained.
  * @throws Whatever is not an `ApiError` — Next.js's redirect signal above all, which is how
  *   a session that expired between the gate and these calls still reaches the login screen.
  */
-export async function readDashboard(access: Workspace): Promise<DashboardReadings> {
+export async function readDashboard(
+  access: Workspace,
+  origin: OriginFilter = DEFAULT_ORIGIN,
+): Promise<DashboardReadings> {
   const [aggregate, readiness, engineStatus, getStarted] = await Promise.all([
-    attempt(() => dashboard.read()),
+    attempt(() => dashboard.read(origin)),
     readReadiness(),
     attempt(() => engine.status()),
     readGetStartedOffer(access.membership.id),
@@ -110,6 +116,7 @@ export async function readDashboard(access: Workspace): Promise<DashboardReading
     // Taken after the reads rather than before them, so a slow round trip is not counted as
     // part of a run's elapsed time. One reading for the whole page: see `DashboardReadings`.
     readAt: Date.now(),
+    origin,
     aggregate,
     readiness,
     engine: engineStatus,

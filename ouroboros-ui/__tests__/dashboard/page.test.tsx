@@ -31,10 +31,15 @@ const readDashboard = vi.fn();
 vi.mock("@/app/get-started/actions", () => ({ dismissWizard: vi.fn() }));
 vi.mock("@/app/dashboard/pulse-actions", () => ({ setAutoMerge: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+// The origin filter's server read takes the request's cookies (DJ.3) — here, nothing remembered.
+const readOriginFilter = vi.fn();
+vi.mock("@/app/origin/origin-server", () => ({
+  readOriginFilter: (param: unknown) => readOriginFilter(param),
+}));
 
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/dashboard/data", () => ({
-  readDashboard: (access: unknown) => readDashboard(access),
+  readDashboard: (access: unknown, origin: unknown) => readDashboard(access, origin),
 }));
 
 const Page = (await import("@/app/(app)/dashboard/page")).default;
@@ -47,6 +52,7 @@ const ACCESS = {
 
 beforeEach(() => {
   requireWorkspace.mockReset().mockResolvedValue(ACCESS);
+  readOriginFilter.mockReset().mockResolvedValue("live");
   readDashboard.mockReset().mockResolvedValue(readings());
 });
 
@@ -64,7 +70,7 @@ describe("the dashboard route", () => {
     // read is scoped to is the one the gate matched against the session's own memberships.
     await Page();
 
-    expect(readDashboard).toHaveBeenCalledExactlyOnceWith(ACCESS);
+    expect(readDashboard).toHaveBeenCalledExactlyOnceWith(ACCESS, "live");
   });
 
   it("draws what the reader returned", async () => {

@@ -263,13 +263,15 @@ export class DashboardRepository {
    * millisecond do not swap places between polls and change the payload for no reason.
    *
    * @param organizationId - The workspace, from the tenant context.
+   * @param origins - The data origins to list (DJ.3) — the dashboard's filter, `live` by default.
    * @returns At most {@link ACTIVE_RUNS_LIMIT} rows.
    */
-  async activeRuns(organizationId: string): Promise<Run[]> {
+  async activeRuns(organizationId: string, origins: readonly DataOrigin[]): Promise<Run[]> {
     return this.database.db
       .selectFrom("runs")
       .selectAll()
       .where("organization_id", "=", organizationId)
+      .where("origin", "in", [...origins])
       .where("status", "in", [...ACTIVE_RUN_STATUSES])
       .orderBy(sql<number>`array_position(${[...ACTIVE_RUN_STATUSES]}::text[], status)`)
       .orderBy("started_at", "asc")
@@ -287,13 +289,15 @@ export class DashboardRepository {
    * lets the index answer it.
    *
    * @param organizationId - The workspace, from the tenant context.
+   * @param origins - The data origins to list (DJ.3) — the dashboard's filter, `live` by default.
    * @returns At most {@link RECENT_RUNS_LIMIT} rows.
    */
-  async recentRuns(organizationId: string): Promise<Run[]> {
+  async recentRuns(organizationId: string, origins: readonly DataOrigin[]): Promise<Run[]> {
     return this.database.db
       .selectFrom("runs")
       .selectAll()
       .where("organization_id", "=", organizationId)
+      .where("origin", "in", [...origins])
       .where("finished_at", "is not", null)
       .orderBy("finished_at", "desc")
       .orderBy("id", "asc")

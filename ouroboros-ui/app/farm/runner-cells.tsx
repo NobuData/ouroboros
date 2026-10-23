@@ -4,6 +4,8 @@ import Link from "next/link";
 import { memo } from "react";
 
 import { runPath, testsPath } from "@/app/paths";
+import type { DataOrigin } from "@/app/origin/origin";
+import { OriginBadge } from "@/app/origin/origin-badge";
 import { BUILD_FARM_ORIGIN } from "@/app/runs/origin";
 import { Chip, Meter, cx } from "@/app/ui";
 import type { MeterTone } from "@/app/ui";
@@ -146,6 +148,8 @@ export const RunnerStatusCell = memo(function RunnerStatusCell({
  * @param props.note `zephyr build`, or `null`.
  * @param props.title The job's full title — the tooltip.
  * @param props.runId The loop run the job belongs to, or `null` — which decides link or button.
+ * @param props.origin Where the build came from (DJ.1), or `null` with no job: a demo or simulated
+ *   build carries its origin badge beside the cell's link or button (DJ.3).
  * @param props.onOpen Opens the sheet for a job. Identity-stable, or the memo is for nothing.
  * @returns The cell: an em dash for a machine running nothing.
  */
@@ -155,6 +159,7 @@ export const RunnerJobCell = memo(function RunnerJobCell({
   note,
   title,
   runId,
+  origin = null,
   onOpen,
 }: Readonly<{
   jobId: string | null;
@@ -162,8 +167,11 @@ export const RunnerJobCell = memo(function RunnerJobCell({
   note: string | null;
   title: string | null;
   runId: string | null;
+  origin?: DataOrigin | null;
   onOpen: (jobId: string) => void;
 }>) {
+  const badge = origin === null ? null : <OriginBadge origin={origin} />;
+
   if (jobId === null || number === null || note === null) {
     return <span className="farm-runners__none">{NOT_MEASURED}</span>;
   }
@@ -186,11 +194,12 @@ export const RunnerJobCell = memo(function RunnerJobCell({
         >
           {JOB_TESTS_LINK}
         </Link>
+        {badge}
       </span>
     );
   }
 
-  return (
+  const button = (
     <button
       className="farm-runners__job"
       onClick={() => onOpen(jobId)}
@@ -200,6 +209,16 @@ export const RunnerJobCell = memo(function RunnerJobCell({
       <span className="farm-runners__job-number">{number}</span>{" "}
       <span className="farm-runners__job-note">{note}</span>
     </button>
+  );
+
+  // A live build keeps the cell exactly as it was; a badged one sits beside its button.
+  return badge === null ? (
+    button
+  ) : (
+    <span className="farm-runners__job-links">
+      {button}
+      {badge}
+    </span>
   );
 });
 

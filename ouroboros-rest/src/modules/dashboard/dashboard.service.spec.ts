@@ -504,6 +504,17 @@ describe("the dashboard service", () => {
         "simulated",
         "seeded",
       ]);
+      // The two run cards list the same origins the aggregates count (DJ.3).
+      expect(repository.activeRuns).toHaveBeenCalledWith(WORKSPACE, [
+        "live",
+        "simulated",
+        "seeded",
+      ]);
+      expect(repository.recentRuns).toHaveBeenCalledWith(WORKSPACE, [
+        "live",
+        "simulated",
+        "seeded",
+      ]);
       for (const [, scope] of metrics.window.mock.calls) {
         expect(scope).toMatchObject({ origin: "all" });
       }

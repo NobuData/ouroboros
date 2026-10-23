@@ -13,6 +13,7 @@
 import type { RunStatus } from "@/app/api/dashboard";
 import type { RunConsole, RunRepository } from "@/app/api/runs";
 import type { PullRequestRef } from "@/app/api/pull-requests";
+import type { DataOrigin } from "@/app/origin/origin";
 import { prPath } from "@/app/paths";
 import type { ChipDot, ChipTone } from "@/app/ui";
 
@@ -132,6 +133,8 @@ export interface RunHeadView {
   readonly branch: string | null;
   /** Decision R4's watermark. */
   readonly simulated: boolean;
+  /** Where the run came from (DJ.1) — the meta row's origin badge for demo and simulated runs (DJ.3). */
+  readonly origin: DataOrigin;
   /** *Elapsed*. */
   readonly elapsed: RunElapsed;
   /**
@@ -345,6 +348,7 @@ export function runHead(
     branch: head.branchName,
     // Per run, never per deployment (DG.3): the watermark, or DJ.1's origin, which agree.
     simulated: head.simulated || head.origin === "simulated",
+    origin: head.origin,
     elapsed: runElapsed(snapshot),
     pullRequest: runPullRequest(snapshot),
     verification,

@@ -12,6 +12,7 @@
     "e2e": "playwright test",
     "readability": "playwright test --config playwright.readability.config.ts",
     "email": "playwright test --config playwright.email.config.ts",
+    "unseeded": "playwright test --config playwright.unseeded.config.ts",
     "stack": "scripts/run.sh",
     "failure-modes": "scripts/verify-failure-modes.sh",
     "browsers": "playwright install --with-deps chromium",

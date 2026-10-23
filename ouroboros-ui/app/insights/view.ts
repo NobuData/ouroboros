@@ -31,6 +31,9 @@ import { ANALYZER_PATH, CHATOPS_PATH } from "@/app/paths";
 import type { StatTone, StatValueTone } from "@/app/ui/stat-card";
 
 import { RANGE_DAYS } from "./range";
+import { DEFAULT_ORIGIN, type OriginFilter } from "@/app/origin/origin";
+
+import { NO_CLOSED_PR } from "./origin-view";
 
 /* ------------------------------------------------------------------ the head */
 
@@ -66,15 +69,21 @@ export const NOTHING_NEEDED_A_HUMAN = "Nothing needed a human.";
  * merged`, `1 needed a human`, and a week of zeros reads *No PRs merged this week. Nothing needed
  * a human.* — intentional rather than broken.
  *
+ * **No data is not a quiet week** (DJ.3, [#1316](https://github.com/NobuData/ouroboros/issues/1316)).
+ * A null `mergedPrs` is the service saying the week holds no loop pull request of the origin shown,
+ * so the heading says that — *No live loop closed a pull request this week.* — rather than claiming
+ * nothing merged.
+ *
  * @param head The head's numbers, or `null` when nothing has been read.
+ * @param origin The data origin the page shows; it names the empty heading.
  * @returns The heading.
  */
-export function insightsHeadline(head: InsightsHead | null): string {
+export function insightsHeadline(head: InsightsHead | null, origin: OriginFilter = DEFAULT_ORIGIN): string {
   if (head === null) return INSIGHTS_HEADLINE_UNREAD;
+  if (head.mergedPrs === null) return NO_CLOSED_PR[origin];
 
-  // Null is ouroboros-rest's no data (DJ.2): the sentence says nothing merged, as it did for the
-  // zero it replaced, until DJ.3 (#1316) gives the head an honest empty state.
-  const mergedPrs = head.mergedPrs ?? 0;
+  const { mergedPrs } = head;
+  // The service sends interventions null exactly when merges are; with merges, none is zero.
   const interventions = head.interventions ?? 0;
   const merged =
     mergedPrs <= 0

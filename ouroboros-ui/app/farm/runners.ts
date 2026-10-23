@@ -38,6 +38,7 @@
 
 import type { FarmPage, FarmRunner } from "@/app/api/farm";
 import { ageOfSeconds } from "@/app/format";
+import type { DataOrigin } from "@/app/origin/origin";
 import type { ChipDot, ChipTone } from "@/app/ui/chip";
 import type { MeterTone } from "@/app/ui/meter";
 
@@ -391,6 +392,8 @@ export interface RunnerRow {
    * to the run console by (#309).
    */
   readonly jobRunId: string | null;
+  /** Where the build came from (DJ.1), or `null` for a machine running nothing — its badge. */
+  readonly jobOrigin: DataOrigin | null;
   /** `82%`, or an em dash. */
   readonly cpu: string;
   /** How full the CPU meter is, or `null` for no meter. */
@@ -436,6 +439,7 @@ export function runnerRow(runner: FarmRunner, nowMs: number): RunnerRow {
     jobTitle: job?.title ?? null,
     jobStartedAt: job?.startedAt ?? null,
     jobRunId: job?.runId ?? null,
+    jobOrigin: job?.origin ?? null,
     cpu: cpu.text,
     cpuMeter: cpu.meter,
     cpuTone: cpu.tone,

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.43.0"
+  version: "0.43.1"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -1789,6 +1789,7 @@ paths:
                     prNumber: null
                     checksPassed: null
                     checksTotal: null
+                    origin: seeded
                 recentRuns:
                   - id: 5eed0009-0000-4000-8000-000000000474
                     issueNumber: 474
@@ -1804,6 +1805,7 @@ paths:
                     prNumber: 512
                     checksPassed: 14
                     checksTotal: 14
+                    origin: seeded
                 queueHead:
                   - id: 5eed000a-0000-4000-8000-000000000485
                     issueNumber: 485
@@ -1948,6 +1950,14 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: origin
+          in: query
+          required: false
+          description: |-
+            Narrow to one data origin's runs (DJ.3, [#1316](https://github.com/NobuData/ouroboros/issues/1316))
+            — `live`, `simulated` or `seeded`. Absent or `all` lists every origin.
+          schema:
+            $ref: "#/components/schemas/OriginFilter"
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
       responses:
@@ -1975,6 +1985,7 @@ paths:
                     prNumber: null
                     checksPassed: null
                     checksTotal: null
+                    origin: seeded
                 total: 3
                 limit: 25
                 offset: 0
@@ -2094,6 +2105,7 @@ paths:
                   prNumber: null
                   checksPassed: null
                   checksTotal: null
+                  origin: seeded
                 head:
                   loopSeq: 1847
                   workflowVersion: 14
@@ -49037,6 +49049,7 @@ components:
           prNumber,
           checksPassed,
           checksTotal,
+          origin,
         ]
       properties:
         id:
@@ -49102,6 +49115,8 @@ components:
           description: |-
             Total checks on the pull request. `0` of `0` is a repository with no checks, which
             is **not** the same as `null` — not knowing yet.
+        origin:
+          $ref: "#/components/schemas/DataOrigin"
 
     RunPage:
       type: object
@@ -50371,8 +50386,9 @@ components:
         queued are numbers. A windowed aggregate with no row of the asked origin is **null** — no
         data, never a zero floor (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315))
         — and `originsPresent` says what the workspace does hold. Aggregates count `live` rows
-        unless `origin` asks otherwise; the run lists and the queue are rows, not aggregates, and
-        are not filtered.
+        unless `origin` asks otherwise. The two run lists are filtered by `origin` too (DJ.3,
+        [#1316](https://github.com/NobuData/ouroboros/issues/1316)) and each run carries its own; the
+        queue holds issues rather than runs and is not filtered.
       additionalProperties: false
       required:
         [origin, originsPresent, mixed, stats, pulse, activeRuns, recentRuns, queueHead, activity]
@@ -72882,7 +72898,7 @@ components:
       description: |-
         The build a runner is working on, as the *Current job* cell prints it.
       additionalProperties: false
-      required: [id, number, label, title, startedAt, runId]
+      required: [id, number, label, title, startedAt, runId, origin]
       properties:
         id:
           type: string
@@ -72910,6 +72926,9 @@ components:
             ([#309](https://github.com/NobuData/ouroboros/issues/309)).
 
             **Added in 0.37.2.**
+        origin:
+          $ref: "#/components/schemas/DataOrigin"
+          description: Where the build came from (DJ.1) — what the UI's origin badge reads (DJ.3).
 
     FarmLiveBuild:
       type: object
@@ -72919,7 +72938,7 @@ components:
         the one somebody is waiting on rather than the long sweep the runners table already
         carries.
       additionalProperties: false
-      required: [id, number, label, title, runner, runnerId, startedAt]
+      required: [id, number, label, title, runner, runnerId, startedAt, origin]
       properties:
         id:
           type: string
@@ -72943,6 +72962,9 @@ components:
           format: date-time
           description: |-
             The card's elapsed timer counts from here.
+        origin:
+          $ref: "#/components/schemas/DataOrigin"
+          description: Where the build came from (DJ.1) — what the UI's origin badge reads (DJ.3).
 
     ArtifactUploadRequest:
       type: object

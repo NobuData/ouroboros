@@ -258,14 +258,15 @@ describe("a workspace with nothing running", () => {
   it("says so, rather than drawing an empty table", () => {
     render(<ActiveLoopsCard aggregate={read(emptyDashboard())} readAt={READ_AT} />);
 
-    expect(screen.getByText("Nothing is running right now")).toBeInTheDocument();
+    // Under the default live filter (DJ.3) the card says no *live* loop runs.
+    expect(screen.getByText("No live loops are running")).toBeInTheDocument();
     expect(within(region()).queryByRole("table")).not.toBeInTheDocument();
   });
 
   it("names what would put a row there", () => {
     render(<ActiveLoopsCard aggregate={read(emptyDashboard())} readAt={READ_AT} />);
 
-    expect(screen.getByText(/the moment Ouroboros picks an issue up/)).toBeInTheDocument();
+    expect(screen.getByText("A loop appears here when one starts on an issue.")).toBeInTheDocument();
   });
 });
 

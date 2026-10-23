@@ -13,6 +13,11 @@ going. Every card leads to the screen where you act on it.
 
 The dashboard refreshes itself while it is open; you never need to reload it.
 
+The figures and the two loop lists show **live** data unless you choose another origin with the
+**Data origin** control under the page heading. A loop from demo data or the run simulator is labelled
+**Demo data** or **Simulated**, and a figure with no live data shows **—** rather than **0** — see
+[Where the data comes from](./concepts.mdx#where-the-data-comes-from).
+
 ## The header
 
 The greeting says whether anything is running — **the loop is turning** when at least one loop
@@ -131,9 +136,10 @@ waiting than fit, a button such as **+7 queued →** shows how many more. Both i
 <Screenshot id="user-guide.dashboard.empty" />
 
 In a workspace where nothing has run yet, every card says what will fill it rather than showing
-an empty box — for example **Nothing is running right now**, with *Loops appear here the moment
-Ouroboros picks an issue up, and stay until they merge or stop for a person.* — and the figures
-read **0**.
+an empty box — for example **No live loops are running**, with *A loop appears here when one
+starts on an issue.* — **Loops live**
+and **Queued issues** read **0**, and **PRs merged · 7d**, **Token spend · today** and the loop
+pulse read **—** until a live loop gives them something to measure.
 
 A new workspace also shows the banner **New workspace — your first loop in about 4 minutes.**
 **Get started →** opens the [Get Started wizard](./getting-started/wizard.mdx); **Dismiss**

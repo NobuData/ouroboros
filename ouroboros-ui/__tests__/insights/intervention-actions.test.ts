@@ -50,24 +50,24 @@ describe("listCauseEvents", () => {
   it("lists one bar's events for the page's range", async () => {
     interventions.mockResolvedValue({ total: 0, interventions: [] });
 
-    await expect(listCauseEvents("7d", "infra_rig")).resolves.toEqual({
+    await expect(listCauseEvents("7d", "infra_rig", "live")).resolves.toEqual({
       ok: true,
       value: { total: 0, interventions: [] },
     });
-    expect(interventions).toHaveBeenCalledWith("7d", "infra_rig");
+    expect(interventions).toHaveBeenCalledWith("7d", "infra_rig", "live");
   });
 
   it("says so when the list cannot be read", async () => {
     interventions.mockRejectedValue(refusal(500, "internal_error"));
 
-    await expect(listCauseEvents("7d", "other")).resolves.toEqual({ ok: false, reason: EVENTS_UNREADABLE });
+    await expect(listCauseEvents("7d", "other", "live")).resolves.toEqual({ ok: false, reason: EVENTS_UNREADABLE });
   });
 
   it("lets anything that is not a refusal through", async () => {
     const redirect = new Error("NEXT_REDIRECT");
     interventions.mockRejectedValue(redirect);
 
-    await expect(listCauseEvents("7d", "other")).rejects.toBe(redirect);
+    await expect(listCauseEvents("7d", "other", "live")).rejects.toBe(redirect);
   });
 });
 

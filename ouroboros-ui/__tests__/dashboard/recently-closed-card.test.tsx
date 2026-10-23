@@ -309,7 +309,8 @@ describe("a workspace that has closed nothing", () => {
   it("says so, rather than drawing an empty table", () => {
     render(<RecentlyClosedCard aggregate={read(emptyDashboard())} />);
 
-    expect(screen.getByText("Nothing closed yet")).toBeInTheDocument();
+    // Under the default live filter (DJ.3) the card says no *live* loop has closed.
+    expect(screen.getByText("No live loop has closed yet")).toBeInTheDocument();
     expect(within(region()).queryByRole("table")).not.toBeInTheDocument();
   });
 

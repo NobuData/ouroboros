@@ -16218,6 +16218,7 @@ export interface components {
              *     is **not** the same as `null` — not knowing yet.
              */
             checksTotal: number | null;
+            origin: components["schemas"]["DataOrigin"];
         };
         /**
          * RunPage
@@ -17095,8 +17096,9 @@ export interface components {
          *     queued are numbers. A windowed aggregate with no row of the asked origin is **null** — no
          *     data, never a zero floor (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315))
          *     — and `originsPresent` says what the workspace does hold. Aggregates count `live` rows
-         *     unless `origin` asks otherwise; the run lists and the queue are rows, not aggregates, and
-         *     are not filtered.
+         *     unless `origin` asks otherwise. The two run lists are filtered by `origin` too (DJ.3,
+         *     [#1316](https://github.com/NobuData/ouroboros/issues/1316)) and each run carries its own; the
+         *     queue holds issues rather than runs and is not filtered.
          */
         Dashboard: {
             origin: components["schemas"]["OriginFilter"];
@@ -32743,6 +32745,8 @@ export interface components {
              *     **Added in 0.37.2.**
              */
             runId: string | null;
+            /** @description Where the build came from (DJ.1) — what the UI's origin badge reads (DJ.3). */
+            origin: components["schemas"]["DataOrigin"];
         };
         /**
          * FarmLiveBuild
@@ -32765,6 +32769,8 @@ export interface components {
              * @description The card's elapsed timer counts from here.
              */
             startedAt: string | null;
+            /** @description Where the build came from (DJ.1) — what the UI's origin badge reads (DJ.3). */
+            origin: components["schemas"]["DataOrigin"];
         };
         /**
          * ArtifactUploadRequest
@@ -34455,6 +34461,11 @@ export interface operations {
                 content: {
                     /**
                      * @example {
+                     *       "origin": "live",
+                     *       "originsPresent": [
+                     *         "live"
+                     *       ],
+                     *       "mixed": false,
                      *       "stats": {
                      *         "loopsLive": {
                      *           "total": 3,
@@ -34500,7 +34511,8 @@ export interface operations {
                      *           "finishedAt": null,
                      *           "prNumber": null,
                      *           "checksPassed": null,
-                     *           "checksTotal": null
+                     *           "checksTotal": null,
+                     *           "origin": "seeded"
                      *         }
                      *       ],
                      *       "recentRuns": [
@@ -34518,7 +34530,8 @@ export interface operations {
                      *           "finishedAt": "2026-08-13T13:55:41.000Z",
                      *           "prNumber": 512,
                      *           "checksPassed": 14,
-                     *           "checksTotal": 14
+                     *           "checksTotal": 14,
+                     *           "origin": "seeded"
                      *         }
                      *       ],
                      *       "queueHead": [
@@ -34654,6 +34667,11 @@ export interface operations {
                 /** @description Narrow to one repository, by `github_repos.id`. */
                 repo?: string;
                 /**
+                 * @description Narrow to one data origin's runs (DJ.3, [#1316](https://github.com/NobuData/ouroboros/issues/1316))
+                 *     — `live`, `simulated` or `seeded`. Absent or `all` lists every origin.
+                 */
+                origin?: components["schemas"]["OriginFilter"];
+                /**
                  * @description How many rows to return. The ceiling is not a suggestion: without it, a `limit` of a
                  *     million is a client's way of asking this service to hold a table in memory, and the
                  *     request that does it is indistinguishable from a mistake in a loop.
@@ -34734,7 +34752,8 @@ export interface operations {
                      *           "finishedAt": null,
                      *           "prNumber": null,
                      *           "checksPassed": null,
-                     *           "checksTotal": null
+                     *           "checksTotal": null,
+                     *           "origin": "seeded"
                      *         }
                      *       ],
                      *       "total": 3,
@@ -34888,7 +34907,8 @@ export interface operations {
                      *         "finishedAt": null,
                      *         "prNumber": null,
                      *         "checksPassed": null,
-                     *         "checksTotal": null
+                     *         "checksTotal": null,
+                     *         "origin": "seeded"
                      *       },
                      *       "head": {
                      *         "loopSeq": 1847,
@@ -50807,6 +50827,11 @@ export interface operations {
                 content: {
                     /**
                      * @example {
+                     *       "origin": "live",
+                     *       "originsPresent": [
+                     *         "live"
+                     *       ],
+                     *       "mixed": false,
                      *       "range": "7d",
                      *       "window": {
                      *         "from": "2026-09-25",
@@ -50829,6 +50854,7 @@ export interface operations {
                      *           "key": "autonomous_merge_rate",
                      *           "unit": "pct",
                      *           "value": 95.45454545454545,
+                     *           "n": 22,
                      *           "prior": 92.5925925925926,
                      *           "delta": 2.861952861952858,
                      *           "trend": {
@@ -50847,13 +50873,15 @@ export interface operations {
                      *             "unit": "pct",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "merged_untouched_rate",
                      *           "unit": "pct",
                      *           "value": 76.19047619047619,
+                     *           "n": 22,
                      *           "prior": 80,
                      *           "delta": -3.80952380952381,
                      *           "trend": {
@@ -50871,13 +50899,15 @@ export interface operations {
                      *             "unit": "pct",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "cycle_time",
                      *           "unit": "duration_ms",
                      *           "value": 820000,
+                     *           "n": 22,
                      *           "prior": 860000,
                      *           "delta": -40000,
                      *           "trend": {
@@ -50895,13 +50925,15 @@ export interface operations {
                      *             "unit": "duration_ms",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "median"
+                     *             "aggregation": "median",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "cost_per_merged_pr",
                      *           "unit": "cents",
                      *           "value": 203.61904761904762,
+                     *           "n": 22,
                      *           "prior": 242.12,
                      *           "delta": -38.500952380952384,
                      *           "trend": {
@@ -50920,13 +50952,15 @@ export interface operations {
                      *             "unit": "cents",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "human_interventions",
                      *           "unit": "count",
                      *           "value": 8,
+                     *           "n": 22,
                      *           "prior": 2,
                      *           "delta": 6,
                      *           "trend": {
@@ -50946,7 +50980,8 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 2,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         }
                      *       ],
@@ -51007,7 +51042,8 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         "cost": {
@@ -51071,7 +51107,8 @@ export interface operations {
                      *             "unit": "cents",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         "builds": {
@@ -51123,7 +51160,8 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         }
                      *       },
@@ -51162,7 +51200,8 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 2,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         "stages": {
@@ -51212,7 +51251,8 @@ export interface operations {
                      *             "unit": "duration_ms",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "median"
+                     *             "aggregation": "median",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         "suites": {
@@ -51252,7 +51292,8 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         "effort": {
@@ -51299,7 +51340,8 @@ export interface operations {
                      *             "unit": "duration_ms",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "median"
+                     *             "aggregation": "median",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         "tokens": {
@@ -51354,7 +51396,8 @@ export interface operations {
                      *             "unit": "tokens",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         }
                      *       },
@@ -51363,6 +51406,7 @@ export interface operations {
                      *           "key": "builds",
                      *           "unit": "count",
                      *           "value": 110,
+                     *           "n": 22,
                      *           "methodology": {
                      *             "metricId": "builds",
                      *             "title": "Builds",
@@ -51374,13 +51418,15 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "build_success_rate",
                      *           "unit": "pct",
                      *           "value": 93.63636363636364,
+                     *           "n": 22,
                      *           "components": {
                      *             "numerator": 103,
                      *             "denominator": 110
@@ -51396,13 +51442,15 @@ export interface operations {
                      *             "unit": "pct",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "test_cases_run",
                      *           "unit": "count",
                      *           "value": 5622,
+                     *           "n": 22,
                      *           "methodology": {
                      *             "metricId": "test_cases_run",
                      *             "title": "Test cases run",
@@ -51414,13 +51462,15 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "test_pass_rate",
                      *           "unit": "pct",
                      *           "value": 99.62646744930629,
+                     *           "n": 22,
                      *           "components": {
                      *             "numerator": 5601,
                      *             "denominator": 5622
@@ -51436,13 +51486,15 @@ export interface operations {
                      *             "unit": "pct",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "tokens",
                      *           "unit": "tokens",
                      *           "value": 27846076,
+                     *           "n": 22,
                      *           "methodology": {
                      *             "metricId": "tokens",
                      *             "title": "Tokens",
@@ -51454,13 +51506,15 @@ export interface operations {
                      *             "unit": "tokens",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "total_cost",
                      *           "unit": "cents",
                      *           "value": 4276,
+                     *           "n": 22,
                      *           "methodology": {
                      *             "metricId": "cost_cents",
                      *             "title": "Total cost",
@@ -51472,7 +51526,8 @@ export interface operations {
                      *             "unit": "cents",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         }
                      *       ],
@@ -51521,6 +51576,11 @@ export interface operations {
                      *         ]
                      *       },
                      *       "scoreboard": {
+                     *         "origin": "live",
+                     *         "originsPresent": [
+                     *           "live"
+                     *         ],
+                     *         "mixed": false,
                      *         "range": "7d",
                      *         "window": {
                      *           "from": "2026-09-25",
@@ -51544,7 +51604,8 @@ export interface operations {
                      *             "unit": "pct",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           },
                      *           "costPerSuccess": {
                      *             "metricId": "scoreboard_cost_per_success",
@@ -51559,7 +51620,8 @@ export interface operations {
                      *             "unit": "cents",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           },
                      *           "trend": {
                      *             "metricId": "scoreboard_trend",
@@ -51573,7 +51635,8 @@ export interface operations {
                      *             "unit": "pct",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           },
                      *           "sample": {
                      *             "metricId": "scoreboard_merged",
@@ -51588,7 +51651,8 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         }
                      *       },
@@ -51597,6 +51661,7 @@ export interface operations {
                      *           "key": "deploy_frequency",
                      *           "unit": "per_day",
                      *           "value": 7.285714285714286,
+                     *           "n": 22,
                      *           "prior": 4.428571428571429,
                      *           "delta": 2.8571428571428568,
                      *           "trend": {
@@ -51624,13 +51689,15 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "lead_time",
                      *           "unit": "duration_ms",
                      *           "value": 1613333.3333333333,
+                     *           "n": 22,
                      *           "prior": 1371200,
                      *           "delta": 242133.33333333326,
                      *           "trend": {
@@ -51659,13 +51726,15 @@ export interface operations {
                      *             "unit": "duration_ms",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "change_failure_rate",
                      *           "unit": "pct",
                      *           "value": 4.761904761904762,
+                     *           "n": 22,
                      *           "prior": 0,
                      *           "delta": 4.761904761904762,
                      *           "trend": {
@@ -51693,13 +51762,15 @@ export interface operations {
                      *             "unit": "pct",
                      *             "version": 1,
                      *             "proxy": true,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "mttr",
                      *           "unit": "duration_ms",
                      *           "value": 1135500,
+                     *           "n": 22,
                      *           "prior": 1247916.6666666667,
                      *           "delta": -112416.66666666674,
                      *           "trend": {
@@ -51728,7 +51799,8 @@ export interface operations {
                      *             "unit": "duration_ms",
                      *             "version": 1,
                      *             "proxy": true,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         }
                      *       ],
@@ -52515,6 +52587,11 @@ export interface operations {
                 content: {
                     /**
                      * @example {
+                     *       "origin": "live",
+                     *       "originsPresent": [
+                     *         "live"
+                     *       ],
+                     *       "mixed": false,
                      *       "window": "30d",
                      *       "from": "2026-09-01T12:00:00.000Z",
                      *       "to": "2026-10-01T12:00:00.000Z",
@@ -52715,6 +52792,7 @@ export interface operations {
                     /**
                      * @example {
                      *       "range": "30d",
+                     *       "origin": "live",
                      *       "window": {
                      *         "from": "2026-09-02",
                      *         "to": "2026-10-01"
