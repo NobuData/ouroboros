@@ -103,6 +103,7 @@ Listens on `8000` on all interfaces, as the `engine` user. Its container health 
 | <EnvVar name="OURO_ENGINE_CLONE_DIR" /> | no | `/var/lib/ouroboros-engine/clones` | Where the code & git mining tool keeps its repository clones. Mount a volume there. |
 | <EnvVar name="OURO_ENGINE_CLONE_REFRESH_SECONDS" /> | no | `300` | How long a clone is read before it is fetched again. |
 | <EnvVar name="OURO_ENGINE_CLONE_TIMEOUT_SECONDS" /> | no | `120` | The network timeout of one fetch from GitHub. |
+| <EnvVar name="OURO_ENGINE_GIT_CA_FILE" /> | no | — | A PEM bundle of the certificate authority that signs a self-hosted git server, for the engine's clones and pushes. Mount it read-only. Verification is never turned off. |
 | <EnvVar name="OURO_ENGINE_RUN_DIR" /> | no | `/var/lib/ouroboros-engine/runs` | Where each live run's working tree lives. Mount a volume there. |
 | <EnvVar name="OURO_ENGINE_RUN_MAX_MB" /> | no | `2048` | One run tree's size limit, and the free space a new run needs. |
 | <EnvVar name="OURO_ENGINE_RUN_IDLE_HOURS" /> | no | `168` | How long an unopened run tree is kept before it is swept. |

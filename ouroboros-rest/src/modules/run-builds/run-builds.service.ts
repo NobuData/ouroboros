@@ -118,17 +118,22 @@ export class RunBuildsService {
         ? prepared.jobId
         : await this.enqueue(run, prepared.repository, request);
 
-    const view = await this.latest(run, jobId);
-    const phase = phaseOf(view.job);
+    let view = await this.latest(run, jobId);
 
-    if (prepared.kind === "submit" && phase === "waiting") {
+    if (prepared.kind === "submit" && phaseOf(view.job) === "waiting") {
       const { queueState } = await this.jobs.dispatchState(run.organization_id, view.job.id);
 
       if (queueState === "queued_no_eligible_runner") {
-        await this.cancelQuietly(run.organization_id, view.job.id);
-        throw noEligibleRunner(view.poolName, view.job.number);
+        // The read above can race the dispatcher: a job offered in between holds its runner, so
+        // the runner reads as full. Only a job still waiting is cancelled; a placed one runs.
+        if (await this.jobs.cancelWaiting(run.organization_id, view.job.id)) {
+          throw noEligibleRunner(view.poolName, view.job.number);
+        }
+        view = await this.latest(run, jobId);
       }
     }
+
+    const phase = phaseOf(view.job);
 
     if (!isTerminal(phase)) {
       await this.builds.transaction(async (trx) => {

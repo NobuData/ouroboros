@@ -381,6 +381,19 @@
 # Everything else — images, healthchecks, the shared ui/rest network namespace, the
 # loopback-only port publishing — is the base file's, unrepeated here so it cannot drift.
 services:
+  # The engine reports a live run to the control plane (AP.1) and reaches it over the compose
+  # network — `rest:4000`, which this override binds on every interface. Without it the engine
+  # calls its own localhost and the live slice's leg (DI.6, #1321) never gets a run opened.
+  engine:
+    environment:
+      OURO_REST_URL: "http://rest:4000"
+      # The git host is reached through the farm gateway, signed by the stack's own CA.
+      OURO_ENGINE_GIT_CA_FILE: /farm-ca/ca.pem
+    # Read per connection, not at boot: the gateway writes the CA after `rest` is healthy, and
+    # `rest` waits for the engine, so the engine cannot wait for the gateway.
+    volumes:
+      - ouroboros-farm-ca:/farm-ca:ro
+
   rest:
     environment:
       NODE_ENV: test
@@ -388,8 +401,18 @@ services:
       OURO_PROVIDER_HEALTH_INTERVAL_SECONDS: "86400"
       OURO_ESTIMATION_STALE_SECONDS: "86400"
       OURO_GITHUB_API_BASE_URL: "http://tracker-stub:8080"
-      OURO_GITHUB_CLONE_BASE_URL: "http://git-stub:8080"
+      # Through the farm gateway's TLS (DI.6, #1321): the engine clones and pushes over https
+      # only. The runner machine and the engine both trust the gateway's certificate authority.
+      OURO_GITHUB_CLONE_BASE_URL: "https://farm-gateway/git"
       OURO_RUN_SIMULATOR_SECRET: "e2e-run-simulator-secret"
+      # The deployment switch (DG.2, decision L10), on for the live slice's leg (DI.6, #1321).
+      # Nothing else starts: a queue item is admitted only once somebody holding
+      # can_approve_loops confirms it (decision L5), and only the leg confirms one.
+      OURO_LIVE_EXECUTION_ENABLED: "${OURO_E2E_LIVE_EXECUTION:-true}"
+      # Each passing run of that leg leaves a run in `review` on its draft pull request, and a run
+      # in review holds a live-run slot. The leg raises the workspace's ceiling to this maximum,
+      # so a warm stack (and verify-failure-modes.sh's pairs) can run it more than four times.
+      OURO_LIVE_RUN_CEILING_MAX: "50"
       OURO_ENGINE_URL: "http://engine-tap:8000"
       OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS: "5"
       OURO_RESEARCH_REGRESSION_TICK_MS: "10000"

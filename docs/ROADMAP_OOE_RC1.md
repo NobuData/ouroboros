@@ -360,7 +360,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **1 issue** · 5 complexity points · order **#34**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epic DI; Phase 5)
-> **Status:** ⬜ **Not started** — 0 of 1 issue closed
+> **Status:** 🟡 **In review** — 0 of 1 issue closed. Leg 34 (`tests/e2e/specs/live-loop.spec.ts`) is green from cold in about 75 s, and its failure-mode pairs are registered. The real-provider report (`scripts/live-slice-acceptance.sh` → `docs/acceptance/`) and the "MVP gate met" mark land together. Still open: a build that fails once by design and a planted outside write ([#1816](https://github.com/NobuData/ouroboros/issues/1816), [#1817](https://github.com/NobuData/ouroboros/issues/1817)).
 
 **Goal.** One automated proof that the whole path works from a cold compose stack against a recorded provider fixture, with every component above the provider's socket real — plus a documented real-provider run against the sample repository.
 

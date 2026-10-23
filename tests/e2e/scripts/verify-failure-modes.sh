@@ -131,6 +131,19 @@
 #   webhook-  settings.spec.ts    the test ping really leaves the service: with the receiver
 #   receiver  (the webhook test)  stopped the test stops where it asks the receiver to forget,
 #                                 before it creates an endpoint, naming the fixture (#496)
+#   engine    live-loop.spec.ts   the live loop's executor is the engine: with it stopped the
+#                                 queue holds the confirmed item as `no_executor`, and the leg
+#                                 says so where it expected the dry-run refusal (#1321)
+#   provider- live-loop.spec.ts   the provider key is validated against the provider itself:
+#   fixture                       with the fixture stopped *rotate* is refused as unreachable,
+#                                 and the leg names the step (#1321)
+#   git-stub  live-loop.spec.ts   the run's branch really reaches the git host over TLS: with it
+#                                 stopped the push fails, and the run's own last word says so
+#                                 (#1321)
+#   tracker-  live-loop.spec.ts   the run's push grant and pull request really go through the
+#   stub                          tracker: with it stopped the run never leaves `coding` — it is
+#                                 not failed, only paused and retried — so it registers last
+#                                 (#1321)
 #
 # ## The issues pairs, and the service each one takes down (#121)
 #
@@ -405,6 +418,44 @@
 # that starts an analysis and writes nothing either: the service asks the engine for its analyzer
 # set before it inserts a run, so a stopped engine is a refused start, and the leg reports the
 # refusal in the page's words.
+#
+# ## The live loop's pairs, and six guards removed by hand (#1321)
+#
+# Leg 34 is the MVP gate: one issue to a draft pull request on the product's own path. The
+# container pairs are the four services that path crosses besides `rest` and `db`, and they run
+# the whole leg rather than one test: its tests hand each other the queue's state (there is no
+# route that takes an issue back out of the queue), and the leg is written to run warm, on the
+# stack the previous pair left. The tracker pair goes last: with the tracker stopped the run is
+# paused, not failed, and holds a live-run slot until the stack is reset.
+#
+# Its ticket also asks for the executor, the harness facade, the workspace, the publisher,
+# admission and the ingestion client to be broken in turn, and for each negative leg to go red
+# when its guard is removed. The engine, the git host and the tracker pairs break the executor,
+# the workspace and the publisher from outside. The rest are code paths, done by hand for the
+# routing pair's reason — each guard edited out of a copy of the built image, the stack reset to
+# cold on it, the leg run, the image put back:
+#
+#   the subscription refusal (provider-connections.service.ts's `isSubscriptionCredential` check)
+#                            -> "a subscription-shaped credential cannot be saved": the token went
+#                               on to the provider, which refused it as `provider_validation_failed`
+#                               — the leg requires the product's own `provider_credential_refused`
+#   the deployment switch (admission.ts's `deploymentEnabled` reason)
+#                            -> "the deployment switch off admits nothing": the item is admitted
+#                               where the leg waits for `deployment_disabled`
+#   the dry-run policy (admission.ts's `policy_not_dry_run` reason)
+#                            -> "a repository not under dry-run policy is refused", the same way
+#   the run's origin (ingest.service.ts's `originOf`, answering `live` for the simulator's runs)
+#                            -> "the simulator's secret cannot open a run that renders as live":
+#                               the open is refused with a 500 — the database's
+#                               `runs_origin_watermark` (V141) is a second guard under the first
+#   the harness facade (harness.facade.service.ts's `relay` throwing)
+#                            -> the chain, at *the live run did not reach review*: `plan` failed
+#                               with the facade's 500, both attempts
+#   the ingestion client (the engine's `IngestClient.open_run` raising)
+#                            -> the chain, at *no run opened for the slice issue*: the item was
+#                               admitted and claimed, and no run was ever opened
+#
+# All six were red on 2026-10-23, each from a cold stack.
 #
 # `rest` is not in the table, and the reason is a property of the stack rather than an
 # oversight: `ui` shares `rest`'s network namespace (see docker-compose.yml), so stopping
@@ -847,6 +898,12 @@ parked copilot.spec.ts engine "the chain"
 expect_red git-stub live-slice-fixtures.spec.ts "git host" "accepts a push to a run branch and refuses the default branch"
 expect_red tracker-stub live-slice-fixtures.spec.ts "sandbox tracker" "records a branch and a draft pull request and answers reads"
 expect_red provider-fixture live-slice-fixtures.spec.ts "provider fixture" "replays the recorded exchange and reports a different harness"
+
+# The live loop (#1321, DI.6) — the MVP gate. Whole-leg pairs, in this order; see the section above.
+expect_red engine live-loop.spec.ts 'Received: "no_executor"'
+expect_red provider-fixture live-loop.spec.ts "storing the recorded fixture's key on the seeded connection answered 422.*unreachable"
+expect_red git-stub live-loop.spec.ts "The push of ouro/run-[^ ]* failed"
+expect_red tracker-stub live-loop.spec.ts 'did not reach review with a pull request|Received: "coding at '
 
 printf '\n'
 if check_summary; then

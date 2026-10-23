@@ -601,7 +601,7 @@ class Interpreter:
             stage_key=node.id,
             attempt=attempt,
             prompt=with_notes(prompt, await run.controls.notes_for(attempt)),
-            model=stage_model(config, started.model),
+            model=stage_model(config, started.model, started.task_models),
             policy=stage_policy(
                 config, str(run.workspace.path), started.protected_paths
             ),
@@ -969,6 +969,32 @@ class Interpreter:
                 return edge.to
         return await self._forward(run, node)
 
+    async def _pass(self, run: _Run, node: WorkflowNode) -> str | None:
+        """Leave a gate that held: its pass ``branch`` edge, else its default edge.
+
+        The workflow language draws a gate's pass as either: a plain ``default`` edge, or — as
+        ``standard-fix`` and the live slice do — a ``branch`` edge labelled *pass* whose
+        condition says so (``checks all_passed``). The first branch whose condition holds is
+        taken, judged with the run's checks as the gate was (DI.6, #1321); with none, the
+        default edge, and with neither the run fails as before.
+
+        Args:
+            run: The execution.
+            node: The gate, which held.
+
+        Returns:
+            The target, or ``None`` after failing the run.
+        """
+        assert run.graph is not None  # noqa: S101
+        changed = await self._changed_paths(run)
+        for edge in run.graph.outgoing(node.id, "branch"):
+            if (
+                edge.condition is not None
+                and judge(edge.condition, changed, _facts(run), run.state.checks).holds
+            ):
+                return edge.to
+        return await self._forward(run, node)
+
     async def _gate(
         self, run: _Run, node: WorkflowNode, config: FlowConfig
     ) -> str | None:
@@ -1000,7 +1026,7 @@ class Interpreter:
             )
             return None
         if judgement.holds:
-            return await self._forward(run, node)
+            return await self._pass(run, node)
         loop = run.graph.loop_edge(node.id)
         if loop is None:
             await self._end(
@@ -1243,7 +1269,7 @@ def _publish_run(run: _Run) -> PublishRun:
     assert run.graph is not None  # noqa: S101
     started = run.started
     aliases = {
-        node.id: stage_model(node.config, started.model)
+        node.id: stage_model(node.config, started.model, started.task_models)
         for node in run.graph.document.nodes
         if isinstance(node.config, LlmConfig)
     }

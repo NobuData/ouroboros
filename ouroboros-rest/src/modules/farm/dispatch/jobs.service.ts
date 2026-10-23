@@ -316,13 +316,36 @@ export class FarmJobsService {
     const outcome = await this.repository.cancel(organizationId, jobId, this.now());
 
     if (outcome.kind === "not_found") throw jobNotFound();
-    if (outcome.kind === "terminal") throw jobNotCancellable(outcome.job.status);
+    if (outcome.kind === "terminal" || outcome.kind === "moved") {
+      throw jobNotCancellable(outcome.job.status);
+    }
 
     if (outcome.heldBy) this.dispatcher.propagateCancel(organizationId, outcome.heldBy, jobId);
     this.completions.emit({ organizationId, jobId, status: "canceled" });
     void this.dispatcher.kick();
 
     return this.resource(organizationId, jobId);
+  }
+
+  /**
+   * Cancel a job only if it is still waiting for a runner — the check and the cancel are one
+   * statement under the row's lock. A run's build found no runner able to take it, but the
+   * dispatcher may have offered it in the moment between that read and this cancel; an offered
+   * job is then left to run (#1321).
+   *
+   * @param organizationId - The workspace.
+   * @param jobId - The job.
+   * @returns Whether it was cancelled; `false` when it had been placed, finished, or is unknown.
+   */
+  async cancelWaiting(organizationId: string, jobId: string): Promise<boolean> {
+    const outcome = await this.repository.cancel(organizationId, jobId, this.now(), "waiting");
+
+    if (outcome.kind !== "canceled") return false;
+
+    this.completions.emit({ organizationId, jobId, status: "canceled" });
+    void this.dispatcher.kick();
+
+    return true;
   }
 
   /**

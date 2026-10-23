@@ -49,7 +49,7 @@ describe("the source-credential ledger", () => {
     ).resolves.toBe(false);
   });
 
-  it("reads the ledger with the job's status and its repository, by the job alone", async () => {
+  it("reads the ledger with the job's phase and its repository, by the job alone", async () => {
     database.answers({
       rows: [
         {
@@ -59,6 +59,7 @@ describe("the source-credential ledger", () => {
           expires_at: NOW,
           redeemed_at: null,
           status: "offered",
+          runner_id: null,
           login: "acme-robotics",
           name: "helios-firmware",
         },
@@ -71,7 +72,7 @@ describe("the source-credential ledger", () => {
       tokenHash: HASH,
       expiresAt: NOW,
       redeemedAt: null,
-      status: "offered",
+      phase: "offered",
       repository: "acme-robotics/helios-firmware",
     });
 
@@ -80,6 +81,24 @@ describe("the source-credential ledger", () => {
     expect(sql).toContain('inner join "ouroboros"."github_repos" as "r"');
     expect(sql).toContain('"j"."organization_id" = "c"."organization_id"');
     expect(parameters).toEqual([JOB]);
+  });
+
+  it("reads a queued job with a runner as accepted, and one without as waiting (#1818)", async () => {
+    const row = {
+      build_job_id: JOB,
+      organization_id: ORG,
+      token_hash: HASH,
+      expires_at: NOW,
+      redeemed_at: null,
+      status: "queued",
+      login: "acme-robotics",
+      name: "helios-firmware",
+    };
+    database.answers({ rows: [{ ...row, runner_id: "runner-1" }] });
+    await expect(repository.ledger(JOB)).resolves.toMatchObject({ phase: "accepted" });
+
+    database.answers({ rows: [{ ...row, runner_id: null }] });
+    await expect(repository.ledger(JOB)).resolves.toMatchObject({ phase: "waiting" });
   });
 
   it("answers undefined for a job with no ledger", async () => {

@@ -227,7 +227,11 @@ class RunStarted(_Response):
         issue_body: Its body, or ``None``.
         labels: The ticket's labels; empty from a control plane that predates them.
         effort: The ticket's size (``xs`` … ``xl``), or ``None`` when unsized.
-        model: The model the run records — a stage that inherits its route uses it.
+        model: The model the run records — the fallback alias of a stage that inherits a task
+            whose route is not in ``task_models``.
+        task_models: Task kind → the alias its route starts on, for each task the pinned
+            workflow's stages inherit (DI.6, #1321); empty from a control plane that predates
+            it.
         branch_name: ``ouro/run-<run>-<issue>``.
         workflow: The pinned version and its document.
         repository: The repository and its clone reference.
@@ -251,6 +255,7 @@ class RunStarted(_Response):
     labels: list[str] = Field(default_factory=list)
     effort: Literal["xs", "s", "m", "l", "xl"] | None = None
     model: str
+    task_models: dict[str, str] = Field(default_factory=dict)
     branch_name: str | None = None
     workflow: StartedWorkflow
     repository: StartedRepository

@@ -1,5 +1,4 @@
 import type { Run } from "../db/schema";
-import { ConflictError } from "../errors/error.envelope";
 import { RUNNER, buildJob } from "../farm/dispatch/dispatch.fixture";
 import type { FarmJobsService } from "../farm/dispatch/jobs.service";
 import type { SubmitRunBuildDto } from "./run-builds.dto";
@@ -77,6 +76,7 @@ describe("a run's build stage on the farm", () => {
       submitForRun: jest.fn().mockResolvedValue({ id: JOB }),
       dispatchState: jest.fn().mockResolvedValue({ queueState: "queued_runner_available" }),
       cancel: jest.fn().mockResolvedValue({}),
+      cancelWaiting: jest.fn().mockResolvedValue(true),
     } as unknown as jest.Mocked<FarmJobsService>;
     service = new RunBuildsService(builds, jobs);
   });
@@ -156,21 +156,26 @@ describe("a run's build stage on the farm", () => {
       expect(refused.code).toBe("build_no_eligible_runner");
       expect(refused.message).toContain("pool `pool-a`");
       expect(refused.message).toContain("Build #483 was cancelled");
-      expect(jobs.cancel).toHaveBeenCalledWith(ORG, JOB);
+      expect(jobs.cancelWaiting).toHaveBeenCalledWith(ORG, JOB);
       expect(builds.reserve).not.toHaveBeenCalled();
     });
 
-    it("still refuses when the job finished between the question and the cancel", async () => {
-      builds.latest.mockResolvedValue(view());
+    it("leaves a job the dispatcher placed after the question to run, and reserves it", async () => {
+      // The offer holds the runner, so the eligibility read finds it full (#1321).
+      builds.latest
+        .mockResolvedValueOnce(view())
+        .mockResolvedValue(view({ status: "offered", runner_id: RUNNER }));
       jobs.dispatchState.mockResolvedValue({
         job: {} as never,
         queueState: "queued_no_eligible_runner",
       });
-      jobs.cancel.mockRejectedValue(
-        new ConflictError("farm_job_not_cancellable", "It has already finished.", {}),
-      );
+      jobs.cancelWaiting.mockResolvedValue(false);
 
-      expect((await refusal(service.submit(RUN, REQUEST))).code).toBe("build_no_eligible_runner");
+      const { job } = await service.submit(RUN, REQUEST);
+
+      expect(job).toMatchObject({ phase: "offered" });
+      expect(jobs.cancel).not.toHaveBeenCalled();
+      expect(builds.reserve).toHaveBeenCalled();
     });
 
     it("lets a waiting job a runner could take wait, and reserves it", async () => {
@@ -179,7 +184,7 @@ describe("a run's build stage on the farm", () => {
       const { job } = await service.submit(RUN, REQUEST);
 
       expect(job).toMatchObject({ phase: "waiting", queueState: "queued_runner_available" });
-      expect(jobs.cancel).not.toHaveBeenCalled();
+      expect(jobs.cancelWaiting).not.toHaveBeenCalled();
       expect(builds.reserve).toHaveBeenCalled();
     });
 

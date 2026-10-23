@@ -99,6 +99,8 @@ export type Placement =
 export type Cancellation =
   | { readonly kind: "not_found" }
   | { readonly kind: "terminal"; readonly job: BuildJob }
+  /** Asked to cancel only a job in one phase, and it had moved on — it is left as it is. */
+  | { readonly kind: "moved"; readonly job: BuildJob }
   | { readonly kind: "canceled"; readonly job: BuildJob; readonly heldBy: string | null };
 
 /** A job taken back from a lost runner, and what became of it. */
@@ -536,10 +538,17 @@ export class DispatchRepository {
    * @param organizationId - The workspace, from the session.
    * @param jobId - The job.
    * @param at - Now: its `finished_at`.
-   * @returns What happened: not this workspace's, already over, or cancelled — with the runner
-   *   that held it, so the cancel can be propagated.
+   * @param only - Cancel only a job in this phase, judged under the row's lock; a job that has
+   *   moved on answers `moved` and is left alone. Omitted, any unfinished job is cancelled.
+   * @returns What happened: not this workspace's, already over, moved on, or cancelled — with
+   *   the runner that held it, so the cancel can be propagated.
    */
-  async cancel(organizationId: string, jobId: string, at: Date): Promise<Cancellation> {
+  async cancel(
+    organizationId: string,
+    jobId: string,
+    at: Date,
+    only?: JobPhase,
+  ): Promise<Cancellation> {
     return this.database.transaction(async (trx): Promise<Cancellation> => {
       const row = await trx
         .selectFrom("build_jobs")
@@ -553,6 +562,7 @@ export class DispatchRepository {
 
       const from = phaseOf(row);
       if (isTerminal(from)) return { kind: "terminal", job: row };
+      if (only !== undefined && from !== only) return { kind: "moved", job: row };
 
       assertTransition(from, "canceled", row.id);
 

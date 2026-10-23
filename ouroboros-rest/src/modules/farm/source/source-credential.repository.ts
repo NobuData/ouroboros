@@ -11,16 +11,17 @@
 import { Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../../db/db.service";
-import type { BuildJobStatus } from "../../db/schema";
+import { type JobPhase, phaseOf } from "../dispatch/job.states";
 
-/** What the redemption reads beside the ledger: whose job this is, and whether it is running. */
+/** What the redemption reads beside the ledger: whose job this is, and where it is. */
 export interface SourceLedger {
   readonly jobId: string;
   readonly organizationId: string;
   readonly tokenHash: string;
   readonly expiresAt: Date;
   readonly redeemedAt: Date | null;
-  readonly status: BuildJobStatus;
+  /** The job's phase — `accepted` is stored as `queued` with a runner, so the status alone lies. */
+  readonly phase: JobPhase;
   /** `owner/name`, for the audit trail. */
   readonly repository: string;
 }
@@ -92,6 +93,7 @@ export class SourceCredentialRepository {
         "c.expires_at",
         "c.redeemed_at",
         "j.status",
+        "j.runner_id",
         "o.login",
         "r.name",
       ])
@@ -106,7 +108,7 @@ export class SourceCredentialRepository {
           tokenHash: row.token_hash,
           expiresAt: row.expires_at,
           redeemedAt: row.redeemed_at,
-          status: row.status,
+          phase: phaseOf({ status: row.status, runner_id: row.runner_id }),
           repository: `${row.login}/${row.name}`,
         };
   }
