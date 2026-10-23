@@ -10,6 +10,7 @@ import type { QueueItem } from "../db/schema";
 import { ConflictError, InvalidRequestError } from "../errors/error.envelope";
 import type { DryRunPolicyResource } from "../policies/org-policy.service";
 import type { LaunchRepository, MirroredPickRow, PickRunRow } from "./launch.repository";
+import type { LoopReadinessResource, ReadinessCheck } from "../loop/readiness";
 import { FirstRunLauncherService } from "./launch.service";
 import {
   emptyRow,
@@ -30,6 +31,46 @@ const PICK: MirroredPickRow = {
   cycleMin: 3,
   cycleMax: 6,
 };
+
+/** A deployment with live execution off — the launcher never asks the preflight. */
+const LIVE_OFF = { liveExecutionEnabled: false };
+
+/** A preflight that must not be asked. */
+const OFF_READINESS = {
+  read: () => Promise.reject(new Error("the preflight is not asked while live execution is off")),
+};
+
+/**
+ * A preflight answer.
+ *
+ * @param ready - Whether every check passed.
+ * @returns The resource, with one blocking runner check when not ready.
+ */
+function preflight(ready: boolean): LoopReadinessResource {
+  const runner: ReadinessCheck = ready
+    ? {
+        id: "runner",
+        state: "pass",
+        code: null,
+        reason: "A runner is online in pool-a.",
+        fix: null,
+      }
+    : {
+        id: "runner",
+        state: "fail",
+        code: "no_runner",
+        reason: "No runner is online in pool-a.",
+        fix: { label: "Build Farm · enrol a runner", href: "/build-farm" },
+      };
+
+  return {
+    repository: REPO,
+    workflow: { slug: "quick-fixes", version: 1 },
+    ready,
+    checks: [runner],
+    estimate: { isEstimate: true, costCapCentsPerRun: null, issue: null },
+  };
+}
 
 /** The dry-run policy in memory: `undefined` is a workspace that never answered. */
 class FakePolicies {
@@ -152,6 +193,8 @@ describe("the first-run launcher", () => {
       loop.asRepository(),
       { queueSelection, summaries },
       policies,
+      OFF_READINESS,
+      LIVE_OFF,
     );
   });
 
@@ -398,6 +441,8 @@ describe("the first-run launcher", () => {
         loop.asRepository(),
         { queueSelection, summaries },
         policies,
+        OFF_READINESS,
+        LIVE_OFF,
       );
 
       await expect(guarded.launch(ORG, REPO)).rejects.toThrow(
@@ -521,6 +566,72 @@ describe("the first-run launcher", () => {
       expect(text).not.toMatch(/\d\s*%/);
       expect(text).not.toMatch(/4m 10s/);
       expect(text).not.toMatch(/average|across teams|of teams/i);
+    });
+  });
+  describe("the readiness preflight (DK.1, #1318)", () => {
+    /**
+     * A launcher in a deployment with live execution on.
+     *
+     * @param ready - What the preflight answers.
+     * @returns The launcher and the preflight's stub.
+     */
+    function live(ready: boolean) {
+      const read = jest.fn().mockResolvedValue(preflight(ready));
+      const service = new FirstRunLauncherService(
+        new OnboardingService(wizard.asRepository(), policies),
+        loop.asRepository(),
+        { queueSelection, summaries },
+        policies,
+        { read },
+        { liveExecutionEnabled: true },
+      );
+
+      return { service, read };
+    }
+
+    it("asks it for the repository, the instantiated workflow and the pick", async () => {
+      const { service, read } = live(true);
+
+      await service.launch(ORG, REPO);
+
+      expect(read.mock.calls).toEqual([
+        [ORG, { repository: REPO, workflow: "quick-fixes", issue: 488 }],
+      ]);
+    });
+
+    it("queues as before when every check passes", async () => {
+      const { service } = live(true);
+
+      const receipt = await service.launch(ORG, REPO);
+
+      expect(receipt.outcome).toBe("queued");
+      expect(queueSelection).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses with the checks that did not pass, queueing and completing nothing", async () => {
+      const { service } = live(false);
+
+      const refusal = await service.launch(ORG, REPO).catch((error: unknown) => error);
+
+      expect(refusal).toBeInstanceOf(ConflictError);
+      expect(refusal).toMatchObject({
+        code: "onboarding_loop_not_ready",
+        message: "No runner is online in pool-a.",
+        details: {
+          repository: REPO,
+          workflow: { slug: "quick-fixes", version: 1 },
+          checks: [{ id: "runner", state: "fail", code: "no_runner" }],
+        },
+      });
+      expect(queueSelection).not.toHaveBeenCalled();
+      expect(loop.items.size).toBe(0);
+      expect(wizard.writes.some((write) => write.method === "markCompleted")).toBe(false);
+    });
+
+    it("is never asked while live execution is off — the launch queues as it always has", async () => {
+      const receipt = await launcher.launch(ORG, REPO);
+
+      expect(receipt.outcome).toBe("queued");
     });
   });
 });

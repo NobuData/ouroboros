@@ -9,6 +9,7 @@
  */
 
 import { ConflictError, InvalidRequestError, NotFoundError } from "../errors/error.envelope";
+import type { LoopReadinessResource } from "../loop/readiness";
 import type { PublishFinding } from "../workflows/publish.gate";
 import type { DerivedStep, OnboardingStepNumber } from "./onboarding.derivation";
 import type { TemplateUnlockResource } from "./templates.resources";
@@ -33,6 +34,8 @@ export const ONBOARDING_ERRORS = {
   pickAmbiguous: "onboarding_pick_ambiguous",
   /** The launch has no issue it can queue: none picked, or the pick is not this repository's (#388). */
   pickRequired: "onboarding_pick_required",
+  /** Live execution is on and the readiness preflight is not ready (DK.1, #1318). */
+  loopNotReady: "onboarding_loop_not_ready",
 } as const;
 
 /**
@@ -186,4 +189,25 @@ export function pickAmbiguous(): InvalidRequestError {
  */
 export function pickRequired(reason: string): ConflictError {
   return new ConflictError(ONBOARDING_ERRORS.pickRequired, reason, { step: 4, reason });
+}
+
+/**
+ * A launch refused because the live-loop readiness preflight is not ready (DK.1,
+ * [#1318](https://github.com/NobuData/ouroboros/issues/1318)) — asked only while live execution
+ * is on, so a deployment without it queues as before. The details carry the checks that did not
+ * pass, the same objects `GET /api/v1/loop/readiness` answers, so the refusal and the preflight
+ * can never disagree. Nothing was queued and the wizard was not completed.
+ *
+ * @param readiness - The preflight.
+ * @returns The error, whose message is the first blocking check's reason.
+ */
+export function loopNotReady(readiness: LoopReadinessResource): ConflictError {
+  const blocking = readiness.checks.filter((check) => check.state !== "pass");
+  const reason = blocking[0]?.reason ?? "The live-loop readiness preflight is not ready.";
+
+  return new ConflictError(ONBOARDING_ERRORS.loopNotReady, reason, {
+    repository: readiness.repository,
+    workflow: readiness.workflow,
+    checks: blocking,
+  });
 }

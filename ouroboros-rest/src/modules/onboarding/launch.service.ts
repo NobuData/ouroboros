@@ -7,6 +7,9 @@
  * ```
  * guards      steps 1–3 done in reality, and a pick that is this repository's issue
  *             → 409 with the stated reason the action bar renders
+ * readiness   while live execution is on, DK.1's preflight (#1318) for the repository, the
+ *             instantiated workflow and the pick → 409 onboarding_loop_not_ready with the
+ *             checks that did not pass; off, the launch queues as it always has
  * queue       M.3's write (#112), naming the instantiated workflow — so R.1 (#143) pins its
  *             version in force, reason `explicit`
  * completion  the wizard's own guarded step 4: stamps completed, dry-run defaulted ON if unset
@@ -30,7 +33,9 @@ import { Inject, Injectable } from "@nestjs/common";
 import { BacklogQueueService } from "../backlog/queue.service";
 import { queueItemSummary, type QueueItemSummary } from "../dashboard/resources";
 import type { QueueItem } from "../db/schema";
+import { AppConfigService } from "../config/config.service";
 import { ConflictError } from "../errors/error.envelope";
+import { ReadinessService } from "../loop/readiness.service";
 import { OrgPolicyService } from "../policies/org-policy.service";
 import { LaunchRepository, type MirroredPickRow } from "./launch.repository";
 import {
@@ -40,7 +45,7 @@ import {
   type LaunchReceiptResource,
 } from "./launch.resources";
 import { blockingStep } from "./onboarding.derivation";
-import { pickRequired, stepIncomplete } from "./onboarding.errors";
+import { loopNotReady, pickRequired, stepIncomplete } from "./onboarding.errors";
 import { OnboardingService, type OnboardingSnapshot } from "./onboarding.service";
 
 /** The queue write, as the launcher composes it (M.3, #112). */
@@ -48,6 +53,12 @@ export type LaunchQueue = Pick<BacklogQueueService, "queueSelection" | "summarie
 
 /** The dry-run policy, as the launcher confirms it (BA.3, #382). */
 export type LaunchPolicies = Pick<OrgPolicyService, "read">;
+
+/** The readiness preflight, as the launcher asks it (DK.1, #1318). */
+export type LaunchReadiness = Pick<ReadinessService, "read">;
+
+/** The deployment switch, as the launcher reads it. */
+export type LaunchSwitch = Pick<AppConfigService, "liveExecutionEnabled">;
 
 /** The last step the launch guard requires done — step 4 is what the launch itself does. */
 const LAST_PREREQUISITE_STEP = 3;
@@ -62,12 +73,16 @@ export class FirstRunLauncherService {
    * @param launches - The picked issue in the mirrored backlog, and what already speaks for it.
    * @param queue - M.3's queue write.
    * @param policies - The dry-run policy.
+   * @param readiness - The live-loop readiness preflight.
+   * @param config - Whether live execution is on, which is when the preflight is asked.
    */
   constructor(
     private readonly wizard: OnboardingService,
     private readonly launches: LaunchRepository,
     @Inject(BacklogQueueService) private readonly queue: LaunchQueue,
     @Inject(OrgPolicyService) private readonly policies: LaunchPolicies,
+    @Inject(ReadinessService) private readonly readiness: LaunchReadiness,
+    @Inject(AppConfigService) private readonly config: LaunchSwitch,
   ) {}
 
   /**
@@ -79,7 +94,8 @@ export class FirstRunLauncherService {
    * @returns The receipt — what was queued, where, pinned to what, and dry-run's state.
    * @throws {ConflictError} `onboarding_step_incomplete` — a step 1–3 is not done, with its
    *   stated reason; `onboarding_pick_required` — no issue of this repository is picked, or its
-   *   backlog does not hold the pick; `queue_issues_conflict` — the queue write's own refusal.
+   *   backlog does not hold the pick; `onboarding_loop_not_ready` — live execution is on and the
+   *   readiness preflight is not ready; `queue_issues_conflict` — the queue write's own refusal.
    * @throws {InvalidRequestError} `queue_issues_not_queueable` or `queue_workflow_unknown` — the
    *   queue write's own refusals.
    */
@@ -100,6 +116,7 @@ export class FirstRunLauncherService {
     }
 
     const pick = await this.pick(organizationId, snapshot, repository.id);
+    await this.refuseUnready(organizationId, repo, workflow.slug, pick.number);
     const queued = await this.enqueue(organizationId, repository.id, pick, workflow.slug);
     const onboarding = await this.wizard.completeStep(organizationId, repo, 4);
     const policy = await this.policies.read(organizationId);
@@ -114,6 +131,38 @@ export class FirstRunLauncherService {
           : { min: pick.cycleMin, max: pick.cycleMax },
       onboarding,
     });
+  }
+
+  /**
+   * Refuse the launch while live execution is on and the readiness preflight is not ready — the
+   * wizard must not start a live loop it can already see will fail (DK.1, #1318). With the switch
+   * off nothing can start a loop anyway, and the launch queues as it always has.
+   *
+   * @param organizationId - The workspace.
+   * @param repo - `owner/name`.
+   * @param workflow - The instantiated workflow's slug.
+   * @param issue - The picked issue's number.
+   * @throws {ConflictError} `onboarding_loop_not_ready`, with the checks that did not pass.
+   */
+  private async refuseUnready(
+    organizationId: string,
+    repo: string,
+    workflow: string,
+    issue: number,
+  ): Promise<void> {
+    if (!this.config.liveExecutionEnabled) {
+      return;
+    }
+
+    const readiness = await this.readiness.read(organizationId, {
+      repository: repo,
+      workflow,
+      issue,
+    });
+
+    if (!readiness.ready) {
+      throw loopNotReady(readiness);
+    }
   }
 
   /**

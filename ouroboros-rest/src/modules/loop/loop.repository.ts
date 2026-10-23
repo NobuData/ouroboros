@@ -1,5 +1,5 @@
 /**
- * The two workspace reads the loop capability report needs (DG.2,
+ * The workspace reads the loop capability report and the readiness preflight need (DG.2,
  * [#1300](https://github.com/NobuData/ouroboros/issues/1300)).
  *
  * **The workspace is a parameter of both statements.** The report's acceptance criterion is
@@ -16,6 +16,7 @@ import { Injectable } from "@nestjs/common";
 import { DatabaseService } from "../db/db.service";
 import type { ProviderConnectionKind } from "../db/schema";
 import { supportsSourceCheckout } from "../farm/gateway/capabilities";
+import type { ConnectionFact } from "./readiness";
 
 /** Runner statuses dispatch would offer a job to — `farm/dispatch/dispatch.repository.ts`. */
 const DISPATCHABLE_STATUSES = ["online", "building"] as const;
@@ -60,6 +61,37 @@ export class LoopRepository {
       .executeTakeFirst();
 
     return row !== undefined;
+  }
+
+  /**
+   * The workspace's enabled, unpaused connections of the given kinds, with their last health
+   * test's outcome — the readiness preflight's provider check (DK.1, #1318).
+   *
+   * @param organizationId - The workspace, from the tenant context.
+   * @param kinds - The kinds cleared for invocation. Empty asks nothing and answers none.
+   * @returns The connections: kind, display name and status — nothing secret.
+   */
+  async invocableConnections(
+    organizationId: string,
+    kinds: readonly ProviderConnectionKind[],
+  ): Promise<ConnectionFact[]> {
+    if (kinds.length === 0) return [];
+
+    const rows = await this.database.db
+      .selectFrom("provider_connections")
+      .select(["kind", "display_name", "status"])
+      .where("organization_id", "=", organizationId)
+      .where("kind", "in", kinds)
+      .where("enabled", "=", true)
+      .where("status", "!=", "paused")
+      .orderBy("created_at")
+      .execute();
+
+    return rows.map((row) => ({
+      kind: row.kind,
+      displayName: row.display_name,
+      status: row.status,
+    }));
   }
 
   /**
