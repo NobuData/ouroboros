@@ -13,6 +13,7 @@ const KEY: MetricsCacheKey = {
   organizationId: "org-a",
   stamp: "8 2026-09-01 10:00",
   metricId: "merge_rate",
+  origin: "live",
   range: "30d",
   today: "2026-09-01",
 };
@@ -66,6 +67,18 @@ describe("the metrics cache", () => {
     expect(cache.get({ ...KEY, repo: "acme/helios" })).toBe(repo);
   });
 
+  it("keeps a live window apart from an all-origins one (DJ.2)", () => {
+    const live = metricWindow("merge_rate", { value: null });
+    const all = metricWindow("merge_rate", { origin: "all", value: 80, mixed: true });
+
+    cache.set(KEY, live);
+    cache.set({ ...KEY, origin: "all" }, all);
+
+    expect(cache.get(KEY)).toBe(live);
+    expect(cache.get({ ...KEY, origin: "all" })).toBe(all);
+    expect(cache.get({ ...KEY, origin: "seeded" })).toBeUndefined();
+  });
+
   it("forgets one workspace's windows and nobody else's", () => {
     cache.set(KEY, metricWindow("merge_rate"));
     cache.set({ ...KEY, metricId: "merged_prs" }, metricWindow("merged_prs"));
@@ -94,6 +107,9 @@ describe("the metrics cache", () => {
       range: "30d",
       from: "2026-08-03",
       to: "2026-09-01",
+      origin: "live",
+      originsPresent: ["live"],
+      mixed: false,
       entries: [
         { dimension: "infra_rig", window: metricWindow("human_interventions", { value: 8 }) },
         { dimension: "other", window: metricWindow("human_interventions", { value: 1 }) },

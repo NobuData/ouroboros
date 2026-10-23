@@ -45,9 +45,20 @@ export function methodology(over: Partial<MetricMethodology> = {}): MetricMethod
     version: 1,
     proxy: false,
     aggregation: "ratio",
+    originRule: "Computed separately for each data origin (live, simulated, seeded).",
     ...over,
   };
 }
+
+/**
+ * What the seeded page says about data origin: every origin asked for (the UI's interim `all`,
+ * DJ.2), and only the seed's rows behind it.
+ */
+export const SEEDED_ORIGIN_FACTS = {
+  origin: "all",
+  originsPresent: ["seeded"],
+  mixed: false,
+} as const satisfies Pick<InsightsPage, "origin" | "originsPresent" | "mixed">;
 
 /** The I6 definition, as V076 registers it for `merged_untouched_rate`. */
 export const I6_FORMULA =
@@ -64,6 +75,7 @@ export function kpi(over: Partial<InsightsKpi> = {}): InsightsKpi {
     key: "autonomous_merge_rate",
     unit: "pct",
     value: 92,
+    n: 50,
     prior: 89,
     delta: 3,
     trend: { direction: "up", good: true },
@@ -350,6 +362,7 @@ export function perfCell(
     key,
     unit,
     value,
+    n: value === null ? 0 : 12,
     ...(components === undefined ? {} : { components }),
     methodology: methodology({ metricId: key, unit, aggregation: unit === "pct" ? "ratio" : "sum" }),
   };
@@ -475,6 +488,7 @@ export function scoreRow(over: Partial<ScoreboardRow> = {}): ScoreboardRow {
  */
 export function seededScoreboard(over: Partial<Scoreboard> = {}): Scoreboard {
   return {
+    ...SEEDED_ORIGIN_FACTS,
     range: "30d",
     window: { from: "2026-07-10", to: "2026-08-08" },
     prior: { from: "2026-06-10", to: "2026-07-09" },
@@ -549,6 +563,7 @@ export function doraCell(over: Partial<DoraCellFixture> = {}): DoraCellFixture {
     key: "deploy_frequency",
     unit: "per_day",
     value: 4.2,
+    n: 126,
     prior: 3.8,
     delta: 0.4,
     trend: { direction: "up", good: true },
@@ -649,6 +664,7 @@ export const CURRENT_FRESHNESS: InsightsPage["freshness"] = {
  */
 export function seededInsights(over: Partial<InsightsPage> = {}): InsightsPage {
   return {
+    ...SEEDED_ORIGIN_FACTS,
     range: "30d",
     window: { from: "2026-07-10", to: "2026-08-08" },
     repo: null,

@@ -33,6 +33,12 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { AdmissionService, type AdmissionSummaries } from "../admission/admission.service";
 
+import {
+  DEFAULT_ORIGIN,
+  originsOf,
+  originsPresent,
+  type OriginFilter,
+} from "../insights/metrics/metrics.origin";
 import { MetricsService } from "../insights/metrics/metrics.service";
 import type { MetricWindow } from "../insights/metrics/metrics.types";
 import { DashboardRepository } from "./dashboard.repository";
@@ -87,12 +93,17 @@ export class DashboardService {
    * @param windows - This request's boundaries.
    * @returns A strong entity tag, quoted and ready to send.
    */
-  async etag(organizationId: string, windows: DashboardWindows): Promise<string> {
+  async etag(
+    organizationId: string,
+    windows: DashboardWindows,
+    origin: OriginFilter = DEFAULT_ORIGIN,
+  ): Promise<string> {
     const version = await this.dashboard.version(organizationId);
 
     return strongEtag([
       organizationId,
       windows.day,
+      origin,
       version.runs,
       version.queueItems,
       version.tokenUsage,
@@ -111,12 +122,18 @@ export class DashboardService {
    * @param organizationId - The workspace, from the tenant context.
    * @param windows - This request's boundaries — the same ones {@link DashboardService.etag}
    *   was given, so the tag and the body describe one moment.
-   * @returns The resource. Every aggregate is a number and every list is a list: an
-   *   organization with nothing in it answers zeros and empty arrays, which is the
-   *   acceptance criterion the empty-state work (#86) is built on.
+   * @param origin - Which data origin the aggregates count (DJ.2); `live` when omitted.
+   * @returns The resource. Every list is a list, and every count of what is in flight or queued
+   *   is a number; a windowed figure with no row of the asked origin is null — no data, never a
+   *   zero floor (DJ.2) — and `originsPresent` says what the workspace does hold.
    */
-  async read(organizationId: string, windows: DashboardWindows): Promise<DashboardResource> {
-    const scope = { organizationId, range: PULSE_RANGE, now: windows.now };
+  async read(
+    organizationId: string,
+    windows: DashboardWindows,
+    origin: OriginFilter = DEFAULT_ORIGIN,
+  ): Promise<DashboardResource> {
+    const origins = originsOf(origin);
+    const scope = { organizationId, range: PULSE_RANGE, origin, now: windows.now };
     const [
       runs,
       active,
@@ -130,12 +147,12 @@ export class DashboardService {
       cycleTime,
       interventions,
     ] = await Promise.all([
-      this.dashboard.runStatistics(organizationId),
+      this.dashboard.runStatistics(organizationId, origins),
       this.dashboard.activeRuns(organizationId),
       this.dashboard.recentRuns(organizationId),
       this.dashboard.queueTotals(organizationId),
       this.dashboard.queueHead(organizationId),
-      this.dashboard.tokenTotals(organizationId, windows.day),
+      this.dashboard.tokenTotals(organizationId, windows.day, origins),
       this.dashboard.autoMerge(organizationId),
       this.metrics.window("merged_prs", scope),
       this.metrics.window("merge_rate", scope),
@@ -144,30 +161,41 @@ export class DashboardService {
     ]);
 
     const live = loopsLive(runs.live);
+    const aggregates = [merged, mergeRate, cycleTime, interventions];
+    const noTokens = tokens.events === 0;
 
     return {
+      origin,
+      originsPresent: originsPresent(
+        [...aggregates.flatMap((window) => window.originsPresent), ...tokens.originsPresent].map(
+          (present) => ({ origin: present }),
+        ),
+      ),
+      mixed:
+        aggregates.some((window) => window.mixed) ||
+        (origin === "all" && tokens.originsPresent.length > 1),
       stats: {
         loopsLive: live,
         queued: { count: queue.count, estMinutes: queue.estMinutes },
         merged7d: {
-          count: figure(merged),
-          deltaVsPrior: merged.delta ?? 0,
+          count: merged.value,
+          deltaVsPrior: merged.delta,
         },
         tokensToday: {
           // Converted here and exactly once: the repository casts in SQL so PostgreSQL has
           // already said the value fits, and `Number` on a `bigint`'s text and a `numeric`'s
           // text is then the whole of the conversion rather than a rounding hidden in a
           // driver's type parser.
-          tokens: Number(tokens.tokens),
-          costCents: Number(tokens.costCents),
+          tokens: noTokens ? null : Number(tokens.tokens),
+          costCents: noTokens ? null : Number(tokens.costCents),
           providers: tokens.providers,
           unpricedEvents: tokens.unpricedEvents,
         },
       },
       pulse: {
-        mergeRate: figure(mergeRate) / PCT_SCALE,
-        avgCycleSeconds: figure(cycleTime) / MS_PER_SECOND,
-        interventions7d: figure(interventions),
+        mergeRate: scaled(mergeRate, PCT_SCALE),
+        avgCycleSeconds: scaled(cycleTime, MS_PER_SECOND),
+        interventions7d: interventions.value,
         autoMerge,
       },
       activeRuns: active.map(runSummary),
@@ -180,19 +208,20 @@ export class DashboardService {
         inFlight: live.total,
         queued: queue.count,
         // Today's point of the same window the stat row's count is — one figure, not two.
-        mergedSinceMorning: merged.series.at(-1)?.value ?? 0,
+        mergedSinceMorning: merged.value === null ? null : (merged.series.at(-1)?.value ?? 0),
       },
     };
   }
 }
 
 /**
- * A window's figure as the dashboard draws it.
+ * A window's figure in the dashboard's unit.
  *
  * @param window - The window.
- * @returns Its value, or 0 when there was nothing to compute it from — the floor the pulse
- *   documents, so an empty workspace reads as *no data* rather than an error.
+ * @param divisor - What the registry's unit is divided by (100 for a `pct`, 1000 for ms → s).
+ * @returns The figure, or null — no data — when there was nothing of the asked origin to compute
+ *   it from (DJ.2).
  */
-function figure(window: MetricWindow): number {
-  return window.value ?? 0;
+function scaled(window: MetricWindow, divisor: number): number | null {
+  return window.value === null ? null : window.value / divisor;
 }

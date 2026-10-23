@@ -117,6 +117,7 @@ describe("metric_window", () => {
           organizationId: TELEMETRY_ORG,
           repo: undefined,
           dimension: undefined,
+          origin: "live",
           span: { from: "2026-09-11", to: "2026-10-10" },
           now: NOW,
         },

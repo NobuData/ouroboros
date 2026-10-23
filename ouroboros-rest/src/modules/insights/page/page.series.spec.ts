@@ -105,6 +105,31 @@ describe("the cost chart", () => {
   });
 });
 
+describe("a window with no data (DJ.2)", () => {
+  it("draws no points — never a line of zeros — on any of the three charts", () => {
+    const windows = mockupWindows();
+
+    for (const metricId of ["merged_prs", "tokens", "builds"]) {
+      windows.set(metricId, pageWindow(metricId, { value: null, n: 0, fill: null }));
+    }
+
+    const series = seriesOf(windows, quarterWith(), CAPS, moneyOf(0, 0, 0));
+
+    expect(series.throughput.points).toEqual([]);
+    expect(series.cost.points).toEqual([]);
+    expect(series.builds.points).toEqual([]);
+    expect(series.throughput.methodology.metricId).toBe("merged_prs");
+  });
+
+  it("keeps a chart whose figure is null over rows, such as a rate with no denominator", () => {
+    const windows = mockupWindows();
+
+    windows.set("merged_prs", pageWindow("merged_prs", { value: null, n: 3, fill: 0 }));
+
+    expect(seriesOf(windows, quarterWith(), CAPS, PRICED).throughput.points).toHaveLength(30);
+  });
+});
+
 describe("budgetOf", () => {
   it("spreads the cap over the days of the window's month", () => {
     expect(budgetOf({ monthlyCapCents: 60_000, connections: 1 }, "2026-09-10")?.dailyCents).toBe(

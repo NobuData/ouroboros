@@ -25,6 +25,7 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 
 import { violatesConstraint } from "../tenancy/constraints";
+import { DEFAULT_ORIGIN, originsOf, type OriginFilter } from "./metrics/metrics.origin";
 import {
   INTERVENTION_CONSTRAINTS,
   interventionCauseUnchanged,
@@ -70,23 +71,28 @@ export class InterventionsService {
    * @param organizationId - The workspace.
    * @param range - The page's range.
    * @param cause - One cause, or undefined for all of them.
+   * @param origin - Which data origin's runs to list events of (DJ.2), as the card counts them;
+   *   `live` when omitted.
    * @returns The window, how many matched and the newest of them.
    */
   async list(
     organizationId: string,
     range: MetricRange,
     cause?: InterventionCause,
+    origin: OriginFilter = DEFAULT_ORIGIN,
   ): Promise<InterventionListResource> {
     const { current } = resolveWindow(range, new Date(this.clock()));
     const page = await this.store.list(organizationId, {
       from: current.from,
       to: current.to,
       cause,
+      origins: originsOf(origin),
       limit: INTERVENTION_LIST_LIMIT,
     });
 
     return {
       range,
+      origin,
       window: { from: current.from, to: current.to },
       cause: cause ?? null,
       total: page.total,

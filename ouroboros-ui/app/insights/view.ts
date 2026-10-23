@@ -72,7 +72,10 @@ export const NOTHING_NEEDED_A_HUMAN = "Nothing needed a human.";
 export function insightsHeadline(head: InsightsHead | null): string {
   if (head === null) return INSIGHTS_HEADLINE_UNREAD;
 
-  const { mergedPrs, interventions } = head;
+  // Null is ouroboros-rest's no data (DJ.2): the sentence says nothing merged, as it did for the
+  // zero it replaced, until DJ.3 (#1316) gives the head an honest empty state.
+  const mergedPrs = head.mergedPrs ?? 0;
+  const interventions = head.interventions ?? 0;
   const merged =
     mergedPrs <= 0
       ? NO_MERGES

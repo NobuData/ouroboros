@@ -46,6 +46,32 @@ against the 30 before them. When Ouroboros has no data for that earlier window, 
 
 The page refreshes itself; you do not need to reload it.
 
+## Where the numbers come from
+
+Every run Ouroboros records has a **data origin**:
+
+- **live** — a real loop, run by the engine or started by a person;
+- **simulated** — a run from the run simulator;
+- **seeded** — demo data that development and test environments load.
+
+Ouroboros computes each figure **separately for each origin** and never adds them together on
+its own. The API behind this page (`GET /api/v1/insights`) and the dashboard's figures answer
+for **live** data unless asked for another origin with `?origin=` (`live`, `simulated`,
+`seeded` or `all`). An answer for `all` adds the origins together and is marked as mixed.
+
+**No data is not zero.** When a range holds no live runs, a figure has no value at all rather
+than `0`, and a chart has no points. The answer also lists the origins the workspace does hold,
+so "no live data, only demo data" is never reported as "nothing merged". A workspace with one
+real run and many demo runs describes that one run.
+
+The metric registry records each figure's origin rule, and the API returns it with the figure's
+method as `originRule`.
+
+For now this page asks for **every origin**, so a development environment with demo data still
+shows figures. Labels that mark demo and simulated data, and an origin filter that starts on
+live data, are on their way. A production deployment has no demo data, so every figure it shows
+comes from real runs.
+
 ## The five headline figures
 
 | Card | What it measures |
@@ -156,6 +182,10 @@ Each card says what fills it when it is empty — for example
   such as **Sent Mondays at 09:00 UTC to `you@example.com`.** with the date of the next one.
 - **Preview — what the next digest says now** — the digest as it would read if it were sent
   now, with its subject line.
+
+The digest reports **live** figures only. A week with no real runs in the workspace says
+**No live loop ran in this workspace this week.** and shows no figures — demo and simulated
+activity is never reported.
 
 To stop it, turn the switch off; every digest also carries a one-click unsubscribe link. The
 digest goes to your own address only, and subscribing is per workspace.

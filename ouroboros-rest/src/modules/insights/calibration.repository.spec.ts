@@ -58,10 +58,11 @@ describe("the calibration repository", () => {
 
     const [{ sql, parameters }] = database.statements;
 
-    expect(sql).toContain("from ouroboros.estimate_outcomes");
-    expect(sql).toContain("merged_at >= $2");
-    expect(sql).toContain("merged_at < $3");
-    expect(sql).toContain("group by predicted_effort");
+    expect(sql).toContain("from ouroboros.estimate_outcomes o");
+    expect(sql).toContain("join ouroboros.pull_requests pr on pr.id = o.pr_id");
+    expect(sql).toContain("o.merged_at >= $2");
+    expect(sql).toContain("o.merged_at < $3");
+    expect(sql).toContain("group by o.predicted_effort, pr.origin");
     expect(parameters).toEqual([ORG, FROM, TO]);
   });
 
@@ -70,6 +71,7 @@ describe("the calibration repository", () => {
       rows: [
         {
           effort: "l",
+          origin: "live",
           merged: "4",
           within_band: "3",
           over: "1",
@@ -79,6 +81,7 @@ describe("the calibration repository", () => {
         },
         {
           effort: null,
+          origin: "seeded",
           merged: "2",
           within_band: "0",
           over: "0",
@@ -92,6 +95,7 @@ describe("the calibration repository", () => {
     await expect(calibration.sums(ORG, { from: FROM, to: TO })).resolves.toEqual([
       {
         effort: "l",
+        origin: "live",
         merged: 4,
         withinBand: 3,
         over: 1,
@@ -99,7 +103,16 @@ describe("the calibration repository", () => {
         deviationMs: 1_008_000,
         midpointMs: 8_400_000,
       },
-      { effort: null, merged: 2, withinBand: 0, over: 0, under: 0, deviationMs: 0, midpointMs: 0 },
+      {
+        effort: null,
+        origin: "seeded",
+        merged: 2,
+        withinBand: 0,
+        over: 0,
+        under: 0,
+        deviationMs: 0,
+        midpointMs: 0,
+      },
     ]);
   });
 });

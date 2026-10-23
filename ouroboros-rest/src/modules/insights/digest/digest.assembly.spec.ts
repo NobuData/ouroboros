@@ -1,13 +1,19 @@
 import { mockupFacts, flakyCase } from "../page/page.fixture";
 import { insightsResource } from "../page/page.compose";
 import { formatDelta, formatFigure, formatMoney, formatCompact } from "../page/page.format";
+import type { PageFacts } from "../page/page.compose";
 import {
   DIGEST_CONTENT_VERSION,
   MAX_FLAKY_MOVERS,
+  NO_LIVE_RUNS,
   NOTHING_TO_REPORT,
   assembleDigest,
 } from "./digest.assembly";
+import { emptyNote } from "./digest.copy";
+import { renderDigestHtml } from "./digest.html";
+import { renderDigestText } from "./digest.text";
 import {
+  DIGEST_CONTEXT,
   emptyWeekFacts,
   fixedCase,
   idleCase,
@@ -310,6 +316,81 @@ describe("a week with nothing in it", () => {
         flaky: [flakyCase({ observed: 0, flaky: 0, history: [] })],
       }).empty,
     ).toBe(true);
+  });
+});
+
+/**
+ * The facts of a week whose every figure was read from seeded rows only — the live page of a
+ * workspace holding nothing but the demo tenant (DJ.2).
+ *
+ * @param facts - The week as the page would have read it with every origin.
+ * @returns The same facts, every window and breakdown reporting only `seeded` present.
+ */
+function seededOnly(facts: PageFacts): PageFacts {
+  const seeded = <T extends object>(value: T): T => ({ ...value, originsPresent: ["seeded"] });
+  const map = (windows: PageFacts["windows"]): PageFacts["windows"] =>
+    new Map([...windows].map(([metricId, window]) => [metricId, seeded(window)]));
+  const { interventions, stages, suites, effort, tokens } = facts.breakdowns;
+
+  return {
+    ...facts,
+    week: map(facts.week),
+    windows: map(facts.windows),
+    quarter: map(facts.quarter),
+    breakdowns: {
+      interventions: seeded(interventions),
+      stages: seeded(stages),
+      suites: seeded(suites),
+      effort: seeded(effort),
+      tokens: seeded(tokens),
+    },
+  };
+}
+
+describe("a workspace with no live runs (DJ.2)", () => {
+  it("says there were none, and is empty however busy its demo data is", () => {
+    const digest = weekDigest(seededOnly(weekFacts()));
+
+    expect(digest).toMatchObject({ empty: true, noLiveData: true, headline: NO_LIVE_RUNS });
+    expect(emptyNote(DIGEST_CONTEXT, digest)).toContain("No live loop ran in Acme Robotics");
+  });
+
+  it("contains no figure in either part of the mail", () => {
+    const digest = weekDigest(seededOnly(weekFacts()));
+    const text = renderDigestText(digest, DIGEST_CONTEXT);
+    const html = renderDigestHtml(digest, DIGEST_CONTEXT);
+
+    for (const part of [text, html]) {
+      expect(part).toContain(NO_LIVE_RUNS);
+      // The week's demo figures — 27 merges, 12 interventions — appear nowhere.
+      expect(part).not.toMatch(/27 PRs|12 needed|\$\d/);
+    }
+  });
+
+  it("is not called live-less when the workspace has live rows, however quiet", () => {
+    expect(weekDigest(emptyWeekFacts())).toMatchObject({
+      noLiveData: false,
+      headline: NOTHING_TO_REPORT,
+    });
+    expect(weekDigest()).toMatchObject({ noLiveData: false, empty: false });
+  });
+
+  it("refuses a page read for any origin but live: a digest reports real runs only", () => {
+    const page = weekPage({ ...weekFacts(), origin: "all" });
+
+    expect(() => assembleDigest(page)).toThrow(/live figures only, not all/);
+  });
+
+  it("reads a week of no merged PRs (null) as zero beside live activity", () => {
+    const facts = weekFacts();
+    const week = new Map(facts.week);
+
+    week.set("merged_prs", weekWindow("merged_prs", { value: null, prior: null, n: 0 }));
+
+    const digest = weekDigest({ ...facts, week });
+
+    expect(digest.head.mergedPrs).toBe(0);
+    expect(digest.headline).toMatch(/^No PRs merged this week\./);
   });
 });
 

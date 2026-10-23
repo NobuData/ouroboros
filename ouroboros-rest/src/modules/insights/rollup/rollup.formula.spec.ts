@@ -171,7 +171,7 @@ describe("the drift rule", () => {
   });
 
   it("asks only for the lock to be recorded once a version rose with the change", () => {
-    const bumped = { merged_prs: 1, merge_rate: 2, merged_untouched_rate: 1 };
+    const bumped = { merged_prs: 2, merge_rate: 3, merged_untouched_rate: 2 };
 
     expect(formulaDrift(stateOf("throughput", edit, bumped), lock.throughput)).toEqual([
       expect.stringMatching(/^the throughput entry in rollup\.formula\.lock\.json is out of date/),
@@ -179,7 +179,7 @@ describe("the drift rule", () => {
   });
 
   it("does not count a version that fell as a bump", () => {
-    const lowered = { merged_prs: 0, merge_rate: 1, merged_untouched_rate: 1 };
+    const lowered = { merged_prs: 1, merge_rate: 2, merged_untouched_rate: 2 };
 
     expect(formulaDrift(stateOf("throughput", edit, lowered), lock.throughput)).toEqual([
       expect.stringMatching(/changed without a version bump/),
@@ -189,7 +189,7 @@ describe("the drift rule", () => {
   it("counts a metric new to the family as a rise", () => {
     const state: FormulaState = {
       family: "throughput",
-      metrics: { merged_prs: 1, merge_rate: 1, merged_untouched_rate: 1, opened_prs: 1 },
+      metrics: { merged_prs: 2, merge_rate: 2, merged_untouched_rate: 2, opened_prs: 1 },
       fingerprint: "sha256:moved",
     };
 

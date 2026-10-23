@@ -143,7 +143,9 @@ export class DigestService {
    * @returns The subject and both parts. Its unsubscribe link is absent: it was sent to nobody.
    */
   async preview(tenant: Organization): Promise<InsightsDigestPreviewResource> {
-    const assembly = assembleDigest(await this.pages.read(tenant.id, { range: DIGEST_RANGE }));
+    const assembly = assembleDigest(
+      await this.pages.read(tenant.id, { range: DIGEST_RANGE, origin: "live" }),
+    );
     const rendered = renderDigest(assembly, {
       workspaceName: tenant.name,
       insightsUrl: insightsUrl(this.config.uiUrl),

@@ -46,6 +46,24 @@ describe("the head", () => {
     expect(headOf(mockupWeek())).toEqual({ range: "7d", mergedPrs: 27, interventions: 2 });
   });
 
+  it("is no data — nulls, not zeros — when the week holds no loop PR of the origin (DJ.2)", () => {
+    const week = windowsOf(
+      pageWindow("merged_prs", { value: null, n: 0 }),
+      pageWindow("human_interventions", { value: null, n: 0 }),
+    );
+
+    expect(headOf(week)).toEqual({ range: "7d", mergedPrs: null, interventions: null });
+  });
+
+  it("counts no interventions beside merges as zero, not as no data", () => {
+    const week = windowsOf(
+      pageWindow("merged_prs", { value: 4 }),
+      pageWindow("human_interventions", { value: null, n: 0 }),
+    );
+
+    expect(headOf(week)).toEqual({ range: "7d", mergedPrs: 4, interventions: 0 });
+  });
+
   it("refuses to compose a metric the page did not read", () => {
     expect(() => windowOf(windowsOf(), "merged_prs")).toThrow(/did not read it/);
   });
@@ -97,6 +115,16 @@ describe("the KPI row", () => {
     expect(cost.prior).toBeCloseTo(140_000_000 / 109, 6);
   });
 
+  it("carries the count behind each card: its window's, or merges' for tokens per PR (DJ.2)", () => {
+    const windows = mockupWindows();
+
+    windows.set("merge_rate", { ...windowOf(windows, "merge_rate"), n: 50 });
+    windows.set("merged_prs", { ...windowOf(windows, "merged_prs"), n: 97 });
+
+    expect(kpisOf(windows, priced)[0].n).toBe(50);
+    expect(kpisOf(windows, moneyOf(126_000_000, 126_000_000, 0))[3].n).toBe(97);
+  });
+
   it("answers null — not zero — for a tokens-per-PR with nothing merged", () => {
     const windows = mockupWindows();
 
@@ -127,6 +155,18 @@ describe("the performance strip", () => {
     expect(strip[5].methodology.metricId).toBe("cost_cents");
   });
 
+  it("carries each cell's count; total cost's is the cost rows' (DJ.2)", () => {
+    const windows = mockupWindows();
+
+    windows.set("builds", { ...windowOf(windows, "builds"), n: 412 });
+    windows.set("cost_cents", { ...windowOf(windows, "cost_cents"), n: 1_000 });
+
+    const strip = performanceOf(windows, moneyOf(126_000_000, 5_000_000, 18_160));
+
+    expect(strip[0].n).toBe(412);
+    expect(strip[5].n).toBe(1_000);
+  });
+
   it("has a null total cost — never $0 — when the usage was not priced", () => {
     const strip = performanceOf(mockupWindows(), moneyOf(126_000_000, 126_000_000, 0));
 
@@ -136,6 +176,14 @@ describe("the performance strip", () => {
 });
 
 describe("the DORA cells", () => {
+  it("carry their window's count (DJ.2)", () => {
+    const windows = mockupWindows();
+
+    windows.set("lead_time", { ...windowOf(windows, "lead_time"), n: 33 });
+
+    expect(doraOf(windows)[1].n).toBe(33);
+  });
+
   it("are four, with deploy frequency per day and the registry's proxy flags carried through", () => {
     const cells = doraOf(mockupWindows());
 

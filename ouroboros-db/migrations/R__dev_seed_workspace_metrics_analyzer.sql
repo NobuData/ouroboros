@@ -8,6 +8,10 @@
 -- the merges, waivers and pool events around them — and the findings are what the analyzers
 -- make of it:
 --
+-- **Origin (DJ.2, #1315).** Every `metric_daily` row here is `seeded`: it states no origin and
+-- `ouroboros.data_origin_default()` reads this file's `ouroboros.seed_origin`. V154 deleted the
+-- rollup history and its bookkeeping to rebuild them per origin; this file writes its rows again.
+--
 --   * **Rediscovered.** The three change-points. tests/verify-analyzer-rediscovery.sh reads the
 --     corpus back out (tests/lib/analyzer-corpus.sql), runs BV.2's own `ChangePointAnalyzer`
 --     over it, and requires the three stored findings to be exactly what it emits — dates,

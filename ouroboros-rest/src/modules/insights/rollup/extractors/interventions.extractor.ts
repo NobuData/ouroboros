@@ -16,6 +16,7 @@
 
 import { sql } from "kysely";
 
+import type { DataOrigin } from "../../../db/schema";
 import { sumRow } from "../rollup.rows";
 import { joinRepo, num, REPO_REF } from "../rollup.sql";
 import type { FamilyExtractor, RollupRow } from "../rollup.types";
@@ -23,28 +24,37 @@ import type { FamilyExtractor, RollupRow } from "../rollup.types";
 /** One repository's day for one cause. */
 interface InterventionGroup {
   repo_ref: string;
+  origin: DataOrigin;
   cause: string;
   events: string;
 }
 
 export const interventionsExtractor: FamilyExtractor = {
   family: "interventions",
-  metrics: { human_interventions: 2 },
+  metrics: { human_interventions: 3 },
 
   async extract(db, organizationId, day): Promise<RollupRow[]> {
-    // `r` because each row of the view is a group of runs, and `joinRepo` joins a run's repository.
+    // V079's `intervention_cause_daily` stated again with the run's origin (DJ.2): the view
+    // groups runs of every origin together, and a row here is one origin's.
     const { rows } = await sql<InterventionGroup>`
-      select ${REPO_REF} as repo_ref, r.cause, sum(r.events) as events
-        from ouroboros.intervention_cause_daily r
+      select ${REPO_REF} as repo_ref, r.origin, e.cause, count(*) as events
+        from ouroboros.intervention_events e
+        join ouroboros.runs r on r.id = e.run_id
         ${joinRepo("r")}
-       where r.organization_id = ${organizationId}
-         and r.day = ${day}::date
-       group by 1, 2
-       order by 1, 2`.execute(db);
+       where e.organization_id = ${organizationId}
+         and (e.detected_at at time zone 'UTC')::date = ${day}::date
+       group by 1, 2, 3
+       order by 1, 2, 3`.execute(db);
 
     return rows.map((group) =>
       sumRow(
-        { repoRef: group.repo_ref, metricId: "human_interventions", dimension: group.cause },
+        {
+          repoRef: group.repo_ref,
+          origin: group.origin,
+          metricId: "human_interventions",
+          dimension: group.cause,
+        },
+        num(group.events),
         num(group.events),
       ),
     );

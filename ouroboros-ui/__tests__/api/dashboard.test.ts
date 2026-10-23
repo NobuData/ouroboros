@@ -40,7 +40,8 @@ describe("dashboard.read", () => {
 
     const payload = await dashboard.read(client);
 
-    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/dashboard");
+    // Every origin, until DJ.3 (#1316) gives the reader a live-default filter (`app/api/origin.ts`).
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/dashboard?origin=all");
     expect(requests[0]?.method).toBe("GET");
     expect(payload).toEqual(dashboardPayload());
   });
@@ -63,7 +64,8 @@ describe("dashboard.read", () => {
     await dashboard.read(client);
 
     expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBeNull();
-    expect(new URL(requests[0]!.url).search).toBe("");
+    // The only query is the interim origin (`app/api/origin.ts`) — no workspace rides in it.
+    expect(new URL(requests[0]!.url).search).toBe("?origin=all");
   });
 
   it("sends no conditional header, because the first read has no tag to send", async () => {

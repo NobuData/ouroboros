@@ -30,7 +30,11 @@ describe("the routed weekly digest", () => {
 
     await composer.compose("org-acme", "Acme Robotics", SLOT);
 
-    expect(read).toHaveBeenCalledWith("org-acme", { range: DIGEST_RANGE, now: SLOT });
+    expect(read).toHaveBeenCalledWith("org-acme", {
+      range: DIGEST_RANGE,
+      origin: "live",
+      now: SLOT,
+    });
   });
 
   it("carries no unsubscribe link and says it came through the route, in both parts", async () => {

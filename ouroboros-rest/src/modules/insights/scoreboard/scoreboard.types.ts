@@ -3,7 +3,9 @@
  * [#439](https://github.com/NobuData/ouroboros/issues/439)).
  */
 
-import type { MetricMethodology } from "../metrics/metrics.types";
+import type { DataOrigin } from "../../db/schema";
+import type { OriginFilter } from "../metrics/metrics.origin";
+import type { MetricMethodology, OriginFacts } from "../metrics/metrics.types";
 import type { DaySpan, MetricRange } from "../metrics/metrics.window";
 
 /** Who and what a scoreboard is about. */
@@ -14,6 +16,8 @@ export interface ScoreboardScope {
   readonly repo?: string;
   /** The range; the prior window is the same length, immediately before. */
   readonly range: MetricRange;
+  /** Which data origin's merges and usage to count (DJ.2); `live` when omitted. */
+  readonly origin?: OriginFilter;
   /** The instant to answer at; the service's clock when omitted. */
   readonly now?: Date;
 }
@@ -36,6 +40,8 @@ export interface ScoreboardKey {
 
 /** One row's figures over one window, as the statement groups them. */
 export interface ScoreboardTally extends ScoreboardKey {
+  /** The data origin of the merges and usage tallied (V141, DJ.2). */
+  readonly origin: DataOrigin;
   /** Loop PRs merged in the window whose run this row served. */
   readonly merged: number;
   /** Of those, the ones decision I6 calls untouched. */
@@ -134,7 +140,7 @@ export interface ScoreboardMethodology {
 }
 
 /** Mockup 15's MODEL SCOREBOARD. */
-export interface Scoreboard {
+export interface Scoreboard extends OriginFacts {
   readonly range: MetricRange;
   /** The window's first and last UTC day. */
   readonly window: DaySpan;

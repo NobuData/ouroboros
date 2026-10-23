@@ -9,6 +9,7 @@ import type {
   InterventionOverride,
   InterventionSource,
 } from "../db/schema";
+import type { OriginFilter } from "./metrics/metrics.origin";
 import type { MetricRange } from "./metrics/metrics.window";
 import type { Day } from "./rollup/rollup.types";
 
@@ -46,6 +47,8 @@ export interface InterventionResource {
 /** The events behind the interventions card's bars, over the page's window. */
 export interface InterventionListResource {
   readonly range: MetricRange;
+  /** The data origin whose runs' events are listed (DJ.2) — the card's own; `live` unless asked. */
+  readonly origin: OriginFilter;
   /** The UTC days listed — the page's own window for the range. */
   readonly window: { readonly from: Day; readonly to: Day };
   /** The cause listed, or null for every cause. */

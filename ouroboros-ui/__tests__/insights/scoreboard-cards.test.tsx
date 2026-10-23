@@ -82,6 +82,7 @@ function withInterventions(interventions: InsightsPage["hbars"]["interventions"]
 /** The `infra_rig` bar's one listed event. */
 const RIG_EVENTS: InterventionList = {
   range: "30d",
+  origin: "all",
   window: { from: "2026-07-10", to: "2026-08-08" },
   cause: "infra_rig",
   total: 8,

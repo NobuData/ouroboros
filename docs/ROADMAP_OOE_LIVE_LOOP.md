@@ -1613,7 +1613,7 @@ the product able to say which of its data a real run produced.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | DJ.1 | ✅ #1313 | 🟢 Done | ouroboros-db: [DJ.1] Data origin on runs and what derives from them | `live` / `simulated` / `seeded`, set once by the path that created the row and inherited downstream | mvp, live-loop, db, rest, runs | Y | Y | M | ouroboros-db, ouroboros-rest |
-| DJ.2 | #1315 | 🟡 Open | ouroboros-rest: [DJ.2] Origin-aware aggregates — dashboard, Insights, analyzer | Rollups carry origin; live-only by default; mixed results say so | mvp, live-loop, rest, insights, dashboard | N (after DJ.1) | Y | M | ouroboros-rest, ouroboros-db |
+| DJ.2 | ✅ #1315 | 🟢 Done | ouroboros-rest: [DJ.2] Origin-aware aggregates — dashboard, Insights, analyzer | Rollups carry origin; live-only by default; mixed results say so | mvp, live-loop, rest, insights, dashboard | N (after DJ.1) | Y | M | ouroboros-rest, ouroboros-db |
 | DJ.3 | #1316 | 🟡 Open | ouroboros-ui: [DJ.3] Data-origin labelling & honest empty states | A label wherever non-live data is shown or counted; a fresh deployment shows nothing invented | mvp, live-loop, ui, design, dashboard, insights, runs | N (after DJ.2) | Y | M | ouroboros-ui, ouroboros-docs |
 | DJ.4 | #1317 | 🟡 Open | ouroboros-engine: [DJ.4] Simulated driver out of the product path | The driver becomes a named test and development tool; nothing a user reaches starts it | mvp, live-loop, engine, runs, onboarding, ci | N (after #315) | Y | S | ouroboros-engine, ouroboros-rest, ouroboros-ui, tests/e2e, ouroboros-docs |
 
@@ -1678,7 +1678,7 @@ the product able to say which of its data a real run produced.
 
 ### Issue DJ.2 — ouroboros-rest: [DJ.2] Origin-aware aggregates — dashboard, Insights, analyzer
 
-> **GitHub issue:** #1315 · **Status:** 🟡 Open · **Parent epic:** #1296
+> **GitHub issue:** ✅ #1315 · **Status:** 🟢 Done · **Parent epic:** #1296
 
 - **Problem Statement:** Insights is "shipped over seeded and simulated data"
   (gap analysis, capability matrix). Its headline numbers are sums over rows

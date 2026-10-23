@@ -261,6 +261,8 @@ export class RollupRepository {
             numerator: row.numerator ?? null,
             denominator: row.denominator ?? null,
             meta: JSON.stringify(row.samples === undefined ? {} : { samples: row.samples }),
+            origin: row.origin,
+            population: row.population,
           };
         }),
       )

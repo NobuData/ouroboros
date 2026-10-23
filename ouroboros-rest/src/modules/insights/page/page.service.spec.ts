@@ -148,8 +148,23 @@ describe("the insights page service", () => {
       // One instant: a request across midnight cannot draw two different days.
       expect(scope.now).toEqual(new Date(NOW));
     }
-    expect(report).toHaveBeenCalledWith(ORG, "30d");
+    expect(report).toHaveBeenCalledWith(ORG, "30d", "live");
     expect(caps).toHaveBeenCalledWith(ORG);
+  });
+
+  it("reads every figure under the asked origin, live by default (DJ.2)", async () => {
+    const { service, windows, breakdown, scoreboard, report } = build();
+
+    await service.read(ORG, { range: "30d", origin: "seeded" });
+
+    const scopes = [
+      ...windows.mock.calls.map(([, scope]) => scope),
+      ...breakdown.mock.calls.map(([, scope]) => scope),
+      ...scoreboard.mock.calls.map(([scope]) => scope),
+    ] as { origin?: string }[];
+
+    expect(scopes.map((scope) => scope.origin)).toEqual(Array(9).fill("seeded"));
+    expect(report).toHaveBeenCalledWith(ORG, "30d", "seeded");
   });
 
   it("reads the flaky card over the same UTC days the charts cover", async () => {

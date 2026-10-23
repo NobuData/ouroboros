@@ -5943,7 +5943,7 @@ select pg_temp.must_hold(
   (select count(distinct metric_id) = 24
           and min(day) = (now() at time zone 'UTC')::date - 89
           and count(distinct day) = 90
-          and count(*) = count(distinct (repo_ref, metric_id, dimension, day))
+          and count(*) = count(distinct (repo_ref, metric_id, dimension, origin, day))
      from ouroboros.metric_daily
     where organization_id = '5eed0001-0000-4000-8000-000000000001'),
   'the insights seed fills ninety days of all twenty-four daily metrics for acme-robotics (the analyzer seed the build-duration family, #510, and the queue-wait family, #514), each grain once');

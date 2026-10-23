@@ -46,6 +46,7 @@ import "server-only";
 
 import { sessionCookieHeader } from "@/app/api/client";
 import { ApiError } from "@/app/api/errors";
+import { AGGREGATE_ORIGIN } from "@/app/api/origin";
 import type { paths } from "@/app/api/schema";
 import { sessionCookies } from "@/app/api/server";
 import {
@@ -109,7 +110,7 @@ export async function readDashboardSummary(
 
   let response: Response;
   try {
-    response = await fetcher(`${baseUrl}${SUMMARY_PATH}`, {
+    response = await fetcher(`${baseUrl}${SUMMARY_PATH}?origin=${AGGREGATE_ORIGIN}`, {
       headers: await requestHeaders(etag),
       // The browser's own cache is not in this exchange: the poll holds the tag and this
       // request is the revalidation. A cached answer here would be a pill reporting the

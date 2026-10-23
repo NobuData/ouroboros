@@ -47,17 +47,21 @@ const SEEDED_METRICS: Readonly<Record<string, Partial<MetricWindow>>> = {
   human_interventions: { value: 2 },
 };
 
-/** An empty workspace's metrics: no rate, no median, sums of nothing. */
+/** No data (DJ.2): what the metrics service answers for a window with no live row. */
+const NO_DATA: Partial<MetricWindow> = {
+  value: null,
+  n: 0,
+  prior: null,
+  delta: null,
+  originsPresent: [],
+};
+
+/** An empty workspace's metrics: every window is no data. */
 const EMPTY_METRICS: Readonly<Record<string, Partial<MetricWindow>>> = {
-  merged_prs: {
-    value: 0,
-    prior: 0,
-    delta: 0,
-    series: [{ day: "2026-08-13", value: 0, meta: {} }],
-  },
-  merge_rate: { value: null, prior: null, delta: null },
-  cycle_time: { value: null, prior: null, delta: null },
-  human_interventions: { value: 0 },
+  merged_prs: { ...NO_DATA, series: [{ day: "2026-08-13", value: null, meta: {} }] },
+  merge_rate: NO_DATA,
+  cycle_time: NO_DATA,
+  human_interventions: NO_DATA,
 };
 
 /** The seed's own day of token spend: 4.2M tokens, $18.60 priced, three unpriced events. */
@@ -66,6 +70,8 @@ const TOKENS: TokenTotals = {
   costCents: "1860.0000",
   providers: 4,
   unpricedEvents: 3,
+  events: 12,
+  originsPresent: ["live"],
 };
 
 const NO_TOKENS: TokenTotals = {
@@ -73,6 +79,8 @@ const NO_TOKENS: TokenTotals = {
   costCents: "0.0000",
   providers: 0,
   unpricedEvents: 0,
+  events: 0,
+  originsPresent: [],
 };
 
 const QUEUE: QueueTotals = { count: 12, estMinutes: 580 };
@@ -228,12 +236,17 @@ describe("the dashboard service", () => {
       // The tag and the body describe one moment, and every metrics window in the body was
       // asked about the same instant — which is what keeps a stat row from disagreeing with
       // the pulse card beside it under load.
-      expect(repository.runStatistics).toHaveBeenCalledWith(WORKSPACE);
+      expect(repository.runStatistics).toHaveBeenCalledWith(WORKSPACE, ["live"]);
       expect(metrics.window).toHaveBeenCalledTimes(4);
       for (const [, scope] of metrics.window.mock.calls) {
-        expect(scope).toEqual({ organizationId: WORKSPACE, range: "7d", now: windows.now });
+        expect(scope).toEqual({
+          organizationId: WORKSPACE,
+          range: "7d",
+          origin: "live",
+          now: windows.now,
+        });
       }
-      expect(repository.tokenTotals).toHaveBeenCalledWith(WORKSPACE, windows.day);
+      expect(repository.tokenTotals).toHaveBeenCalledWith(WORKSPACE, windows.day, ["live"]);
     });
   });
 
@@ -274,6 +287,17 @@ describe("the dashboard service", () => {
       const tomorrow = dashboardWindows(new Date("2026-08-14T00:00:01.000Z"));
 
       expect(await service.etag(WORKSPACE, tomorrow)).not.toBe(
+        await service.etag(WORKSPACE, WINDOWS),
+      );
+    });
+
+    it("differs between two origins of one workspace's dashboard (DJ.2)", async () => {
+      const service = serviceOf(repositoryAnswering());
+
+      expect(await service.etag(WORKSPACE, WINDOWS)).toBe(
+        await service.etag(WORKSPACE, WINDOWS, "live"),
+      );
+      expect(await service.etag(WORKSPACE, WINDOWS, "all")).not.toBe(
         await service.etag(WORKSPACE, WINDOWS),
       );
     });
@@ -404,9 +428,9 @@ describe("the dashboard service", () => {
       ]);
     });
 
-    it("answers an empty organization with zeros and empty lists, never nulls", async () => {
-      // The acceptance criterion, at the layer that decides it. A card is rendered from this
-      // without a fallback branch, so a `null` here is a crash there.
+    it("answers an empty organization with no data — nulls — and empty lists, never zeros", async () => {
+      // DJ.2's acceptance criterion: a window with no live row is no data, never a zero floor.
+      // Counts of what is in flight or queued stay numbers: zero runs in flight is a fact.
       const payload = await serviceOf(
         repositoryAnswering({
           runStatistics: EMPTY,
@@ -421,22 +445,73 @@ describe("the dashboard service", () => {
       ).read(WORKSPACE, WINDOWS);
 
       expect(payload).toEqual({
+        origin: "live",
+        originsPresent: [],
+        mixed: false,
         stats: {
           loopsLive: { total: 0, byStatus: { coding: 0, building: 0, review: 0 } },
           queued: { count: 0, estMinutes: 0 },
-          merged7d: { count: 0, deltaVsPrior: 0 },
-          tokensToday: { tokens: 0, costCents: 0, providers: 0, unpricedEvents: 0 },
+          merged7d: { count: null, deltaVsPrior: null },
+          tokensToday: { tokens: null, costCents: null, providers: 0, unpricedEvents: 0 },
         },
-        pulse: { mergeRate: 0, avgCycleSeconds: 0, interventions7d: 0, autoMerge: false },
+        pulse: { mergeRate: null, avgCycleSeconds: null, interventions7d: null, autoMerge: false },
         activeRuns: [],
         recentRuns: [],
         queueHead: [],
-        activity: { inFlight: 0, queued: 0, mergedSinceMorning: 0 },
+        activity: { inFlight: 0, queued: 0, mergedSinceMorning: null },
       });
 
       // …and nothing in it is a value JSON cannot carry, which is how a `NaN` reaches a card
       // as `null` and a meter as a width of `NaN%`.
       expect(JSON.parse(JSON.stringify(payload))).toEqual(payload);
+    });
+
+    it("says which origins a seeded-only workspace holds beside its no-data figures (DJ.2)", async () => {
+      const seeded = { ...NO_DATA, originsPresent: ["seeded"] as const };
+      const payload = await serviceOf(
+        repositoryAnswering({ tokenTotals: { ...NO_TOKENS, originsPresent: ["seeded"] } }),
+        metricsAnswering({
+          merged_prs: seeded,
+          merge_rate: seeded,
+          cycle_time: seeded,
+          human_interventions: seeded,
+        }),
+      ).read(WORKSPACE, WINDOWS);
+
+      expect(payload).toMatchObject({ origin: "live", originsPresent: ["seeded"], mixed: false });
+      expect(payload.stats.merged7d.count).toBeNull();
+      expect(payload.stats.tokensToday.tokens).toBeNull();
+    });
+
+    it("passes the asked origin to every aggregate, and reports a mixed answer", async () => {
+      const repository = repositoryAnswering({
+        tokenTotals: { ...TOKENS, originsPresent: ["live", "seeded"] },
+      });
+      const metrics = metricsAnswering({
+        ...SEEDED_METRICS,
+        merged_prs: { ...SEEDED_METRICS.merged_prs, originsPresent: ["live", "simulated"] },
+      });
+
+      const payload = await serviceOf(repository, metrics).read(WORKSPACE, WINDOWS, "all");
+
+      expect(repository.runStatistics).toHaveBeenCalledWith(WORKSPACE, [
+        "live",
+        "simulated",
+        "seeded",
+      ]);
+      expect(repository.tokenTotals).toHaveBeenCalledWith(WORKSPACE, WINDOWS.day, [
+        "live",
+        "simulated",
+        "seeded",
+      ]);
+      for (const [, scope] of metrics.window.mock.calls) {
+        expect(scope).toMatchObject({ origin: "all" });
+      }
+      expect(payload).toMatchObject({
+        origin: "all",
+        originsPresent: ["live", "simulated", "seeded"],
+        mixed: true,
+      });
     });
 
     it("reports a week that merged less than the one before as a negative delta", async () => {

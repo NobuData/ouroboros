@@ -45,6 +45,7 @@ function definition(
       proxy: false,
       aggregation,
       dimensionKind,
+      originRule: `Origin rule of ${metricId}`,
     },
   ];
 }
@@ -73,6 +74,8 @@ function stored(
     metricId,
     repoRef: REPO,
     dimension: "",
+    origin: "live",
+    population: 1,
     value,
     numerator: null,
     denominator: null,
@@ -107,15 +110,24 @@ const ROLLUP = [
 
 /** Today's rows, as each family's extractor answers them live. */
 const LIVE: Readonly<Record<string, readonly RollupRow[]>> = {
-  throughput: [sumRow({ repoRef: REPO, metricId: "merged_prs" }, 1)],
+  throughput: [sumRow({ repoRef: REPO, metricId: "merged_prs", origin: "live" }, 1, 1)],
   cost: [
-    sumRow({ repoRef: REPO, metricId: "cost_cents" }, 100),
-    sumRow({ repoRef: REPO, metricId: "tokens" }, 1000),
+    sumRow({ repoRef: REPO, metricId: "cost_cents", origin: "live" }, 100, 1),
+    sumRow({ repoRef: REPO, metricId: "tokens", origin: "live" }, 1000, 1),
   ],
   interventions: [
-    sumRow({ repoRef: REPO, metricId: "human_interventions", dimension: "infra_rig" }, 1),
+    sumRow(
+      { repoRef: REPO, metricId: "human_interventions", dimension: "infra_rig", origin: "live" },
+      1,
+      1,
+    ),
   ],
-  cycle: [medianRow({ repoRef: REPO, metricId: "stage_duration", dimension: "implement" }, [500])],
+  cycle: [
+    medianRow(
+      { repoRef: REPO, metricId: "stage_duration", dimension: "implement", origin: "live" },
+      [500],
+    ),
+  ],
 };
 
 /** The families, each counting its live runs. */
@@ -165,6 +177,8 @@ function build() {
           metricId: row.metricId,
           repoRef: row.repoRef,
           dimension: row.dimension,
+          origin: row.origin,
+          population: row.population,
           value: row.value,
           numerator: row.numerator ?? null,
           denominator: row.denominator ?? null,
@@ -276,11 +290,12 @@ describe("MetricsService.breakdown — one window per label", () => {
     expect(
       breakdown.entries.map(({ dimension, window }) => [dimension, window.value, window.prior]),
     ).toEqual([
-      ["ambiguous_ticket", 1, 0],
+      // No row in the prior window: no data there (DJ.2), not zero.
+      ["ambiguous_ticket", 1, null],
       // Two stored and one from this morning's live tail.
       ["infra_rig", 3, 3],
-      // Quiet this window: still listed, so its drop from 5 is visible.
-      ["policy_gate", 0, 5],
+      // Quiet this window: still listed, so its prior 5 is visible beside no data now.
+      ["policy_gate", null, 5],
     ]);
   });
 

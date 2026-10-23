@@ -37,6 +37,7 @@ function span(
     components: { numerator: 90, denominator: 98 },
     samples: [],
     days: 30,
+    originsPresent: ["live"],
     methodology: {
       metricId: "merge_rate",
       title: "Merge rate",
@@ -47,6 +48,7 @@ function span(
       version: 1,
       proxy: false,
       aggregation,
+      originRule: "Computed separately for each data origin.",
     },
     ...rest,
   };

@@ -24,11 +24,12 @@
  * thing a serializer happens to do.
  */
 
-import { Controller, Get, HttpStatus, Logger, Req, Res } from "@nestjs/common";
+import { Controller, Get, HttpStatus, Logger, Query, Req, Res } from "@nestjs/common";
 
 import { AppConfigService } from "../config/config.service";
 import type { Organization } from "../db/schema";
 import { CurrentTenant } from "../tenancy/tenant.decorators";
+import { DashboardQuery } from "./dashboard.dto";
 import { DashboardService } from "./dashboard.service";
 import { matchesIfNoneMatch } from "./etag";
 
@@ -133,10 +134,11 @@ export class DashboardController {
     @CurrentTenant() tenant: Organization,
     @Req() request: ConditionalRequest,
     @Res() response: ConditionalResponse,
+    @Query() query: DashboardQuery = {},
   ): Promise<void> {
     const started = performance.now();
     const windows = this.dashboard.windows();
-    const etag = await this.dashboard.etag(tenant.id, windows);
+    const etag = await this.dashboard.etag(tenant.id, windows, query.origin);
 
     const held = request.headers?.[IF_NONE_MATCH];
 
@@ -156,7 +158,7 @@ export class DashboardController {
     // assembling it produces an ordinary `500` from the envelope filter rather than one
     // carrying an `ETag` for a body that was never sent — a tag a client would then send
     // back, and be answered `304` on, for a representation it does not have.
-    const payload = await this.dashboard.read(tenant.id, windows);
+    const payload = await this.dashboard.read(tenant.id, windows, query.origin);
 
     this.freshness(response, etag);
     response.status(HttpStatus.OK).json(payload);

@@ -25,6 +25,7 @@ const RANGE = windowRange("30d", NOW);
 function sums(overrides: Partial<CalibrationSliceSums>): CalibrationSliceSums {
   return {
     effort: "s",
+    origin: "live",
     merged: 0,
     withinBand: 0,
     over: 0,
@@ -162,8 +163,52 @@ describe("calibrationReport", () => {
     ]);
   });
 
+  describe("data origin (DJ.2)", () => {
+    const seeded = groups.map((group) => ({ ...group, origin: "seeded" as const }));
+
+    it("counts live merges by default, and says what else is there", () => {
+      const report = calibrationReport("30d", RANGE, seeded);
+
+      expect(report).toMatchObject({
+        origin: "live",
+        originsPresent: ["seeded"],
+        mixed: false,
+        merged: 0,
+        estimated: 0,
+        withinBandPct: null,
+      });
+    });
+
+    it("counts one origin when asked for it", () => {
+      expect(calibrationReport("30d", RANGE, [...groups, ...seeded], "seeded")).toMatchObject({
+        origin: "seeded",
+        merged: 15,
+        withinBandPct: 91.7,
+        originsPresent: ["live", "seeded"],
+        mixed: false,
+      });
+    });
+
+    it("sums the origins' slices only for all, and marks the report mixed", () => {
+      const report = calibrationReport("30d", RANGE, [...groups, ...seeded], "all");
+
+      expect(report).toMatchObject({
+        merged: 30,
+        estimated: 24,
+        unestimated: 6,
+        withinBand: 22,
+        withinBandPct: 91.7,
+        mixed: true,
+      });
+      expect(report.efforts.find((slice) => slice.effort === "m")?.estimated).toBe(20);
+    });
+  });
+
   it("states its window as instants", () => {
     expect(calibrationReport("30d", RANGE, [])).toEqual({
+      origin: "live",
+      originsPresent: [],
+      mixed: false,
       window: "30d",
       from: "2026-09-01T12:00:00.000Z",
       to: "2026-10-01T12:00:00.000Z",

@@ -6,14 +6,17 @@
  * `metric_daily_shape_guard` checks it.
  */
 
+import type { DataOrigin } from "../../db/schema";
 import type { RollupRow } from "./rollup.types";
 
-/** Where a row belongs: the repository, metric and dimension. */
+/** Where a row belongs: the repository, metric, dimension and origin. */
 export interface RowKey {
   readonly repoRef: string;
   readonly metricId: string;
   /** Defaults to `""`, the undimensioned row. */
   readonly dimension?: string;
+  /** The origin of the source rows behind it (V154, DJ.2). */
+  readonly origin: DataOrigin;
 }
 
 /**
@@ -21,13 +24,16 @@ export interface RowKey {
  *
  * @param key - Where it belongs.
  * @param value - The day's total. Must be finite and non-negative.
+ * @param population - How many source rows the total is over — for a count, usually the count
+ *   itself; for cents or tokens, the rows that carried them.
  * @returns The row.
- * @throws {RangeError} On a negative or non-finite value — the grain refuses both.
+ * @throws {RangeError} On a negative or non-finite value or population — the grain refuses both.
  */
-export function sumRow(key: RowKey, value: number): RollupRow {
+export function sumRow(key: RowKey, value: number, population: number): RollupRow {
   assertAmount(key.metricId, value);
+  assertPopulation(key.metricId, population);
 
-  return { repoRef: key.repoRef, metricId: key.metricId, dimension: key.dimension ?? "", value };
+  return { ...place(key), value, population };
 }
 
 /**
@@ -38,6 +44,8 @@ export function sumRow(key: RowKey, value: number): RollupRow {
  * @param numerator - The day's numerator, non-negative.
  * @param denominator - The day's denominator, positive.
  * @param scale - What the rate is multiplied by for `value`: 100 for a `pct` metric, 1 otherwise.
+ * @param population - How many source rows the rate is over; the denominator when omitted, which
+ *   is right whenever the denominator is a count of rows.
  * @returns The row.
  * @throws {RangeError} On a negative numerator or a denominator that is not positive.
  */
@@ -46,8 +54,10 @@ export function ratioRow(
   numerator: number,
   denominator: number,
   scale: number,
+  population: number = denominator,
 ): RollupRow {
   assertAmount(key.metricId, numerator);
+  assertPopulation(key.metricId, population);
 
   if (!(denominator > 0) || !Number.isFinite(denominator)) {
     throw new RangeError(
@@ -56,12 +66,11 @@ export function ratioRow(
   }
 
   return {
-    repoRef: key.repoRef,
-    metricId: key.metricId,
-    dimension: key.dimension ?? "",
+    ...place(key),
     value: (scale * numerator) / denominator,
     numerator,
     denominator,
+    population,
   };
 }
 
@@ -69,7 +78,8 @@ export function ratioRow(
  * A `median` row — the day's samples, ascending, and their median.
  *
  * @param key - Where it belongs.
- * @param samples - The day's observations, in any order. At least one, each non-negative.
+ * @param samples - The day's observations, in any order. At least one, each non-negative. Their
+ *   count is the row's population.
  * @returns The row, with its samples sorted.
  * @throws {RangeError} On no samples or a negative one.
  */
@@ -84,13 +94,7 @@ export function medianRow(key: RowKey, samples: readonly number[]): RollupRow {
 
   const sorted = [...samples].sort((a, b) => a - b);
 
-  return {
-    repoRef: key.repoRef,
-    metricId: key.metricId,
-    dimension: key.dimension ?? "",
-    value: median(sorted),
-    samples: sorted,
-  };
+  return { ...place(key), value: median(sorted), samples: sorted, population: sorted.length };
 }
 
 /**
@@ -104,6 +108,36 @@ export function median(sorted: readonly number[]): number {
   const middle = Math.floor(sorted.length / 2);
 
   return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+/**
+ * The placement half of a row — where it goes in the grain key.
+ *
+ * @param key - The caller's key.
+ * @returns The repository, metric, dimension (`""` when omitted) and origin.
+ */
+function place(key: RowKey): Pick<RollupRow, "repoRef" | "metricId" | "dimension" | "origin"> {
+  return {
+    repoRef: key.repoRef,
+    metricId: key.metricId,
+    dimension: key.dimension ?? "",
+    origin: key.origin,
+  };
+}
+
+/**
+ * Refuse a population the grain cannot store.
+ *
+ * @param metricId - For the message.
+ * @param population - The count of source rows.
+ * @throws {RangeError} When it is not a non-negative integer.
+ */
+function assertPopulation(metricId: string, population: number): void {
+  if (!Number.isInteger(population) || population < 0) {
+    throw new RangeError(
+      `${metricId}: a population is a non-negative whole count, got ${String(population)}`,
+    );
+  }
 }
 
 /**
