@@ -51,6 +51,8 @@ import {
   type RunRow,
   prepareSliceWorkspace,
   readAs,
+  SLICE_REPOSITORY,
+  SLICE_WORKFLOW,
   setDeploymentSwitch,
   sliceQueueItem,
   sliceRuns,
@@ -62,6 +64,7 @@ import {
   readRecording,
   resetProviderFixture,
   setFixtureProviderKey,
+  testFixtureConnection,
 } from "../support/live-slice";
 import { requestAs } from "../support/rest";
 import { SEED_OWNER } from "../support/seed";
@@ -230,6 +233,24 @@ test.describe("leg 34: the live loop, an issue to a draft pull request (#1321)",
     await awaitRunnerBack(context, restarted);
 
     await expectHeld(context, "policy_not_dry_run");
+
+    // The live path of the readiness preflight (DK.1/DK.2, #1318/#1319) on the same fixtures:
+    // with the item held — so no live slot is taken — every check passes but dry-run, and dry-run
+    // is the one the chain below turns back on before the loop starts.
+    await testFixtureConnection(context);
+    const readiness = await readAs<{
+      ready: boolean;
+      checks: { id: string; state: string; reason: string }[];
+    }>(
+      context,
+      `/api/v1/loop/readiness?repository=${encodeURIComponent(SLICE_REPOSITORY)}&workflow=${SLICE_WORKFLOW}&issue=${String(SLICE_ISSUE.number)}`,
+    );
+    const blocking = readiness.checks.filter((check) => check.state !== "pass");
+    expect(
+      blocking.map((check) => check.id),
+      `readiness blocks on more than dry-run: ${JSON.stringify(blocking)}`,
+    ).toEqual(["dry_run"]);
+    expect(readiness.ready).toBe(false);
   });
 
   test("the chain: queued issue → live run → pushed branch → runner build → draft pull request", async ({

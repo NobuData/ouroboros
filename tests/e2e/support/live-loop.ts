@@ -22,6 +22,12 @@ import { REST_URL } from "./stack";
 /** The slice workspace (R__dev_seed_live_slice.sql). */
 export const SLICE_WORKSPACE = "acme-live-slice";
 
+/** The repository the slice runs in. */
+export const SLICE_REPOSITORY = "acme-robotics/helios-greeter";
+
+/** The slice's workflow (R__dev_seed_live_slice.sql). */
+export const SLICE_WORKFLOW = "live-slice";
+
 /** The mirrored issue the slice runs on — `acme-robotics/helios-greeter#1`. */
 export const SLICE_ISSUE = {
   id: "5eed00a3-0000-4000-8000-000000000001",

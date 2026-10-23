@@ -99,7 +99,12 @@ describe("the onboarding service", () => {
         // Step 3: pick, instantiate (BB.3's job — simulated), complete.
         await service.update(ORG, REPO, { selectedTemplate: "quick-fixes" });
         fake.workflows = [
-          { slug: "quick-fixes", template_slug: "quick-fixes", template_version: 1 },
+          {
+            slug: "quick-fixes",
+            template_slug: "quick-fixes",
+            template_version: 1,
+            current_version: 1,
+          },
         ];
         await service.completeStep(ORG, REPO, 3);
 
@@ -157,7 +162,14 @@ describe("the onboarding service", () => {
     it("refuses step 4 without a queued run", async () => {
       fake.sources = [SOURCE];
       fake.repositoryRow = { id: "repo-1", enabled: true, account_enabled: true };
-      fake.workflows = [{ slug: "quick-fixes", template_slug: "quick-fixes", template_version: 1 }];
+      fake.workflows = [
+        {
+          slug: "quick-fixes",
+          template_slug: "quick-fixes",
+          template_version: 1,
+          current_version: 1,
+        },
+      ];
       fake.tickets = [TICKET];
       fake.rows.set(REPO, {
         ...emptyRow(),

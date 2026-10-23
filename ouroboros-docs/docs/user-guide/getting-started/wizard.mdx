@@ -6,8 +6,10 @@ description: "Getting a repository from connected to its first loop with the Get
 ---
 
 The Get Started wizard at `/get-started` takes one repository from connected to its first
-loop — **Your first loop in about 4 minutes.** It starts you in dry-run: the first loop
-opens a draft pull request and never merges, and nothing in the wizard is irreversible.
+loop — **Your first loop in about 4 minutes.** The time wears the label **expected · not yet
+measured**: it is an expectation, not something Ouroboros has timed. The wizard starts you in
+dry-run: the first loop opens a draft pull request and never merges, and nothing in the wizard
+is irreversible.
 
 ## When you use it
 
@@ -100,9 +102,39 @@ While dry-run is on, Ouroboros forces every pull request to open as a draft and 
 arm or perform a merge — it checks again at the moment of merging, so nothing slips through.
 [Concepts](../concepts.mdx#dry-run-and-live) explains dry-run and live.
 
-When you are ready, choose **Run my first loop →**. Ouroboros queues the issue and the
-wizard confirms it: **Your first loop is queued**, with links to **Open the dashboard →**,
-**See it in the queue →** and, once a loop has claimed the issue,
+#### Ready to run?
+
+Above the cards, step 4 shows **Ready to run?** — everything a live loop needs for this
+repository, workflow and issue, checked before it starts. The head names the repository, the
+issue and its size. The items are listed in [Your first loop](./first-loop.mdx#before-you-start).
+
+- **Passed** items fold into one line — **✓ 7 checks passed** — with **show** to open them.
+- **Failed** items (✗) stay open, each with its reason and a link to where you fix it — for
+  example **Build Farm · enrol a runner →**.
+- **Unknown** items (?) stay open too: Ouroboros could not confirm them, so they block until
+  it can.
+- **Dry-run is on: the loop opens a draft pull request and merges nothing.** appears while
+  dry-run holds, and the card ends with the **Estimate** — the run's cost cap and the issue's
+  size — labelled as one.
+
+<Screenshot id="user-guide.wizard.readiness-blocked" />
+
+**Run my first loop →** stays disabled until every item passes, and its caption is the first
+item still blocking. Fix it — enrol the runner, test the connection — and come back: the card
+checks again when you return to the tab, and the wizard keeps its place.
+
+**When live execution is off** for the deployment, the card says **Your configuration is
+saved.** Turning live execution on is an administrator's switch
+(`OURO_LIVE_EXECUTION_ENABLED`); **How live execution is turned on →** opens
+[Live execution](../../administration/live-execution.mdx). The action becomes
+**Finish setup**: it queues your first issue, where it waits until live execution is on.
+Ouroboros never runs a simulated loop in its place.
+
+<Screenshot id="user-guide.wizard.readiness" />
+
+When the card is ready, choose **Run my first loop →** (or **Finish setup**). Ouroboros
+queues the issue and the wizard confirms it: **Your first loop is queued**, with links to
+**Open the dashboard →**, **See it in the queue →** and, once a loop has claimed the issue,
 **Open the run console →**. [Your first loop](./first-loop.mdx) follows it from there.
 
 ## The right-hand column

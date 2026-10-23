@@ -22,7 +22,7 @@ const COMPONENTS = readdirSync(DIR)
 
 /** Every page class the sheet declares. */
 const DECLARED = new Set(
-  [...CODE.matchAll(/\.((?:wizard|offer-banner|detect|tiles?|pick-|safety|defaults|timeline|reassure)[a-z0-9_-]*)/g)].map(
+  [...CODE.matchAll(/\.((?:wizard|offer-banner|detect|tiles?|pick-|safety|defaults|timeline|reassure|readiness)[a-z0-9_-]*)/g)].map(
     (match) => match[1]!,
   ),
 );
@@ -30,7 +30,7 @@ const DECLARED = new Set(
 /** Every page class a component renders — a quoted string of page classes. */
 const RENDERED = new Set(
   [
-    ...COMPONENTS.matchAll(/"((?:(?:wizard|offer-banner|detect|tiles?|pick-|safety|defaults|timeline|reassure)[a-z0-9_-]*\s*)+)"/g),
+    ...COMPONENTS.matchAll(/"((?:(?:wizard|offer-banner|detect|tiles?|pick-|safety|defaults|timeline|reassure|readiness)[a-z0-9_-]*\s*)+)"/g),
   ].flatMap((match) => match[1]!.trim().split(/\s+/)),
 );
 

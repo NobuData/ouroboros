@@ -32,9 +32,11 @@ prerequisite for your repository and workflow. Each item passes, fails, or is **
 GitHub reports what the token's **account** may do, not the token's own scopes. A passing
 permission item confirms everything GitHub can tell Ouroboros, and nothing more.
 
-The loop is ready only when every item passes. While live execution is on, **Run my first
-loop →** refuses to start a loop that is not ready, and names the first item to fix. With
-live execution off, the wizard queues the issue as before.
+The wizard shows this list on its last step as **Ready to run?** — see
+[the wizard's step 4](./wizard.mdx#ready-to-run). The loop is ready only when every item
+passes. While live execution is on, **Run my first loop →** stays disabled until it is, with
+the first item to fix as its caption. With live execution off, the action is **Finish setup**:
+it queues the issue, which waits until an administrator turns live execution on.
 
 Beside the list is an **estimate**, and it is labelled as one: the per-run cost cap of the
 loop's model route, and the size the estimator gave the picked issue. It is not a promise of

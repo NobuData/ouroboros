@@ -49,6 +49,8 @@ export interface InstantiatedWorkflowRow {
   slug: string;
   template_slug: string;
   template_version: number;
+  /** The version in force — `workflows.current_version`, null while nothing is published. */
+  current_version: number | null;
 }
 
 /** A canonical ticket of the workspace, with its source's kind. */
@@ -270,7 +272,7 @@ export class OnboardingRepository {
   ): Promise<InstantiatedWorkflowRow | undefined> {
     const row = await this.database.db
       .selectFrom("workflows")
-      .select(["slug", "template_slug", "template_version"])
+      .select(["slug", "template_slug", "template_version", "current_version"])
       .where("organization_id", "=", organizationId)
       .where("template_slug", "=", templateSlug)
       .orderBy("created_at", "desc")
@@ -285,6 +287,7 @@ export class OnboardingRepository {
       slug: row.slug,
       template_slug: row.template_slug,
       template_version: row.template_version,
+      current_version: row.current_version,
     };
   }
 

@@ -325,6 +325,7 @@ export class OnboardingService {
       scan,
       templates,
       ticket,
+      workflow,
       surfacing: surfacing({
         anyWizardFinished: await this.onboarding.anyWizardFinished(organizationId),
         hasRuns: await this.onboarding.hasRuns(organizationId),

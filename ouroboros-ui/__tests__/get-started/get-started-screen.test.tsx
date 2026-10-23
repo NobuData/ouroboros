@@ -1,11 +1,13 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { LoopReadiness } from "@/app/api/loop";
 import type { Onboarding } from "@/app/api/onboarding";
 import type { OnboardingPollOptions } from "@/app/get-started/poll";
 import type { PollAnswer } from "@/app/poll";
 
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
+import { DEPLOYMENT_OFF, NO_RUNNER, readiness } from "../helpers/readiness";
 import { settle } from "../helpers/settle";
 import { source } from "../helpers/sources";
 import {
@@ -85,6 +87,24 @@ const POLL: OnboardingPollOptions = {
   visible: () => true,
 };
 
+/** What step 4's readiness poll answers next — every check passing unless a case says otherwise; null never answers. */
+let preflight: LoopReadiness | null = readiness();
+
+/** Every endpoint step 4's readiness poll asked, in order. */
+let preflightAsked: string[] = [];
+
+/** Step 4's readiness poll seam (DK.2, #1319). */
+const READINESS_POLL = {
+  read: (endpoint: string): Promise<PollAnswer<LoopReadiness>> => {
+    preflightAsked.push(endpoint);
+
+    return preflight === null
+      ? new Promise(() => {})
+      : Promise.resolve({ state: "fresh", payload: preflight, etag: null, pollAfterSeconds: null });
+  },
+  visible: () => true,
+};
+
 const OWNER = { contribute: true, administer: true };
 
 /** The frame over a first read. */
@@ -105,6 +125,7 @@ function frame(
       firstIssue={{ ok: true, value: firstIssueCard() }}
       firstIssuePoll={{ read: () => new Promise(() => {}), visible: () => true }}
       poll={POLL}
+      readinessPoll={READINESS_POLL}
       repo={repo}
       reposFailure={null}
       sources={{ ok: true, value: sourcesReadings() }}
@@ -128,6 +149,8 @@ const bar = () => screen.getByRole("group", { name: "Wizard actions" });
 beforeEach(() => {
   answer = null;
   reads = 0;
+  preflight = readiness();
+  preflightAsked = [];
   for (const mock of [continueStep, enableRepository, launchFirstLoop, skipWizard, setRepositoryEnabled, readSourceCatalog, addSource, setSourceStatus, push, refresh]) {
     mock.mockReset();
   }
@@ -144,6 +167,9 @@ describe("the head", () => {
 
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Your first loop in about 4 minutes.");
     expect(screen.getByText("Get Started")).toBeInTheDocument();
+    // The time is an expectation, labelled as one, until a measured figure replaces it (DK.2, #1319).
+    const expectation = screen.getByText("expected · not yet measured");
+    expect(expectation).toHaveAttribute("title", expect.stringMatching(/^An expectation, not a measurement/));
 
     const sub = screen.getByText(/it opens draft PRs/);
 
@@ -294,7 +320,7 @@ describe("the action bar", () => {
     expect(within(bar()).getByText("Step 3 of 4")).toBeInTheDocument();
   });
 
-  it("changes per step: connect, enable, continue, run", () => {
+  it("changes per step: connect, enable, continue, run", async () => {
     const fresh = wizard({
       steps: [step({ step: 1, status: "active", reason: "No GitHub source covers it yet." }), step({ step: 2 }), step({ step: 3 }), step({ step: 4 })],
     });
@@ -308,6 +334,7 @@ describe("the action bar", () => {
     cleanup();
 
     frame(readyToRun());
+    await settle();
     expect(within(bar()).getByRole("button", { name: "Run my first loop →" })).not.toHaveAttribute("aria-disabled");
   });
 
@@ -324,6 +351,7 @@ describe("the action bar", () => {
   it("runs the first loop and says what was queued, dry-run note included", async () => {
     launchFirstLoop.mockResolvedValue({ ok: true, value: launchReceipt() });
     frame(readyToRun());
+    await settle();
 
     fireEvent.click(within(bar()).getByRole("button", { name: "Run my first loop →" }));
     await settle();
@@ -339,6 +367,7 @@ describe("the action bar", () => {
 
     launchFirstLoop.mockReturnValue(new Promise((resolve) => (land = resolve)));
     frame(readyToRun());
+    await settle();
 
     const primary = within(bar()).getByRole("button", { name: "Run my first loop →" });
 
@@ -490,9 +519,10 @@ describe("the first-issue card (#393)", () => {
     const unpicked = wizard({
       steps: readyToRun().steps,
       choices: { ...readyToRun().choices, pickedTicketId: null },
-      refs: { detectionScan: null, templates: [], pickedTicket: null },
+      refs: { detectionScan: null, templates: [], pickedTicket: null, workflow: { slug: "quick-fixes", version: 1 } },
     });
     frame(unpicked);
+    await settle();
 
     const primary = within(bar()).getByRole("button", { name: "Run my first loop →" });
     expect(primary).not.toHaveAttribute("aria-disabled");
@@ -507,7 +537,7 @@ describe("the first-issue card (#393)", () => {
     const unpicked = wizard({
       steps: readyToRun().steps,
       choices: { ...readyToRun().choices, pickedTicketId: null },
-      refs: { detectionScan: null, templates: [], pickedTicket: null },
+      refs: { detectionScan: null, templates: [], pickedTicket: null, workflow: null },
     });
     render(
       <GetStartedScreen
@@ -646,8 +676,10 @@ describe("regression, fixed (#395)", () => {
 describe("completion (#395)", () => {
   it("leads the step content with the receipt once the launch answers, and offers the dashboard from the bar", async () => {
     launchFirstLoop.mockResolvedValue({ ok: true, value: launchReceipt() });
-    answer = { state: "fresh", payload: completed(), etag: null, pollAfterSeconds: null };
     frame(readyToRun());
+    await settle();
+    // The rail's next read — the one the launch's refresh asks — answers completed.
+    answer = { state: "fresh", payload: completed(), etag: null, pollAfterSeconds: null };
 
     fireEvent.click(within(bar()).getByRole("button", { name: "Run my first loop →" }));
     await settle();
@@ -696,5 +728,75 @@ describe("dismissed (#395)", () => {
     expect(rail()).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Choose a starting workflow" })).toBeInTheDocument();
     expect(within(bar()).getByText("Step 3 of 4")).toBeInTheDocument();
+  });
+
+  describe("step 4's readiness card (DK.2, #1319)", () => {
+    /** The readiness card. */
+    const readinessCard = () => screen.getByRole("region", { name: "Ready to run?" });
+
+    it("shows the preflight on step 4 and holds the launch with its first failing reason", async () => {
+      preflight = readiness(NO_RUNNER);
+      frame(readyToRun());
+      await settle();
+
+      expect(within(readinessCard()).getByText(NO_RUNNER.reason)).toBeInTheDocument();
+      const primary = within(bar()).getByRole("button", { name: "Run my first loop →" });
+      expect(primary).toHaveAttribute("aria-disabled", "true");
+      expect(primary).toHaveAccessibleDescription(NO_RUNNER.reason);
+      expect(preflightAsked).toEqual(["/api/loop/readiness?repository=acme-robotics%2Fhelios-firmware&workflow=quick-fixes"]);
+    });
+
+    it("re-checks when the person returns from a fix, without leaving step 4", async () => {
+      preflight = readiness(NO_RUNNER);
+      frame(readyToRun());
+      await settle();
+
+      preflight = readiness();
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      await settle();
+
+      expect(within(readinessCard()).queryByText(NO_RUNNER.reason)).not.toBeInTheDocument();
+      expect(within(bar()).getByRole("button", { name: "Run my first loop →" })).not.toHaveAttribute("aria-disabled");
+      expect(within(bar()).getByText("Step 4 of 4")).toBeInTheDocument();
+      expect(preflightAsked.length).toBeGreaterThan(1);
+    });
+
+    it("finishes setup while live execution is off, through the launcher", async () => {
+      launchFirstLoop.mockResolvedValue({ ok: true, value: launchReceipt() });
+      preflight = readiness(DEPLOYMENT_OFF, NO_RUNNER);
+      frame(readyToRun());
+      await settle();
+
+      expect(within(readinessCard()).getByRole("note")).toHaveTextContent("OURO_LIVE_EXECUTION_ENABLED");
+      fireEvent.click(within(bar()).getByRole("button", { name: "Finish setup" }));
+      await settle();
+
+      expect(launchFirstLoop).toHaveBeenCalledWith(REPO, null);
+    });
+
+    it("asks about the picker's suggestion while nothing is stored", async () => {
+      frame(
+        wizard({
+          steps: readyToRun().steps,
+          choices: { ...readyToRun().choices, pickedTicketId: null },
+          refs: { detectionScan: null, templates: [], pickedTicket: null, workflow: { slug: "quick-fixes", version: 1 } },
+        }),
+      );
+      await settle();
+
+      expect(preflightAsked.at(-1)).toBe(
+        "/api/loop/readiness?repository=acme-robotics%2Fhelios-firmware&workflow=quick-fixes&issue=488",
+      );
+    });
+
+    it("never asks once the first loop is done, and shows no card", async () => {
+      frame(completed());
+      await settle();
+
+      expect(screen.queryByRole("region", { name: "Ready to run?" })).not.toBeInTheDocument();
+      expect(preflightAsked).toEqual([]);
+    });
   });
 });
