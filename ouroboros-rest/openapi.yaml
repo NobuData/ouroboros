@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.43.3"
+  version: "0.43.4"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -6423,6 +6423,12 @@ paths:
             not an issue of this repository, or the repository's backlog does not hold it yet.
             `message` and `details.reason` are the stated reason.
 
+            `onboarding_loop_not_ready` — live execution is on and the readiness preflight
+            (`GET /api/v1/loop/readiness`, DK.1) is not ready for this repository, its instantiated
+            workflow and the pick. `message` is the first blocking check's reason;
+            `details.checks` are the checks that did not pass, as the preflight answers them.
+            Nothing was queued. With live execution off the launch never asks.
+
             `queue_issues_conflict` — the queue write's own refusal: the workspace's queue already
             holds this issue number for another repository.
           content:
@@ -12347,6 +12353,147 @@ paths:
           description: |-
             `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
             are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/loop/readiness:
+    get:
+      tags: [loop]
+      summary: Everything a first live loop needs, checked
+      description: |-
+        The live-loop readiness preflight (DK.1,
+        [#1318](https://github.com/NobuData/ouroboros/issues/1318)) — every prerequisite a first
+        live loop has, checked for one repository and one workflow, each with a reason and, when it
+        does not pass, a fix link. The wizard's last step renders it (DK.2).
+
+        **Read-only and safe to poll.** It invokes no model, dispatches no job and writes nothing;
+        the two GitHub calls are permission lookups (`GET /repos/{owner}/{repo}`), never writes.
+
+        The checks, always all of them, in this order:
+
+        | Check | Fails or is unknown with |
+        |---|---|
+        | `deployment` | `deployment_disabled` — `OURO_LIVE_EXECUTION_ENABLED` is off |
+        | `workspace` | `workspace_paused`, `workspace_pending_delete` |
+        | `provider_connection` | `no_invocable_connection`; `connection_unhealthy` (every one failed its last test); `connection_untested` (unknown — none tested yet) |
+        | `routes` | `route_unresolved` (a task kind has no route, or none to a kept hop); `route_unpriced` (the first kept hop's model has no price); `workflow_unreadable` (unknown) |
+        | `stage_executors` | `engine_unavailable`, `no_executor` (only when the workflow has a model stage); `workflow_unreadable` |
+        | `runner` | `build_pool_required`, `pool_not_found`, `pool_disabled`, `no_runner`, `no_source_checkout` (per build stage's pool); `workflow_unreadable` |
+        | `repository` | `repository_disabled` |
+        | `push_credential` | the workspace GitHub token: `github_not_configured`, `repository_unreadable`, `push_denied`; `permission_unconfirmed` (unknown) |
+        | `pull_request_credential` | the issue's GitHub source: `no_issue_chosen` (unknown), `no_pr_source`, `pr_source_other_repository`, `repository_unreadable`, `push_denied`; `permission_unconfirmed` (unknown) |
+        | `dry_run` | `policy_not_dry_run` |
+        | `workflow_published` | `workflow_not_found`, `workflow_unpublished` |
+        | `concurrency` | `concurrency_ceiling` |
+
+        `ready` is true only when every check passes — an `unknown` blocks like a `fail`. GitHub's
+        permission answer is the account's access, not the token's scopes, so a `pass` on a
+        credential confirms what GitHub can say and no more. The `estimate` is labelled as one and
+        is never part of `ready`: the per-run cost cap of the loop's model route and the issue's
+        latest stored size. The issue is `issue`, else the repository's onboarding pick. Codes are
+        stable; a reason never names another workspace's rows. **Any member may read it**, viewers
+        included.
+      operationId: readLoopReadiness
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: repository
+          in: query
+          required: true
+          description: "`owner/name`, compared case-insensitively."
+          schema:
+            type: string
+            pattern: "^(?!\\.\\.?/)[A-Za-z0-9._-]+/(?!\\.\\.?$)[A-Za-z0-9._-]+$"
+          example: acme-live-slice/helios-greeter
+        - name: workflow
+          in: query
+          required: true
+          description: The workflow's slug. Its version in force is the one checked.
+          schema:
+            type: string
+            pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+            maxLength: 64
+          example: live-slice
+        - name: issue
+          in: query
+          required: false
+          description: The issue to size and to ask the pull-request source about; absent, the repository's onboarding pick.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 2147483647
+      responses:
+        "200":
+          description: The preflight.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoopReadiness"
+              example:
+                repository: acme/helios
+                workflow: { slug: live-slice, version: 1 }
+                ready: false
+                checks:
+                  - id: deployment
+                    state: pass
+                    code: null
+                    reason: Live execution is enabled for this deployment.
+                    fix: null
+                  - id: runner
+                    state: fail
+                    code: no_runner
+                    reason: No runner is online in pool-a.
+                    fix: { label: "Build Farm · enrol a runner", href: /build-farm }
+                  - id: push_credential
+                    state: unknown
+                    code: permission_unconfirmed
+                    reason: "Whether the token can push a branch could not be confirmed: GitHub's answer carries no permission for the token."
+                    fix: { label: "Sources · check the token", href: /settings/sources }
+                estimate:
+                  isEstimate: true
+                  costCapCentsPerRun: 200
+                  issue: { number: 1, title: Greet by name, size: s, sizedBy: heuristic-v0 }
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `repository_not_found` — the workspace has no repository by that name.
+
+            `issue_not_found` — the named `issue` is not in the repository's synced backlog.
+
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `repository` is not `owner/name`, `workflow` is not a slug, or
+            `issue` is not a positive integer.
           content:
             application/json:
               schema:
@@ -54333,6 +54480,145 @@ components:
           items:
             type: string
             enum: [native, harness]
+    LoopReadiness:
+      type: object
+      description: The live-loop readiness preflight (DK.1, #1318).
+      additionalProperties: false
+      required: [repository, workflow, ready, checks, estimate]
+      properties:
+        repository:
+          type: string
+          description: "`owner/name`, as the workspace stores it."
+        workflow:
+          type: object
+          additionalProperties: false
+          required: [slug, version]
+          properties:
+            slug:
+              type: string
+            version:
+              type: [integer, "null"]
+              description: The version in force, or `null` when none is (or no such workflow exists).
+        ready:
+          type: boolean
+          description: True only when every check passes.
+        checks:
+          type: array
+          description: Every check, in the documented order.
+          items:
+            $ref: "#/components/schemas/LoopReadinessCheck"
+        estimate:
+          $ref: "#/components/schemas/LoopReadinessEstimate"
+    LoopReadinessCheck:
+      type: object
+      description: One readiness check.
+      additionalProperties: false
+      required: [id, state, code, reason, fix]
+      properties:
+        id:
+          type: string
+          enum:
+            - deployment
+            - workspace
+            - provider_connection
+            - routes
+            - stage_executors
+            - runner
+            - repository
+            - push_credential
+            - pull_request_credential
+            - dry_run
+            - workflow_published
+            - concurrency
+        state:
+          type: string
+          enum: [pass, fail, unknown]
+        code:
+          description: Why not, or `null` when it passes. Stable codes — add, never rename.
+          oneOf:
+            - type: string
+              enum:
+                - deployment_disabled
+                - workspace_paused
+                - workspace_pending_delete
+                - no_invocable_connection
+                - connection_unhealthy
+                - connection_untested
+                - workflow_unreadable
+                - route_unresolved
+                - route_unpriced
+                - engine_unavailable
+                - no_executor
+                - build_pool_required
+                - pool_not_found
+                - pool_disabled
+                - no_runner
+                - no_source_checkout
+                - repository_disabled
+                - github_not_configured
+                - no_issue_chosen
+                - no_pr_source
+                - pr_source_other_repository
+                - repository_unreadable
+                - push_denied
+                - permission_unconfirmed
+                - policy_not_dry_run
+                - workflow_not_found
+                - workflow_unpublished
+                - concurrency_ceiling
+            - type: "null"
+        reason:
+          type: string
+          description: A sentence — what passed, or what is missing, in the workspace's own names.
+        fix:
+          description: Where to clear it, or `null` when it passes.
+          oneOf:
+            - $ref: "#/components/schemas/LoopReadinessFix"
+            - type: "null"
+    LoopReadinessFix:
+      type: object
+      description: A readiness check's fix link.
+      additionalProperties: false
+      required: [label, href]
+      properties:
+        label:
+          type: string
+        href:
+          type: string
+          description: A product path (`/build-farm`) or an absolute documentation URL.
+    LoopReadinessEstimate:
+      type: object
+      description: The estimate beside the checks — labelled as one, never part of `ready`.
+      additionalProperties: false
+      required: [isEstimate, costCapCentsPerRun, issue]
+      properties:
+        isEstimate:
+          type: boolean
+          const: true
+        costCapCentsPerRun:
+          type: [integer, "null"]
+          description: The per-run cost cap the loop's model route enforces, or `null` when it sets none.
+        issue:
+          description: The issue the loop would work on, or `null` when none is picked or named.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [number, title, size, sizedBy]
+              properties:
+                number:
+                  type: integer
+                title:
+                  type: string
+                size:
+                  description: The latest stored estimate's size, or `null` while unsized.
+                  oneOf:
+                    - type: string
+                      enum: [xs, s, m, l, xl]
+                    - type: "null"
+                sizedBy:
+                  type: [string, "null"]
+                  description: What produced that size (`heuristic-v0`), or `null` while unsized.
+            - type: "null"
     LoopStageCapability:
       type: object
       description: One stage of the loop capability report.

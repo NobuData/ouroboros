@@ -55,6 +55,29 @@ describe("the loop repository (DG.2, #1300)", () => {
     });
   });
 
+  describe("invocableConnections (DK.1, #1318)", () => {
+    it("reads kind, name and status of the workspace's enabled, unpaused connections", async () => {
+      database.answers({
+        rows: [{ kind: "anthropic", display_name: "Anthropic", status: "active" }],
+      });
+
+      await expect(repository.invocableConnections(WORKSPACE, ["anthropic"])).resolves.toEqual([
+        { kind: "anthropic", displayName: "Anthropic", status: "active" },
+      ]);
+
+      const [statement] = database.statements;
+
+      expect(statement.sql).toMatch(/"organization_id" = \$1/);
+      expect(statement.parameters).toEqual([WORKSPACE, "anthropic", true, "paused"]);
+      expect(statement.sql).not.toContain("credentials_encrypted");
+    });
+
+    it("asks nothing when no kind is cleared", async () => {
+      await expect(repository.invocableConnections(WORKSPACE, [])).resolves.toEqual([]);
+      expect(database.statements).toHaveLength(0);
+    });
+  });
+
   describe("runnerPresence", () => {
     it("reads only the workspace's active, dispatchable runners", async () => {
       database.answers({ rows: [] });

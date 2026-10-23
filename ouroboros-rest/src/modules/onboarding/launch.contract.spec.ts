@@ -132,6 +132,8 @@ describe("the launch route and the document", () => {
           Promise.resolve(rows.map((row) => queueItemSummary(row, null))),
       },
       { read: policyRead(options.dryRun ?? true) },
+      { read: () => Promise.reject(new Error("not asked while live execution is off")) },
+      { liveExecutionEnabled: false },
     );
   }
 
