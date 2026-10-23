@@ -78,6 +78,11 @@ export interface RunSummary {
   readonly checksPassed: number | null;
   /** Total checks. `0/0` is a repository with no checks, which is not "not known yet". */
   readonly checksTotal: number | null;
+  /**
+   * Where the run came from (V141, DJ.1): a real loop, the run simulator, or demo seed data — what
+   * the UI's origin badge reads (DJ.3, [#1316](https://github.com/NobuData/ouroboros/issues/1316)).
+   */
+  readonly origin: DataOrigin;
 }
 
 /** One queued issue, as the *Up next in queue* card draws it. */
@@ -297,8 +302,9 @@ export interface DashboardActivity {
 export interface DashboardResource {
   /**
    * The data origin every aggregate in the payload was computed from (DJ.2): `live` unless the
-   * request asked otherwise. The run lists and the queue are not filtered: they list rows, not
-   * aggregates (DJ.3 labels them).
+   * request asked otherwise. The two run lists are filtered by it too (DJ.3,
+   * [#1316](https://github.com/NobuData/ouroboros/issues/1316)) — each run carries its own
+   * `origin` — and the queue, which holds issues rather than runs, is not.
    */
   readonly origin: OriginFilter;
   /** Every origin with a row behind any aggregate here, whichever was asked for. */
@@ -360,6 +366,7 @@ export function runSummary(row: Run): RunSummary {
     prNumber: row.pr_number,
     checksPassed: row.checks_passed,
     checksTotal: row.checks_total,
+    origin: row.origin,
   };
 }
 

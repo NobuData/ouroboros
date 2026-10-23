@@ -229,7 +229,9 @@ export function RunScreen({
 
       {stepper !== null && (
         <RunStepper
-          onOpenLog={(build, label) => setLogJob(buildLogJob(build, label))}
+          onOpenLog={(build, label) =>
+            setLogJob(buildLogJob(build, label, data?.head.origin ?? "live"))
+          }
           onSelect={selectStage}
           selected={stage}
           testsHref={testsPath(id, { from: origin.id })}

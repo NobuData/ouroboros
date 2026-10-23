@@ -21,6 +21,7 @@ import type { RunStatus } from "@/app/api/dashboard";
 import type { RunConsole } from "@/app/api/runs";
 import type { LiveJob } from "@/app/farm/live";
 import { elapsedOfSeconds } from "@/app/format";
+import type { DataOrigin } from "@/app/origin/origin";
 
 /** One stage, as the timeline payload carries it. */
 export type RunTimelineStage = RunConsole["timeline"]["stages"][number];
@@ -213,11 +214,19 @@ export function stepBuild(build: RunStageBuild | undefined): StepBuild | null {
  *
  * @param build The stage's farm job.
  * @param label The stage's label — the sheet's title, *Build farm*.
+ * @param origin The run's origin (DJ.1) — a run's builds inherit it.
  * @returns The sheet's build: the job, its number and runner; no start instant, which the
  *   timeline does not carry and the sheet prints as not measured.
  */
-export function buildLogJob(build: StepBuild, label: string): LiveJob {
-  return { id: build.jobId, number: build.number, title: label, runner: build.runner, startedAt: null };
+export function buildLogJob(build: StepBuild, label: string, origin: DataOrigin): LiveJob {
+  return {
+    id: build.jobId,
+    number: build.number,
+    title: label,
+    runner: build.runner,
+    startedAt: null,
+    origin,
+  };
 }
 
 /**

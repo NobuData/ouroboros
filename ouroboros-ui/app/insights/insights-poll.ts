@@ -25,6 +25,8 @@ import {
   requestPayload,
 } from "@/app/poll";
 
+import { ORIGIN_PARAM, type OriginFilter } from "@/app/origin/origin";
+
 import { RANGE_PARAM } from "./range";
 
 /** Where the browser asks — **this origin**, not `ouroboros-rest`. */
@@ -46,14 +48,15 @@ export interface InsightsPollOptions extends PollOptions {
 }
 
 /**
- * The address the poll asks for a range — always naming it, so the answer is never the
- * service's default standing in for the range on screen.
+ * The address the poll asks for a range and an origin — always naming both, so the answer is
+ * never a default standing in for what is on screen.
  *
  * @param range The range.
- * @returns `/api/insights?range=30d`.
+ * @param origin The data origin (DJ.3).
+ * @returns `/api/insights?range=30d&origin=live`.
  */
-export function insightsUrl(range: InsightsRange): string {
-  return `${INSIGHTS_ENDPOINT}?${RANGE_PARAM}=${range}`;
+export function insightsUrl(range: InsightsRange, origin: OriginFilter): string {
+  return `${INSIGHTS_ENDPOINT}?${RANGE_PARAM}=${range}&${ORIGIN_PARAM}=${origin}`;
 }
 
 /**
@@ -75,7 +78,10 @@ export function isInsightsPage(value: unknown): value is InsightsPage {
 
   const { mergedPrs, interventions } = head as Record<string, unknown>;
 
-  return typeof mergedPrs === "number" && typeof interventions === "number";
+  // Null is the service's no data (DJ.2): a week with nothing of the asked origin.
+  const figure = (value: unknown): boolean => typeof value === "number" || value === null;
+
+  return figure(mergedPrs) && figure(interventions);
 }
 
 /**

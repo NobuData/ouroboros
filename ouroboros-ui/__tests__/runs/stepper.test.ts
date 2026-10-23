@@ -237,12 +237,13 @@ describe("a build stage's farm job (AJ.3 #265)", () => {
   it("hands the log sheet the job, titled for its stage", () => {
     const build = stepBuild(JOB)!;
 
-    expect(buildLogJob(build, "Build")).toEqual({
+    expect(buildLogJob(build, "Build", "seeded")).toEqual({
       id: JOB.jobId,
       number: "#483",
       title: "Build",
       runner: "forge-02",
       startedAt: null,
+      origin: "seeded",
     });
     expect(stepBuild(undefined)).toBeNull();
   });

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import type { FarmPage } from "@/app/api/farm";
 import { onSummaryRefresh } from "@/app/dashboard/summary-refresh";
+import { OriginBadge } from "@/app/origin/origin-badge";
 import { useSecondsNow } from "@/app/shell/clock";
 import { Button, Card, CardHead, Chip, EmptyState } from "@/app/ui";
 
@@ -161,6 +162,7 @@ function LiveBuild({
             <Chip dot={pill.dot} tone={pill.tone}>
               {pill.label}
             </Chip>
+            <OriginBadge origin={job.origin} />
             <span className="farm-live__elapsed">
               {view.live === false ? (
                 liveElapsed(job, false, view.endedAt, 0)

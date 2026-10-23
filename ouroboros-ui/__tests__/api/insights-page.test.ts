@@ -19,21 +19,22 @@ describe("readInsightsPage", () => {
   it("reads the range it was asked for, with a deadline, and answers the page", async () => {
     const read = vi.fn().mockResolvedValue(seededInsights({ range: "7d" }));
 
-    const answer = await readInsightsPage("7d", read);
+    const answer = await readInsightsPage("7d", "seeded", read);
 
     expect(read.mock.calls[0]![0]).toBe("7d");
-    expect(read.mock.calls[0]![1]).toBeInstanceOf(AbortSignal);
+    expect(read.mock.calls[0]![1]).toBe("seeded");
+    expect(read.mock.calls[0]![2]).toBeInstanceOf(AbortSignal);
     expect(answer).toEqual({ state: "fresh", payload: seededInsights({ range: "7d" }), etag: null, pollAfterSeconds: null });
   });
 
   it("reads a 401 as gone, a refusal as the service's sentence, and a dropped read as unreachable", async () => {
-    expect(await readInsightsPage("30d", vi.fn().mockRejectedValue(new ApiError(401, "unauthenticated", "Sign in.")))).toEqual({
+    expect(await readInsightsPage("30d", "live", vi.fn().mockRejectedValue(new ApiError(401, "unauthenticated", "Sign in.")))).toEqual({
       state: "gone",
     });
     expect(
-      await readInsightsPage("30d", vi.fn().mockRejectedValue(new ApiError(400, "organization_required", "Choose a workspace."))),
+      await readInsightsPage("30d", "live", vi.fn().mockRejectedValue(new ApiError(400, "organization_required", "Choose a workspace."))),
     ).toEqual({ state: "failed", reason: "Choose a workspace.", pollAfterSeconds: null });
-    expect(await readInsightsPage("30d", vi.fn().mockRejectedValue(new TypeError("fetch failed")))).toEqual({
+    expect(await readInsightsPage("30d", "live", vi.fn().mockRejectedValue(new TypeError("fetch failed")))).toEqual({
       state: "failed",
       reason: UNREACHABLE_INSIGHTS,
       pollAfterSeconds: null,

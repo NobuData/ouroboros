@@ -159,6 +159,33 @@ Where you see them:
 
 An administrator can read the same answer directly from `GET /api/v1/loop/capabilities`.
 
+## Where the data comes from
+
+Every loop Ouroboros records, and everything that comes from it — its pull request, builds,
+tests and model usage — has a **data origin**:
+
+| Origin | What it is | How it is shown |
+| --- | --- | --- |
+| **Live** | A real loop: the engine ran it, or a person started it. | No label. |
+| **Simulated** | A run from the run simulator, used to try Ouroboros without a model. | **Simulated** |
+| **Demo** | Demo data that development and test environments load. A production deployment has none. | **Demo data** |
+
+<Screenshot id="user-guide.concepts.origin-badges" />
+
+Wherever a row, card or chart shows or counts data that is not live, it carries a **Demo data**
+or **Simulated** label — in words, not only a colour. Live data carries none.
+
+**Figures count live data unless you choose otherwise.** The **Data origin** control on the
+[dashboard](./dashboard.mdx) and on [Insights](./insights.mdx) offers **Live** (the default),
+**Demo data**, **Simulated** and **All origins**. Your choice is kept in the address
+(`?origin=seeded`) and remembered when you move to another page. Figures are never added up
+across origins unless you choose **All origins**.
+
+**No data is not zero.** When there is no live data yet, a figure shows **—** and says so,
+rather than **0**. When a page holds only demo or simulated data, a note at its top says so —
+for example **This page is showing demo data. No real loop has run in this workspace yet.** —
+with **Check readiness →**, which opens the [Get Started wizard](./getting-started/wizard.mdx).
+
 ## What can go wrong
 
 - **A loop stops and waits.** It is almost always a decision in [Needs You](./inbox.mdx);

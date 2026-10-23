@@ -300,6 +300,7 @@ function runnerColumns(
           note={row.jobNote}
           number={row.jobNumber}
           onOpen={openJob}
+          origin={row.jobOrigin}
           runId={row.jobRunId}
           title={row.jobTitle}
         />

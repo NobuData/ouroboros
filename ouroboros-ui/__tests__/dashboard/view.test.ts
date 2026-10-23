@@ -11,10 +11,17 @@ import {
   LEVEL_WITH_LAST_WEEK,
   MERGE_RATE_WINDOW,
   NEUTRAL_GREETING,
+  NO_DATA_YET,
+  NO_LIVE_DATA_YET,
+  NO_LIVE_MERGES,
+  NO_LIVE_USAGE_TODAY,
   NO_LOOPS,
+  NO_MERGES_7D,
   NOT_READ,
   NO_USAGE_TODAY,
   NO_VALUE,
+  PULSE_NO_LIVE,
+  PULSE_UNMEASURED,
   PULSE_WINDOW,
   QUIET_SUBLINE,
   STATE_LABEL,
@@ -36,14 +43,17 @@ import {
   moreActiveLoops,
   moreQueued,
   overallState,
+  pageOrigins,
   pageSubline,
   pulseIsUnmeasured,
   pulseMeters,
+  pulseNote,
   queueRows,
   queuedStat,
   recentCompletions,
   stageCaption,
   stagePercent,
+  shownOrigin,
   statRow,
   systemRows,
   tokensStat,
@@ -64,6 +74,8 @@ import {
   healthReport,
   queueItem,
   read,
+  seededDashboard,
+  seededOnlyLiveDashboard,
   startedSecondsAgo,
 } from "../helpers/dashboard";
 
@@ -377,9 +389,23 @@ describe("tokensStat", () => {
   });
 
   it("says nothing was recorded rather than pricing a day that did not happen", () => {
-    const stat = tokensStat(emptyDashboard().stats.tokensToday);
+    const stat = tokensStat({ tokens: 0, costCents: 0, providers: 0, unpricedEvents: 0 });
 
     expect(stat.value).toBe("0");
+    expect(stat.delta).toBe(NO_USAGE_TODAY);
+  });
+
+  it("draws a day with no live usage as no data — an em dash, never 0 (DJ.3)", () => {
+    const stat = tokensStat(emptyDashboard().stats.tokensToday);
+
+    expect(stat.value).toBe(NO_VALUE);
+    expect(stat.delta).toBe(NO_LIVE_USAGE_TODAY);
+  });
+
+  it("says no usage was recorded for a day with none of another origin", () => {
+    const stat = tokensStat(emptyDashboard().stats.tokensToday, "seeded");
+
+    expect(stat.value).toBe(NO_VALUE);
     expect(stat.delta).toBe(NO_USAGE_TODAY);
   });
 
@@ -420,19 +446,30 @@ describe("the stat row", () => {
     expect(statRow(read(dashboardPayload())).filter((stat) => stat.accent)).toHaveLength(1);
   });
 
-  it("reads a workspace with nothing in it as four zeros and four sentences", () => {
-    // Not an em dash: these figures were read, and they are zero. The row a workspace
-    // could not read is the case below, and the two must not look alike.
+  it("reads a workspace with nothing in it as two zeros, two no-data figures and four sentences", () => {
+    // The counts of what is happening now were read, and they are zero. The two windowed figures
+    // have no data (DJ.2), so they are em dashes with what would fill them — and not failures:
+    // the row a workspace could not read is the case below, and the two must not look alike.
     const row = statRow(read(emptyDashboard()));
 
-    expect(row.map((stat) => stat.value)).toEqual(["0", "0", "0", "0"]);
+    expect(row.map((stat) => stat.value)).toEqual(["0", "0", NO_VALUE, NO_VALUE]);
     expect(row.every((stat) => stat.tone !== "failed")).toBe(true);
     expect(row.map((stat) => stat.delta)).toEqual([
       NO_LOOPS,
       EMPTY_QUEUE,
-      LEVEL_WITH_LAST_WEEK,
-      NO_USAGE_TODAY,
+      NO_LIVE_MERGES,
+      NO_LIVE_USAGE_TODAY,
     ]);
+  });
+
+  it("badges no card while the figures are live", () => {
+    expect(statRow(read(dashboardPayload())).some((stat) => stat.origin !== undefined)).toBe(false);
+  });
+
+  it("badges every run figure, and not the queue, when the figures are demo data", () => {
+    const row = statRow(read(seededDashboard()));
+
+    expect(row.map((stat) => stat.origin)).toEqual(["seeded", undefined, "seeded", "seeded"]);
   });
 
   it("degrades as one, because it is one read", () => {
@@ -1011,10 +1048,24 @@ describe("pulseMeters", () => {
   it("draws a workspace with nothing to measure as empty rather than as a bad week", () => {
     // Every figure is a floor rather than a measurement when nothing has closed in the
     // window — the contract says so of each — so the bars are empty and the card says why.
-    const meters = pulseMeters(emptyDashboard().pulse);
+    const meters = pulseMeters(pulse({ mergeRate: 0, avgCycleSeconds: 0, interventions7d: 0 }));
 
     expect(meters.map((meter) => meter.fill)).toEqual([0, 0, 0]);
     expect(meters.map((meter) => meter.value)).toEqual(["0%", "0m 00s", "0 this week"]);
+  });
+
+  it("draws a window with no live data as em dashes over empty bars, never 0% (DJ.3)", () => {
+    const meters = pulseMeters(emptyDashboard().pulse);
+
+    expect(meters.map((meter) => meter.fill)).toEqual([0, 0, 0]);
+    expect(meters.map((meter) => meter.value)).toEqual([NO_VALUE, NO_VALUE, NO_VALUE]);
+    expect(meters.every((meter) => meter.valueText.endsWith(NO_LIVE_DATA_YET))).toBe(true);
+  });
+
+  it("says no data yet, not no live data, for another origin", () => {
+    const meters = pulseMeters(emptyDashboard().pulse, "simulated");
+
+    expect(meters.every((meter) => meter.valueText.endsWith(NO_DATA_YET))).toBe(true);
   });
 
   it("draws a figure that arrived as no figure at all as zero, rather than as `NaN%`", () => {
@@ -1222,5 +1273,71 @@ describe("pageSubline", () => {
 
     expect(failure).toEqual({ text: ACTIVITY_NOT_READ, failed: true });
     expect(failure.text).not.toContain("Choose a workspace first.");
+  });
+});
+
+describe("data origin (DJ.3)", () => {
+  it("draws no live merge as no data — an em dash and what would fill it, never 0", () => {
+    const stat = mergedStat({ count: null, deltaVsPrior: null });
+
+    expect(stat.value).toBe(NO_VALUE);
+    expect(stat.delta).toBe(NO_LIVE_MERGES);
+    expect(stat.tone).not.toBe("failed");
+  });
+
+  it("says nothing merged in the window for another origin", () => {
+    expect(mergedStat({ count: null, deltaVsPrior: null }, "seeded").delta).toBe(NO_MERGES_7D);
+  });
+
+  it("badges nothing for live figures", () => {
+    expect(shownOrigin(dashboardPayload())).toBeNull();
+    expect(shownOrigin(seededOnlyLiveDashboard())).toBeNull();
+  });
+
+  it("badges the origin asked for, when the workspace holds any of it", () => {
+    expect(shownOrigin(seededDashboard())).toBe("seeded");
+    expect(shownOrigin({ origin: "simulated", originsPresent: ["seeded"] })).toBeNull();
+  });
+
+  it("badges the first non-live origin summed into all origins", () => {
+    expect(shownOrigin({ origin: "all", originsPresent: ["live", "seeded"] })).toBe("seeded");
+    expect(shownOrigin({ origin: "all", originsPresent: ["live"] })).toBeNull();
+  });
+
+  it("gathers the page's origins from the figures and from every listed run", () => {
+    const payload = dashboardPayload({
+      originsPresent: ["live"],
+      activeRuns: [activeRun({ origin: "simulated" })],
+      recentRuns: [closedRun({ origin: "seeded" }), closedRun({ origin: "live" })],
+    });
+
+    expect([...pageOrigins(payload)].sort()).toEqual(["live", "seeded", "simulated"]);
+  });
+
+  it("carries each run's origin onto its row", () => {
+    const [loop] = activeLoops([activeRun({ origin: "seeded" })], READ_AT);
+    const [completion] = recentCompletions([closedRun({ origin: "simulated" })]);
+
+    expect(loop?.origin).toBe("seeded");
+    expect(completion?.origin).toBe("simulated");
+  });
+
+  it("notes that no live loop has finished when the live pulse has no data", () => {
+    const empty = emptyDashboard().pulse;
+
+    expect(pulseNote(empty)).toBe(PULSE_NO_LIVE);
+    expect(pulseNote(empty, "seeded")).toBe(PULSE_UNMEASURED);
+    expect(pulseIsUnmeasured(empty)).toBe(true);
+  });
+
+  it("claims no merge in the subline when the live window has none", () => {
+    const subline = pageSubline(read(emptyDashboard()));
+
+    expect(subline.text).toBe(QUIET_SUBLINE);
+    expect(subline.text).not.toMatch(/merged \d/);
+  });
+
+  it("keeps the meters' no-data words distinct per origin", () => {
+    expect(NO_LIVE_DATA_YET).not.toBe(NO_DATA_YET);
   });
 });

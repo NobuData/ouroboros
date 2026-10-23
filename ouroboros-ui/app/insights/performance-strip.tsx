@@ -6,6 +6,7 @@ import { Card, Tag, cx } from "@/app/ui";
 
 import { useInsights } from "./insights-store";
 import { PERFORMANCE_TITLE, type PerformanceCellView, performanceView } from "./performance-view";
+import { InsightsOriginBadges } from "./origin-badges";
 
 /**
  * Mockup 15's **BUILD & TEST PERFORMANCE · 30D** strip (BK.5, [#446](https://github.com/NobuData/ouroboros/issues/446)).
@@ -33,6 +34,7 @@ export function PerformanceStrip() {
       <h2 className={cx("ou-card__title", "insights-perf__title")} id={titleId}>
         {view?.title ?? PERFORMANCE_TITLE}
       </h2>
+      <InsightsOriginBadges />
       <div className="insights-scroll insights-perf__scroll">
         <dl className="insights-perf__cells">
           {view?.cells.map((cell) => <PerformanceCell cell={cell} key={cell.key} />)}

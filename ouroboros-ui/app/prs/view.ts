@@ -36,6 +36,7 @@ import type {
   PullRequestState,
   ReturnToLoop,
 } from "@/app/api/pull-requests";
+import type { DataOrigin } from "@/app/origin/origin";
 import { runPath } from "@/app/paths";
 import { DRY_RUN_MERGE_LABEL, DRY_RUN_NOTE } from "@/app/policies/view";
 import type { ChipDot, ChipTone } from "@/app/ui";
@@ -294,6 +295,8 @@ export interface PrHeadView {
   readonly hostUrl: string | null;
   /** Whether to draw the **Draft** chip — the host holds the PR as a draft (#1311). */
   readonly draft: boolean;
+  /** Where the pull request came from (DJ.1) — the meta row's origin badge for demo and simulated PRs (DJ.3). */
+  readonly origin: DataOrigin;
   /** `loop #1847`, or `null`. */
   readonly loop: TagLink | null;
   /** `issue #482`, or `null`. */
@@ -321,6 +324,7 @@ export function prHead(page: PullRequestPage, originId: string): PrHeadView {
     headline: head.title,
     hostUrl: httpUrl(head.url),
     draft: head.draft,
+    origin: head.origin,
     loop: loopLink(head, originId),
     issue: issueLink(head),
     pill: aggregatePill(head.state, page.gates?.aggregate ?? null),

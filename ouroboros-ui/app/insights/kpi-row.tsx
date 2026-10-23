@@ -4,6 +4,7 @@ import { StatCard } from "@/app/ui";
 
 import { useInsights } from "./insights-store";
 import { KpiMethodology } from "./kpi-methodology";
+import { InsightsOriginBadges } from "./origin-badges";
 import { kpiRow } from "./view";
 
 /**
@@ -30,7 +31,12 @@ export function KpiRow() {
       {cards.map((card, index) => (
         <StatCard
           accent={card.accent}
-          caption={<KpiMethodology label={card.label} methodology={card.methodology} />}
+          caption={
+            <>
+              <KpiMethodology label={card.label} methodology={card.methodology} />
+              <InsightsOriginBadges />
+            </>
+          }
           className={index < 3 ? "insights-kpi insights-col--2" : "insights-kpi insights-col--3"}
           delta={card.delta}
           key={card.key}

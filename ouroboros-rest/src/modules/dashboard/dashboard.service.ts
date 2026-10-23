@@ -148,8 +148,8 @@ export class DashboardService {
       interventions,
     ] = await Promise.all([
       this.dashboard.runStatistics(organizationId, origins),
-      this.dashboard.activeRuns(organizationId),
-      this.dashboard.recentRuns(organizationId),
+      this.dashboard.activeRuns(organizationId, origins),
+      this.dashboard.recentRuns(organizationId, origins),
       this.dashboard.queueTotals(organizationId),
       this.dashboard.queueHead(organizationId),
       this.dashboard.tokenTotals(organizationId, windows.day, origins),

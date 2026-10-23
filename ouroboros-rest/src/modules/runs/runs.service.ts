@@ -42,7 +42,11 @@ export class RunsService {
    */
   async list(organizationId: string, query: ListRunsQuery): Promise<Page<RunSummary>> {
     const window = windowOf(query);
-    const filter = { status: query.status, repoId: query.repo };
+    const filter = {
+      status: query.status,
+      repoId: query.repo,
+      ...(query.origin === undefined || query.origin === "all" ? {} : { origin: query.origin }),
+    };
 
     const [rows, total] = await Promise.all([
       this.runs.list(organizationId, filter, window),

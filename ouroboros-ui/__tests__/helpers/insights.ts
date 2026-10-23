@@ -51,12 +51,12 @@ export function methodology(over: Partial<MetricMethodology> = {}): MetricMethod
 }
 
 /**
- * What the seeded page says about data origin: every origin asked for (the UI's interim `all`,
- * DJ.2), and only the seed's rows behind it.
+ * What the default page says about data origin: live asked for, and live rows behind it — a real
+ * workspace's page, which carries no badge and no strip (DJ.3). The origin cases build on it.
  */
 export const SEEDED_ORIGIN_FACTS = {
-  origin: "all",
-  originsPresent: ["seeded"],
+  origin: "live",
+  originsPresent: ["live"],
   mixed: false,
 } as const satisfies Pick<InsightsPage, "origin" | "originsPresent" | "mixed">;
 
@@ -695,6 +695,7 @@ export function seededInsights(over: Partial<InsightsPage> = {}): InsightsPage {
  * @param range The range it was read for. Defaults to the page's own.
  * @param mayRecategorize Whether the reader is a member or above. Defaults to `true`.
  * @param flakyPlaybook The flaky-test recipe reading (#446). Defaults to the seeded recipe.
+ * @param origin The data origin it was read for (DJ.3). Defaults to the page's own.
  * @returns The readings.
  */
 export function insightsReadings(
@@ -702,9 +703,11 @@ export function insightsReadings(
   range: InsightsRange = page?.range ?? "30d",
   mayRecategorize = true,
   flakyPlaybook: InsightsReadings["flakyPlaybook"] = { ok: true, value: SEEDED_PLAYBOOK },
+  origin: InsightsReadings["origin"] = page?.origin ?? "live",
 ): InsightsReadings {
   return {
     range,
+    origin,
     page: page === null ? { ok: false, reason: "Choose a workspace." } : { ok: true, value: page },
     readAt: INSIGHTS_READ_AT,
     mayRecategorize,

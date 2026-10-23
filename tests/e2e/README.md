@@ -49,6 +49,7 @@ deployment. Five legs from the issue, and twenty-five amended in since:
 | 29 | [`specs/copilot.spec.ts`](specs/copilot.spec.ts) | **The Workflow Copilot MVP gate (#569)** against the #558 seed: the safety strip's columns **equal to the columns `GET …/dry-runs/safety` asserts**, in its order and verbatim, each ⓘ opening the mechanism the payload names; the page **without the invocation gateway** — the prerequisite named, the workspace's provider status reported, the link to Providers, the conversation readable and the composer inert with the reason; the seeded dry run's pill, rows with their `how` labels, simulated diff and suggestions; a member's page read-only with promote and discard inert; fixed chrome, *Workflows* and *Copilot* lit, **the surface segment sticky in the pane** and the 125 % step; and the strip photographed in both palettes, closed and with a mechanism open. The chain — brief → draft → chips → dry run → apply → re-run → promote → tri-surface parity — is parked on #235 (the copilot's route is seeded since #1748, and a blank draft publishes since #1744) |
 | 30 | [`specs/chatops.spec.ts`](specs/chatops.spec.ts), [`specs/slack.spec.ts`](specs/slack.spec.ts) | **The Chat Ops MVP gate (#545)** against the #534 seed and the suite's own Slack ([`fixtures/slack-stub`](fixtures/slack-stub/server.mjs)): mockup 19's page photographed whole in both palettes; a member with no linked Slack identity **told so once, in the mirror**, and a linked owner not; and the chain no module can walk alone — the app **installed** through Slack's consent screen and a channel **bound** in the picker; a simulated loop's question **published to Slack and shown in the mirror within a poll**; **Allow once pressed in Slack**, signed as Slack signs, **resuming the driver's run**, the card edited and the system line posted in both places; `/ouro status` and `/ouro queue` answering **the console and Slack alike**; a route moved on the card **changing where the next card lands**; an unanswered question **escalating** — inbox priority, the card's annotation, the on-call DM; a post Slack refuses raising **the publish-health banner**, gone once **Retry now** delivers it; a bot removed from a channel explained with the way back; and a revoked app turning the page to **history** until it is re-installed |
 | 31 | [`specs/live-slice-fixtures.spec.ts`](specs/live-slice-fixtures.spec.ts) | **The live slice's sandbox** ([#1314](https://github.com/NobuData/ouroboros/issues/1314), DI.5), each fixture held to its contract from the host, with no browser: the git host **accepts a push to a run branch and refuses one to the default branch** in git's own words; the sandbox tracker **records a branch and a draft pull request** and answers the reads the draft publisher makes; and the provider fixture **replays the recorded exchange** and, for a harness other than the one it was recorded with, **says so** rather than answering wrongly. Stated budget: thirty seconds; the DI.6 leg (#1321) that runs the whole path on these stands on this one |
+| 32 | [`specs-unseeded/origin-empty.spec.ts`](specs-unseeded/origin-empty.spec.ts) | A stack migrated **without** the development seed: a stranger signs up and every surface DJ.3 labels draws its empty state — no invented `0`, no name, number or run from the demo tenant, no **Demo data** label ([#1316](https://github.com/NobuData/ouroboros/issues/1316)). Its own command: `yarn unseeded` against `scripts/run.sh --unseeded`'s stack |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -841,6 +842,13 @@ yarn readability                       # the matrix and the 150% audit
 yarn readability --grep "the 150% audit"    # the probes only, no screenshots
 ```
 
+**Leg 32 needs a stack without the seed**, so it is its own command too:
+
+```bash
+scripts/run.sh --unseeded              # its own compose project (ouroboros-unseeded), no seed, leg 32
+yarn unseeded                          # leg 32 against an unseeded stack already up
+```
+
 ### Verifying the suite still asserts something
 
 A green suite cannot tell you whether the system works or whether the tests assert nothing;
@@ -952,6 +960,8 @@ tests/e2e/
 ├── playwright.config.ts        # the runner: the 10-minute budget, no retries, no webServer, one worker
 ├── playwright.readability.config.ts  # leg 8's: its own 3-minute budget, one worker
 ├── playwright.email.config.ts  # the digest email's four client profiles: no stack, its own spec directory (#440)
+├── playwright.unseeded.config.ts  # leg 32's: a stack migrated without the seed (#1316), one worker
+├── specs-unseeded/             # leg 32: what a fresh deployment shows
 ├── email/                      # the digest email rendered from ouroboros-rest's golden HTML, and its baselines
 ├── specs/                      # one file per leg
 │   └── __screenshots__/        # legs 6, 9, 10, 11, 12, 15, 16, 17, 18, 19, 20, 21, 23, 26, 27, 28 and 29's baselines, and leg 8's matrix under readability/

@@ -171,7 +171,7 @@ describe("the interventions card", () => {
     fireEvent.click(toggle);
 
     expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await waitFor(() => expect(listCauseEvents).toHaveBeenCalledWith("30d", "infra_rig"));
+    await waitFor(() => expect(listCauseEvents).toHaveBeenCalledWith("30d", "infra_rig", "live"));
 
     const event = await within(region).findByLabelText("Intervention");
     expect(event).toHaveDisplayValue("Waiver · Aug 4");

@@ -38,10 +38,10 @@ describe("dashboard.read", () => {
   it("calls the aggregate and returns the body itself", async () => {
     const { client, requests } = clientAnswering(dashboardPayload());
 
-    const payload = await dashboard.read(client);
+    const payload = await dashboard.read("live", client);
 
-    // Every origin, until DJ.3 (#1316) gives the reader a live-default filter (`app/api/origin.ts`).
-    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/dashboard?origin=all");
+    // The origin the reader chose (DJ.3) — live here, the default.
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/dashboard?origin=live");
     expect(requests[0]?.method).toBe("GET");
     expect(payload).toEqual(dashboardPayload());
   });
@@ -51,7 +51,7 @@ describe("dashboard.read", () => {
     // requests would paint eight times.
     const { client, requests } = clientAnswering(dashboardPayload());
 
-    await dashboard.read(client);
+    await dashboard.read("live", client);
 
     expect(requests).toHaveLength(1);
   });
@@ -61,30 +61,31 @@ describe("dashboard.read", () => {
     // override (`app/api/server.ts`). A header here would be a second opinion about tenancy.
     const { client, requests } = clientAnswering(dashboardPayload());
 
-    await dashboard.read(client);
+    await dashboard.read("live", client);
 
     expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBeNull();
-    // The only query is the interim origin (`app/api/origin.ts`) — no workspace rides in it.
-    expect(new URL(requests[0]!.url).search).toBe("?origin=all");
+    // The only query is the data origin (DJ.3) — no workspace rides in it.
+    expect(new URL(requests[0]!.url).search).toBe("?origin=live");
   });
 
   it("sends no conditional header, because the first read has no tag to send", async () => {
     // The `ETag` loop is #87's: a hook with a timer, a stored tag and a browser to run in.
     const { client, requests } = clientAnswering(dashboardPayload());
 
-    await dashboard.read(client);
+    await dashboard.read("live", client);
 
     expect(requests[0]?.headers.get("If-None-Match")).toBeNull();
   });
 
-  it("returns an empty organization's zeros rather than treating them as absent", async () => {
+  it("returns an empty organization's zeros and nulls rather than treating them as absent", async () => {
     // Every field is always present — that is the contract's guarantee, and it is what lets
-    // a card render an empty workspace without a fallback branch.
+    // a card render an empty workspace without a fallback branch. A windowed figure with no
+    // data is null, not missing (DJ.2).
     const { client } = clientAnswering(emptyDashboard());
 
-    const payload = await dashboard.read(client);
+    const payload = await dashboard.read("live", client);
 
-    expect(payload.activity).toEqual({ inFlight: 0, queued: 0, mergedSinceMorning: 0 });
+    expect(payload.activity).toEqual({ inFlight: 0, queued: 0, mergedSinceMorning: null });
     expect(payload.stats.loopsLive.total).toBe(0);
     expect(payload.activeRuns).toEqual([]);
   });
@@ -94,7 +95,7 @@ describe("dashboard.read", () => {
     // workspace-scoped operation names one in its path.
     const { client } = clientAnswering(NO_ORGANIZATION, 400);
 
-    const caught: unknown = await dashboard.read(client).catch((e: unknown) => e);
+    const caught: unknown = await dashboard.read("live", client).catch((e: unknown) => e);
 
     expect(caught).toBeInstanceOf(ApiError);
     expect((caught as ApiError).code).toBe(ORGANIZATION_REQUIRED_CODE);
@@ -105,7 +106,7 @@ describe("dashboard.read", () => {
     // It reaches the page head as the subline, so it is read by whoever opened the page.
     const { client } = clientAnswering(NO_ORGANIZATION, 400);
 
-    const caught = (await dashboard.read(client).catch((e: unknown) => e)) as ApiError;
+    const caught = (await dashboard.read("live", client).catch((e: unknown) => e)) as ApiError;
 
     expect(caught.message).toBe(NO_ORGANIZATION.message);
     expect(caught.message).not.toMatch(/http|:\d{2,5}|ECONN|select /i);
@@ -116,7 +117,7 @@ describe("dashboard.read", () => {
     // as the latter would send somebody with a perfectly good session to the login screen.
     const { client } = clientAnswering(NO_ORGANIZATION, 400);
 
-    const caught = (await dashboard.read(client).catch((e: unknown) => e)) as ApiError;
+    const caught = (await dashboard.read("live", client).catch((e: unknown) => e)) as ApiError;
 
     expect(caught.isUnauthenticated).toBe(false);
   });
@@ -126,7 +127,7 @@ describe("the typing, which is the reason the client is generated", () => {
   it("types the payload end to end", async () => {
     const { client } = clientAnswering(dashboardPayload());
 
-    const payload: Dashboard = await dashboard.read(client);
+    const payload: Dashboard = await dashboard.read("live", client);
 
     expect(payload.activity.inFlight).toBe(3);
     expect(payload.pulse.mergeRate).toBe(0.92);

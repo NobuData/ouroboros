@@ -34,6 +34,7 @@
 
 import type { FarmPage } from "@/app/api/farm";
 import { elapsedOfSeconds } from "@/app/format";
+import type { DataOrigin } from "@/app/origin/origin";
 import type { ChipDot, ChipTone } from "@/app/ui/chip";
 
 import { type JobFact, JOB_SHEET_EYEBROW, jobNumber } from "./runners";
@@ -53,6 +54,8 @@ export interface LiveJob {
   readonly runner: string | null;
   /** When it started, or `null` when the page carried no start. */
   readonly startedAt: string | null;
+  /** Where the build came from (DJ.1) — the header's origin badge (DJ.3). */
+  readonly origin: DataOrigin;
 }
 
 /**
@@ -71,6 +74,7 @@ export function newestJob(page: FarmPage | null): LiveJob | null {
     title: live.title,
     runner: live.runner,
     startedAt: live.startedAt,
+    origin: live.origin,
   };
 }
 
@@ -95,6 +99,7 @@ export function selectedJob(page: FarmPage | null, runnerId: string | null): Liv
     title: job.title,
     runner: runner.name,
     startedAt: job.startedAt,
+    origin: job.origin,
   };
 }
 
@@ -157,7 +162,8 @@ function sameJob(a: LiveJob, b: LiveJob): boolean {
     a.number === b.number &&
     a.title === b.title &&
     a.runner === b.runner &&
-    a.startedAt === b.startedAt
+    a.startedAt === b.startedAt &&
+    a.origin === b.origin
   );
 }
 

@@ -183,6 +183,8 @@ export function activeRun(over: Partial<RunSummary> = {}): RunSummary {
     prNumber: null,
     checksPassed: null,
     checksTotal: null,
+    // Live unless a case is about origin (DJ.3): a live row carries no badge.
+    origin: "live",
     ...over,
   };
 }
@@ -225,6 +227,7 @@ export function closedRun(
     prNumber: 512,
     checksPassed: 14,
     checksTotal: 14,
+    origin: "live",
     ...over,
   };
 }
@@ -405,8 +408,9 @@ export const SEEDED_QUEUE: readonly QueueItemSummary[] = [
  */
 export function dashboardPayload(over: Partial<Dashboard> = {}): Dashboard {
   return {
-    origin: "all",
-    originsPresent: ["seeded"],
+    // Live, as the dashboard reads by default (DJ.3); origin cases say otherwise.
+    origin: "live",
+    originsPresent: ["live"],
     mixed: false,
     stats: {
       loopsLive: { total: 3, byStatus: { coding: 1, building: 1, review: 1 } },
@@ -437,19 +441,52 @@ export function dashboardPayload(over: Partial<Dashboard> = {}): Dashboard {
  * @returns The empty aggregate.
  */
 export function emptyDashboard(): Dashboard {
+  // What the service answers a workspace with no data of any origin (DJ.2): counts of what is in
+  // flight or queued are zeros, and every windowed figure is null — no data, never zero.
   return dashboardPayload({
+    originsPresent: [],
     stats: {
       loopsLive: { total: 0, byStatus: { coding: 0, building: 0, review: 0 } },
       queued: { count: 0, estMinutes: 0 },
-      merged7d: { count: 0, deltaVsPrior: 0 },
-      tokensToday: { tokens: 0, costCents: 0, providers: 0, unpricedEvents: 0 },
+      merged7d: { count: null, deltaVsPrior: null },
+      tokensToday: { tokens: null, costCents: null, providers: 0, unpricedEvents: 0 },
     },
-    pulse: { mergeRate: 0, avgCycleSeconds: 0, interventions7d: 0, autoMerge: false },
+    pulse: { mergeRate: null, avgCycleSeconds: null, interventions7d: null, autoMerge: false },
     activeRuns: [],
     recentRuns: [],
     queueHead: [],
-    activity: { inFlight: 0, queued: 0, mergedSinceMorning: 0 },
+    activity: { inFlight: 0, queued: 0, mergedSinceMorning: null },
   });
+}
+
+/**
+ * The seeded development stack, read under the default live filter (DJ.3): the workspace holds
+ * only demo rows, so every live figure is null and both run lists are empty — and
+ * `originsPresent` says what is there instead.
+ *
+ * @returns The aggregate.
+ */
+export function seededOnlyLiveDashboard(): Dashboard {
+  return { ...emptyDashboard(), originsPresent: ["seeded"] };
+}
+
+/**
+ * The seeded development stack, read for its demo data (DJ.3): the seed's own figures and rows,
+ * every one of them `seeded`.
+ *
+ * @param origin What was asked for — `seeded` or `all`; the rows are demo rows either way.
+ * @returns The aggregate.
+ */
+export function seededDashboard(origin: "seeded" | "all" = "seeded"): Dashboard {
+  const payload = dashboardPayload();
+
+  return {
+    ...payload,
+    origin,
+    originsPresent: ["seeded"],
+    activeRuns: payload.activeRuns.map((run) => ({ ...run, origin: "seeded" })),
+    recentRuns: payload.recentRuns.map((run) => ({ ...run, origin: "seeded" })),
+  };
 }
 
 /**
@@ -493,8 +530,9 @@ export function failed<T>(reason: string): Reading<T> {
  */
 export function summary(over: Partial<DashboardSummary> = {}): DashboardSummary {
   return {
-    origin: "all",
-    originsPresent: ["seeded"],
+    // Live, as the dashboard reads by default (DJ.3); origin cases say otherwise.
+    origin: "live",
+    originsPresent: ["live"],
     mixed: false,
     stats: {
       loopsLive: { total: 3, byStatus: { coding: 1, building: 1, review: 1 } },
@@ -545,6 +583,7 @@ export function readings(over: Partial<DashboardReadings> = {}): DashboardReadin
     workspace: membership(),
     user: sessionUser(),
     readAt: READ_AT,
+    origin: "live",
     aggregate: read(dashboardPayload()),
     readiness: healthReport(),
     engine: read(engineStatus()),

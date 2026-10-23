@@ -23,6 +23,7 @@ import {
   scoreboardRow,
   suggestionView,
 } from "./scoreboard-view";
+import { InsightsOriginBadges } from "./origin-badges";
 
 /** The trend cell's class for each tone — goodness, never sign. */
 const TREND_CLASS: Record<TrendTone, string> = {
@@ -127,6 +128,7 @@ export function ScoreboardCard() {
   const titleId = useId();
   const head = (
     <CardHead
+      beside={<InsightsOriginBadges />}
       title={SCOREBOARD_TITLE}
       titleId={titleId}
       trailing={

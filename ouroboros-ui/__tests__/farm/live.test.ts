@@ -38,6 +38,7 @@ function job(over: Partial<LiveJob> = {}): LiveJob {
     title: "Add OTA rollback on failed checksum",
     runner: "forge-01",
     startedAt: "2026-09-19T13:58:19.000Z",
+    origin: "live",
     ...over,
   };
 }

@@ -200,7 +200,7 @@ export async function mintSession(userId: string): Promise<MintedSession> {
  *   single-header form joins them with a comma — which is ambiguous, since a cookie's
  *   `Expires` attribute contains one.
  */
-function sessionTokenFrom(response: Response): string | undefined {
+export function sessionTokenFrom(response: Response): string | undefined {
   for (const cookie of response.headers.getSetCookie()) {
     const [pair] = cookie.split(";");
     const separator = pair.indexOf("=");

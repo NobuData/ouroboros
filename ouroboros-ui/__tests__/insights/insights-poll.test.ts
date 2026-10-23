@@ -17,15 +17,19 @@ afterEach(() => {
 });
 
 describe("insightsUrl", () => {
-  it("always names the range, so the answer is never the service's default standing in", () => {
-    expect(insightsUrl("30d")).toBe("/api/insights?range=30d");
-    expect(insightsUrl("7d")).toBe("/api/insights?range=7d");
+  it("always names the range and the origin, so the answer is never a default standing in", () => {
+    expect(insightsUrl("30d", "live")).toBe("/api/insights?range=30d&origin=live");
+    expect(insightsUrl("7d", "seeded")).toBe("/api/insights?range=7d&origin=seeded");
   });
 });
 
 describe("isInsightsPage", () => {
   it("accepts the page", () => {
     expect(isInsightsPage(seededInsights())).toBe(true);
+  });
+
+  it("accepts a head with no data — the service's null for a week of nothing (DJ.2)", () => {
+    expect(isInsightsPage({ head: { mergedPrs: null, interventions: null }, kpis: [] })).toBe(true);
   });
 
   it("refuses what the head and the row could not read", () => {
@@ -44,9 +48,9 @@ describe("requestInsights", () => {
     );
     vi.stubGlobal("fetch", fetch);
 
-    const answer = await requestInsights(insightsUrl("90d"))(null);
+    const answer = await requestInsights(insightsUrl("90d", "live"))(null);
 
-    expect(fetch.mock.calls[0]![0]).toBe("/api/insights?range=90d");
+    expect(fetch.mock.calls[0]![0]).toBe("/api/insights?range=90d&origin=live");
     expect(answer).toMatchObject({ state: "fresh", payload: seededInsights() });
   });
 
@@ -58,14 +62,14 @@ describe("requestInsights", () => {
       ),
     );
 
-    expect(await requestInsights(insightsUrl("7d"))(null)).toMatchObject({ state: "failed", reason: UNREADABLE_INSIGHTS });
+    expect(await requestInsights(insightsUrl("7d", "live"))(null)).toMatchObject({ state: "failed", reason: UNREADABLE_INSIGHTS });
   });
 });
 
 describe("createInsightsPoll", () => {
   it("is inert until started, and reads through the seam it is given", async () => {
     const read = vi.fn().mockResolvedValue({ state: "fresh", payload: seededInsights(), etag: null, pollAfterSeconds: null });
-    const poll = createInsightsPoll(insightsUrl("30d"), { read, visible: () => true });
+    const poll = createInsightsPoll(insightsUrl("30d", "live"), { read, visible: () => true });
 
     expect(read).not.toHaveBeenCalled();
 

@@ -30,6 +30,7 @@ import {
   type InterventionList,
   insights,
 } from "@/app/api/insights";
+import type { OriginFilter } from "@/app/origin/origin";
 
 import {
   EVENTS_UNREADABLE,
@@ -58,15 +59,17 @@ const WRITE_REFUSALS: Readonly<Record<string, string>> = {
  *
  * @param range The page's range.
  * @param cause The bar's cause.
+ * @param origin The page's data origin, so the list holds the events the bar counts (DJ.3).
  * @returns The list, or why not.
  * @throws Whatever is not an `ApiError` — Next.js's redirect signal above all.
  */
 export async function listCauseEvents(
   range: InsightsRange,
   cause: InterventionCause,
+  origin: OriginFilter,
 ): Promise<InterventionOutcome<InterventionList>> {
   try {
-    return { ok: true, value: await insights.interventions(range, cause) };
+    return { ok: true, value: await insights.interventions(range, cause, origin) };
   } catch (error) {
     if (!isApiError(error)) throw error;
 

@@ -111,6 +111,7 @@ describe("a run, as a card draws it", () => {
       prNumber: null,
       checksPassed: null,
       checksTotal: null,
+      origin: "live",
     });
   });
 
