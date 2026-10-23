@@ -1997,3 +1997,84 @@
   color: var(--ink-mut);
   font-size: var(--t-xs);
 }
+
+/* ---------- the first loop, live (BD.1, #396) ---------- */
+
+.first-loop {
+  flex: none;
+}
+
+.first-loop__state {
+  margin: 0 0 var(--sp-4);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  line-height: var(--lh-body);
+}
+
+.first-loop__state--attention {
+  color: var(--warn);
+}
+
+.first-loop__state--failed {
+  color: var(--err);
+}
+
+.first-loop__state--done {
+  color: var(--ok);
+}
+
+.first-loop__line {
+  max-width: 70ch;
+  margin: 0 0 var(--sp-4);
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.first-loop__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4) var(--sp-6);
+  align-items: center;
+  margin: 0 0 var(--sp-5);
+}
+
+.first-loop__link {
+  color: var(--accent);
+  font-size: var(--t-sm);
+  text-decoration: none;
+}
+
+.first-loop__link:hover,
+.first-loop__link:focus-visible {
+  text-decoration: underline;
+}
+
+/* The guided review: a quiet inset under the state line. */
+.first-loop__review {
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.first-loop__review-title {
+  margin: 0 0 var(--sp-4);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.first-loop__guidance {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+.first-loop__guidance-title {
+  margin: 0 0 var(--sp-3);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}

@@ -308,6 +308,14 @@ screenshots/
    `ouroboros-ui/package.json`) and `seedRef` (the commit). Look at every changed image
    before committing — a changed screenshot is a changed page.
 
+A few entries capture a state the seed cannot hold, prepared by a recipe beside the
+harness — run it against a throwaway stack only, before capturing those ids:
+
+| Recipe | Ids | What it prepares |
+| --- | --- | --- |
+| `screenshots/live-run.mjs` | `user-guide.run.live` | A live-origin run, opened through the executor routes |
+| `screenshots/first-loop.sql` | `user-guide.first-loop.timeline`, `user-guide.first-loop.review` | `acme-onboarding`'s first loop on #488 — the workflow, the run and its draft pull request (`psql -f`) |
+
 The command checks the manifest and your `--only` before a browser starts, so a typo fails
 at once (exit 2). An entry that fails — its `ready` selector never appears, its route
 answers an error, the session is refused — fails alone, with the entry, theme, route and

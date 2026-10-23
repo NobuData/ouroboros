@@ -53,13 +53,13 @@ in RC1; they are candidates for the release candidates after it. The Studio moun
 
 ## Progress
 
-**36 of 44 ordered issues are closed.** Every issue number in this document links to its
+**37 of 44 ordered issues are closed.** Every issue number in this document links to its
 GitHub issue, and a **✅** in front of one means that issue is **closed**.
 
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | R0, R1, R2, R3, R4, R5 | **33** |
-| 🟡 **In progress** | R7 | **3** of 10 |
+| 🟡 **In progress** | R7 | **4** of 10 |
 | ⬜ **Not started** | R6 | **0** of 1 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -378,7 +378,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **10 issues** · 21 complexity points across the eight sized issues · order **#35–#44**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epics DK, DL, DG; Phase 6) · promoted from Onboarding (BD.1) · two Settings defects
-> **Status:** 🟡 **In progress** — 3 of 10 issues closed
+> **Status:** 🟡 **In progress** — 4 of 10 issues closed
 
 **Goal.** Turn the gate into something a person meets: a readiness preflight, wizard states that never start a simulated first loop, the live first-loop experience, the administration page for switching execution on, a reproducible and recorded reference run, site numbers that are that run's numbers, and the final documentation sweep. Close the two remaining defects.
 
@@ -393,7 +393,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 | 35 | **DK.1** | ✅ [#1318](https://github.com/NobuData/ouroboros/issues/1318) | Live-loop readiness preflight | ouroboros-rest, ouroboros-docs | M | DG.2, DH.4, DI.4, AG.7 |
 | 36 | *bug* | ✅ [#1250](https://github.com/NobuData/ouroboros/issues/1250) | No screen sets the workspace backlog GitHub token (PUT /settings/github-token) | ouroboros-ui | — | — |
 | 37 | **DK.2** | ✅ [#1319](https://github.com/NobuData/ouroboros/issues/1319) | Wizard readiness states — no simulated first loop | ouroboros-ui, ouroboros-docs | M | DK.1 |
-| 38 | **BD.1** | [#396](https://github.com/NobuData/ouroboros/issues/396) | Live first-loop experience | ouroboros-ui, ouroboros-rest | M | DK.1, DK.2, DI.6 |
+| 38 | **BD.1** | ✅ [#396](https://github.com/NobuData/ouroboros/issues/396) | Live first-loop experience | ouroboros-ui, ouroboros-rest | M | DK.1, DK.2, DI.6 |
 | 39 | **DK.3** | [#1325](https://github.com/NobuData/ouroboros/issues/1325) | Administration — enabling live execution | ouroboros-docs, HOSTING.md | S | DI.6 |
 | 40 | **DL.2** | [#1326](https://github.com/NobuData/ouroboros/issues/1326) | Reproducible reference run — script & demonstration document | scripts, docs | M | DI.6, DL.1 |
 | 41 | **DL.3** | [#1327](https://github.com/NobuData/ouroboros/issues/1327) | Recorded reference run & evidence bundle | docs, ouroboros-docs | S | DL.2 |

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.43.5"
+  version: "0.43.6"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -5510,6 +5510,7 @@ paths:
                     - { slug: deep-refactor, version: 1, tier: advanced, scope: global }
                   pickedTicket: null
                   workflow: null
+                  firstRun: null
                 surfacing:
                   offer: true
                   reason: fresh_organization
@@ -50694,7 +50695,7 @@ components:
       title: OnboardingRefs
       description: References to the cards' payloads, so the page composes in one round trip.
       additionalProperties: false
-      required: [detectionScan, templates, pickedTicket, workflow]
+      required: [detectionScan, templates, pickedTicket, workflow, firstRun]
       properties:
         detectionScan:
           description: The newest detection scan of the repository, or null when never scanned.
@@ -50768,6 +50769,29 @@ components:
                 version:
                   type: [integer, "null"]
                   description: "`workflows.current_version` — null while nothing is published."
+        firstRun:
+          description: |-
+            The first run of the picked issue in this repository — the wizard's first loop, the
+            oldest by start — or null while none has opened. The live timeline reads the run
+            through `GET /api/v1/runs/{id}` (BD.1, #396).
+          oneOf:
+            - type: "null"
+            - type: object
+              additionalProperties: false
+              required: [id, status, planStage]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                status:
+                  $ref: "#/components/schemas/RunStatus"
+                planStage:
+                  type: [string, "null"]
+                  description: |-
+                    The run's first model stage — the node id of the first `llm` node of its
+                    pinned version, the stage key the run console reports — or null when the pin
+                    has none or does not read. The timeline's *plan posted* row is that stage's
+                    first attempt finishing.
 
     OnboardingSurfacing:
       type: object

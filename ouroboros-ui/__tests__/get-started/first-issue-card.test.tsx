@@ -120,7 +120,7 @@ async function pollNow(): Promise<void> {
 beforeEach(() => {
   answer = null;
   pickFirstIssue.mockReset().mockImplementation((_repo: string, issueId: string) =>
-    Promise.resolve({ ok: true, value: wizard({ refs: { detectionScan: null, templates: [], pickedTicket: pickedTicket({ id: issueId }), workflow: null } }) }),
+    Promise.resolve({ ok: true, value: wizard({ refs: { detectionScan: null, templates: [], pickedTicket: pickedTicket({ id: issueId }), workflow: null, firstRun: null } }) }),
   );
 });
 

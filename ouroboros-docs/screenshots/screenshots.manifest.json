@@ -193,6 +193,30 @@
       "seedRef": "ca14130edf68266a070812b781c7f9ba5d395248"
     },
     {
+      "id": "user-guide.first-loop.timeline",
+      "route": "/get-started?repo=acme-robotics/helios-firmware",
+      "workspace": "acme-onboarding",
+      "ready": ".timeline__row[data-key='draft_pr_opens'] .timeline__time",
+      "clip": "section.timeline-card",
+      "caption": "What happens next during the first loop: each row the run reached shows its real time and loses its projected label.",
+      "alt": "The What happens next card during the first loop: 0:00 loop starts on #488, 1:04 draft plan posted to the issue and 3:11 draft PR opens with filled nodes and no label; you review and merge — only when you say so; dry-run never merges still marked projected; the line beneath says filled rows are measured and projected rows have not happened yet.",
+      "capturedAt": "2026-10-23T23:13:30.250Z",
+      "uiVersion": "0.172.0",
+      "seedRef": "085eafb7041b11415e01c3ea1437389ea52e7586"
+    },
+    {
+      "id": "user-guide.first-loop.review",
+      "route": "/get-started?repo=acme-robotics/helios-firmware",
+      "workspace": "acme-onboarding",
+      "ready": ".first-loop__review",
+      "clip": "section.first-loop",
+      "caption": "The guided first review: the diff and checks, why the pull request is a draft, and the review as the decision it is.",
+      "alt": "The Your first loop card reading Your first draft pull request is open, with Open the run console; beneath it Review your first pull request — #1488 says it is a draft because dry-run is on, links the dry-run policy, frames the review, and offers Open the diff and checks and I've reviewed it.",
+      "capturedAt": "2026-10-23T23:11:21.256Z",
+      "uiVersion": "0.172.0",
+      "seedRef": "085eafb7041b11415e01c3ea1437389ea52e7586"
+    },
+    {
       "id": "user-guide.dashboard-banner",
       "route": "/dashboard",
       "workspace": "kensuenobu",

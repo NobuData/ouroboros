@@ -7,6 +7,10 @@ import type { OnboardingPollOptions } from "@/app/get-started/poll";
 import type { PollAnswer } from "@/app/poll";
 
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
+import type { FirstLoop } from "@/app/get-started/first-loop-view";
+import { reviewedKey } from "@/app/get-started/first-loop-store";
+
+import { FIRST_RUN_ID, PLAN_STAGE, after, firstConsole, firstLoop, firstPullRequest } from "../helpers/first-loop";
 import { DEPLOYMENT_OFF, NO_RUNNER, readiness } from "../helpers/readiness";
 import { settle } from "../helpers/settle";
 import { source } from "../helpers/sources";
@@ -90,6 +94,24 @@ const POLL: OnboardingPollOptions = {
 /** What step 4's readiness poll answers next — every check passing unless a case says otherwise; null never answers. */
 let preflight: LoopReadiness | null = readiness();
 
+/** What the first loop's poll answers next; null never answers. */
+let loopAnswer: FirstLoop | null = null;
+
+/** Every endpoint the first loop's poll asked, in order. */
+let loopAsked: string[] = [];
+
+/** The first loop's poll seam (BD.1, #396). */
+const FIRST_LOOP_POLL = {
+  read: (endpoint: string): Promise<PollAnswer<FirstLoop>> => {
+    loopAsked.push(endpoint);
+
+    return loopAnswer === null
+      ? new Promise(() => {})
+      : Promise.resolve({ state: "fresh", payload: loopAnswer, etag: null, pollAfterSeconds: null });
+  },
+  visible: () => true,
+};
+
 /** Every endpoint step 4's readiness poll asked, in order. */
 let preflightAsked: string[] = [];
 
@@ -126,6 +148,8 @@ function frame(
       firstIssuePoll={{ read: () => new Promise(() => {}), visible: () => true }}
       poll={POLL}
       readinessPoll={READINESS_POLL}
+      firstLoopPoll={FIRST_LOOP_POLL}
+      now={() => Date.parse(after(120))}
       repo={repo}
       reposFailure={null}
       sources={{ ok: true, value: sourcesReadings() }}
@@ -151,6 +175,9 @@ beforeEach(() => {
   reads = 0;
   preflight = readiness();
   preflightAsked = [];
+  loopAnswer = null;
+  loopAsked = [];
+  window.localStorage.clear();
   for (const mock of [continueStep, enableRepository, launchFirstLoop, skipWizard, setRepositoryEnabled, readSourceCatalog, addSource, setSourceStatus, push, refresh]) {
     mock.mockReset();
   }
@@ -519,7 +546,7 @@ describe("the first-issue card (#393)", () => {
     const unpicked = wizard({
       steps: readyToRun().steps,
       choices: { ...readyToRun().choices, pickedTicketId: null },
-      refs: { detectionScan: null, templates: [], pickedTicket: null, workflow: { slug: "quick-fixes", version: 1 } },
+      refs: { detectionScan: null, templates: [], pickedTicket: null, workflow: { slug: "quick-fixes", version: 1 }, firstRun: null },
     });
     frame(unpicked);
     await settle();
@@ -537,7 +564,7 @@ describe("the first-issue card (#393)", () => {
     const unpicked = wizard({
       steps: readyToRun().steps,
       choices: { ...readyToRun().choices, pickedTicketId: null },
-      refs: { detectionScan: null, templates: [], pickedTicket: null, workflow: null },
+      refs: { detectionScan: null, templates: [], pickedTicket: null, workflow: null, firstRun: null },
     });
     render(
       <GetStartedScreen
@@ -781,7 +808,7 @@ describe("dismissed (#395)", () => {
         wizard({
           steps: readyToRun().steps,
           choices: { ...readyToRun().choices, pickedTicketId: null },
-          refs: { detectionScan: null, templates: [], pickedTicket: null, workflow: { slug: "quick-fixes", version: 1 } },
+          refs: { detectionScan: null, templates: [], pickedTicket: null, workflow: { slug: "quick-fixes", version: 1 }, firstRun: null },
         }),
       );
       await settle();
@@ -797,6 +824,87 @@ describe("dismissed (#395)", () => {
 
       expect(screen.queryByRole("region", { name: "Ready to run?" })).not.toBeInTheDocument();
       expect(preflightAsked).toEqual([]);
+    });
+  });
+
+  describe("the first loop, live (BD.1, #396)", () => {
+    /** The completed wizard whose picked issue's first run has opened. */
+    const started = () => ({
+      ...completed(),
+      refs: { ...completed().refs, firstRun: { id: FIRST_RUN_ID, status: "coding" as const, planStage: PLAN_STAGE } },
+    });
+
+    /** The timeline's row for a key. */
+    const row = (key: string) => {
+      const found = document.querySelector(`.timeline__row[data-key="${key}"]`);
+      if (found === null) throw new Error(`no timeline row ${key}`);
+      return found as HTMLElement;
+    };
+
+    it("changes nothing while no run of the issue exists — the MVP wizard, unchanged", async () => {
+      frame(completed());
+      await settle();
+
+      expect(screen.queryByRole("region", { name: "Your first loop" })).not.toBeInTheDocument();
+      expect(loopAsked).toEqual([]);
+    });
+
+    it("reads the run and lays its measured rows over the projection, each losing its label", async () => {
+      loopAnswer = firstLoop();
+      frame(started());
+      await settle();
+
+      expect(loopAsked[0]).toBe(`/api/onboarding/first-loop?run=${FIRST_RUN_ID}`);
+      expect(screen.getByRole("region", { name: "Your first loop" })).toHaveTextContent("The loop is running — now at Implement.");
+      expect(row("loop_starts")).toHaveTextContent("0:00");
+      expect(row("loop_starts")).not.toHaveTextContent("projected");
+      expect(row("plan_posted")).toHaveTextContent("1:04");
+      expect(row("plan_posted")).not.toHaveTextContent("projected");
+      expect(row("draft_pr_opens")).toHaveTextContent("projected");
+    });
+
+    it("leaves no projected label once the loop has merged and been reviewed", async () => {
+      window.localStorage.setItem(reviewedKey(FIRST_RUN_ID), after(600));
+      loopAnswer = firstLoop({
+        console: firstConsole({ status: "merged", finishedAt: after(900) }),
+        pullRequest: firstPullRequest({ state: "merged", mergedAt: after(900) }),
+      });
+      frame(started());
+      await settle();
+
+      expect(document.querySelectorAll(".timeline__row .timeline__tag")).toHaveLength(0);
+      expect(row("merge")).toHaveTextContent("15:00");
+    });
+
+    it("records the review here and only then offers the policy flip", async () => {
+      loopAnswer = firstLoop({ console: firstConsole({ status: "review" }), pullRequest: firstPullRequest() });
+      frame(started());
+      await settle();
+
+      const card = screen.getByRole("region", { name: "Your first loop" });
+      expect(within(card).queryByText("When you trust the loop to merge")).not.toBeInTheDocument();
+
+      fireEvent.click(within(card).getByRole("button", { name: "I've reviewed it" }));
+      await settle();
+
+      expect(within(card).getByRole("note")).toHaveTextContent("When you trust the loop to merge");
+      expect(window.localStorage.getItem(reviewedKey(FIRST_RUN_ID))).toBe(after(120));
+      expect(row("you_review")).toHaveTextContent("2:00");
+    });
+
+    it("keeps the first loop's duration here, start to pull request", async () => {
+      loopAnswer = firstLoop({ pullRequest: firstPullRequest() });
+      frame(started());
+      await settle();
+
+      expect(window.localStorage.getItem(`ouro.first-loop.${FIRST_RUN_ID}.duration-seconds`)).toBe("191");
+    });
+
+    it("links the receipt's console to the live run", async () => {
+      frame(started());
+      await settle();
+
+      expect(screen.getByRole("region", { name: "Your first loop is queued" }).querySelector(`a[href="/runs/${FIRST_RUN_ID}"]`)).not.toBeNull();
     });
   });
 });

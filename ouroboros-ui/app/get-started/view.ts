@@ -13,7 +13,7 @@ import type { Enablement } from "@/app/api/enablement";
 import type { LoopReadiness } from "@/app/api/loop";
 import type { Onboarding, OnboardingLaunchReceipt, OnboardingStep } from "@/app/api/onboarding";
 import type { TicketSource } from "@/app/api/sources";
-import { DASHBOARD_PATH, DASHBOARD_QUEUE_HASH, RUNS_PATH, SOURCES_PATH } from "@/app/paths";
+import { DASHBOARD_PATH, DASHBOARD_QUEUE_HASH, RUNS_PATH, SOURCES_PATH, runPath } from "@/app/paths";
 
 import { FINISH_LABEL, READINESS_PENDING, executionDisabled, firstBlockingReason } from "./readiness-view";
 
@@ -706,7 +706,8 @@ export function receiptView(
       dryRunNote: null,
       dashboardHref: DASHBOARD_PATH,
       queueHref: `${DASHBOARD_PATH}#${DASHBOARD_QUEUE_HASH}`,
-      consoleHref: null,
+      // The live run reference (BD.1, #396): once a run of the issue exists, the console opens it.
+      consoleHref: wizard.refs.firstRun === null ? null : runPath(wizard.refs.firstRun.id),
       runsHref: RUNS_PATH,
       others,
     };
@@ -720,7 +721,10 @@ export function receiptView(
     dryRunNote: receipt.dryRun.note,
     dashboardHref: receipt.links.dashboard,
     queueHref: receipt.links.queue,
-    consoleHref: receipt.links.console ?? receipt.run?.path ?? null,
+    consoleHref:
+      receipt.links.console ??
+      receipt.run?.path ??
+      (wizard.refs.firstRun === null ? null : runPath(wizard.refs.firstRun.id)),
     runsHref: RUNS_PATH,
     others,
   };

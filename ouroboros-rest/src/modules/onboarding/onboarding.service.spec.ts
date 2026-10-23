@@ -387,6 +387,34 @@ describe("the onboarding service", () => {
     });
   });
 
+  describe("the first loop's run (BD.1, #396)", () => {
+    it("names no run while the picked issue only waits in the queue", async () => {
+      fake.readyToLaunch();
+      fake.queued.add(488);
+
+      expect((await service.read(ORG, REPO)).refs.firstRun).toBeNull();
+    });
+
+    it("names the picked issue's first run once one exists", async () => {
+      fake.readyToLaunch();
+      fake.runs.add(488);
+
+      expect((await service.read(ORG, REPO)).refs.firstRun).toEqual({
+        id: "5eed0051-0000-4000-8000-000000000488",
+        status: "coding",
+        planStage: null,
+      });
+    });
+
+    it("names no run for a pick that is another repository's", async () => {
+      fake.readyToLaunch();
+      fake.runs.add(488);
+      fake.tickets = [{ ...TICKET, meta: { github: { owner: "acme-robotics", repo: "other" } } }];
+
+      expect((await service.read(ORG, REPO)).refs.firstRun).toBeNull();
+    });
+  });
+
   describe("the import-skip", () => {
     it("marks the wizard bypassed and does not claim to have imported anything", async () => {
       const result = await service.skip(ORG, REPO);

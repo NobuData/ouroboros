@@ -133,6 +133,16 @@ export class FakeOnboarding {
         ),
       reachedLoop: (_org: string, _repo: string, issue: number) =>
         Promise.resolve({ queued: this.queued.has(issue), run: this.runs.has(issue) }),
+      firstRun: (_org: string, _repo: string, issue: number) =>
+        Promise.resolve(
+          this.runs.has(issue)
+            ? {
+                id: `5eed0051-0000-4000-8000-${String(issue).padStart(12, "0")}`,
+                status: "coding",
+                definition: undefined,
+              }
+            : undefined,
+        ),
       hasRuns: () => Promise.resolve(this.runsInOrganization),
       latestScan: () =>
         Promise.resolve(
