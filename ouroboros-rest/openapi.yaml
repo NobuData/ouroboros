@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.43.4"
+  version: "0.43.5"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -5509,6 +5509,7 @@ paths:
                     - { slug: docs-chores, version: 1, tier: starter, scope: global }
                     - { slug: deep-refactor, version: 1, tier: advanced, scope: global }
                   pickedTicket: null
+                  workflow: null
                 surfacing:
                   offer: true
                   reason: fresh_organization
@@ -50693,7 +50694,7 @@ components:
       title: OnboardingRefs
       description: References to the cards' payloads, so the page composes in one round trip.
       additionalProperties: false
-      required: [detectionScan, templates, pickedTicket]
+      required: [detectionScan, templates, pickedTicket, workflow]
       properties:
         detectionScan:
           description: The newest detection scan of the repository, or null when never scanned.
@@ -50751,6 +50752,22 @@ components:
                 source:
                   type: string
                   description: The ticket source's kind — `github`, `jira`, …
+        workflow:
+          description: |-
+            The workflow instantiated from the selected template — its slug and version in force
+            — or null while none is. The readiness preflight (`GET /api/v1/loop/readiness`) is
+            asked about it (DK.2, #1319).
+          oneOf:
+            - type: "null"
+            - type: object
+              additionalProperties: false
+              required: [slug, version]
+              properties:
+                slug:
+                  type: string
+                version:
+                  type: [integer, "null"]
+                  description: "`workflows.current_version` — null while nothing is published."
 
     OnboardingSurfacing:
       type: object

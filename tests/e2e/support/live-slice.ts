@@ -131,6 +131,23 @@ export async function setFixtureProviderKey(context: BrowserContext): Promise<vo
   );
 }
 
+/**
+ * Test the seeded connection, as a person presses *Test* — the readiness preflight (DK.1, #1318)
+ * counts a connection only once it has passed its health test, and the seed leaves it untested.
+ * The test is the adapter's key check (`GET …/v1/models`), which the fixture answers.
+ *
+ * @param context - Signed in as the slice workspace's owner.
+ */
+export async function testFixtureConnection(context: BrowserContext): Promise<void> {
+  await requestAs(
+    context,
+    "POST",
+    `/api/v1/providers/${FIXTURE_CONNECTION_ID}/test`,
+    null,
+    "testing the seeded connection against the fixture",
+  );
+}
+
 /** One line of the fixture's request log. */
 export interface FixtureRequest {
   readonly at: string;

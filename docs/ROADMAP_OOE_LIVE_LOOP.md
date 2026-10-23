@@ -1854,7 +1854,7 @@ an operator has to do first.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | DK.1 | ✅ #1318 | 🟢 Done | ouroboros-rest: [DK.1] Live-loop readiness preflight | A per-repository check of everything a first loop needs, with a reason and a fix for each gap | mvp, live-loop, rest, onboarding, runs | N (after DG.2, DI.4) | Y | M | ouroboros-rest, ouroboros-docs |
-| DK.2 | #1319 | 🟡 Open | ouroboros-ui: [DK.2] Wizard readiness states — no simulated first loop | The wizard's last step shows the preflight and starts a real loop or says exactly why it cannot | mvp, live-loop, ui, design, onboarding | N (after DK.1) | Y | M | ouroboros-ui, ouroboros-docs |
+| DK.2 | ✅ #1319 | 🟢 Done | ouroboros-ui: [DK.2] Wizard readiness states — no simulated first loop | The wizard's last step shows the preflight and starts a real loop or says exactly why it cannot | mvp, live-loop, ui, design, onboarding | N (after DK.1) | Y | M | ouroboros-ui, ouroboros-docs |
 | DK.3 | #1325 | 🟡 Open | ouroboros-docs: [DK.3] Administration — enabling live execution | The operator's page: prerequisites, the switch, what the loop can and cannot do, how to stop it | mvp, live-loop, documentation, docs-site | N (after DI.6) | Y | S | ouroboros-docs, HOSTING.md |
 
 ### Issue DK.1 — ouroboros-rest: [DK.1] Live-loop readiness preflight
@@ -1923,7 +1923,7 @@ an operator has to do first.
 
 ### Issue DK.2 — ouroboros-ui: [DK.2] Wizard readiness states — no simulated first loop
 
-> **GitHub issue:** #1319 · **Status:** 🟡 Open · **Parent epic:** #1297
+> **GitHub issue:** ✅ #1319 · **Status:** 🟢 Done · **Parent epic:** #1297
 
 - **Problem Statement:** The wizard ends on a timeline of projections; in
   development and e2e the simulator walks it. #396 binds the timeline to a real

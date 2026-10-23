@@ -153,7 +153,14 @@ export class FakeOnboarding {
   readyToLaunch(): this {
     this.sources = [SOURCE];
     this.repositoryRow = { id: "repo-1", enabled: true, account_enabled: true };
-    this.workflows = [{ slug: "quick-fixes", template_slug: "quick-fixes", template_version: 1 }];
+    this.workflows = [
+      {
+        slug: "quick-fixes",
+        template_slug: "quick-fixes",
+        template_version: 1,
+        current_version: 1,
+      },
+    ];
     this.tickets = [TICKET];
     this.mirrored.set(ISSUE_ID, 488);
     this.rows.set(REPO, {

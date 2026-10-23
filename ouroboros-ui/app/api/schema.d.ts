@@ -17296,6 +17296,16 @@ export interface components {
                 /** @description The ticket source's kind — `github`, `jira`, … */
                 source: string;
             };
+            /**
+             * @description The workflow instantiated from the selected template — its slug and version in force
+             *     — or null while none is. The readiness preflight (`GET /api/v1/loop/readiness`) is
+             *     asked about it (DK.2, #1319).
+             */
+            workflow: null | {
+                slug: string;
+                /** @description `workflows.current_version` — null while nothing is published. */
+                version: number | null;
+            };
         };
         /**
          * OnboardingSurfacing
@@ -39469,7 +39479,8 @@ export interface operations {
                      *             "scope": "global"
                      *           }
                      *         ],
-                     *         "pickedTicket": null
+                     *         "pickedTicket": null,
+                     *         "workflow": null
                      *       },
                      *       "surfacing": {
                      *         "offer": true,

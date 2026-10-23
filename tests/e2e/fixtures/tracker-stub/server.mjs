@@ -6,7 +6,7 @@
  * GitHub's REST API that `ouroboros-rest` sends at a tracker, on one port:
  *
  * ```
- * GET    /repos/{o}/{r}                                    the probe Test connection sends
+ * GET    /repos/{o}/{r}                                    the probe Test connection sends; readiness's permission lookup
  * GET    /repos/{o}/{r}/issues                             the walk both syncs make
  * POST   /repos/{o}/{r}/issues                             a push creating one
  * GET    /repos/{o}/{r}/issues/{n}                         a push reading one back
@@ -907,9 +907,14 @@ async function handle(request, response) {
   const rest = parts.slice(3);
   const now = new Date().toISOString();
 
-  // GET /repos/{o}/{r} — the probe `validateConfig` sends.
+  // GET /repos/{o}/{r} — the probe `validateConfig` sends, and the readiness preflight's
+  // permission lookup (DK.1, #1318): the sandbox token's account may push, as GitHub would say.
   if (rest.length === 0 && method === "GET") {
-    json(response, 200, { full_name: slug, has_issues: true });
+    json(response, 200, {
+      full_name: slug,
+      has_issues: true,
+      permissions: { admin: false, maintain: false, push: true, triage: true, pull: true },
+    });
     return;
   }
 

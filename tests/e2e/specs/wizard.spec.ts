@@ -55,6 +55,7 @@ import {
   syncIntakeMirror,
 } from "../support/planning";
 import { expectJson, restUrl } from "../support/api";
+import { setDeploymentSwitch } from "../support/live-loop";
 import { quietly, requestAs } from "../support/rest";
 import { SEED_OWNER } from "../support/seed";
 import { signIn } from "../support/session";
@@ -319,6 +320,12 @@ test.describe("the Get Started wizard's states (#395)", () => {
 /* ------------------------------------------------------------------ the chain */
 
 test.describe("the first loop, from a cold rail (#395)", () => {
+  // Step 4 runs with live execution off (DK.2, #1319) — the execution-disabled path; the live
+  // path is leg 34's, on the slice fixtures. Put the stack's default back for whatever runs next.
+  test.afterAll(async () => {
+    await setDeploymentSwitch(true);
+  });
+
   test("the chain: connect → pick → scan → template → Studio → pick → launch → dashboard → dry-run → queued, never simulated → regression", async ({
     context,
     page,
@@ -474,7 +481,17 @@ test.describe("the first loop, from a cold rail (#395)", () => {
 
       /* ------------------------------------------------ step 4: the pick verified, and the launch */
 
+      // Live execution off, as an operator would turn it off: the readiness card leads with the
+      // execution-disabled design and the action finishes setup by queueing the pick (DK.2).
+      await setDeploymentSwitch(false);
       await page.goto(wizardPathFor(CHAIN.repo));
+      const readiness = card(page, WIZARD.readiness);
+
+      await expect(readiness.getByRole("note"), LAUNCH_BROKE).toContainText(WIZARD.liveSwitch);
+      await expect(
+        readiness.getByRole("link", { name: "How live execution is turned on →" }),
+        LAUNCH_BROKE,
+      ).toHaveAttribute("href", /administration\/live-execution$/);
       await expect(bar(page)).toContainText("Step 4 of 4");
       // Nothing is stored yet — the wizard stores the pick when the loop is run (#393's decision),
       // so step 4's reason is the service's, the card shows the picker's suggestion, and the bar is
@@ -487,7 +504,9 @@ test.describe("the first loop, from a cold rail (#395)", () => {
       );
 
       const before = await queueTotal(context);
-      const launch = bar(page).getByRole("button", { name: WIZARD.launch });
+      // No state shows an enabled action that will fail: off, the action is *Finish setup*.
+      await expect(bar(page).getByRole("button", { name: WIZARD.launch })).toHaveCount(0);
+      const launch = bar(page).getByRole("button", { name: WIZARD.finish });
 
       await expect(launch).not.toHaveAttribute("aria-disabled", "true");
       await launch.click();
@@ -564,7 +583,7 @@ test.describe("the first loop, from a cold rail (#395)", () => {
       /* ------------------------------------------------ no simulated walk: the issue waits, honestly */
 
       // The product never stands the run simulator in for a first loop (DJ.4, #1317). This
-      // stack runs no live execution, so the launched issue stays queued — no run of any
+      // step ran with live execution off, so the launched issue stays queued — no run of any
       // origin is opened for it, and the rail does not claim one. The walk to a terminal run is
       // the live slice's to prove (live-slice-fixtures.spec.ts, DI.5), against a real executor.
       for (const family of ["active", "terminal"] as const) {

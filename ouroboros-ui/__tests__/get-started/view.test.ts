@@ -23,6 +23,7 @@ import {
   pickerRows,
   positionLine,
   primaryAction,
+  readinessBlock,
   receiptLine,
   receiptView,
   regressionFixLabel,
@@ -33,10 +34,12 @@ import {
   stepCounter,
   switchLabel,
 } from "@/app/get-started/view";
+import { FINISH_LABEL, READINESS_PENDING } from "@/app/get-started/readiness-view";
 import { DASHBOARD_PATH, SOURCES_PATH } from "@/app/paths";
 
 import { enablement, org, repo } from "../helpers/login";
 import { ISSUE_488, REPO, completed, launchReceipt, mirrored, readyToRun, regressed, step, wizard } from "../helpers/onboarding";
+import { DEPLOYMENT_OFF, NO_RUNNER, PUSH_UNCONFIRMED, READY_GATE, heard, readiness } from "../helpers/readiness";
 import { jiraSource, source } from "../helpers/sources";
 
 /**
@@ -154,13 +157,18 @@ describe("the primary action", () => {
   });
 
   it("runs the first loop on step 4 once an issue is picked", () => {
-    expect(primaryAction(readyToRun(), 4, MEMBER)).toEqual({ kind: "launch", label: LAUNCH_LABEL, blocked: null, pickIssueId: null });
+    expect(primaryAction(readyToRun(), 4, MEMBER, { readiness: READY_GATE })).toEqual({
+      kind: "launch",
+      label: LAUNCH_LABEL,
+      blocked: null,
+      pickIssueId: null,
+    });
   });
 
   it("runs step 4 on the picker's suggestion while nothing is stored — the press stores it first (#393)", () => {
     const unpicked = wizard({ steps: readyToRun().steps });
 
-    expect(primaryAction(unpicked, 4, MEMBER, { suggestedIssueId: ISSUE_488 })).toEqual({
+    expect(primaryAction(unpicked, 4, MEMBER, { suggestedIssueId: ISSUE_488, readiness: READY_GATE })).toEqual({
       kind: "launch",
       label: LAUNCH_LABEL,
       blocked: null,
@@ -170,6 +178,51 @@ describe("the primary action", () => {
     expect(primaryAction(readyToRun(), 4, MEMBER, { suggestedIssueId: ISSUE_488 }).pickIssueId).toBeNull();
     // A viewer is refused before the suggestion matters.
     expect(primaryAction(unpicked, 4, VIEWER, { suggestedIssueId: ISSUE_488 }).blocked).toBe(VIEWER_REASON);
+  });
+
+  describe("step 4 and the readiness preflight (DK.2, #1319)", () => {
+    it("never offers the launch before the preflight is heard", () => {
+      expect(primaryAction(readyToRun(), 4, MEMBER).blocked).toBe(READINESS_PENDING);
+      expect(primaryAction(readyToRun(), 4, MEMBER, { readiness: { state: "pending" } }).blocked).toBe(READINESS_PENDING);
+    });
+
+    it("captions the disabled launch with the first check that did not pass", () => {
+      const action = primaryAction(readyToRun(), 4, MEMBER, { readiness: heard(readiness(PUSH_UNCONFIRMED, NO_RUNNER)) });
+
+      expect(action).toMatchObject({ kind: "launch", label: LAUNCH_LABEL, blocked: NO_RUNNER.reason });
+    });
+
+    it("blocks on an unknown alone, with its reason", () => {
+      expect(primaryAction(readyToRun(), 4, MEMBER, { readiness: heard(readiness(PUSH_UNCONFIRMED)) }).blocked).toBe(
+        PUSH_UNCONFIRMED.reason,
+      );
+    });
+
+    it("blocks with the reason the preflight could not be heard", () => {
+      expect(primaryAction(readyToRun(), 4, MEMBER, { readiness: { state: "failed", reason: "down" } }).blocked).toBe("down");
+    });
+
+    it("finishes setup while live execution is off — the launch queues the pick", () => {
+      expect(primaryAction(readyToRun(), 4, MEMBER, { readiness: heard(readiness(DEPLOYMENT_OFF, NO_RUNNER)) })).toEqual({
+        kind: "launch",
+        label: FINISH_LABEL,
+        blocked: null,
+        pickIssueId: null,
+      });
+    });
+
+    it("keeps the earlier refusals ahead of the preflight", () => {
+      expect(primaryAction(readyToRun(), 4, VIEWER, { readiness: READY_GATE }).blocked).toBe(VIEWER_REASON);
+      expect(
+        primaryAction(readyToRun(), 4, VIEWER, { readiness: heard(readiness(DEPLOYMENT_OFF)) }).blocked,
+      ).toBe(VIEWER_REASON);
+    });
+
+    it("reads a gate the way the action does", () => {
+      expect(readinessBlock(READY_GATE)).toBeNull();
+      expect(readinessBlock(heard(readiness(DEPLOYMENT_OFF)))).toBeNull();
+      expect(readinessBlock(heard(readiness(NO_RUNNER)))).toBe(NO_RUNNER.reason);
+    });
   });
 
   it("refuses step 4 with the service's reason while nothing is picked, and a fallback when it gave none", () => {

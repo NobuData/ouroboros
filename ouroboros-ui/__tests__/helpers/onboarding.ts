@@ -81,7 +81,7 @@ export function wizard(overrides: Partial<Onboarding> = {}): Onboarding {
       completedAt: null,
       bypassedAt: null,
     },
-    refs: { detectionScan: null, templates: [], pickedTicket: null },
+    refs: { detectionScan: null, templates: [], pickedTicket: null, workflow: null },
     surfacing: { offer: true, reason: "fresh_organization" },
     ...overrides,
   };
@@ -103,7 +103,7 @@ export function readyToRun(): Onboarding {
       completedAt: null,
       bypassedAt: null,
     },
-    refs: { detectionScan: null, templates: [], pickedTicket: pickedTicket() },
+    refs: { detectionScan: null, templates: [], pickedTicket: pickedTicket(), workflow: { slug: "quick-fixes", version: 1 } },
   });
 }
 
@@ -932,7 +932,7 @@ export function completed(): Onboarding {
       completedAt: "2026-10-05T09:00:00.000Z",
       bypassedAt: null,
     },
-    refs: { detectionScan: null, templates: [], pickedTicket: pickedTicket() },
+    refs: { detectionScan: null, templates: [], pickedTicket: pickedTicket(), workflow: { slug: "quick-fixes", version: 1 } },
     surfacing: { offer: false, reason: "wizard_finished" },
   });
 }

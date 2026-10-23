@@ -10,9 +10,12 @@
  */
 
 import type { Enablement } from "@/app/api/enablement";
+import type { LoopReadiness } from "@/app/api/loop";
 import type { Onboarding, OnboardingLaunchReceipt, OnboardingStep } from "@/app/api/onboarding";
 import type { TicketSource } from "@/app/api/sources";
 import { DASHBOARD_PATH, DASHBOARD_QUEUE_HASH, RUNS_PATH, SOURCES_PATH } from "@/app/paths";
+
+import { FINISH_LABEL, READINESS_PENDING, executionDisabled, firstBlockingReason } from "./readiness-view";
 
 /** The wizard's route. */
 export const GET_STARTED_PATH = "/get-started";
@@ -26,6 +29,13 @@ export const STEP_COUNT = 4;
 /** The head, verbatim from mockup 13. */
 export const EYEBROW = "Get Started";
 export const TITLE = "Your first loop in about 4 minutes.";
+/**
+ * The label the title's time wears (DK.2, #1319): an expectation, not a measurement — until a
+ * recorded reference run (DL.3, #1327) supplies a figure to cite.
+ */
+export const EXPECTATION_TAG = "expected · not yet measured";
+export const EXPECTATION_NOTE =
+  "An expectation, not a measurement: no first loop has been timed for this figure yet.";
 
 /** One claim of the head's promise, with the mechanism that keeps it (decision **O9**). */
 export interface PromiseClaim {
@@ -262,6 +272,39 @@ export interface PrimaryAction {
 export interface PrimaryContext {
   /** The picker's suggestion on screen while nothing is stored (its `issueId`), or null. */
   readonly suggestedIssueId?: string | null;
+  /**
+   * Step 4's readiness preflight (DK.2, #1319). Absent reads as not yet heard, so a launch is
+   * never offered before the preflight has said it can start.
+   */
+  readonly readiness?: ReadinessGate;
+}
+
+/** What the wizard knows of the readiness preflight (DK.1, #1318) at this moment. */
+export type ReadinessGate =
+  /** Not heard yet. */
+  | { readonly state: "pending" }
+  /** It could not be heard, or there is nothing to ask about yet — the reason says which. */
+  | { readonly state: "failed"; readonly reason: string }
+  /** The preflight. */
+  | { readonly state: "read"; readonly value: LoopReadiness };
+
+/**
+ * Why step 4's launch waits on the preflight, or null when it may go.
+ *
+ * @param gate The preflight's state.
+ * @returns Null when every check passed or live execution is off (the launch then queues the
+ *   pick and finishes setup); otherwise the reason — still checking, the failure, or the first
+ *   check that did not pass.
+ */
+export function readinessBlock(gate: ReadinessGate): string | null {
+  switch (gate.state) {
+    case "pending":
+      return READINESS_PENDING;
+    case "failed":
+      return gate.reason;
+    case "read":
+      return gate.value.ready || executionDisabled(gate.value) ? null : firstBlockingReason(gate.value);
+  }
 }
 
 /** What the person may do in this workspace. */
@@ -339,17 +382,20 @@ export function primaryAction(
       };
     default: {
       const suggested = wizard.choices.pickedTicketId === null ? (context.suggestedIssueId ?? null) : null;
+      const gate = context.readiness ?? { state: "pending" };
+      // Live execution off: the launch queues the pick and completes the wizard — "Finish setup".
+      const finishing = gate.state === "read" && executionDisabled(gate.value);
 
       return {
         kind: "launch",
-        label: LAUNCH_LABEL,
+        label: finishing ? FINISH_LABEL : LAUNCH_LABEL,
         blocked:
           blockedBy ??
           (!abilities.contribute
             ? VIEWER_REASON
             : wizard.choices.pickedTicketId === null && suggested === null
               ? (at.reason ?? NO_PICK_REASON)
-              : null),
+              : readinessBlock(gate)),
         pickIssueId: suggested,
       };
     }

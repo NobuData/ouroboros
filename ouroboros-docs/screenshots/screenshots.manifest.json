@@ -148,9 +148,49 @@
       "clip": "ul.safety",
       "caption": "What keeps the first loop safe: dry-run opens a draft pull request and never merges.",
       "alt": "The safety list under the first issue: dry-run opens a draft PR and never merges, decisions wait in the Needs-you inbox, and auto-merge can be turned on in Settings, Policies.",
-      "capturedAt": "2026-10-08T21:13:42.748Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "010fb287e1c459cdc1d703473959cc3bb408a31f"
+      "capturedAt": "2026-10-23T22:06:07.864Z",
+      "uiVersion": "0.171.0",
+      "seedRef": "ca14130edf68266a070812b781c7f9ba5d395248"
+    },
+    {
+      "id": "user-guide.wizard.readiness",
+      "route": "/get-started?repo=acme-robotics/helios-firmware",
+      "workspace": "acme-onboarding",
+      "actions": [
+        {
+          "click": ".tile__select:has-text('Quick fixes')"
+        },
+        {
+          "click": "nav[aria-label='Get Started steps'] li:nth-child(4) button"
+        }
+      ],
+      "ready": ".readiness-card .readiness-card__disabled",
+      "clip": "section.readiness-card",
+      "caption": "Step 4 with live execution off: the configuration is saved, the switch is an administrator's, and Finish setup queues the issue.",
+      "alt": "The Ready to run? card on step 4 for acme-robotics/helios-firmware, issue #488 sized XS: a notice reading Your configuration is saved, naming OURO_LIVE_EXECUTION_ENABLED as an administrator's switch with How live execution is turned on; 6 checks passed with a show toggle; five failed checks each with a fix link — no provider connection, no route for analyze, plan and implement, the build stage names no runner pool, no GitHub token, the token cannot read the repository; the dry-run line and the labelled Estimate.",
+      "capturedAt": "2026-10-23T22:05:07.160Z",
+      "uiVersion": "0.171.0",
+      "seedRef": "ca14130edf68266a070812b781c7f9ba5d395248"
+    },
+    {
+      "id": "user-guide.wizard.readiness-blocked",
+      "route": "/get-started?repo=acme-robotics/helios-firmware",
+      "workspace": "acme-onboarding",
+      "actions": [
+        {
+          "click": ".tile__select:has-text('Quick fixes')"
+        },
+        {
+          "click": "nav[aria-label='Get Started steps'] li:nth-child(4) button"
+        }
+      ],
+      "ready": ".readiness-card .readiness-row--fail",
+      "clip": "section.readiness-card",
+      "caption": "Ready to run? with live execution on: passing checks folded, each failing check open with its fix.",
+      "alt": "The Ready to run? card with live execution on for acme-robotics/helios-firmware, issue #488 sized XS: 7 checks passed folded behind show, and five failed checks open, each with its fix link — Providers, Models, Workflow, Sources and Sources — then the dry-run line and the labelled Estimate.",
+      "capturedAt": "2026-10-23T22:05:51.303Z",
+      "uiVersion": "0.171.0",
+      "seedRef": "ca14130edf68266a070812b781c7f9ba5d395248"
     },
     {
       "id": "user-guide.dashboard-banner",

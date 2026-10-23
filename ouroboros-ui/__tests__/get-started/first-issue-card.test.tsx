@@ -120,7 +120,7 @@ async function pollNow(): Promise<void> {
 beforeEach(() => {
   answer = null;
   pickFirstIssue.mockReset().mockImplementation((_repo: string, issueId: string) =>
-    Promise.resolve({ ok: true, value: wizard({ refs: { detectionScan: null, templates: [], pickedTicket: pickedTicket({ id: issueId }) } }) }),
+    Promise.resolve({ ok: true, value: wizard({ refs: { detectionScan: null, templates: [], pickedTicket: pickedTicket({ id: issueId }), workflow: null } }) }),
   );
 });
 
@@ -243,7 +243,7 @@ describe("the pick on screen", () => {
 
     expect(within(region()).getByText("We picked a safe one:")).toBeInTheDocument();
     expect(within(row()).getByRole("link", { name: "#488" })).toBeInTheDocument();
-    expect(onSuggestion).toHaveBeenLastCalledWith(ISSUE_488);
+    expect(onSuggestion).toHaveBeenLastCalledWith(ISSUE_488, 488);
 
     rerender(
       <FirstIssueCard
@@ -258,7 +258,7 @@ describe("the pick on screen", () => {
       />,
     );
 
-    expect(onSuggestion).toHaveBeenLastCalledWith(null);
+    expect(onSuggestion).toHaveBeenLastCalledWith(null, null);
   });
 });
 

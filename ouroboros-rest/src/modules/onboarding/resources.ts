@@ -16,7 +16,12 @@ import type {
   OnboardingStepSource,
   OnboardingStepStatus,
 } from "./onboarding.derivation";
-import type { ScanRow, TemplateRow, TicketRow } from "./onboarding.repository";
+import type {
+  InstantiatedWorkflowRow,
+  ScanRow,
+  TemplateRow,
+  TicketRow,
+} from "./onboarding.repository";
 import type { SurfacingDecision } from "./onboarding.surfacing";
 
 /** Each step's stable key and the name the rail prints (mockup 13). */
@@ -64,6 +69,11 @@ export interface OnboardingRefsResource {
   }[];
   /** The picked ticket, or null. */
   readonly pickedTicket: { id: string; externalKey: string; title: string; source: string } | null;
+  /**
+   * The workflow instantiated from the selected template — its slug and version in force — or
+   * null while none is. What the readiness preflight is asked about (DK.2, #1319).
+   */
+  readonly workflow: { slug: string; version: number | null } | null;
 }
 
 /** `GET /api/v1/onboarding`. */
@@ -93,6 +103,8 @@ export interface OnboardingParts {
   readonly scan: ScanRow | undefined;
   readonly templates: readonly TemplateRow[];
   readonly ticket: TicketRow | undefined;
+  /** The workflow instantiated from the selected template, or undefined. */
+  readonly workflow: InstantiatedWorkflowRow | undefined;
   readonly surfacing: SurfacingDecision;
 }
 
@@ -160,6 +172,10 @@ export function onboardingResource(parts: OnboardingParts): OnboardingResource {
               title: ticket.title,
               source: ticket.kind,
             },
+      workflow:
+        parts.workflow === undefined
+          ? null
+          : { slug: parts.workflow.slug, version: parts.workflow.current_version },
     },
     surfacing: parts.surfacing,
   };

@@ -62,13 +62,19 @@ describe("the onboarding resource", () => {
       scan: undefined,
       templates: [],
       ticket: undefined,
+      workflow: undefined,
       surfacing: { offer: true, reason: "fresh_organization" },
     });
 
     expect(resource.steps.map((step) => `${step.key}:${step.title}`)).toEqual(
       Object.values(STEP_LABELS).map((label) => `${label.key}:${label.title}`),
     );
-    expect(resource.refs).toEqual({ detectionScan: null, templates: [], pickedTicket: null });
+    expect(resource.refs).toEqual({
+      detectionScan: null,
+      templates: [],
+      pickedTicket: null,
+      workflow: null,
+    });
   });
 
   it("maps the card references", () => {
@@ -89,6 +95,12 @@ describe("the onboarding resource", () => {
         meta: {},
         kind: "github",
       },
+      workflow: {
+        slug: "quick-fixes-2",
+        template_slug: "quick-fixes",
+        template_version: 1,
+        current_version: 3,
+      },
       surfacing: { offer: false, reason: "wizard_finished" },
     });
 
@@ -104,6 +116,7 @@ describe("the onboarding resource", () => {
         title: "docs: fix typo in README",
         source: "github",
       },
+      workflow: { slug: "quick-fixes-2", version: 3 },
     });
     expect(resource.surfacing).toEqual({ offer: false, reason: "wizard_finished" });
   });

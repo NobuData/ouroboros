@@ -151,6 +151,12 @@ export const WIZARD = {
   receipt: "Your first loop is queued",
   regress: "A step that was done is not any more",
   launch: "Run my first loop →",
+  /** Step 4's action while live execution is off — the launcher queues the pick (DK.2, #1319). */
+  finish: "Finish setup",
+  /** Step 4's readiness card (DK.2, #1319). */
+  readiness: "Ready to run?",
+  /** The execution-disabled design names the deployment switch. */
+  liveSwitch: "OURO_LIVE_EXECUTION_ENABLED",
   /** Step 1's evidence for a token source (INTAKE-O.1's App is v2). */
   connected: `${CHAIN.owner} · token`,
 } as const;

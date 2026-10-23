@@ -79,9 +79,10 @@ export interface FirstIssueCardProps {
   readonly onChanged?: () => void;
   /**
    * Called with the picker's suggestion on screen while the wizard stores no pick (its
-   * `issueId`), and with null otherwise — what *Run my first loop* stores before it launches.
+   * `issueId` and its number), and with nulls otherwise — what *Run my first loop* stores before it
+   * launches, and the issue step 4's readiness preflight is asked about (DK.2, #1319).
    */
-  readonly onSuggestion?: (issueId: string | null) => void;
+  readonly onSuggestion?: (issueId: string | null, issueNumber: number | null) => void;
   /** Test seams for the card's poll. */
   readonly poll?: FirstIssuePollOptions;
   /** The clock the estimator's status is aged against — a test seam. */
@@ -327,11 +328,14 @@ export function FirstIssueCard({
     applied !== null && applied.over === pickedTicket
       ? { kind: "ranked", candidate: applied.candidate, stored: true }
       : shownPick(polled, pickedTicket);
-  const suggestedId = shown?.kind === "ranked" && !shown.stored ? shown.candidate.issueId : null;
+  const suggestion = shown?.kind === "ranked" && !shown.stored ? shown.candidate : null;
+  const suggestedId = suggestion?.issueId ?? null;
+  // The number travels with the id: step 4's readiness preflight is asked about it (DK.2, #1319).
+  const suggestedNumber = suggestion?.number ?? null;
 
   useEffect(() => {
-    onSuggestion?.(suggestedId);
-  }, [onSuggestion, suggestedId]);
+    onSuggestion?.(suggestedId, suggestedNumber);
+  }, [onSuggestion, suggestedId, suggestedNumber]);
 
   const candidates = polled?.alternatives.candidates ?? [];
   const currentNumber =

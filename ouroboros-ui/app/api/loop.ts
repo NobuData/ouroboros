@@ -23,6 +23,22 @@ export type LoopStage = keyof LoopCapabilities["stages"];
 /** Why a stage is not live — DG.2's stable vocabulary. */
 export type LoopReason = NonNullable<LoopStageCapability["reason"]>;
 
+/** `GET /api/v1/loop/readiness` — the live-loop readiness preflight (DK.1, #1318). */
+export type LoopReadiness = components["schemas"]["LoopReadiness"];
+
+/** One readiness check. */
+export type LoopReadinessCheck = components["schemas"]["LoopReadinessCheck"];
+
+/** What the preflight is asked about. */
+export interface LoopReadinessQuery {
+  /** `owner/name`. */
+  readonly repository: string;
+  /** The workflow's slug. */
+  readonly workflow: string;
+  /** The issue to ask about; absent, the wizard's pick. */
+  readonly issue?: number;
+}
+
 export const loop = {
   /**
    * Read the capability report.
@@ -34,5 +50,21 @@ export const loop = {
    */
   async capabilities(client: ApiClient = api(), signal?: AbortSignal): Promise<LoopCapabilities> {
     return unwrap(await client.GET("/api/v1/loop/capabilities", { signal }));
+  },
+
+  /**
+   * The readiness preflight for one repository and workflow (DK.1, #1318).
+   *
+   * @param query The repository, the workflow and, optionally, the issue.
+   * @param client The API client — the session's by default.
+   * @param signal Aborts the read.
+   * @returns The ordered checks, `ready`, and the estimate.
+   */
+  async readiness(
+    query: LoopReadinessQuery,
+    client: ApiClient = api(),
+    signal?: AbortSignal,
+  ): Promise<LoopReadiness> {
+    return unwrap(await client.GET("/api/v1/loop/readiness", { params: { query }, signal }));
   },
 };

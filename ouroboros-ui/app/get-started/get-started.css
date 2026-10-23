@@ -41,6 +41,11 @@
   text-wrap: balance;
 }
 
+/* The title's time is an expectation, labelled as one (DK.2, #1319). */
+.wizard__expectation {
+  margin-top: var(--sp-3);
+}
+
 .wizard__sub {
   max-width: 64ch;
   margin: var(--sp-2) 0 0;
@@ -1834,4 +1839,161 @@
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   background: var(--surface);
+}
+
+/* ---------- step 4's readiness card (DK.2, #1319) ---------- */
+
+.readiness-card {
+  flex: none;
+}
+
+.readiness-card__head {
+  margin: 0 0 var(--sp-5);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.readiness-card__line {
+  max-width: 70ch;
+  margin: 0 0 var(--sp-5);
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* Live execution is off: the configuration is saved, the switch is an administrator's. */
+.readiness-card__disabled {
+  margin: 0 0 var(--sp-6);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+}
+
+.readiness-card__disabled-title {
+  margin: 0 0 var(--sp-3);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.readiness-card__admin,
+.readiness-row__fix {
+  color: var(--accent);
+  font-size: var(--t-sm);
+  text-decoration: none;
+}
+
+.readiness-card__admin:hover,
+.readiness-card__admin:focus-visible,
+.readiness-row__fix:hover,
+.readiness-row__fix:focus-visible {
+  text-decoration: underline;
+}
+
+.readiness-card__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0 0 var(--sp-5);
+  padding: 0;
+  list-style: none;
+}
+
+.readiness-card__rows--passed {
+  flex-basis: 100%;
+  margin: var(--sp-3) 0 0;
+}
+
+/* The collapsed passes: one line and its toggle; the rows open beneath on their own line. */
+.readiness-card__passed {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  align-items: baseline;
+  color: var(--ok);
+  font-size: var(--t-sm);
+}
+
+.readiness-card__passed-line {
+  flex: 1 1 auto;
+}
+
+.readiness-card__toggle {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.readiness-card__toggle:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+/* One check: mark · reason (and note) · fix, wrapping on a narrow screen or a large font. */
+.readiness-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3) var(--sp-5);
+  align-items: baseline;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.readiness-row__mark {
+  flex: none;
+  width: 1.25ch;
+  font-weight: 600;
+}
+
+.readiness-row--pass .readiness-row__mark {
+  color: var(--ok);
+}
+
+.readiness-row--fail .readiness-row__mark {
+  color: var(--err);
+}
+
+.readiness-row--unknown .readiness-row__mark {
+  color: var(--warn);
+}
+
+.readiness-row__body {
+  display: flex;
+  flex: 1 1 20ch;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.readiness-row__reason {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.readiness-row__note {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.readiness-card__safety {
+  margin: 0 0 var(--sp-4);
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+}
+
+.readiness-card__estimate {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  align-items: baseline;
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
 }
