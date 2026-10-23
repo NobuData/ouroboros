@@ -147,10 +147,18 @@ Build: `ouroboros-engine/Dockerfile` (context `ouroboros-engine/`). Listens on `
 | `OURO_ENGINE_SHARED_SECRET` | **yes** | `<engine secret>` | Must equal REST's value. The engine refuses to start without it |
 | `OURO_LOG_LEVEL` | no | `info` | `debug`, `info`, `warning`, `error` |
 | `PORT` | no | `8000` | Set in the image already |
+| `OURO_REST_URL` | live execution | `http://rest:4000` | REST's **internal** address. Required to run live loops: the engine claims work, reports progress and sends every model call through it, and without it registers no stage executor |
+| `OURO_ENGINE_CLONE_DIR` | no | `/var/lib/ouroboros-engine/clones` | Mount a volume — the repository clones |
+| `OURO_ENGINE_RUN_DIR` | live execution | `/var/lib/ouroboros-engine/runs` | Mount a volume — each live run's working tree; allow `OURO_ENGINE_RUN_MAX_MB` (2048) free per concurrent run |
 
-Leave `OURO_RUN_SIMULATOR_SECRET` and `OURO_REST_URL` **unset**. They exist for the
-development-only run simulator, which is not in the production image
+Leave `OURO_RUN_SIMULATOR_SECRET` **unset**. It exists for the development-only run simulator,
+which is not in the production image
 ([`ouroboros-engine/README.md`](ouroboros-engine/README.md)).
+
+**Live execution** is off until REST's `OURO_LIVE_EXECUTION_ENABLED` is `true`, and it also needs
+the engine's `OURO_REST_URL` and run volume above. What the loop may do, what it cannot protect
+against, its credentials, limits and stopping are on the docs site's
+[Live execution](https://docs.ouroboros.build/administration/live-execution) page.
 
 ### 3.4 `rest` — `ouroboros-rest`
 
@@ -358,6 +366,13 @@ services:
     environment:
       OURO_ENGINE_SHARED_SECRET: ${OURO_ENGINE_SHARED_SECRET}
       OURO_LOG_LEVEL: info
+      # Live execution only: REST's internal address, and the two engine volumes.
+      OURO_REST_URL: http://rest:4000
+      OURO_ENGINE_CLONE_DIR: /var/lib/ouroboros-engine/clones
+      OURO_ENGINE_RUN_DIR: /var/lib/ouroboros-engine/runs
+    volumes:
+      - ouroboros-engine-clones:/var/lib/ouroboros-engine/clones
+      - ouroboros-engine-runs:/var/lib/ouroboros-engine/runs
     restart: unless-stopped
 
   rest:
@@ -410,6 +425,8 @@ volumes:
   ouroboros-db-data:
   ouroboros-runner-releases:
   ouroboros-artifacts:
+  ouroboros-engine-clones:
+  ouroboros-engine-runs:
 ```
 
 The development `docker-compose.yml` differs on purpose: it publishes REST and the UI on

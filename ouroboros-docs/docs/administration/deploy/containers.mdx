@@ -109,6 +109,7 @@ Listens on `8000` on all interfaces, as the `engine` user. Its container health 
 | <EnvVar name="OURO_ENGINE_RUN_IDLE_HOURS" /> | no | `168` | How long an unopened run tree is kept before it is swept. |
 | <EnvVar name="OURO_ENGINE_HEARTBEAT_SECONDS" /> | no | `5` | How often a running run's heartbeat is reported. |
 | <EnvVar name="OURO_ENGINE_WORKER_ID" /> | no | the host name | The name the engine claims issues and starts runs under. |
+| <EnvVar name="OURO_REST_URL" /> | live execution | `http://rest:4000` | The REST service's **internal** address. Required to run live loops: the engine claims work, reports progress and sends every model call through it. Without it the engine registers no stage executor. See [Live execution § Turning it on](../live-execution.mdx#turning-it-on). |
 
 The engine writes two things. The first is the **clones** the code & git mining tool reads, one
 per workspace and repository. Mount a volume at `/var/lib/ouroboros-engine/clones` and set
