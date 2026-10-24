@@ -180,6 +180,25 @@ const SEEDED_REPOS = [
 ];
 
 /**
+ * Issues a repository starts with, every reset — the live slice's one bug (#1314, DI.5), as
+ * `R__dev_seed_live_slice.sql` mirrors it and the provider fixture's recording was made against
+ * it, so a deployment with no seed (`scripts/reference-run.sh --fixture`, DL.2 #1326) reaches the
+ * same issue through ordinary sync. Numbered below {@link FIRST_ISSUE_NUMBER}, so nothing a leg
+ * files can collide with it.
+ */
+const SEEDED_ISSUES = [
+  {
+    slug: "acme-robotics/helios-greeter",
+    number: 1,
+    title: "greet: the exclamation mark is missing",
+    body:
+      "`bin/greet World` prints `Hello, World` — the exclamation mark the README promises is missing.\n\n" +
+      "Expected: `Hello, World!` for `bin/greet World`, and `Hello, world!` when no name is given. `sh tests/check.sh` must pass.",
+    labels: ["live-slice"],
+  },
+];
+
+/**
  * The first issue number this tracker hands out — see the module note on why it is not 1.
  */
 const FIRST_ISSUE_NUMBER = 9000;
@@ -384,6 +403,24 @@ function reset() {
 
   nextIssueId = 1;
   creationsBeforeRefusal = null;
+
+  const seededAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  for (const seeded of SEEDED_ISSUES) {
+    repos.get(seeded.slug).issues.push({
+      id: nextIssueId,
+      number: seeded.number,
+      title: seeded.title,
+      body: seeded.body,
+      state: "open",
+      labels: [...seeded.labels],
+      milestone: null,
+      createdAt: seededAt,
+      updatedAt: seededAt,
+      blockedBy: [],
+      subIssues: [],
+    });
+    nextIssueId += 1;
+  }
 
   pulls.clear();
   comments.clear();

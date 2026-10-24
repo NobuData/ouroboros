@@ -53,13 +53,13 @@ in RC1; they are candidates for the release candidates after it. The Studio moun
 
 ## Progress
 
-**38 of 44 ordered issues are closed.** Every issue number in this document links to its
+**39 of 44 ordered issues are closed.** Every issue number in this document links to its
 GitHub issue, and a **✅** in front of one means that issue is **closed**.
 
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | R0, R1, R2, R3, R4, R5 | **33** |
-| 🟡 **In progress** | R7 | **5** of 10 |
+| 🟡 **In progress** | R7 | **6** of 10 |
 | ⬜ **Not started** | R6 | **0** of 1 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -378,7 +378,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **10 issues** · 21 complexity points across the eight sized issues · order **#35–#44**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epics DK, DL, DG; Phase 6) · promoted from Onboarding (BD.1) · two Settings defects
-> **Status:** 🟡 **In progress** — 5 of 10 issues closed
+> **Status:** 🟡 **In progress** — 6 of 10 issues closed
 
 **Goal.** Turn the gate into something a person meets: a readiness preflight, wizard states that never start a simulated first loop, the live first-loop experience, the administration page for switching execution on, a reproducible and recorded reference run, site numbers that are that run's numbers, and the final documentation sweep. Close the two remaining defects.
 
@@ -395,7 +395,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 | 37 | **DK.2** | ✅ [#1319](https://github.com/NobuData/ouroboros/issues/1319) | Wizard readiness states — no simulated first loop | ouroboros-ui, ouroboros-docs | M | DK.1 |
 | 38 | **BD.1** | ✅ [#396](https://github.com/NobuData/ouroboros/issues/396) | Live first-loop experience | ouroboros-ui, ouroboros-rest | M | DK.1, DK.2, DI.6 |
 | 39 | **DK.3** | ✅ [#1325](https://github.com/NobuData/ouroboros/issues/1325) | Administration — enabling live execution | ouroboros-docs, HOSTING.md | S | DI.6 |
-| 40 | **DL.2** | [#1326](https://github.com/NobuData/ouroboros/issues/1326) | Reproducible reference run — script & demonstration document | scripts, docs | M | DI.6, DL.1 |
+| 40 | **DL.2** | ✅ [#1326](https://github.com/NobuData/ouroboros/issues/1326) | Reproducible reference run — script & demonstration document | scripts, docs | M | DI.6, DL.1 |
 | 41 | **DL.3** | [#1327](https://github.com/NobuData/ouroboros/issues/1327) | Recorded reference run & evidence bundle | docs, ouroboros-docs | S | DL.2 |
 | 42 | **DL.4** | [#1328](https://github.com/NobuData/ouroboros/issues/1328) | Replace the fictional hero statistics with the reference run's facts | ouroboros-web | S | DL.3 |
 | 43 | **DG.4** | [#1322](https://github.com/NobuData/ouroboros/issues/1322) | Retire "simulated" in the documentation — sweep & wording guard | ouroboros-docs, docs, README.md, HOSTING.md | M | DI.6 |

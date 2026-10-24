@@ -163,6 +163,51 @@ jobs:
         if: always()
         run: docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile full down -v --remove-orphans
 
+  # DL.2 (#1326): the reference run's script, end to end against the stand-ins — the recorded
+  # provider, the git host and the tracker — so it cannot rot between real runs. It brings its
+  # own stack up (production-configured, unseeded) and, with --keep, leaves it for the logs.
+  reference-run:
+    name: e2e/reference-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Run the reference run against the recorded fixtures
+        run: >-
+          scripts/reference-run.sh --fixture --repo acme-robotics/helios-greeter --issue 1 --yes
+          --keep --out reference-run-export
+
+      - name: Upload the export
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-run-export
+          path: reference-run-export
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: What each service reported
+        if: failure()
+        run: |
+          docker compose -p ouroboros-reference-fixture -f docker-compose.yml -f docker-compose.e2e.yml \
+            -f docker-compose.e2e-unseeded.yml -f docker-compose.e2e-production.yml --profile full ps --all
+          docker compose -p ouroboros-reference-fixture -f docker-compose.yml -f docker-compose.e2e.yml \
+            -f docker-compose.e2e-unseeded.yml -f docker-compose.e2e-production.yml --profile full logs --tail 200
+
+      - name: Tear the stack down
+        if: always()
+        run: >-
+          docker compose -p ouroboros-reference-fixture -f docker-compose.yml -f docker-compose.e2e.yml
+          -f docker-compose.e2e-unseeded.yml -f docker-compose.e2e-production.yml --profile full
+          down -v --remove-orphans
+
   failure-modes:
     name: e2e/failure-modes
     runs-on: ubuntu-latest
