@@ -1,0 +1,45 @@
+# docker-compose.reference.yml — the reference run's stack (DL.2, #1326).
+#
+# Laid over docker-compose.yml by scripts/reference-run.sh, never on its own:
+#
+#   docker compose -p ouroboros-reference -f docker-compose.yml -f docker-compose.reference.yml \
+#     --profile full --profile runner up -d --build --wait
+#
+# What it changes, and nothing else:
+#
+#   * **No seed.** flyway applies the migrations only (`flyway.toml`), so the workspace the run
+#     uses is the one the script creates — nobody's demo data.
+#   * **Production REST.** `NODE_ENV=production`: password sign-in is off, and the run simulator
+#     is blanked, so nothing can stand a simulated run in for the real one.
+#   * **Live execution on.** `OURO_LIVE_EXECUTION_ENABLED=true` on REST, and the engine's way back
+#     to it, `OURO_REST_URL` — without which the engine registers no stage executor (see
+#     Administration → Live execution in the docs).
+#   * **A build machine.** The base file's `runner` profile — the farm gateway, the runner release
+#     and the machine — is turned on by the script's `--profile runner`. The machine trusts the
+#     gateway's CA from the shared volume, as an administrator hands one over.
+#
+# Real hosts: GitHub and Anthropic are reached at their own addresses, with the person's own
+# credentials, which the script hands REST through its API — none of them is written here.
+
+services:
+  flyway:
+    command:
+      - -workingDirectory=/flyway/project
+      - -configFiles=/flyway/project/flyway.toml
+      - -url=jdbc:postgresql://db:5432/${OURO_DB_NAME:-ouroboros}
+      - -user=${OURO_DB_USER:-ouroboros}
+      - -password=${OURO_DB_PASSWORD:-ouroboros}
+      - -schemas=${OURO_DB_SCHEMA:-ouroboros}
+      - migrate
+
+  engine:
+    environment:
+      OURO_REST_URL: "http://rest:4000"
+
+  rest:
+    environment:
+      NODE_ENV: production
+      OURO_RUN_SIMULATOR_SECRET: ""
+      OURO_RUN_SIMULATOR_IN_PRODUCTION: "false"
+      OURO_LIVE_EXECUTION_ENABLED: "true"
+      OURO_LISTEN_HOST: "0.0.0.0"

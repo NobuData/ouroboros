@@ -2051,7 +2051,7 @@ an operator has to do first.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | DL.1 | ✅ #1320 | 🟢 Done | ouroboros: [DL.1] Public sample repository & issue set | A small real project with a build, tests and ten well-formed issues, owned and licensed for demonstration | mvp, live-loop, infra, documentation | Y | Y | M | new repository, docs |
-| DL.2 | #1326 | 🟡 Open | ouroboros: [DL.2] Reproducible reference run — script & demonstration document | One command from a clean checkout to a draft pull request on the sample repository, with pinned versions | mvp, live-loop, infra, documentation | N (after DI.6, DL.1) | Y | M | scripts, docs |
+| DL.2 | ✅ #1326 | 🟢 Done | ouroboros: [DL.2] Reproducible reference run — script & demonstration document | One command from a clean checkout to a draft pull request on the sample repository, with pinned versions | mvp, live-loop, infra, documentation | N (after DI.6, DL.1) | Y | M | scripts, docs |
 | DL.3 | #1327 | 🟡 Open | ouroboros: [DL.3] Recorded reference run & evidence bundle | A recording, the exported transcript, the pull request and the cost — published with what they do not show | mvp, live-loop, documentation | N (after DL.2) | Y | S | docs, ouroboros-docs |
 | DL.4 | #1328 | 🟡 Open | ouroboros-web: [DL.4] Replace the fictional hero statistics with the reference run's facts | The marketing page states what one run measured, linked to its evidence, and no rate | mvp, live-loop, design | N (after DL.3) | Y | S | ouroboros-web |
 | DL.5 | #1329 | 🟡 Open | ouroboros: [DL.5] Reference benchmark — enough runs to state a rate | Thirty or more runs across the sample issues, with a published method, before any percentage is claimed | v2, live-loop, infra, insights, documentation | N (after DL.3) | N | M | scripts, docs, ouroboros-web |
@@ -2131,7 +2131,7 @@ an operator has to do first.
 
 ### Issue DL.2 — ouroboros: [DL.2] Reproducible reference run — script & demonstration document
 
-> **GitHub issue:** #1326 · **Status:** 🟡 Open · **Parent epic:** #1298
+> **GitHub issue:** ✅ #1326 · **Status:** 🟢 Done · **Parent epic:** #1298
 
 - **Problem Statement:** The repository has seven demonstration documents
   (`DEMONSTRATION_P0`–`P6`) that walk the control plane phase by phase; the
