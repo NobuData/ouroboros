@@ -62,6 +62,7 @@ yarn check:config-reference   # fail if that reference is stale (yarn test check
                               # see "The configuration reference" below
 yarn check:coverage           # fail if a UI route, a variable or a flag is undocumented —
                               # see "The docs coverage gate" below
+yarn check:loop-wording       # fail if a page says "simulated" outside loop-wording.allow.json
 ```
 
 **CI.** [`ci/docs`](../.github/workflows/docs.yml) runs `yarn install --immutable`, `lint`,
@@ -610,6 +611,15 @@ beside it, so one command answers whether anything shipped undocumented. `ci/doc
 `ouroboros-ui/app/**/page.tsx`, so a new route fails the pull request that adds it until the
 entry is there. The reading is [`scripts/coverage.ts`](scripts/coverage.ts), pure, and
 `tests/coverage.test.ts` holds it.
+
+**Loop wording.** The loop runs for real, so a page may say "simulated" only where
+[`loop-wording.allow.json`](loop-wording.allow.json) allows it: the run simulator (a test tool),
+the **Simulated** data origin, and a workflow dry run, which really does simulate. Each entry is a
+phrase, the pages it may appear on and the reason it is true. `yarn check:loop-wording`
+([`scripts/check-loop-wording.ts`](scripts/check-loop-wording.ts), a step of `ci/docs`,
+[#1322](https://github.com/NobuData/ouroboros/issues/1322)) fails on any other occurrence and on
+an entry that no longer matches its page. Rewrite the sentence to say what it means (a live run,
+a draft-only loop, the run simulator); add an entry only when "simulated" is true there.
 
 ### Diagrams
 

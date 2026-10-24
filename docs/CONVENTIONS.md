@@ -863,6 +863,11 @@ What travels with the page:
   entry for a route that no longer does, and runs the variable and flag checks beside it; the
   route files are in `ci/docs`' path filter, so the failure lands on the change that added the
   route.
+- **Loop wording**: the loop runs for real, so no page calls it simulated
+  ([#1322](https://github.com/NobuData/ouroboros/issues/1322)). `yarn check:loop-wording` fails
+  `ci/docs` when "simulated" appears outside `ouroboros-docs/loop-wording.allow.json`. That file
+  allows the run simulator, its **Simulated** data origin and a workflow dry run, each phrase
+  with its pages and its reason, so an exception is a reviewed diff.
 
 The module's version moves with the pages (§ 8): a **patch** for edits to existing pages or
 screenshots, a **minor** for a new page. A pull request that touches the site runs the site's

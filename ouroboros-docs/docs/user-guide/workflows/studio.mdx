@@ -130,8 +130,9 @@ For a **model stage**:
   the write is refused and the stage fails. A stage without **May push fixup commits**
   cannot push one.
 
-A **build or test** stage takes a **Runner pool** and a **Command**. A live run builds on the
-named pool and fails the stage if none is set; with no **Command**, the pool's default command
+A **build or test** stage takes a **Runner pool** and a **Command**. A live run (one that needs
+[live execution](../../administration/live-execution.mdx) switched on — it is off by default)
+builds on the named pool and fails the stage if none is set; with no **Command**, the pool's default command
 runs. The command is split into arguments the way a shell would, with nothing expanded. A
 **decision or gate**
 takes its **Kind** and the condition it tests; a **terminal** takes its **Action** and, for
