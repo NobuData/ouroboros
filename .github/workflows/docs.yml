@@ -118,6 +118,14 @@ jobs:
         working-directory: ouroboros-docs
         run: yarn check:coverage
 
+      # The loop runs for real (#1322): a page may say "simulated" only where
+      # loop-wording.allow.json says it may — the run simulator, its data origin, a workflow dry
+      # run — so the word cannot creep back into a page about the loop. An exception is a
+      # reviewed diff to that file.
+      - name: Loop wording
+        working-directory: ouroboros-docs
+        run: yarn check:loop-wording
+
       # A green build can still produce an image that serves nothing (#1208). So the image is
       # built here, on every event, loaded into this runner's daemon and never pushed — no
       # credential is involved, so a fork's pull request runs it too — and then run and probed:

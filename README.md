@@ -3,6 +3,11 @@
 **Infinity in Autonomy** — an autonomous software delivery loop: issues in, verified
 pull requests out, continuously.
 
+The loop runs for real: models write the change, your own runners build it, and the result opens
+as a pull request. In this version it starts only once an administrator switches live execution
+on (`OURO_LIVE_EXECUTION_ENABLED`, off by default), and it opens draft pull requests only — see
+[Live execution](https://docs.ouroboros.build/administration/live-execution).
+
 This repository is a monorepo of modules across four toolchains, each owning how it is
 built, run and tested, with [Turborepo](https://turborepo.com) over them so that one
 command starts the whole stack:

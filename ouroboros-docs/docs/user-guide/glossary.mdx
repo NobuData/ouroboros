@@ -28,8 +28,16 @@ suggests changes. See [Build Analyzer](./analyzer.mdx).
 **Build farm** — The runners your workspace builds and tests on, on your own hardware. See
 [Build farm](../administration/build-farm.mdx).
 
+**Data origin** — Where a loop and everything from it came from: **live** (a real loop),
+**simulated** (the run simulator, a test tool) or **demo** (development and test data). Data
+that is not live is labelled in words. See [Concepts](./concepts.mdx#where-the-data-comes-from).
+
 **Decision** — A question a loop is blocked on, answered on its card in Needs You. See
 [Needs-you inbox](./inbox.mdx).
+
+**Draft-only loop** — How a live run works in this version: it opens its pull request only as
+a draft, and only in a repository whose dry-run policy is on; nothing it does merges. See
+[Concepts](./concepts.mdx#dry-run-and-live).
 
 **Dry run (workflow)** — A rehearsal of a workflow against a sized issue in the Workflow
 Studio: no model is called, nothing runs and nothing is recorded. See
@@ -62,6 +70,11 @@ playbooks. See [Knowledge](./knowledge.mdx).
 
 **Live** — A loop with dry-run off: a pull request that passes its gates and your policies
 merges without a person. See [Concepts](./concepts.mdx#dry-run-and-live).
+
+**Live run** — A run real models, tools and runners did, with data origin **live**. It starts
+only once an administrator has switched live execution on for the deployment — it is off by
+default — and it is a draft-only loop. See
+[Live execution](../administration/live-execution.mdx).
 
 **Loop** — The cycle from issue to merged pull request, and the name a run carries in the
 app (**Loop #*N***). See [Concepts](./concepts.mdx).
@@ -108,8 +121,10 @@ administrator explicitly allows it. See [Concepts](./concepts.mdx#dry-run-and-li
 **Runner** — The agent you install on a build machine; it dials out to Ouroboros and runs
 builds and tests. See [Build farm](../administration/build-farm.mdx).
 
-**Simulated run** — A run opened by the run simulator: no executor, repository or model did
-its work. It carries a **Simulated** label. See [Concepts](./concepts.mdx#dry-run-and-live).
+**Simulated run** — A run opened by the run simulator, a test and development tool: no
+executor, repository or model did its work. It carries a **Simulated run** banner and the data
+origin **Simulated**. A production deployment opens none unless an administrator explicitly
+allows the simulator. See [Concepts](./concepts.mdx#dry-run-and-live).
 
 **Sizing** — The effort estimate, XS to XL, Ouroboros gives each issue. See
 [Issues](./issues.mdx).
