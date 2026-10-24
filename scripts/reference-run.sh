@@ -15,6 +15,7 @@
 #   usage.csv      the run's metered model calls (token_usage rows)
 #   farm-job.log   the build job's log
 #   pr-url.txt     the draft pull request's URL
+#   run.json       the run as GET /api/v1/runs/{id} last read it — its stages, attempts and build
 #   manifest.json  every component's version, the commit and tag, the aliases' concrete models
 #
 # Re-running at the same tag takes the same path. The model's output will differ between runs;
@@ -451,6 +452,9 @@ if [ -n "$RUN" ]; then
   fi
   js '((d.items || [])[0] || {}).url || ""' "$work/pulls.json" > "$OUT/pr-url.txt"
 fi
+# The stepper's attempts and durations, which scripts/reference-bundle.sh (DL.3) reads its
+# correction rounds and build duration from.
+cp "$work/run.json" "$OUT/run.json"
 
 api GET /api/v1
 REST_VERSION=$(js 'd.version' "$work/body" 2> /dev/null || true)

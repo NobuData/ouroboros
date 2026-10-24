@@ -163,7 +163,7 @@ check_not_matches "$(cat "$work/stub/argv" "$work/stub/docker")" "$KEY|$GHTOKEN|
 check_not_matches "$out" "$KEY|$GHTOKEN|$ENROLL|$SERVICE" 'no secret is printed'
 check_contains "$work/stub/config" "$SERVICE" 'the export reads with the service-account token'
 check_contains "$work/stub/docker" ' down ' 'the stack is taken down afterwards'
-for file in run.jsonl usage.csv farm-job.log pr-url.txt manifest.json; do
+for file in run.jsonl usage.csv farm-job.log pr-url.txt run.json manifest.json; do
   check_exists "$work/out/$file" "the export holds $file"
 done
 check_contains "$work/out/pr-url.txt" 'https://github.com/me/sample/pull/12' 'pr-url.txt carries the URL'
