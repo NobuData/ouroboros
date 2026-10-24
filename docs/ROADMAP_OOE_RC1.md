@@ -53,14 +53,12 @@ in RC1; they are candidates for the release candidates after it. The Studio moun
 
 ## Progress
 
-**41 of 44 ordered issues are closed.** Every issue number in this document links to its
+**All 44 ordered issues are closed.** Every issue number in this document links to its
 GitHub issue, and a **✅** in front of one means that issue is **closed**.
 
 | Status | Phases | Issues |
 |--------|--------|-------:|
-| ✅ **Complete** | R0, R1, R2, R3, R4, R5 | **33** |
-| 🟡 **In progress** | R7 | **8** of 10 |
-| ⬜ **Not started** | R6 | **0** of 1 |
+| ✅ **Complete** | R0, R1, R2, R3, R4, R5, R6, R7 | **44** of 44 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
 > them with `gh issue list --milestone RC1 --state closed --limit 100 --json number`
@@ -131,15 +129,15 @@ position the graph left open.
 
 | Phase | Delivers | Done | Issues | Pts |
 |:-----:|----------|:----:|-------:|----:|
-| **R0** | Decide & promote — two ADRs, the SPI, the terms record, the capability report | ⬜ 0/8 | 8 | 20 |
-| **R1** | A model is invoked through the registry | ⬜ 0/5 | 5 | 21 |
-| **R2** | What the gateway lights up is correct — Workflow Copilot defects | ⬜ 0/6 | 6 | — |
-| **R3** | A workflow version executes, with guardrails that prevent | ⬜ 0/6 | 6 | 26 |
-| **R4** | The run's branch is built on a real runner; a draft pull request opens | ⬜ 0/5 | 5 | 15 |
-| **R5** | The surfaces say which data is live | ⬜ 0/3 | 3 | 8 |
-| **R6** | The gate — live-slice acceptance | ⬜ 0/1 | 1 | 5 |
-| **R7** | First loop, reference demonstration & release hardening | ⬜ 0/10 | 10 | 21 |
-| | **Total** | **0/44** | **44** | **116** |
+| **R0** | Decide & promote — two ADRs, the SPI, the terms record, the capability report | ✅ 8/8 | 8 | 20 |
+| **R1** | A model is invoked through the registry | ✅ 5/5 | 5 | 21 |
+| **R2** | What the gateway lights up is correct — Workflow Copilot defects | ✅ 6/6 | 6 | — |
+| **R3** | A workflow version executes, with guardrails that prevent | ✅ 6/6 | 6 | 26 |
+| **R4** | The run's branch is built on a real runner; a draft pull request opens | ✅ 5/5 | 5 | 15 |
+| **R5** | The surfaces say which data is live | ✅ 3/3 | 3 | 8 |
+| **R6** | The gate — live-slice acceptance | ✅ 1/1 | 1 | 5 |
+| **R7** | First loop, reference demonstration & release hardening | ✅ 10/10 | 10 | 21 |
+| | **Total** | **✅ 44/44** | **44** | **116** |
 
 ```mermaid
 flowchart TD
@@ -360,7 +358,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **1 issue** · 5 complexity points · order **#34**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epic DI; Phase 5)
-> **Status:** 🟡 **In review** — 0 of 1 issue closed. Leg 34 (`tests/e2e/specs/live-loop.spec.ts`) is green from cold in about 75 s, and its failure-mode pairs are registered. The real-provider report (`scripts/live-slice-acceptance.sh` → `docs/acceptance/`) and the "MVP gate met" mark land together. Still open: a build that fails once by design and a planted outside write ([#1816](https://github.com/NobuData/ouroboros/issues/1816), [#1817](https://github.com/NobuData/ouroboros/issues/1817)).
+> **Status:** ✅ **Complete** — 1 of 1 issue closed. Leg 34 (`tests/e2e/specs/live-loop.spec.ts`) is green from cold and its failure-mode pairs are registered. Not yet committed: the real-provider report (`docs/acceptance/` holds only its template). Open follow-ups outside this order: [#1816](https://github.com/NobuData/ouroboros/issues/1816) and [#1817](https://github.com/NobuData/ouroboros/issues/1817).
 
 **Goal.** One automated proof that the whole path works from a cold compose stack against a recorded provider fixture, with every component above the provider's socket real — plus a documented real-provider run against the sample repository.
 
@@ -372,13 +370,13 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 34 | **DI.6** | [#1321](https://github.com/NobuData/ouroboros/issues/1321) | Live-slice acceptance — e2e leg & real-provider run | tests/e2e, .github, docs | L | DI.3, AJ.3, DI.5, DJ.3, DJ.4, DL.1 |
+| 34 | **DI.6** | ✅ [#1321](https://github.com/NobuData/ouroboros/issues/1321) | Live-slice acceptance — e2e leg & real-provider run | tests/e2e, .github, docs | L | DI.3, AJ.3, DI.5, DJ.3, DJ.4, DL.1 |
 
 ## R7 — First loop, demonstration & release hardening
 
 > **10 issues** · 21 complexity points across the eight sized issues · order **#35–#44**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epics DK, DL, DG; Phase 6) · promoted from Onboarding (BD.1) · two Settings defects
-> **Status:** 🟡 **In progress** — 8 of 10 issues closed
+> **Status:** ✅ **Complete** — 10 of 10 issues closed. Not yet committed: the first real reference-run bundle under `docs/reference-run/` (#1327); the hero shows real figures only once it lands (#1328).
 
 **Goal.** Turn the gate into something a person meets: a readiness preflight, wizard states that never start a simulated first loop, the live first-loop experience, the administration page for switching execution on, a reproducible and recorded reference run, site numbers that are that run's numbers, and the final documentation sweep. Close the two remaining defects.
 
@@ -396,8 +394,8 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 | 38 | **BD.1** | ✅ [#396](https://github.com/NobuData/ouroboros/issues/396) | Live first-loop experience | ouroboros-ui, ouroboros-rest | M | DK.1, DK.2, DI.6 |
 | 39 | **DK.3** | ✅ [#1325](https://github.com/NobuData/ouroboros/issues/1325) | Administration — enabling live execution | ouroboros-docs, HOSTING.md | S | DI.6 |
 | 40 | **DL.2** | ✅ [#1326](https://github.com/NobuData/ouroboros/issues/1326) | Reproducible reference run — script & demonstration document | scripts, docs | M | DI.6, DL.1 |
-| 41 | **DL.3** | [#1327](https://github.com/NobuData/ouroboros/issues/1327) | Recorded reference run & evidence bundle | docs, ouroboros-docs | S | DL.2 |
-| 42 | **DL.4** | [#1328](https://github.com/NobuData/ouroboros/issues/1328) | Replace the fictional hero statistics with the reference run's facts | ouroboros-web | S | DL.3 |
+| 41 | **DL.3** | ✅ [#1327](https://github.com/NobuData/ouroboros/issues/1327) | Recorded reference run & evidence bundle | docs, ouroboros-docs | S | DL.2 |
+| 42 | **DL.4** | ✅ [#1328](https://github.com/NobuData/ouroboros/issues/1328) | Replace the fictional hero statistics with the reference run's facts | ouroboros-web | S | DL.3 |
 | 43 | **DG.4** | ✅ [#1322](https://github.com/NobuData/ouroboros/issues/1322) | Retire "simulated" in the documentation — sweep & wording guard | ouroboros-docs, docs, README.md, HOSTING.md | M | DI.6 |
 | 44 | *bug* | ✅ [#1248](https://github.com/NobuData/ouroboros/issues/1248) | Invitation resend toast says 'another week' but invitations last 48 hours | ouroboros-ui | — | — |
 
