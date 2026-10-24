@@ -119,3 +119,10 @@ html[data-theme="dark"] {
   font-size: 0.75rem;
   white-space: nowrap;
 }
+
+/* The marker is a link to the release's feature list. */
+a.navbar__release:hover,
+a.navbar__release:focus-visible {
+  color: var(--accent);
+  text-decoration: none;
+}

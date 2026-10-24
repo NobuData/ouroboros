@@ -225,7 +225,12 @@ the React page `src/pages/index.tsx` ([#1169](https://github.com/NobuData/ourobo
 `<SectionCards>`, quick links to getting started, deploying and enrolling a runner, and the
 dashboard as `<Screenshot id="home.dashboard" />`. Its copy follows the root `README.md`,
 not the marketing site. The navbar lists the sections in the order User Guide, Administration, CLI, with a GitHub link
-and the colour-mode toggle on the right, after the search box. The footer has a link
+and the colour-mode toggle on the right, after the search box, then the release marker
+(`RELEASE` in `site.constants.ts`, **RC1**). The marker links to the release's feature list,
+`src/pages/releases/rc1.mdx` at `/releases/rc1` (`RELEASE_NOTES_PATH`). Like the home page,
+that page is not a doc and sits in no section. It names features in the reader's terms and
+links each one to the page that documents it, with no ticket numbers; the home page links it
+too. When the release moves on, add the next release's page and repoint both constants. The footer has a link
 column per section, a "More" column (GitHub, ouroboros.build) and the copyright line
 `Copyright © 2025-2026 NobuData LLC`, which a test holds exactly.
 

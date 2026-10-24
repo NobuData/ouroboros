@@ -20,6 +20,9 @@ export const COPYRIGHT = "Copyright © 2025-2026 NobuData LLC";
  */
 export const RELEASE = "RC1";
 
+/** The page listing what the release named above contains — the navbar's release marker opens it. */
+export const RELEASE_NOTES_PATH = "/releases/rc1";
+
 /** The repository the site's sources live in — the navbar and footer GitHub links. */
 export const REPO_URL = "https://github.com/NobuData/ouroboros";
 

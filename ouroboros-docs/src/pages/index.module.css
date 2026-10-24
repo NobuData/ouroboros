@@ -86,3 +86,16 @@
   color: var(--ink-dim);
   font-size: var(--t-md);
 }
+
+/* The release line under the lead: which release the pages describe, linked to its features. */
+.release {
+  max-width: 42rem;
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+.release a {
+  white-space: nowrap;
+}
