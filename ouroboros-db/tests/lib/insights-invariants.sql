@@ -46,9 +46,9 @@
 -- --- one row per grain ---------------------------------------------------------------------------
 select pg_temp.must_hold(
   not exists (select 1 from ouroboros.metric_daily
-               group by organization_id, repo_ref, metric_id, dimension, day
+               group by organization_id, repo_ref, metric_id, dimension, origin, day
               having count(*) > 1),
-  'metric_daily_grain_key: no stored (workspace, repository, metric, dimension, day) has two rows — a day counted twice');
+  'metric_daily_grain_key: no stored (workspace, repository, metric, dimension, origin, day) has two rows — a day counted twice');
 
 -- --- a rate carries its components, and nothing else does ---------------------------------------
 select pg_temp.must_hold(
@@ -172,8 +172,8 @@ select pg_temp.must_hold(
       and (select array_agg(a.attname::text order by a.attname)
              from pg_attribute a
             where a.attrelid = c.conrelid and a.attnum = any(c.conkey))
-          = array['day', 'dimension', 'metric_id', 'organization_id', 'repo_ref']),
-  'metric_daily_grain_key: the grain is still a unique key over workspace, repository, metric, dimension and day');
+          = array['day', 'dimension', 'metric_id', 'organization_id', 'origin', 'repo_ref']),
+  'metric_daily_grain_key: the grain is still a unique key over workspace, repository, metric, dimension, origin and day (V154)');
 
 select pg_temp.must_hold(
   (select count(*) = 3 from pg_constraint

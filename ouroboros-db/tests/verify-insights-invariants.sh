@@ -229,8 +229,8 @@ expect_red 'today'"'"'s tokens row is stored twice' \
   'metric_daily_grain_key: no stored' \
   "alter table ouroboros.metric_daily drop constraint metric_daily_grain_key;
    insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, dimension,
-                                       day, value, meta)
-     select organization_id, repo_ref, metric_id, is_rate, dimension, day, value, meta
+                                       origin, day, value, meta)
+     select organization_id, repo_ref, metric_id, is_rate, dimension, origin, day, value, meta
        from ouroboros.metric_daily
       where organization_id = '$SEED_ORG' and metric_id = 'tokens' and day = $TODAY;"
 
