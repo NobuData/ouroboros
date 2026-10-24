@@ -202,3 +202,5 @@ A real run is published once, as a bundle under `docs/reference-run/<date>/` (DL
    SHA-256.
 6. **Have someone who did not perform the run review** *What this does not show*. They replace
    its `Reviewed by: _pending…_` line with their name in the pull request that commits the bundle.
+7. **Regenerate the site's figures:** `yarn gen:reference` in `ouroboros-web/`, committed with the
+   bundle. The hero then shows that run's figures, each linked to its file, with n = 1 beside them.

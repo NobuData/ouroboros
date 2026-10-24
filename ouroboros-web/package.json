@@ -1,12 +1,15 @@
 {
   "name": "ouroboros-web",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/reference-run.mjs --check && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --test \"scripts/*.test.mjs\"",
+    "gen:reference": "node scripts/reference-run.mjs --write",
+    "check:reference": "node scripts/reference-run.mjs --check"
   },
   "dependencies": {
     "next": "16.3.0",

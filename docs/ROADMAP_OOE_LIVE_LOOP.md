@@ -2239,6 +2239,11 @@ an operator has to do first.
 ### Issue DL.4 — ouroboros-web: [DL.4] Replace the fictional hero statistics with the reference run's facts
 
 > **GitHub issue:** #1328 · **Status:** 🟡 Open · **Parent epic:** #1298
+>
+> **Fictional figures removed; generator in place:** the hero reads `ouroboros-web/data/reference-run.json`, which
+> `yarn gen:reference` writes from the newest `docs/reference-run/<date>/` bundle. `yarn build`
+> and the web CI job fail when it is missing, stale or edited by hand. Until a bundle is
+> published, the hero shows no figure. The issue closes when the first real bundle's figures render.
 
 - **Problem Statement:** `ouroboros-web/app/page.tsx` leads with "92%
   autonomous merge rate · ~4 min to your first PR · $1.87 per merged PR · 31%
