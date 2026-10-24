@@ -2181,6 +2181,11 @@ an operator has to do first.
 ### Issue DL.3 — ouroboros: [DL.3] Recorded reference run & evidence bundle
 
 > **GitHub issue:** #1327 · **Status:** 🟡 Open · **Parent epic:** #1298
+>
+> **Tooling in place:** `scripts/reference-bundle.sh` assembles the bundle. It refuses fixture or
+> simulated exports, checksums every file and the recording, and derives each figure from a named
+> file. The issue stays open until a real run's bundle, the recording and the independent review
+> are committed, with the `first-loop.mdx` pointer.
 
 - **Problem Statement:** Competitors attach recordings to pull requests as a
   matter of course (gap analysis, capability matrix: "recorded evidence on the
