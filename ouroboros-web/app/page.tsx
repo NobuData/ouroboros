@@ -2,6 +2,7 @@ import Image from "next/image";
 import ThemeToggle from "./theme-toggle";
 import RotatingTagline, { RotatingHeadline } from "./rotating-tagline";
 import ReferenceRunStats from "./reference-run";
+import ReleaseSection, { ReleasePill } from "./release-section";
 
 const STAGES = [
   { label: "PULL", x: 50, y: 9.8, cls: "hot" },
@@ -225,6 +226,7 @@ export default function Home() {
             <span>OURO<b>BOROS</b></span>
           </a>
           <nav className="topnav" aria-label="Site">
+            <a href="#rc1">RC1</a>
             <a href="#loop">The Loop</a>
             <a href="#features">Features</a>
             <a href="#studio">Studio</a>
@@ -250,6 +252,7 @@ export default function Home() {
             height={311}
             priority
           />
+          <ReleasePill />
           <span className="eyebrow rise d1">ouroboros.build — autonomous development loops</span>
           <h1 className="rise d2">
             <RotatingHeadline />
@@ -377,6 +380,9 @@ export default function Home() {
             </div>
           </div>
         </section>
+
+        {/* what is new in the release */}
+        <ReleaseSection />
 
         {/* product shot */}
         <section className="wrap reveal" style={{ paddingBottom: 96 }}>

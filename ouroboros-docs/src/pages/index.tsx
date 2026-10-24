@@ -6,7 +6,7 @@ import useBaseUrl from "@docusaurus/useBaseUrl";
 
 import Screenshot from "../components/Screenshot";
 import SectionCards from "../components/SectionCards";
-import { BRAND_ASSETS } from "../../site.constants";
+import { BRAND_ASSETS, RELEASE, RELEASE_NOTES_PATH } from "../../site.constants";
 import styles from "./index.module.css";
 
 /**
@@ -76,6 +76,10 @@ function Hero(): ReactNode {
         writes the change. Your own build farm builds and tests it, and Ouroboros verifies the pull
         request against the issue&apos;s acceptance criteria before anything merges. When the loop
         needs a decision, it asks you in the needs-you inbox and waits.
+      </p>
+      <p className={styles.release}>
+        These pages describe <strong>{RELEASE}</strong>, the first release in which the loop runs
+        for real. <Link to={RELEASE_NOTES_PATH}>What is in {RELEASE} →</Link>
       </p>
     </header>
   );

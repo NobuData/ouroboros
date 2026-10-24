@@ -162,3 +162,22 @@ test("the page carries none of the demonstration tenant's figures", () => {
   assert.match(page, /stops at a draft pull request/);
   assert.match(page, /n = 1/);
 });
+
+test("the page announces RC1 and links each new feature to its documentation", async () => {
+  const release = await import("../app/release.ts");
+  assert.equal(release.RELEASE, "RC1");
+  assert.equal(release.RELEASE_NOTES_URL, "https://docs.ouroboros.build/releases/rc1");
+  assert.ok(release.RELEASE_FEATURES.length >= 6);
+  for (const f of release.RELEASE_FEATURES) {
+    assert.ok(f.href.startsWith("https://docs.ouroboros.build/"), `${f.title} links outside the docs`);
+    assert.doesNotMatch(`${f.title} ${f.copy}`, /\d+(\.\d+)?\s?%|per merged/, `${f.title} states a rate`);
+  }
+  assert.match(release.RELEASE_LIMITS, /draft pull requests only/);
+  const page = fs.readFileSync(path.join(WEB_ROOT, "app/page.tsx"), "utf8");
+  const section = fs.readFileSync(path.join(WEB_ROOT, "app/release-section.tsx"), "utf8");
+  assert.match(page, /<ReleasePill \/>/);
+  assert.match(page, /<ReleaseSection \/>/);
+  assert.match(page, /href="#rc1">RC1</);
+  assert.match(section, /id="rc1"/);
+  assert.match(section, /href=\{RELEASE_NOTES_URL\}/);
+});
