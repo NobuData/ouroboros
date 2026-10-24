@@ -540,6 +540,9 @@ describe("the members, invites, roles & API tokens page (#1193)", () => {
       expect(source("ouroboros-rest", "src", "auth", file)).not.toContain("invitationExpiresIn");
     }
     expect(MEMBERS).toContain("An invitation lasts 48 hours.");
+    // The resend toast reads the time left from the resent invitation's expiry (#1248).
+    expect(MEMBERS).toMatch(/\*Invitation to … resent — it\s+is good for another 48 hours\.\*/);
+    expect(MEMBERS).not.toMatch(/another week/);
   });
 
   it("shows the screenshots the issue lists", () => {

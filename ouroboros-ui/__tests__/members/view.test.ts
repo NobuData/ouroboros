@@ -10,6 +10,8 @@ import {
   demotionWarning,
   directorySyncLine,
   initials,
+  invitationDone,
+  invitationLifetime,
   invitedAgo,
   isLastOwner,
   lastUsed,
@@ -193,5 +195,42 @@ describe("refusals", () => {
       "This is the workspace's last owner.",
     );
     expect(refusalSentence("  ")).toBe(WRITE_FAILED);
+  });
+});
+
+describe("the invitation toast (#1248)", () => {
+  const NOW = Date.parse("2026-10-08T02:36:14Z");
+  const inHours = (h: number) => new Date(NOW + h * 3_600_000).toISOString();
+
+  it("states the time a resent invitation has left, read from its expiry", () => {
+    expect(invitationDone("resend", "priya@acme.dev", inHours(48), NOW)).toBe(
+      "Invitation to priya@acme.dev resent — it is good for another 48 hours.",
+    );
+  });
+
+  it("never claims a week the server did not set", () => {
+    expect(invitationDone("resend", "priya@acme.dev", inHours(48), NOW)).not.toMatch(/week/);
+  });
+
+  it("says only that it was resent when the expiry is missing, unreadable or past", () => {
+    expect(invitationDone("resend", "priya@acme.dev", null, NOW)).toBe("Invitation to priya@acme.dev resent.");
+    expect(invitationDone("resend", "priya@acme.dev", "soon", NOW)).toBe("Invitation to priya@acme.dev resent.");
+    expect(invitationDone("resend", "priya@acme.dev", inHours(-1), NOW)).toBe("Invitation to priya@acme.dev resent.");
+  });
+
+  it("says a revoke plainly, whatever the expiry", () => {
+    expect(invitationDone("revoke", "priya@acme.dev", inHours(48), NOW)).toBe("Invitation to priya@acme.dev revoked.");
+  });
+
+  it.each([
+    [48, "48 hours"],
+    [47.6, "48 hours"],
+    [1, "1 hour"],
+    [0.2, "1 hour"],
+    [71, "71 hours"],
+    [72, "3 days"],
+    [168, "7 days"],
+  ])("reads %s hours left as %s", (hours, words) => {
+    expect(invitationLifetime(inHours(hours), NOW)).toBe(words);
   });
 });
