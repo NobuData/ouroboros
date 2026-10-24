@@ -650,15 +650,28 @@ on conflict do nothing;
 -- sorts after this file. An update, not part of the insert above, so the insert's one
 -- `run_id` column list stays the reservation's; it is idempotent, writing the values already
 -- there.
+--
+-- `stage_key` and `stage_attempt` arrive in V153, after the V140 schema the V141 rehearsal applies
+-- this seed to (ci/db), so the update runs as dynamic SQL once they are there.
 -- ---------------------------------------------------------------------------
-update ouroboros.build_jobs job
-   set run_id = run.id, stage_key = 'build', stage_attempt = 1
-  from ouroboros.organization org
-  join ouroboros.runs run on run.organization_id = org."id" and run.issue_number = 479
- where job.organization_id = org."id"
-   and org."slug" = 'acme-robotics'
-   and job.number = 479
-   and ${ouro_dev_seed};
+do $seed$
+begin
+  if ${ouro_dev_seed} and exists (select 1
+                                     from information_schema.columns
+                                    where table_schema = 'ouroboros'
+                                      and table_name = 'build_jobs'
+                                      and column_name = 'stage_key') then
+    execute $q$
+      update ouroboros.build_jobs job
+         set run_id = run.id, stage_key = 'build', stage_attempt = 1
+        from ouroboros.organization org
+        join ouroboros.runs run on run.organization_id = org."id" and run.issue_number = 479
+       where job.organization_id = org."id"
+         and org."slug" = 'acme-robotics'
+         and job.number = 479
+    $q$;
+  end if;
+end $seed$;
 
 -- ---------------------------------------------------------------------------
 -- The live log — the LIVE card's listing, in the chunks it was streamed as.
