@@ -204,7 +204,8 @@ export class CriteriaService {
    *
    * @param organizationId - The workspace.
    * @param prId - The PR.
-   * @param actor - Who imported them — the rows' `created_by`, confirming them.
+   * @param actor - Who imported them — the rows' `created_by`, confirming them. A null id is an
+   *   import no person asked for: the draft PR publisher's (DI.3, #1311) for a run nobody started.
    * @returns What was written and what was not.
    * @throws {ConflictError} `plan_context_missing` when the PR's ticket has no plan draft with a
    *   body; `plan_criteria_missing` when the draft states no acceptance-criteria section.
@@ -212,7 +213,7 @@ export class CriteriaService {
   async importPlan(
     organizationId: string,
     prId: string,
-    actor: CriteriaActor,
+    actor: { readonly id: string | null },
   ): Promise<CriteriaImportResource> {
     const pr = await this.prOrThrow(organizationId, prId);
     const draft =
@@ -244,6 +245,28 @@ export class CriteriaService {
       alreadyPresent: plan.claims.filter((claim) => existing.has(claim)),
       tooLong: plan.tooLong,
     };
+  }
+
+  /**
+   * The claims {@link CriteriaService.importPlan} would import for a ticket — its latest plan
+   * draft's acceptance-criteria section, read by the same `planDraft` + `planCriteria` path —
+   * before any PR exists to import them into. The draft PR publisher (DI.3,
+   * [#1311](https://github.com/NobuData/ouroboros/issues/1311)) lists them in the body it opens
+   * the PR with, then imports them into the PR it opened.
+   *
+   * @param organizationId - The workspace.
+   * @param ticketId - The ticket, or null when no source mirrored the run's issue.
+   * @returns The claims, in the order the plan states them; `[]` when there is no plan, no
+   *   acceptance-criteria section, or no ticket.
+   */
+  async planClaims(organizationId: string, ticketId: string | null): Promise<readonly string[]> {
+    if (ticketId === null) {
+      return [];
+    }
+
+    const draft = await this.store.planDraft(organizationId, ticketId);
+
+    return draft === undefined ? [] : planCriteria(draft.body).claims;
   }
 
   /**

@@ -321,8 +321,8 @@ def test_what_a_stage_would_do_is_said_and_not_done(
         "Not invoked — a dry run makes no model call."
     )
     assert _step(simulation, "test").annotation == (
-        "A build stage: runs `twister -p native_sim` on the `pool-a` runner pool. Not "
-        "dispatched — a dry run starts no build."
+        "A build stage: runs `twister -p native_sim` on the `pool-a` runner pool; a live "
+        "run's gate decides on its exit code. Not dispatched — a dry run starts no build."
     )
     assert _step(simulation, "open-pr").annotation == (
         "Ends the run by opening a pull request and auto-merging it with a `squash` merge, "
@@ -532,8 +532,9 @@ def test_a_loop_into_a_stage_that_declares_no_limit_is_reported_as_unbounded() -
         "loop and never walks it."
     )
     assert _step(simulation, "build").annotation == (
-        "A build stage: runs the repository's default command on the default runner pool. "
-        "Not dispatched — a dry run starts no build."
+        "A build stage: runs the repository's default command, but names no runner pool — "
+        "a live run fails this stage until one is set. Not dispatched — a dry run starts no "
+        "build."
     )
 
 

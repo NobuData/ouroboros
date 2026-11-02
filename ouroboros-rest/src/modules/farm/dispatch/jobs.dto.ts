@@ -41,7 +41,7 @@ export const ARGV_MAX_ITEMS = 256;
 export const ARGV_ITEM_MAX_LENGTH = 4096;
 
 /** A pool name — V040's `runner_pools_name_shape`. */
-const POOL_SHAPE = /^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$/;
+export const POOL_SHAPE = /^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$/;
 
 /** A GitHub `owner/name`. Case is ignored: V003 stores both lower-cased. */
 const REPOSITORY_SHAPE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
@@ -73,6 +73,14 @@ export interface BuildJobRequest {
    * working directory, such as `logs/serial-console.log` (#330).
    */
   readonly artifacts?: readonly string[];
+}
+
+/** The workflow stage of a run a build is submitted for (V153, AJ.3 #265). */
+export interface RunBuildStage {
+  /** `run_stages.stage_key` — the workflow node id. */
+  readonly key: string;
+  /** The stage's attempt, 1-based. */
+  readonly attempt: number;
 }
 
 /**

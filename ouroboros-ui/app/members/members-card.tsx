@@ -216,10 +216,13 @@ export function MembersCard({
     setBusyInvitations((current) => new Set(current).add(invitation.id));
 
     try {
+      // The resent invitation's expiry, which the toast states the time left from.
+      let expiresAt: string | null = null;
       if (action === "resend") {
         const result = await actions.resend(invitation.id);
         if (!result.ok) return say(result.reason, "error");
 
+        expiresAt = result.value.expiresAt;
         setInvitations((current) =>
           current.map((each) => (each.id === invitation.id ? result.value : each)),
         );
@@ -230,7 +233,7 @@ export function MembersCard({
         setInvitations((current) => current.filter((each) => each.id !== invitation.id));
       }
 
-      say(invitationDone(action, invitation.email));
+      say(invitationDone(action, invitation.email, expiresAt, Date.now()));
     } finally {
       setBusyInvitations((current) => {
         const copy = new Set(current);

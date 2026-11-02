@@ -35,6 +35,8 @@ export interface MetricsCacheKey {
   readonly metricId: string;
   readonly repo?: string;
   readonly dimension?: string;
+  /** The origin filter asked for (DJ.2): a live window and an `all` window are different answers. */
+  readonly origin: string;
   readonly range: string;
   readonly today: string;
 }
@@ -205,6 +207,7 @@ function keyOf(kind: Cached["kind"], key: MetricsCacheKey): string {
     key.metricId,
     key.repo ?? null,
     kind === "breakdown" ? null : (key.dimension ?? null),
+    key.origin,
     key.range,
     key.today,
   ]);

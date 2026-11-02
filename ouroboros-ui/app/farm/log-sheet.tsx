@@ -18,11 +18,11 @@ import { JOB_SHEET_CLOSE, JOB_SHEET_EYEBROW } from "./runners";
 import { useLogStream } from "./use-log-stream";
 
 /**
- * The full-log sheet — what **Full log ↗** opens until the run console exists
+ * The full-log sheet — what the farm's **Full log ↗** opens
  * (AI.6, [#261](https://github.com/NobuData/ouroboros/issues/261)).
  *
- * The control's destination in the mockup is mockup 10's run console, which is #309 and is not
- * built, and the link from a build into it is AJ.3's (#265). `app/farm/job-sheet.tsx` is the
+ * The run console (#309) opens it too: a build stage's **Build log ↗** (AJ.3, #265) reads the
+ * same log over the console rather than sending the reader away from the run. `app/farm/job-sheet.tsx` is the
  * same *meanwhile* for the runners table's job cell; this is the one for the log, and unlike
  * that sheet it has something of its own to read: **the whole log**, which AH.5 defines as this
  * same resource paged from `after=0` until `nextOffset` reaches `end`. So it is a second stream

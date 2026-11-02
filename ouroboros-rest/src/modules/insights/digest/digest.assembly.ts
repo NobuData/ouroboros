@@ -45,7 +45,7 @@ import type { Day } from "../rollup/rollup.types";
  * The version of the digest's content. It moves when the assembly's shape or its wording rules
  * change, so the send audit can say which rules a past mail was written under.
  */
-export const DIGEST_CONTENT_VERSION = 1;
+export const DIGEST_CONTENT_VERSION = 2;
 
 /** The range a digest covers — the page's seven days. */
 export const DIGEST_RANGE: MetricRange = "7d";
@@ -55,6 +55,12 @@ export const MAX_FLAKY_MOVERS = 5;
 
 /** What the digest says when the week has nothing in it. */
 export const NOTHING_TO_REPORT = "Nothing to report this week.";
+
+/**
+ * What the digest says when the workspace holds no live data for the week (DJ.2): its figures are
+ * live-only, so demo or simulated rows are never reported, and their absence is said instead.
+ */
+export const NO_LIVE_RUNS = "No live loop ran in this workspace this week.";
 
 /** What the interventions section says when nobody stepped in. */
 export const NO_INTERVENTIONS = "No loop needed a human this week.";
@@ -137,6 +143,11 @@ export interface DigestAssembly {
   readonly window: { readonly from: Day; readonly to: Day };
   /** True when the week has nothing in it; the presentations then say so and print no figures. */
   readonly empty: boolean;
+  /**
+   * True when the week holds no live data at all (DJ.2) — the workspace has only demo or simulated
+   * rows, or none. The digest is then `empty` too, and says there were no live runs.
+   */
+  readonly noLiveData: boolean;
   /** *"27 PRs merged this week. 2 needed a human."* */
   readonly headline: string;
   readonly head: { readonly mergedPrs: number; readonly interventions: number };
@@ -320,6 +331,8 @@ function costOf(usage: InsightsMoney): DigestCost {
  * @returns True when there is nothing to report.
  */
 function isEmpty(page: InsightsResource): boolean {
+  const merged = page.head.mergedPrs ?? 0;
+  const interventions = page.head.interventions ?? 0;
   const ran = (key: "builds" | "test_cases_run"): number =>
     page.performance.find((cell) => cell.key === key)?.value ?? 0;
   const closedAny = page.kpis.some(
@@ -330,8 +343,8 @@ function isEmpty(page: InsightsResource): boolean {
   );
 
   return (
-    page.head.mergedPrs === 0 &&
-    page.head.interventions === 0 &&
+    merged === 0 &&
+    interventions === 0 &&
     !closedAny &&
     page.usage.pricing === "none" &&
     ran("builds") === 0 &&
@@ -343,7 +356,8 @@ function isEmpty(page: InsightsResource): boolean {
 /**
  * Assemble a week's digest from the Insights page.
  *
- * @param page - `InsightsPageService.read(…, { range: "7d" })` for the whole workspace.
+ * @param page - `InsightsPageService.read(…, { range: "7d" })` for the whole workspace, live
+ *   origin — the digest never reports demo or simulated figures (DJ.2).
  * @returns The assembly.
  * @throws {RangeError} If the page is not the seven-day page: a digest of any other window would
  *   call a month "this week".
@@ -353,14 +367,25 @@ export function assembleDigest(page: InsightsResource): DigestAssembly {
     throw new RangeError(`A weekly digest is assembled from the 7d page, not ${page.range}.`);
   }
 
-  const empty = isEmpty(page);
+  if (page.origin !== "live") {
+    throw new RangeError(`A weekly digest reports live figures only, not ${page.origin}.`);
+  }
+
+  const noLiveData = !page.originsPresent.includes("live");
+  const empty = noLiveData || isEmpty(page);
+  const head = { mergedPrs: page.head.mergedPrs ?? 0, interventions: page.head.interventions ?? 0 };
 
   return {
     contentVersion: DIGEST_CONTENT_VERSION,
     window: page.window,
     empty,
-    headline: empty ? NOTHING_TO_REPORT : headlineOf(page.head.mergedPrs, page.head.interventions),
-    head: { mergedPrs: page.head.mergedPrs, interventions: page.head.interventions },
+    noLiveData,
+    headline: noLiveData
+      ? NO_LIVE_RUNS
+      : empty
+        ? NOTHING_TO_REPORT
+        : headlineOf(head.mergedPrs, head.interventions),
+    head,
     kpis: page.kpis.map(kpiOf),
     topCause: topCauseOf(page.hbars.interventions),
     flaky: page.flaky.cases.filter(moved).slice(0, MAX_FLAKY_MOVERS).map(moverOf),

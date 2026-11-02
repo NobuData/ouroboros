@@ -8,6 +8,43 @@ description: "Watching the first run: where it appears and what to look for."
 You chose **Run my first loop →** in the [Get Started wizard](./wizard.mdx). This page
 follows that loop from the queue to its draft pull request.
 
+## Before you start
+
+A live loop needs more than any one screen shows. Before it starts, Ouroboros checks each
+prerequisite for your repository and workflow. Each item passes, fails, or is **unknown**
+(Ouroboros could not confirm it), with a reason and a link to where you fix it:
+
+| Item | What it means |
+| --- | --- |
+| Live execution | The deployment allows live loops. An operator turns this on — see [Live execution](../../administration/live-execution.mdx). |
+| Workspace | The workspace is active, not paused or pending deletion. |
+| Provider connection | An enabled provider connection can serve the loop's model calls, and passed its last test. Never tested is unknown: test it under <UiPath path="Models > Providers & keys" />. |
+| Routes | Every task kind the workflow uses has a route to a model, and that model has a price, so the run's spend can be capped. |
+| Stage executors | The engine has a stage executor registered for the workflow's model stages. |
+| Runner | Each build stage names a runner pool, and that pool has a runner online that can check out the repository. |
+| Repository | The repository is enabled for the loop. |
+| Push permission | The workspace's GitHub token can push a branch to the repository. |
+| Pull-request permission | The GitHub source that mirrors the issue can open a pull request in the repository. Until a first issue is picked, this is unknown. |
+| Dry-run | The repository is in dry-run, so the pull request opens as a draft and nothing merges. |
+| Workflow | The workflow has a published version Ouroboros can read. |
+| Concurrency | A live-run slot is free under the workspace's ceiling. |
+
+GitHub reports what the token's **account** may do, not the token's own scopes. A passing
+permission item confirms everything GitHub can tell Ouroboros, and nothing more.
+
+The wizard shows this list on its last step as **Ready to run?** — see
+[the wizard's step 4](./wizard.mdx#ready-to-run). The loop is ready only when every item
+passes. While live execution is on, **Run my first loop →** stays disabled until it is, with
+the first item to fix as its caption. With live execution off, the action is **Finish setup**:
+it queues the issue, which waits until an administrator turns live execution on.
+
+Beside the list is an **estimate**, and it is labelled as one: the per-run cost cap of the
+loop's model route, and the size the estimator gave the picked issue. It is not a promise of
+time or cost, and it never decides whether the loop is ready.
+
+Checking reads only. It never calls a model, starts a job or changes anything, so it is safe
+to check as often as you like.
+
 ## Where it appears
 
 1. **In the queue.** The issue waits in **Up next in queue** on the
@@ -27,8 +64,47 @@ follows that loop from the queue to its draft pull request.
 5. **In the recently closed list.** When the loop finishes, the dashboard lists it among the
    work recently closed by the loop.
 
-There is no separate tour: the wizard's receipt card, the dashboard and the run console are
-where you follow it.
+### In the wizard, live
+
+Once a loop claims the issue, the wizard follows it too. Back on `/get-started`, the
+**Your first loop** card says where the run stands — *The loop is running — now at
+Implement.* — with **Open the run console →** in every state. The receipt's
+**Open the run console →** opens the same run.
+
+The right-hand **What happens next** timeline turns from projections into the run's own
+history. Each row the run reaches prints its real time from the start — `0:00` when the loop
+starts, `1:04` when its first model stage finishes and the draft plan is posted, `3:11` when
+the draft pull request opens — and loses its **projected** label. Rows the run has not
+reached keep the label. Once the loop has finished and you have reviewed it, no projected
+label remains.
+
+<Screenshot id="user-guide.first-loop.timeline" />
+
+### Your first review
+
+When the draft pull request opens, the card walks you to it under
+**Review your first pull request**:
+
+- **Open the diff and checks →** opens the pull request's page — the loop's whole change and
+  the checks it ran ([Pull requests](../pull-requests.mdx)).
+- It says why the pull request is a draft: *It is a draft because dry-run is on: Ouroboros
+  opened it as a draft and will not merge it.*, with a link to **the dry-run policy**. If
+  dry-run is off for the workspace, it says the pull request opened ready for review instead.
+- Read it as you would a colleague's, then choose **I've reviewed it**.
+
+<Screenshot id="user-guide.first-loop.review" />
+
+Only after that does the card offer **When you trust the loop to merge**: an owner or admin
+can turn dry-run off under **Settings → Policies →**. From then on pull requests open ready
+for review, and a workflow whose last step merges will merge without a person. It is never
+suggested before you have seen a loop finish and looked at its work.
+
+**What this browser keeps.** Choosing **I've reviewed it**, and how long your first loop took
+from start to its pull request, are recorded in this browser only. Nothing is sent anywhere.
+
+**Your first loop is a real one.** Ouroboros never stands a simulated run in for it. If this
+deployment cannot run loops yet, the issue waits in the queue and the dashboard says why,
+rather than showing you a loop nothing really ran.
 
 ## What to do while it runs
 
@@ -49,3 +125,16 @@ where you follow it.
   again; the stage timeline shows the attempt, and [test results](../runs/tests.mdx) show
   why.
 - **The pull request never merges** — that is dry-run working as intended.
+
+The **Your first loop** card states each of these plainly, never with an endless spinner, and
+always with **Open the run console →**:
+
+| The card says | What happened |
+| --- | --- |
+| *The loop is waiting on you* | It needs a decision — **Open Needs you →**. |
+| *The loop has not moved for N minutes* | No stage has started or finished for 15 minutes or more. The run console shows where it stopped. |
+| *The loop failed: …* | A stage failed; the reason is the failing attempt's own note. |
+| *The loop stopped: it reached its cost cap for one run.* | The run's spend reached its per-run cap, so Ouroboros stopped it. |
+| *The loop stopped: a stage reached its token budget.* | A stage used its whole token budget, so Ouroboros stopped it. |
+| *The loop was cancelled before it opened a pull request.* | Someone cancelled the run. |
+| *Your first loop's pull request was closed without merging.* | The pull request was closed on its host; **Open the diff and checks →** still opens it. |

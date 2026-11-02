@@ -27,7 +27,7 @@ import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
-import { ACTIVE_RUN_STATUSES, type Run } from "../db/schema";
+import { ACTIVE_RUN_STATUSES, type DataOrigin, type Run } from "../db/schema";
 import type { PageWindow } from "../tenancy/pagination";
 import { asCount } from "../tenancy/queries";
 import type { RunStatusFamily } from "./runs.dto";
@@ -38,6 +38,8 @@ export interface RunsFilter {
   readonly status: RunStatusFamily;
   /** Narrow to one repository, or `undefined` for the whole workspace. */
   readonly repoId?: string;
+  /** One origin's runs, or every origin when absent (DJ.3). */
+  readonly origin?: DataOrigin;
 }
 
 @Injectable()
@@ -73,6 +75,10 @@ export class RunsRepository {
       query = query.where("github_repo_id", "=", filter.repoId);
     }
 
+    if (filter.origin !== undefined) {
+      query = query.where("origin", "=", filter.origin);
+    }
+
     query =
       filter.status === "active"
         ? query
@@ -101,6 +107,10 @@ export class RunsRepository {
 
     if (filter.repoId !== undefined) {
       query = query.where("github_repo_id", "=", filter.repoId);
+    }
+
+    if (filter.origin !== undefined) {
+      query = query.where("origin", "=", filter.origin);
     }
 
     query =

@@ -28,7 +28,7 @@ testable with no network anywhere::
     for event in client.read_events(lines):  # delta · usage · hop · done
         ...
 
-**The first sender is development tooling.** The simulated-run driver (AP.5,
+**The first sender is development tooling.** The run simulator (AP.5,
 `#307 <https://github.com/NobuData/ouroboros/issues/307>`_) puts these requests on a socket
 with the standard library, from a package the production wheel does not contain. It builds
 every request here, so the driver and the future executor share one client and differ only
@@ -54,6 +54,15 @@ from urllib.parse import urljoin
 
 from pydantic import BaseModel
 
+from ouroboros_engine.control_plane.builds import (
+    RUN_BUILD_CANCEL_PATH,
+    RUN_BUILD_PATH,
+    RUN_BUILDS_PATH,
+    RunBuild,
+    RunBuildAnswer,
+    RunBuildCancelRequest,
+    RunBuildRequest,
+)
 from ouroboros_engine.control_plane.contract import (
     EVENT_MODELS,
     INTERNAL_KEY_HEADER,
@@ -76,6 +85,7 @@ from ouroboros_engine.control_plane.execution import (
     RUN_CHECKPOINT_PATH,
     RUN_FINISH_PATH,
     RUN_HEARTBEAT_PATH,
+    RUN_PULL_REQUEST_PATH,
     RUN_PUSH_PATH,
     RUN_PUSH_RESULT_PATH,
     RUN_START_PATH,
@@ -84,6 +94,8 @@ from ouroboros_engine.control_plane.execution import (
     FinishRunRequest,
     HeartbeatAccepted,
     HeartbeatRequest,
+    PullRequestOpened,
+    PullRequestRequest,
     PushGrant,
     PushRecorded,
     PushRequest,
@@ -209,7 +221,7 @@ class ControlPlaneClient:
                 this service already reads for the *inbound* direction
                 (:mod:`ouroboros_engine.core.security`); both sides of the boundary hold
                 one value, and a stack where they disagree fails in both directions at
-                once. The simulated-run driver passes ``OURO_RUN_SIMULATOR_SECRET`` instead,
+                once. The run simulator passes ``OURO_RUN_SIMULATOR_SECRET`` instead,
                 which is how the control plane knows to mark its runs simulated (#303).
         """
         self.base_url = base_url if base_url.endswith("/") else f"{base_url}/"
@@ -841,6 +853,68 @@ class ControlPlaneClient:
         """
         return self._write("POST", RUN_PUSH_RESULT_PATH.format(id=run), body)
 
+    def build_request(self, run: str, body: RunBuildRequest) -> ControlPlaneRequest:
+        """Build the request that submits a build stage's job to the farm (AJ.3, #265).
+
+        Args:
+            run: The run.
+            body: The stage and attempt, the pool, the pushed commit and the command.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", RUN_BUILDS_PATH.format(id=run), body)
+
+    def build_read_request(self, run: str, job: str) -> ControlPlaneRequest:
+        """Build the request that reads where one of the run's builds is now.
+
+        Args:
+            run: The run.
+            job: The job the submission answered.
+
+        Returns:
+            The request to send. A read carries no body.
+        """
+        return ControlPlaneRequest(
+            method="GET",
+            url=self._url(RUN_BUILD_PATH.format(id=run, job=job)),
+            headers=self._headers(JSON_MEDIA_TYPE),
+            json={},
+        )
+
+    def build_cancel_request(
+        self, run: str, job: str, body: RunBuildCancelRequest
+    ) -> ControlPlaneRequest:
+        """Build the request that gives up on one of the run's builds.
+
+        Args:
+            run: The run.
+            job: The job.
+            body: The key, the epoch and why.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", RUN_BUILD_CANCEL_PATH.format(id=run, job=job), body)
+
+    def read_build(self, status: int, body: dict[str, Any]) -> RunBuild:
+        """Read the answer of any build route.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            The build, at the latest attempt of its retry chain.
+
+        Raises:
+            ControlPlaneError: On any status but ``200`` —
+                :data:`~ouroboros_engine.control_plane.builds.BUILD_NO_ELIGIBLE_RUNNER`, a
+                farm refusal (``farm_pool_not_found``, ``farm_pool_disabled``,
+                ``farm_command_required``), or the run no longer this worker's.
+        """
+        return _read(status, body, RunBuildAnswer).job
+
     def read_push_recorded(self, status: int, body: dict[str, Any]) -> PushRecorded:
         """Read the answer to a push result.
 
@@ -855,6 +929,41 @@ class ControlPlaneClient:
             ControlPlaneError: On any status but ``200``.
         """
         return _read(status, body, PushRecorded)
+
+    # --- the run's draft pull request (DI.3, #1311) ----------------------------------------
+
+    def pull_request_request(
+        self, run: str, body: PullRequestRequest
+    ) -> ControlPlaneRequest:
+        """Build the request that opens the run branch's draft pull request.
+
+        Args:
+            run: The run.
+            body: The epoch, keyed.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", RUN_PULL_REQUEST_PATH.format(id=run), body)
+
+    def read_pull_request_opened(
+        self, status: int, body: dict[str, Any]
+    ) -> PullRequestOpened:
+        """Read the answer to a pull-request request.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            The draft pull request — opened by this call, or found already open.
+
+        Raises:
+            ControlPlaneError: On any status but ``200`` — one of
+                :data:`~ouroboros_engine.control_plane.execution.PULL_REQUEST_REFUSALS`, or
+                the run no longer this worker's.
+        """
+        return _read(status, body, PullRequestOpened)
 
     # --- harness credentials (DH.2 #1303, first called by DH.3 #1308) ------------------------
 

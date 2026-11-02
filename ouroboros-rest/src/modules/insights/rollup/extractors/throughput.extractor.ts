@@ -22,6 +22,7 @@
 
 import { sql } from "kysely";
 
+import type { DataOrigin } from "../../../db/schema";
 import { untouchedPr } from "../../untouched.sql";
 import { dayBounds } from "../rollup.days";
 import { ratioRow, sumRow } from "../rollup.rows";
@@ -31,6 +32,7 @@ import type { FamilyExtractor, RollupRow } from "../rollup.types";
 /** One repository's day, as the statement groups it. */
 interface ThroughputGroup {
   repo_ref: string;
+  origin: DataOrigin;
   closed: string;
   merged: string;
   autonomous: string;
@@ -39,14 +41,15 @@ interface ThroughputGroup {
 
 export const throughputExtractor: FamilyExtractor = {
   family: "throughput",
-  metrics: { merged_prs: 1, merge_rate: 1, merged_untouched_rate: 1 },
+  metrics: { merged_prs: 2, merge_rate: 2, merged_untouched_rate: 2 },
 
   async extract(db, organizationId, day): Promise<RollupRow[]> {
     const { from, to } = dayBounds(day);
 
     const { rows } = await sql<ThroughputGroup>`
       with closed_prs as (
-        select pr.id, pr.state, pr.run_id, r.status as run_status, ${REPO_REF} as repo_ref
+        select pr.id, pr.state, pr.run_id, pr.origin, r.status as run_status,
+               ${REPO_REF} as repo_ref
           from ouroboros.pull_requests pr
           join ouroboros.runs r on r.id = pr.run_id
           ${joinRepo("r")}
@@ -54,7 +57,7 @@ export const throughputExtractor: FamilyExtractor = {
            and ((pr.state = 'merged' and pr.merged_at >= ${from} and pr.merged_at < ${to})
              or (pr.state = 'closed' and r.finished_at >= ${from} and r.finished_at < ${to}))
       )
-      select repo_ref,
+      select repo_ref, origin,
              count(*) as closed,
              count(*) filter (where state = 'merged') as merged,
              count(*) filter (
@@ -66,15 +69,15 @@ export const throughputExtractor: FamilyExtractor = {
                where state = 'merged' and ${untouchedPr("closed_prs")}
              ) as untouched
         from closed_prs
-       group by repo_ref`.execute(db);
+       group by repo_ref, origin`.execute(db);
 
     return rows.flatMap((group) => {
-      const repoRef = group.repo_ref;
+      const { repo_ref: repoRef, origin } = group;
       const merged = num(group.merged);
       const out: RollupRow[] = [
-        sumRow({ repoRef, metricId: "merged_prs" }, merged),
+        sumRow({ repoRef, origin, metricId: "merged_prs" }, merged, merged),
         ratioRow(
-          { repoRef, metricId: "merge_rate" },
+          { repoRef, origin, metricId: "merge_rate" },
           num(group.autonomous),
           num(group.closed),
           100,
@@ -84,7 +87,7 @@ export const throughputExtractor: FamilyExtractor = {
       if (merged > 0) {
         out.push(
           ratioRow(
-            { repoRef, metricId: "merged_untouched_rate" },
+            { repoRef, origin, metricId: "merged_untouched_rate" },
             num(group.untouched),
             merged,
             100,

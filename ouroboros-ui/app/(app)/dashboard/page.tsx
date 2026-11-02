@@ -2,6 +2,8 @@ import { requireWorkspace } from "@/app/api/access";
 import { readDashboard } from "@/app/dashboard/data";
 import { DashboardScreen } from "@/app/dashboard/dashboard-screen";
 import { Freshness } from "@/app/dashboard/freshness";
+import { ORIGIN_PARAM } from "@/app/origin/origin";
+import { readOriginFilter } from "@/app/origin/origin-server";
 
 /**
  * The dashboard (#45) — where a signed-in request with a chosen workspace lands.
@@ -33,9 +35,13 @@ import { Freshness } from "@/app/dashboard/freshness";
  *
  * @returns The dashboard, for the workspace this request is operating in.
  */
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: Readonly<{ searchParams?: Promise<Record<string, string | string[] | undefined>> }> = {}) {
   const access = await requireWorkspace();
-  const readings = await readDashboard(access);
+  const params = (await searchParams) ?? {};
+  // The address's `?origin=`, else the reader's remembered choice, else live (DJ.3).
+  const readings = await readDashboard(access, await readOriginFilter(params[ORIGIN_PARAM]));
 
   return (
     <Freshness

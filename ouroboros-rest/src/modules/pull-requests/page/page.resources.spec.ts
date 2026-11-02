@@ -173,6 +173,17 @@ describe("summaryResource", () => {
     expect(summaryResource(row, undefined).syncedAt).toBe(HEAD.syncedAt?.toISOString());
     expect(summaryResource({ ...row, syncedAt: null }, undefined).syncedAt).toBeNull();
   });
+
+  it("carries the draft flag and the loop that opened the PR — the head's Draft tag and Opened by Loop #N (#1311)", () => {
+    const row = { ...HEAD, latestRevision: null, reviewRequested: false };
+
+    expect(summaryResource(row, undefined).draft).toBe(false);
+    expect(summaryResource({ ...row, draft: true }, undefined)).toMatchObject({
+      draft: true,
+      run: { id: HEAD.run?.id, loopSeq: HEAD.run?.loopSeq },
+    });
+    expect(summaryResource({ ...row, draft: true, run: null }, undefined).run).toBeNull();
+  });
 });
 
 describe("reviewResource", () => {

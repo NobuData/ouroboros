@@ -475,6 +475,7 @@ test.describe("leg 30: chat ops — the chain, against Slack", () => {
     }
 
     // ---- A loop stops on its protected path, and the plane publishes the question.
+    // Driver (DJ.4): a loop stopped on a protected path that Allow once resumes — a scripted stop.
     const run = await startSimulation(SCENARIO, SPEED);
 
     simulations.push(run);
@@ -632,6 +633,7 @@ test.describe("leg 30: chat ops — the chain, against Slack", () => {
       );
     }
 
+    // Driver (DJ.4): a loop stopped on a protected path that Allow once resumes — a scripted stop.
     const run = await startSimulation(SCENARIO, SPEED);
 
     simulations.push(run);

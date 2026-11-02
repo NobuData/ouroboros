@@ -132,6 +132,52 @@ export function seriesOf(
 }
 
 /**
+ * A figure over rows that may be none (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315)):
+ * {@link compose}, except that no rows is **no data** — a null value with no components — even
+ * for a `sum`, whose total over nothing would otherwise read as zero.
+ *
+ * @param plan - How the figure is composed.
+ * @param rows - The rows the origin filter kept; the plan takes its own.
+ * @returns The composed figure, or null when the plan has no row to read.
+ */
+export function composeKept(plan: MetricPlan, rows: readonly DailyRow[]): Composed {
+  const metricIds = planMetrics(plan);
+
+  return rows.some((row) => metricIds.includes(row.metricId))
+    ? compose(plan, rows)
+    : { value: null };
+}
+
+/**
+ * The count behind a figure: the summed populations of the rows it was composed from.
+ *
+ * A derived ratio is counted by its denominator's rows (cost per merged PR is over the merged
+ * PRs), anything else by its own.
+ *
+ * @param plan - How the figure is composed.
+ * @param rows - The rows the figure was composed from.
+ * @returns The total, 0 over no rows, or null when any row did not record its population.
+ */
+export function populationOf(plan: MetricPlan, rows: readonly DailyRow[]): number | null {
+  const counted = plan.kind === "derived" ? plan.denominator : plan.metricId;
+  let total = 0;
+
+  for (const row of rows) {
+    if (row.metricId !== counted) {
+      continue;
+    }
+
+    if (row.population === null) {
+      return null;
+    }
+
+    total += row.population;
+  }
+
+  return total;
+}
+
+/**
  * The difference between a window and its prior.
  *
  * @param value - The window's figure.

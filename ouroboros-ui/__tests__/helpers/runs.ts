@@ -189,6 +189,7 @@ export function runConsole(over: RunConsoleOverrides = {}): RunConsole {
       prNumber: null,
       checksPassed: null,
       checksTotal: null,
+      origin: "live",
       ...over.run,
     },
     head: {

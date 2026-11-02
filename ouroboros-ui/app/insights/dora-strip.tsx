@@ -9,6 +9,7 @@ import { DORA_CAPTION, DORA_TITLE, type DoraCellView, doraStrip } from "./dora-v
 import { useInsights } from "./insights-store";
 import { KpiMethodology } from "./kpi-methodology";
 import { PROXY_BADGE } from "./view";
+import { InsightsOriginBadges } from "./origin-badges";
 
 /** The four cells' places while nothing has been read, so the strip does not move on arrival. */
 const SKELETON_CELLS = [0, 1, 2, 3] as const;
@@ -44,6 +45,7 @@ export function DoraStrip() {
       className="insights-col--12"
     >
       <CardHead
+        beside={<InsightsOriginBadges />}
         title={DORA_TITLE}
         titleId={titleId}
         trailing={<span className="insights-dora__caption">{DORA_CAPTION}</span>}

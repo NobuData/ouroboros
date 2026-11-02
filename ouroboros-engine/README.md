@@ -594,6 +594,27 @@ checkpoints it has not pushed.
   so the same checkpoints publish again. Local refs `refs/ouro/published` and
   `refs/ouro/published-checkpoint` record where the next publish starts.
 
+## The draft pull request
+
+DI.3 (#1311) opens the run branch's pull request at the `open_pr_automerge` terminal, after the
+publisher pushed it and before the run finishes `review`. The engine sends only its epoch and an
+idempotency key to `POST /internal/runs/{id}/pull-request`; `ouroboros-rest` composes the title
+and body, always asks the host for a **draft**, links it to the run and imports the plan's
+acceptance criteria.
+
+- **Success** finishes `review` with a reason naming the pull request
+  (`draft pull request #<n> opened: <url>`).
+- **A refusal** — `not_pushed`, `pr_source_unavailable`, `draft_refused`, `pr_create_failed`
+  (the one `502`), or any other code — finishes the run `failed` with the code and the host's
+  message from the refusal's details, and keeps the tree, as a failed publish does. An answer
+  that is not a draft fails it the same way. `fenced` and `run_not_executable` stop the worker
+  like any other write.
+- **Idempotent.** A resumed terminal asks again; `ouroboros-rest` answers the pull request
+  already open for the run (`created: false`) and the reason says `already open`.
+- Without a publisher nothing was pushed, so nothing is asked and the run finishes `review` as
+  before. No live run reaches this terminal yet: every `infra` stage fails `infra_unavailable`
+  until #265.
+
 ## The execution bridge
 
 #160 executes live runs under `docs/DECISION_EXECUTION_ENGINE.md` decision A. `ouroboros-rest`'s
@@ -617,10 +638,19 @@ the run executes on a background thread (`execution/worker.py`).
   the run tree); its events become transcript batches and spend, and the change-set is the
   tree's diff at stage end. Decisions and gates are judged by `execution/facts.py`, which never
   assumes what it cannot know: `labels` and `effort` are read from the start answer, `paths`
-  from the tree's diff, but `checks` and an unsized ticket's effort are unknown, so a gate on
-  them fails the run, naming why. Infrastructure stages fail with `infra_unavailable` until AR.1.
+  from the tree's diff, `checks` from this loop round's results (`execution/checks.py`), and an
+  unsized ticket's effort — or a check that has not run — is unknown, so a gate on it fails the
+  run, naming why. **Build stages run on the farm** (AJ.3, #265, `execution/build.py`): after the
+  branch is pushed, the stage attempt is submitted through `POST /internal/runs/{id}/builds` on
+  the stage's `runner_pool` (required; the command split into argv with `shlex`), read every
+  5 s through `GET …/builds/{jobId}` with each phase written to the transcript, and cancelled
+  after ten minutes with no eligible runner. Exit 0 records a passed check and follows the
+  default edge; any other exit records a failed one (`failed_build`, or `failed_tests` for a
+  stage named test) and goes straight to the gate that requires it, whose loop edge sends the
+  run back. No pool, no runner, or a farm refusal fails the run with the reason.
   Terminals finish through `POST /internal/runs/{id}/finish`: `needs_review` → `needs_human`,
-  `open_pr_automerge` → `review` (the tree is kept for DI.2), `back_to_queue` → `back_to_queue`.
+  `open_pr_automerge` → the branch is pushed (DI.2) and its draft pull request opened (DI.3),
+  then `review`; `back_to_queue` → `back_to_queue`.
 - **Fencing and resume.** Every write carries the epoch (`execution/reporter.py`), and a
   heartbeat goes every `OURO_ENGINE_HEARTBEAT_SECONDS`. A heartbeat or write refused `fenced`
   or `run_not_executable` aborts the executor and stops all writes. The state shape in
@@ -864,7 +894,12 @@ Against a REST release without the gateway (before AF.2,
 with `details.reason: gateway_unavailable`; the suites run on a scripted model
 (`tests/skills_fakes.py`).
 
-## The simulated-run driver (development only)
+## The run simulator (development only)
+
+A test tool, never a product feature (DJ.4, #1317): nothing a signed-in person reaches starts
+it, a production `ouroboros-rest` refuses its secret, and CI asserts the production image does not
+contain it. Every remaining caller, its owner and its reason are in
+[`docs/RUN_SIMULATOR.md`](../docs/RUN_SIMULATOR.md).
 
 [#307](https://github.com/NobuData/ouroboros/issues/307) (AP.5). The Run Console is fed by
 `ouroboros-rest`'s ingestion contract ([#303](https://github.com/NobuData/ouroboros/issues/303))
@@ -1227,7 +1262,7 @@ ouroboros-engine/
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON
 │   └── settings.py     # pydantic-settings, OURO_*
-├── src/ouroboros_simulator/  # the simulated-run driver — NOT in the wheel      · #307
+├── src/ouroboros_simulator/  # the run simulator — NOT in the wheel      · #307
 │   ├── session.py      #   one run: reports through the client, honours controls
 │   ├── scenarios/      #   the eight scripts, over the session
 │   ├── runner.py       #   open a run, play a scenario, say what happened
@@ -1295,7 +1330,7 @@ the header, the provider kinds and AB.1's error taxonomy against this module's c
 mirror is checked rather than asserted. `ingest.py` does the same for AP.1's six run-ingestion
 operations ([#303](https://github.com/NobuData/ouroboros/issues/303)), checked by
 `tests/test_control_plane_ingest.py`, and the client builds those requests too. Their first
-sender is the simulated-run driver, which brings a `urllib` transport from outside the wheel
+sender is the run simulator, which brings a `urllib` transport from outside the wheel
 (see [the driver](#the-simulated-run-driver-development-only)). The naming convention changes in that one file: the
 control plane writes `camelCase` and this service writes `snake_case`, so nothing beneath it
 carries `runCtx` or `ttlSeconds`.
@@ -1330,7 +1365,7 @@ the workflow DSL and its shared validation [#133](https://github.com/NobuData/ou
 workflow validation and the dry-run simulator [#144](https://github.com/NobuData/ouroboros/issues/144) ·
 the plan contract and its outline parser [#277](https://github.com/NobuData/ouroboros/issues/277) ·
 the Build Analyzer's analyzer SPI and change-point core [#511](https://github.com/NobuData/ouroboros/issues/511) ·
-the simulated-run driver [#307](https://github.com/NobuData/ouroboros/issues/307) ·
+the run simulator [#307](https://github.com/NobuData/ouroboros/issues/307) ·
 the gateway that calls it [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 full epic [#6](https://github.com/NobuData/ouroboros/issues/6).
 

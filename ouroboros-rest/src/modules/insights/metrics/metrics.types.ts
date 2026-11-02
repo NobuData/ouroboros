@@ -3,8 +3,9 @@
  * [#437](https://github.com/NobuData/ouroboros/issues/437)).
  */
 
-import type { MetricAggregation, MetricDefinitionsTable } from "../../db/schema";
+import type { DataOrigin, MetricAggregation, MetricDefinitionsTable } from "../../db/schema";
 import type { Day } from "../rollup/rollup.types";
+import type { OriginFilter } from "./metrics.origin";
 import type { DaySpan, MetricRange } from "./metrics.window";
 
 /** Who and what a window is about. */
@@ -20,6 +21,8 @@ export interface MetricScope {
   readonly dimension?: string;
   /** The range. */
   readonly range: MetricRange;
+  /** Which origins' rows to read (DJ.2); `live` when omitted — see `metrics.origin.ts`. */
+  readonly origin?: OriginFilter;
   /** The instant to answer at; the service's clock when omitted. */
   readonly now?: Date;
 }
@@ -40,6 +43,8 @@ export interface MetricMethodology {
   readonly proxy: boolean;
   /** How a window re-derives it. */
   readonly aggregation: MetricAggregation;
+  /** How the metric treats data origin, in words (V154, DJ.2). */
+  readonly originRule: string;
 }
 
 /** A rate's summed components. */
@@ -57,21 +62,44 @@ export interface MetricPoint {
   readonly meta: Readonly<Record<string, number>>;
 }
 
+/**
+ * What an aggregate was computed over (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315)):
+ * the origin asked for, every origin the window holds, and whether the figure sums more than one.
+ */
+export interface OriginFacts {
+  /** The filter the figure was computed under. */
+  readonly origin: OriginFilter;
+  /**
+   * Every origin with a row in the window, whichever was asked for — `["seeded"]` beside a null
+   * live figure is "no live data", not zero.
+   */
+  readonly originsPresent: readonly DataOrigin[];
+  /** True only when `origin` is `all` and the figure sums more than one origin. */
+  readonly mixed: boolean;
+}
+
 /** A metric over a window, with its prior window and methodology. */
-export interface MetricWindow {
+export interface MetricWindow extends OriginFacts {
   readonly metricId: string;
   readonly range: MetricRange;
   /** The window's first and last UTC day. */
   readonly from: Day;
   readonly to: Day;
   /**
-   * The window's figure in the metric's unit (a `pct` is 0–100), or null when a rate has no
-   * denominator or a median no samples. A `sum` over nothing is 0.
+   * The window's figure in the metric's unit (a `pct` is 0–100), or null — **no data** — when the
+   * origin filter keeps no row in the window, a rate has no denominator or a median no samples.
+   * Never zero for want of rows (DJ.2).
    */
   readonly value: number | null;
+  /**
+   * The count behind the figure: how many source rows (runs, builds, usage rows, test cases) the
+   * window's rows were computed from. 0 with a null value is no data; null when a row (a seeded
+   * one) did not record it.
+   */
+  readonly n: number | null;
   /** A rate's components over the window; absent for sums and medians. */
   readonly components?: MetricComponents;
-  /** The prior window's figure, by the same rule. */
+  /** The prior window's figure, by the same rule — no data when the filter kept no prior row. */
   readonly prior: number | null;
   /** The prior window's components, for a rate. */
   readonly priorComponents?: MetricComponents;
@@ -88,6 +116,10 @@ export interface DailyRow {
   readonly metricId: string;
   readonly repoRef: string | null;
   readonly dimension: string;
+  /** The origin of the source rows behind it (V154). */
+  readonly origin: DataOrigin;
+  /** How many source rows are behind it, or null when a seed did not record it. */
+  readonly population: number | null;
   readonly value: number;
   readonly numerator: number | null;
   readonly denominator: number | null;
@@ -108,7 +140,7 @@ export interface MetricBreakdownEntry {
  * A dimensioned metric over a range, one window per label (BJ.2,
  * [#438](https://github.com/NobuData/ouroboros/issues/438)) — what a bar card is drawn from.
  */
-export interface MetricBreakdown {
+export interface MetricBreakdown extends OriginFacts {
   readonly metricId: string;
   /** What the labels are. */
   readonly dimensionKind: NonNullable<MetricDefinitionsTable["dimension_kind"]>;
@@ -116,8 +148,8 @@ export interface MetricBreakdown {
   readonly from: Day;
   readonly to: Day;
   /**
-   * One entry per label with a row in the window **or its prior** — a label that went quiet this
-   * window still shows its drop — labels ascending.
+   * One entry per label with a row of the asked origin in the window **or its prior** — a label
+   * that went quiet this window still shows its drop — labels ascending.
    */
   readonly entries: readonly MetricBreakdownEntry[];
   readonly methodology: MetricMethodology;
@@ -133,6 +165,8 @@ export interface MetricSpanScope {
   readonly dimension?: string;
   /** The UTC days, inclusive at both ends. */
   readonly span: DaySpan;
+  /** Which origins' rows to read; `live` when omitted, as on {@link MetricScope}. */
+  readonly origin?: OriginFilter;
   /** The instant that decides which day is "today" (read live); the service's clock when omitted. */
   readonly now?: Date;
 }
@@ -153,7 +187,12 @@ export interface MetricSpan {
   readonly components?: MetricComponents;
   /** A median metric's pooled samples, ascending; empty for a sum or a rate. */
   readonly samples: readonly number[];
-  /** How many days of the span have any row for the metric. Zero means nothing was recorded. */
+  /**
+   * How many days of the span have any row of the asked origin for the metric. Zero means nothing
+   * was recorded, and the value is then null.
+   */
   readonly days: number;
+  /** Every origin with a row in the span, whichever was asked for (DJ.2). */
+  readonly originsPresent: readonly DataOrigin[];
   readonly methodology: MetricMethodology;
 }

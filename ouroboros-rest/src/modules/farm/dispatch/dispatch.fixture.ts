@@ -65,6 +65,8 @@ export function buildJob(overrides: Partial<BuildJob> = {}): BuildJob {
     test_selection: null,
     origin: "live",
     log_lines: "0",
+    stage_key: null,
+    stage_attempt: null,
     ...overrides,
   };
 }

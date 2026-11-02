@@ -5,7 +5,16 @@ import { type Membership, mayAdminister } from "@/app/api/membership";
 import { Card, CardHead, Meter, Tag, cx } from "@/app/ui";
 
 import { AUTO_MERGE_LABEL, AutoMergeSwitch } from "./auto-merge-switch";
-import { NO_VALUE, PULSE_UNMEASURED, type Reading, pulseIsUnmeasured, pulseMeters } from "./view";
+import { OriginBadge } from "@/app/origin/origin-badge";
+
+import {
+  NO_VALUE,
+  type Reading,
+  pulseIsUnmeasured,
+  pulseMeters,
+  pulseNote,
+  shownOrigin,
+} from "./view";
 
 /**
  * *Loop pulse* ([#83](https://github.com/NobuData/ouroboros/issues/83)) — the mockup's `c-4`
@@ -52,10 +61,17 @@ export function PulseCard({
   // Narrowed once rather than at each branch, which is what lets every part of this card
   // answer the same question — *was it read* — the same way.
   const pulse = aggregate.ok ? aggregate.value.pulse : null;
+  const filter = aggregate.ok ? aggregate.value.origin : "live";
+  const shown = aggregate.ok ? shownOrigin(aggregate.value) : null;
 
   return (
     <Card as="section" fill className="dash-col--4" aria-labelledby={TITLE_ID}>
-      <CardHead title={TITLE} titleId={TITLE_ID} trailing={<Tag>{PULSE_WINDOW_TAG}</Tag>} />
+      <CardHead
+        title={TITLE}
+        titleId={TITLE_ID}
+        beside={shown === null ? undefined : <OriginBadge origin={shown} />}
+        trailing={<Tag>{PULSE_WINDOW_TAG}</Tag>}
+      />
 
       <div className="dash-pulse">
         <span className="dash-pulse__glyph">
@@ -86,7 +102,7 @@ export function PulseCard({
         ) : (
           <>
             <div className="dash-pulse__meters">
-              {pulseMeters(pulse).map((meter) => (
+              {pulseMeters(pulse, filter).map((meter) => (
                 <div className="dash-pulse__meter" key={meter.id}>
                   <div className="dash-pulse__row">
                     <span className="dash-pulse__label">
@@ -116,7 +132,7 @@ export function PulseCard({
             </div>
 
             {pulseIsUnmeasured(pulse) && (
-              <p className="dash-pulse__note">{PULSE_UNMEASURED}</p>
+              <p className="dash-pulse__note">{pulseNote(pulse, filter)}</p>
             )}
           </>
         )}

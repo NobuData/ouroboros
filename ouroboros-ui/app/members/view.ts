@@ -359,16 +359,43 @@ export function invitationActionLabel(action: "Resend" | "Revoke", email: string
 }
 
 /**
+ * How long an invitation has left, as the resend toast says it — read from its `expiresAt`, so
+ * the toast never states a lifetime the server did not set (#1248; BetterAuth's default is 48
+ * hours).
+ *
+ * @param expiresAt The invitation's expiry, ISO 8601.
+ * @param now What to measure against, in epoch milliseconds.
+ * @returns `48 hours`, `1 hour`, `3 days` (from 72 hours up), or `null` when the time cannot be
+ *   read or has already passed.
+ */
+export function invitationLifetime(expiresAt: string, now: number): string | null {
+  const ms = Date.parse(expiresAt) - now;
+  if (Number.isNaN(ms) || ms <= 0) return null;
+  const hours = Math.max(1, Math.round(ms / 3_600_000));
+  if (hours < 72) return hours === 1 ? "1 hour" : `${String(hours)} hours`;
+  return `${String(Math.round(hours / 24))} days`;
+}
+
+/**
  * What the toast says after a resend or a revoke.
  *
  * @param action Which.
  * @param email The address.
- * @returns The sentence.
+ * @param expiresAt After a resend, the resent invitation's expiry; ignored for a revoke.
+ * @param now What to measure the expiry against, in epoch milliseconds.
+ * @returns The sentence — a resend states the time left only when the expiry can be read.
  */
-export function invitationDone(action: "resend" | "revoke", email: string): string {
-  return action === "resend"
-    ? `Invitation to ${email} resent — it is good for another week.`
-    : `Invitation to ${email} revoked.`;
+export function invitationDone(
+  action: "resend" | "revoke",
+  email: string,
+  expiresAt: string | null = null,
+  now: number = Date.now(),
+): string {
+  if (action === "revoke") return `Invitation to ${email} revoked.`;
+  const left = expiresAt === null ? null : invitationLifetime(expiresAt, now);
+  return left === null
+    ? `Invitation to ${email} resent.`
+    : `Invitation to ${email} resent — it is good for another ${left}.`;
 }
 
 /** The member dialog. */

@@ -79,6 +79,12 @@ export interface RunStartedResource {
   /** `runs.model`, as the run was opened with it. */
   readonly model: string;
   /**
+   * The alias each task kind the pinned workflow's model stages inherit routes to first (DI.6,
+   * #1321): the engine asks the facade with it, so a stage inheriting `implement` is served by
+   * the `implement` route rather than by the run's model. A task with no callable route is absent.
+   */
+  readonly task_models: Record<string, string>;
+  /**
    * The person who started the run (`runs.started_by`, V151, #1310) — named as the co-author of
    * the run's commits — or `null` when no person did.
    */

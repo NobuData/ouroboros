@@ -28,6 +28,8 @@
 
 import type { FlakeCardState } from "../../flakes/flakes.resources";
 import type { Day } from "../rollup/rollup.types";
+import type { DataOrigin } from "../../db/schema";
+import type { OriginFilter } from "../metrics/metrics.origin";
 import type { MetricMethodology } from "../metrics/metrics.types";
 import type { MetricRange } from "../metrics/metrics.window";
 import type { Scoreboard } from "../scoreboard/scoreboard.types";
@@ -63,8 +65,10 @@ export interface InsightsTrend {
 export interface InsightsHead {
   /** The head is always the last seven days, whatever range the page shows. */
   readonly range: "7d";
-  readonly mergedPrs: number;
-  readonly interventions: number;
+  /** Null — no data — when the week holds no loop PR of the asked origin (DJ.2). */
+  readonly mergedPrs: number | null;
+  /** Null exactly when `mergedPrs` is. */
+  readonly interventions: number | null;
 }
 
 /** One KPI card's place in the row. */
@@ -82,6 +86,11 @@ export interface InsightsKpi {
   readonly unit: MetricMethodology["unit"];
   /** The figure, or null when the window has nothing to compute it from. */
   readonly value: number | null;
+  /**
+   * The count behind the figure (DJ.2): how many source rows (PRs, runs, builds, usage rows) the
+   * window's figure was computed from. 0 beside a null value is no data, not zero.
+   */
+  readonly n: number | null;
   /** The prior window's figure. */
   readonly prior: number | null;
   /** `value − prior`, in `unit` (points for a `pct`). */
@@ -209,6 +218,8 @@ export interface InsightsPerformanceCell {
   readonly unit: MetricMethodology["unit"];
   /** The figure; null when there is nothing to compute it from — or, for `total_cost`, no price. */
   readonly value: number | null;
+  /** The count behind the figure, as on {@link InsightsKpi}. */
+  readonly n: number | null;
   /** A rate's parts — `377 ✓ / 35 ✗` is `numerator` and `denominator − numerator`. */
   readonly components?: { readonly numerator: number; readonly denominator: number };
   readonly methodology: MetricMethodology;
@@ -250,6 +261,8 @@ export interface InsightsDoraCell {
   /** `per_day` for deploy frequency; otherwise the metric's own unit. */
   readonly unit: MetricMethodology["unit"] | "per_day";
   readonly value: number | null;
+  /** The count behind the figure, as on {@link InsightsKpi}. */
+  readonly n: number | null;
   readonly prior: number | null;
   readonly delta: number | null;
   readonly trend: InsightsTrend;
@@ -277,6 +290,12 @@ export interface InsightsFreshness {
 
 /** `GET /api/v1/insights`. */
 export interface InsightsResource {
+  /** The data origin every figure on the page was computed from (DJ.2); `live` unless asked. */
+  readonly origin: OriginFilter;
+  /** Every origin with a row behind any figure on the page, whichever was asked for. */
+  readonly originsPresent: readonly DataOrigin[];
+  /** True only when `origin` is `all` and some figure sums more than one origin. */
+  readonly mixed: boolean;
   readonly range: MetricRange;
   /** The window's first and last UTC day. */
   readonly window: { readonly from: Day; readonly to: Day };

@@ -62,13 +62,21 @@ describe("the onboarding resource", () => {
       scan: undefined,
       templates: [],
       ticket: undefined,
+      workflow: undefined,
+      firstRun: undefined,
       surfacing: { offer: true, reason: "fresh_organization" },
     });
 
     expect(resource.steps.map((step) => `${step.key}:${step.title}`)).toEqual(
       Object.values(STEP_LABELS).map((label) => `${label.key}:${label.title}`),
     );
-    expect(resource.refs).toEqual({ detectionScan: null, templates: [], pickedTicket: null });
+    expect(resource.refs).toEqual({
+      detectionScan: null,
+      templates: [],
+      pickedTicket: null,
+      workflow: null,
+      firstRun: null,
+    });
   });
 
   it("maps the card references", () => {
@@ -89,6 +97,26 @@ describe("the onboarding resource", () => {
         meta: {},
         kind: "github",
       },
+      workflow: {
+        slug: "quick-fixes-2",
+        template_slug: "quick-fixes",
+        template_version: 1,
+        current_version: 3,
+      },
+      firstRun: {
+        id: "5eed0051-0000-4000-8000-000000000488",
+        status: "review",
+        definition: {
+          dsl_version: "1.0",
+          trigger: { event: "ticket_queued", conditions: {} },
+          nodes: [
+            { id: "start", type: "trigger", title: "start", position: { x: 0, y: 0 }, config: {} },
+            { id: "draft-plan", type: "llm", title: "Plan", position: { x: 1, y: 0 }, config: {} },
+            { id: "code", type: "llm", title: "Code", position: { x: 2, y: 0 }, config: {} },
+          ],
+          edges: [],
+        },
+      },
       surfacing: { offer: false, reason: "wizard_finished" },
     });
 
@@ -103,6 +131,12 @@ describe("the onboarding resource", () => {
         externalKey: "#488",
         title: "docs: fix typo in README",
         source: "github",
+      },
+      workflow: { slug: "quick-fixes-2", version: 3 },
+      firstRun: {
+        id: "5eed0051-0000-4000-8000-000000000488",
+        status: "review",
+        planStage: "draft-plan",
       },
     });
     expect(resource.surfacing).toEqual({ offer: false, reason: "wizard_finished" });

@@ -4,7 +4,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import Home, { HOME_DESCRIPTION, HOME_TITLE, QUICK_LINKS } from "../../src/pages/index";
-import { BRAND_ASSETS, SECTIONS } from "../../site.constants";
+import { BRAND_ASSETS, RELEASE, RELEASE_NOTES_PATH, SECTIONS } from "../../site.constants";
 
 describe("the home page", () => {
   it("sets the page title and description", () => {
@@ -42,6 +42,12 @@ describe("the home page", () => {
     expect(within(links[0]).getByText(/^Use the app/)).toBeInTheDocument();
     expect(within(links[1]).getByText(/^Run and configure it/)).toBeInTheDocument();
     expect(within(links[2]).getByText(/^Command-line tools/)).toBeInTheDocument();
+  });
+
+  it("names the release the pages describe and links its feature list", () => {
+    render(<Home />);
+    const link = screen.getByRole("link", { name: `What is in ${RELEASE} →` });
+    expect(link).toHaveAttribute("href", RELEASE_NOTES_PATH);
   });
 
   it("offers the three quick links: get started, deploy, enrol a runner", () => {

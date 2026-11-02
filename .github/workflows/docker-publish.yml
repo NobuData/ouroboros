@@ -5,11 +5,14 @@ on:
     branches: [main]
     paths:
       - "ouroboros-web/**"
+      - "docs/reference-run/**"
       - ".github/workflows/docker-publish.yml"
   pull_request:
     branches: [main]
     paths:
       - "ouroboros-web/**"
+      # A new reference-run bundle must regenerate the hero's figures (DL.4, #1328).
+      - "docs/reference-run/**"
   workflow_dispatch:
 
 permissions:
@@ -41,6 +44,15 @@ jobs:
 
       - name: Lint
         run: yarn lint
+
+      - name: Test
+        run: yarn test
+
+      # The hero's figures must be what the newest reference-run bundle gives (DL.4, #1328). This
+      # job has the whole checkout, so the check compares against docs/reference-run/; inside the
+      # Docker build (context ouroboros-web/) only the data file's shape can be checked.
+      - name: Reference-run figures match their bundle
+        run: yarn check:reference
 
       - name: Build
         run: yarn build

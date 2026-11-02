@@ -137,8 +137,15 @@ describe("the dashboard controller", () => {
 
     const windows = service.windows.mock.results[0].value as unknown;
     expect(service.windows).toHaveBeenCalledTimes(1);
-    expect(service.etag).toHaveBeenCalledWith(WORKSPACE.id, windows);
-    expect(service.read).toHaveBeenCalledWith(WORKSPACE.id, windows);
+    expect(service.etag).toHaveBeenCalledWith(WORKSPACE.id, windows, undefined);
+    expect(service.read).toHaveBeenCalledWith(WORKSPACE.id, windows, undefined);
+  });
+
+  it("hands the asked origin to both the tag and the body (DJ.2)", async () => {
+    await controller.read(WORKSPACE as never, {}, recordingResponse(), { origin: "all" });
+
+    expect(service.etag).toHaveBeenCalledWith(WORKSPACE.id, expect.anything(), "all");
+    expect(service.read).toHaveBeenCalledWith(WORKSPACE.id, expect.anything(), "all");
   });
 
   it("takes the workspace from the tenant context and from nowhere else", async () => {
@@ -146,8 +153,8 @@ describe("the dashboard controller", () => {
     // one from a client is one where reading somebody else's numbers is a matter of typing.
     await controller.read(WORKSPACE as never, {}, recordingResponse());
 
-    expect(service.etag).toHaveBeenCalledWith(WORKSPACE.id, expect.anything());
-    expect(service.read).toHaveBeenCalledWith(WORKSPACE.id, expect.anything());
+    expect(service.etag).toHaveBeenCalledWith(WORKSPACE.id, expect.anything(), undefined);
+    expect(service.read).toHaveBeenCalledWith(WORKSPACE.id, expect.anything(), undefined);
   });
 
   it("tells a browser to revalidate rather than reuse, and no shared cache to store", async () => {

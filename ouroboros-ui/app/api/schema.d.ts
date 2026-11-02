@@ -3940,6 +3940,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/loop/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Everything a first live loop needs, checked
+         * @description The live-loop readiness preflight (DK.1,
+         *     [#1318](https://github.com/NobuData/ouroboros/issues/1318)) — every prerequisite a first
+         *     live loop has, checked for one repository and one workflow, each with a reason and, when it
+         *     does not pass, a fix link. The wizard's last step renders it (DK.2).
+         *
+         *     **Read-only and safe to poll.** It invokes no model, dispatches no job and writes nothing;
+         *     the two GitHub calls are permission lookups (`GET /repos/{owner}/{repo}`), never writes.
+         *
+         *     The checks, always all of them, in this order:
+         *
+         *     | Check | Fails or is unknown with |
+         *     |---|---|
+         *     | `deployment` | `deployment_disabled` — `OURO_LIVE_EXECUTION_ENABLED` is off |
+         *     | `workspace` | `workspace_paused`, `workspace_pending_delete` |
+         *     | `provider_connection` | `no_invocable_connection`; `connection_unhealthy` (every one failed its last test); `connection_untested` (unknown — none tested yet) |
+         *     | `routes` | `route_unresolved` (a task kind has no route, or none to a kept hop); `route_unpriced` (the first kept hop's model has no price); `workflow_unreadable` (unknown) |
+         *     | `stage_executors` | `engine_unavailable`, `no_executor` (only when the workflow has a model stage); `workflow_unreadable` |
+         *     | `runner` | `build_pool_required`, `pool_not_found`, `pool_disabled`, `no_runner`, `no_source_checkout` (per build stage's pool); `workflow_unreadable` |
+         *     | `repository` | `repository_disabled` |
+         *     | `push_credential` | the workspace GitHub token: `github_not_configured`, `repository_unreadable`, `push_denied`; `permission_unconfirmed` (unknown) |
+         *     | `pull_request_credential` | the issue's GitHub source: `no_issue_chosen` (unknown), `no_pr_source`, `pr_source_other_repository`, `repository_unreadable`, `push_denied`; `permission_unconfirmed` (unknown) |
+         *     | `dry_run` | `policy_not_dry_run` |
+         *     | `workflow_published` | `workflow_not_found`, `workflow_unpublished` |
+         *     | `concurrency` | `concurrency_ceiling` |
+         *
+         *     `ready` is true only when every check passes — an `unknown` blocks like a `fail`. GitHub's
+         *     permission answer is the account's access, not the token's scopes, so a `pass` on a
+         *     credential confirms what GitHub can say and no more. The `estimate` is labelled as one and
+         *     is never part of `ready`: the per-run cost cap of the loop's model route and the issue's
+         *     latest stored size. The issue is `issue`, else the repository's onboarding pick. Codes are
+         *     stable; a reason never names another workspace's rows. **Any member may read it**, viewers
+         *     included.
+         */
+        get: operations["readLoopReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/policies/dry-run": {
         parameters: {
             query?: never;
@@ -13419,6 +13470,14 @@ export interface components {
          */
         DataOrigin: "live" | "simulated" | "seeded";
         /**
+         * OriginFilter
+         * @description Which data origin an aggregate reads (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315)):
+         *     one `DataOrigin`, or `all` — every origin summed, and the answer marked `mixed`.
+         * @default live
+         * @enum {string}
+         */
+        OriginFilter: "live" | "simulated" | "seeded" | "all";
+        /**
          * Error
          * @description The body of **every** error this API answers with, and the same shape
          *     `ouroboros-engine` uses behind it (`docs/ARCHITECTURE.md` § 5.3). A failure the
@@ -15599,6 +15658,11 @@ export interface components {
          */
         PullRequestHead: {
             origin: components["schemas"]["DataOrigin"];
+            /**
+             * @description Whether the host holds the PR as a draft — it cannot merge until someone marks it
+             *     ready (V152, #1311). A PR a loop opened is always one.
+             */
+            draft: boolean;
             /** Format: uuid */
             id: string;
             /** @example 514 */
@@ -15658,6 +15722,8 @@ export interface components {
          */
         PullRequestSummary: {
             origin: components["schemas"]["DataOrigin"];
+            /** @description Whether the host holds the PR as a draft (V152, */
+            draft: boolean;
             /** Format: uuid */
             id: string;
             /** @example 514 */
@@ -16203,6 +16269,7 @@ export interface components {
              *     is **not** the same as `null` — not knowing yet.
              */
             checksTotal: number | null;
+            origin: components["schemas"]["DataOrigin"];
         };
         /**
          * RunPage
@@ -16262,7 +16329,7 @@ export interface components {
              */
             branchName: string | null;
             /**
-             * @description Decision R4's watermark: the run was opened by the simulated-run driver. Set from
+             * @description Decision R4's watermark: the run was opened by the run simulator. Set from
              *     the principal that opened it, never from a client's claim.
              */
             simulated: boolean;
@@ -16335,6 +16402,34 @@ export interface components {
              */
             note: string | null;
             attempts: components["schemas"]["RunStageAttempt"][];
+            build?: components["schemas"]["RunStageBuild"];
+        };
+        /**
+         * RunStageBuild
+         * @description The farm job a build stage's latest attempt submitted (AJ.3, #265), followed to the latest
+         *     attempt of its retry chain — the stage's real lifecycle, and the job whose log the
+         *     console's *Build log* link opens (`GET /api/v1/farm/jobs/{id}/log`). Omitted for a stage
+         *     that submitted none.
+         */
+        RunStageBuild: {
+            /** Format: uuid */
+            jobId: string;
+            /** @description The job's number within the workspace — mockup 08's `#479`. */
+            jobNumber: number;
+            /**
+             * @description `waiting` (queued, no runner) → `offered` → `accepted` → `running` → `succeeded` |
+             *     `failed` | `canceled`. A retried attempt is followed to its successor.
+             * @enum {string}
+             */
+            phase: "waiting" | "offered" | "accepted" | "running" | "succeeded" | "failed" | "retried" | "canceled";
+            pool: string;
+            /** @description The runner holding or last holding it; `null` while it waits. */
+            runnerName: string | null;
+            exitCode: number | null;
+            /** @description The ccache hit rate to one decimal, or `null` when nothing was measured. */
+            ccacheHitRatePct: number | null;
+            /** @description Automatic retries the farm made before this attempt. */
+            retries: number;
         };
         /**
          * RunStageAttempt
@@ -16912,16 +17007,19 @@ export interface components {
         MergedSevenDays: {
             /**
              * @description Loop PRs merged over the last seven UTC days, today included — the registry's
-             *     `merged_prs`, from the shared windowed metrics service.
+             *     `merged_prs`, from the shared windowed metrics service. Null — no data — when the
+             *     window holds no loop PR of the asked origin (DJ.2).
              */
-            count: number;
+            count: number | null;
             /**
-             * @description This window's count less the seven UTC days before it — rendered as
+             * @description Null when either week has no data.
+             *
+             *     This window's count less the seven UTC days before it — rendered as
              *     `▲ 8 vs last week`.
              *     **Signed**: a negative value is a week that merged less than the one before, and
              *     the direction is read from the sign rather than from a separate flag.
              */
-            deltaVsPrior: number;
+            deltaVsPrior: number | null;
         };
         /**
          * TokensToday
@@ -16931,8 +17029,11 @@ export interface components {
          *     client rendering this beside a local clock should say so.
          */
         TokensToday: {
-            /** @description Input plus output tokens across every provider — rendered as `4.2M`. */
-            tokens: number;
+            /**
+             * @description Input plus output tokens across every provider — rendered as `4.2M`. Null — no data —
+             *     when the day holds no usage of the asked origin (DJ.2); `costCents` is then null too.
+             */
+            tokens: number | null;
             /**
              * @description What the day's **priced** events cost, in cents. Cents rather than a decimal
              *     currency amount so that nothing rounds on the way through JSON; it may carry
@@ -16940,7 +17041,7 @@ export interface components {
              *
              *     It is a **lower bound** whenever `unpricedEvents` is non-zero.
              */
-            costCents: number;
+            costCents: number | null;
             /** @description How many distinct providers were paid — the `across 4 providers` in the subline. */
             providers: number;
             /**
@@ -16981,28 +17082,28 @@ export interface components {
              *     as a fraction between 0 and 1. Recomposed from the days' components — Σ autonomous
              *     ÷ Σ closed — never an average of daily rates.
              *
-             *     **`0` when no PR closed in the window.** That is a floor rather than a measurement:
-             *     an organization with no history reads `0` here with `0` merged and `0`
-             *     interventions, and a meter should render *no data* rather than a bad week.
+             *     **Null — no data — when no PR of the asked origin closed in the window** (DJ.2): never
+             *     a zero floor, so a workspace with no history cannot read as one that merged nothing.
              * @example 0.92
              */
-            mergeRate: number;
+            mergeRate: number | null;
             /**
              * @description **Cycle time** (`cycle_time`): the **median** of `finishedAt − startedAt` over loops
              *     that finished merged in the window, in seconds, pooled across the window's days. The
              *     field keeps its name for compatibility; since 0.38.0 the figure is the registry's
              *     median rather than a mean over every terminal run.
              *
-             *     `0` when nothing merged in the window, with the same reading as `mergeRate`'s zero.
+             *     Null when nothing of the asked origin merged in the window — no data, as `mergeRate`.
              * @example 860
              */
-            avgCycleSeconds: number;
+            avgCycleSeconds: number | null;
             /**
              * @description **Human interventions** (`human_interventions`): every moment a person stepped into
              *     a loop in the window — a needs-human handoff, a human failure classification, a
-             *     waiver, a failed gate, a blocking vote — across every cause.
+             *     waiver, a failed gate, a blocking vote — across every cause. Null when the window
+             *     holds no intervention of the asked origin.
              */
-            interventions7d: number;
+            interventions7d: number | null;
             /**
              * @description Whether this workspace merges on green checks without asking.
              *
@@ -17034,21 +17135,31 @@ export interface components {
              * @description Loop PRs merged since **midnight UTC** — today's point of the same `merged_prs`
              *     window `stats.merged7d` counts, so the sentence and the card cannot disagree. It is
              *     the same day boundary `stats.tokensToday` uses, so the two cannot mean different
-             *     mornings.
+             *     mornings. Null exactly when `stats.merged7d.count` is.
              */
-            mergedSinceMorning: number;
+            mergedSinceMorning: number | null;
         };
         /**
          * Dashboard
          * @description The whole dashboard for one workspace, measured between one set of boundaries.
          *
-         *     **Every field is always present.** An organization with nothing in it answers zeros
-         *     and empty arrays — never `null`, and never an absent key — so a card renders from this
-         *     without a fallback branch. The nullable values are all *inside* a row, where a null is
-         *     a fact about that row: a run in flight has no `finishedAt`, a queued issue may carry no
-         *     estimate.
+         *     **Every field is always present.** Lists are lists, and counts of what is in flight or
+         *     queued are numbers. A windowed aggregate with no row of the asked origin is **null** — no
+         *     data, never a zero floor (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315))
+         *     — and `originsPresent` says what the workspace does hold. Aggregates count `live` rows
+         *     unless `origin` asks otherwise. The two run lists are filtered by `origin` too (DJ.3,
+         *     [#1316](https://github.com/NobuData/ouroboros/issues/1316)) and each run carries its own; the
+         *     queue holds issues rather than runs and is not filtered.
          */
         Dashboard: {
+            origin: components["schemas"]["OriginFilter"];
+            /**
+             * @description Every data origin with a row in the window, whichever was asked for — `["seeded"]`
+             *     beside a null figure is "no live data", not zero (DJ.2).
+             */
+            originsPresent: components["schemas"]["DataOrigin"][];
+            /** @description True only when `origin` is `all` and a figure sums more than one origin. */
+            mixed: boolean;
             stats: components["schemas"]["DashboardStats"];
             pulse: components["schemas"]["LoopPulse"];
             /**
@@ -17184,6 +17295,33 @@ export interface components {
                 title: string;
                 /** @description The ticket source's kind — `github`, `jira`, … */
                 source: string;
+            };
+            /**
+             * @description The workflow instantiated from the selected template — its slug and version in force
+             *     — or null while none is. The readiness preflight (`GET /api/v1/loop/readiness`) is
+             *     asked about it (DK.2, #1319).
+             */
+            workflow: null | {
+                slug: string;
+                /** @description `workflows.current_version` — null while nothing is published. */
+                version: number | null;
+            };
+            /**
+             * @description The first run of the picked issue in this repository — the wizard's first loop, the
+             *     oldest by start — or null while none has opened. The live timeline reads the run
+             *     through `GET /api/v1/runs/{id}` (BD.1, #396).
+             */
+            firstRun: null | {
+                /** Format: uuid */
+                id: string;
+                status: components["schemas"]["RunStatus"];
+                /**
+                 * @description The run's first model stage — the node id of the first `llm` node of its
+                 *     pinned version, the stage key the run console reports — or null when the pin
+                 *     has none or does not read. The timeline's *plan posted* row is that stage's
+                 *     first attempt finishing.
+                 */
+                planStage: string | null;
             };
         };
         /**
@@ -18811,6 +18949,7 @@ export interface components {
         InterventionList: {
             /** @enum {string} */
             range: "7d" | "30d" | "90d";
+            origin: components["schemas"]["OriginFilter"];
             window: components["schemas"]["InsightsDaySpan"];
             /** @description The cause listed; null for every cause. */
             cause: components["schemas"]["InterventionCause"] | null;
@@ -18838,8 +18977,21 @@ export interface components {
          *     carries `costCents` only when the usage it covers was priced — otherwise the key is absent,
          *     never `0`. Claims whose source does not exist yet (cap alerts, the routing suggestion, the
          *     analyzer's cluster note) have no key at all.
+         *
+         *     **Live data by default** (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315)):
+         *     every figure is computed from the asked `origin`'s rows alone. A figure with none is null and
+         *     a chart with none has no points — never zeros — and `originsPresent` names what the
+         *     workspace does hold.
          */
         Insights: {
+            origin: components["schemas"]["OriginFilter"];
+            /**
+             * @description Every data origin with a row in the window, whichever was asked for — `["seeded"]`
+             *     beside a null figure is "no live data", not zero (DJ.2).
+             */
+            originsPresent: components["schemas"]["DataOrigin"][];
+            /** @description True only when `origin` is `all` and a figure sums more than one origin. */
+            mixed: boolean;
             /** @enum {string} */
             range: "7d" | "30d" | "90d";
             window: components["schemas"]["InsightsDaySpan"];
@@ -18994,6 +19146,8 @@ export interface components {
              * @enum {string}
              */
             aggregation: "sum" | "ratio" | "median";
+            /** @description How the metric treats data origin, in words (DJ.2) — printed beside the formula. */
+            originRule: string;
         };
         /**
          * InsightsMoney
@@ -19030,8 +19184,10 @@ export interface components {
         InsightsHead: {
             /** @enum {string} */
             range: "7d";
-            mergedPrs: number;
-            interventions: number;
+            /** @description Null — no data — when the week holds no loop PR of the asked origin (DJ.2). */
+            mergedPrs: number | null;
+            /** @description Null exactly when `mergedPrs` is. */
+            interventions: number | null;
         };
         /**
          * InsightsKpi
@@ -19043,8 +19199,14 @@ export interface components {
             key: "autonomous_merge_rate" | "merged_untouched_rate" | "cycle_time" | "cost_per_merged_pr" | "human_interventions";
             /** @enum {string} */
             unit: "count" | "pct" | "duration_ms" | "cents" | "tokens";
-            /** @description The figure; null when the window has nothing to compute it from. */
+            /** @description The figure; null — no data — when the window has nothing of the asked origin to compute it from. */
             value: number | null;
+            /**
+             * @description The count behind the figure (DJ.2): how many source rows — pull requests, runs, builds,
+             *     usage rows, test cases — the window's figure was computed from. `0` beside a null
+             *     `value` is no data, not zero; null when a seeded row did not record it.
+             */
+            n: number | null;
             /** @description The prior window's figure. */
             prior: number | null;
             /** @description `value − prior`, in `unit` — points for a `pct`. */
@@ -19179,6 +19341,12 @@ export interface components {
             /** @enum {string} */
             unit: "count" | "pct" | "duration_ms" | "cents" | "tokens";
             value: number | null;
+            /**
+             * @description The count behind the figure (DJ.2): how many source rows — pull requests, runs, builds,
+             *     usage rows, test cases — the window's figure was computed from. `0` beside a null
+             *     `value` is no data, not zero; null when a seeded row did not record it.
+             */
+            n: number | null;
             /** @description A rate's parts — succeeded builds over all builds, passing cases over cases run. */
             components?: {
                 numerator: number;
@@ -19244,6 +19412,12 @@ export interface components {
              */
             unit: "count" | "pct" | "duration_ms" | "cents" | "tokens" | "per_day";
             value: number | null;
+            /**
+             * @description The count behind the figure (DJ.2): how many source rows — pull requests, runs, builds,
+             *     usage rows, test cases — the window's figure was computed from. `0` beside a null
+             *     `value` is no data, not zero; null when a seeded row did not record it.
+             */
+            n: number | null;
             prior: number | null;
             delta: number | null;
             trend: components["schemas"]["InsightsTrend"];
@@ -19259,6 +19433,14 @@ export interface components {
          *     **absent** — not null, not empty — until that source exists.
          */
         Scoreboard: {
+            origin: components["schemas"]["OriginFilter"];
+            /**
+             * @description Every data origin with a row in the window, whichever was asked for — `["seeded"]`
+             *     beside a null figure is "no live data", not zero (DJ.2).
+             */
+            originsPresent: components["schemas"]["DataOrigin"][];
+            /** @description True only when `origin` is `all` and a figure sums more than one origin. */
+            mixed: boolean;
             /** @enum {string} */
             range: "7d" | "30d" | "90d";
             window: components["schemas"]["InsightsDaySpan"];
@@ -19325,6 +19507,14 @@ export interface components {
          *     nothing was estimated.
          */
         CalibrationReport: {
+            origin: components["schemas"]["OriginFilter"];
+            /**
+             * @description Every data origin with a row in the window, whichever was asked for — `["seeded"]`
+             *     beside a null figure is "no live data", not zero (DJ.2).
+             */
+            originsPresent: components["schemas"]["DataOrigin"][];
+            /** @description True only when `origin` is `all` and a figure sums more than one origin. */
+            mixed: boolean;
             /** @enum {string} */
             window: "7d" | "30d" | "90d";
             /**
@@ -19553,6 +19743,56 @@ export interface components {
             };
             /** @description The stage-executor kinds the engine has registered; empty when it reports none or did not answer. */
             executors: ("native" | "harness")[];
+        };
+        /** @description The live-loop readiness preflight (DK.1, */
+        LoopReadiness: {
+            /** @description `owner/name`, as the workspace stores it. */
+            repository: string;
+            workflow: {
+                slug: string;
+                /** @description The version in force, or `null` when none is (or no such workflow exists). */
+                version: number | null;
+            };
+            /** @description True only when every check passes. */
+            ready: boolean;
+            /** @description Every check, in the documented order. */
+            checks: components["schemas"]["LoopReadinessCheck"][];
+            estimate: components["schemas"]["LoopReadinessEstimate"];
+        };
+        /** @description One readiness check. */
+        LoopReadinessCheck: {
+            /** @enum {string} */
+            id: "deployment" | "workspace" | "provider_connection" | "routes" | "stage_executors" | "runner" | "repository" | "push_credential" | "pull_request_credential" | "dry_run" | "workflow_published" | "concurrency";
+            /** @enum {string} */
+            state: "pass" | "fail" | "unknown";
+            /** @description Why not, or `null` when it passes. Stable codes — add, never rename. */
+            code: ("deployment_disabled" | "workspace_paused" | "workspace_pending_delete" | "no_invocable_connection" | "connection_unhealthy" | "connection_untested" | "workflow_unreadable" | "route_unresolved" | "route_unpriced" | "engine_unavailable" | "no_executor" | "build_pool_required" | "pool_not_found" | "pool_disabled" | "no_runner" | "no_source_checkout" | "repository_disabled" | "github_not_configured" | "no_issue_chosen" | "no_pr_source" | "pr_source_other_repository" | "repository_unreadable" | "push_denied" | "permission_unconfirmed" | "policy_not_dry_run" | "workflow_not_found" | "workflow_unpublished" | "concurrency_ceiling") | null;
+            /** @description A sentence — what passed, or what is missing, in the workspace's own names. */
+            reason: string;
+            /** @description Where to clear it, or `null` when it passes. */
+            fix: components["schemas"]["LoopReadinessFix"] | null;
+        };
+        /** @description A readiness check's fix link. */
+        LoopReadinessFix: {
+            label: string;
+            /** @description A product path (`/build-farm`) or an absolute documentation URL. */
+            href: string;
+        };
+        /** @description The estimate beside the checks — labelled as one, never part of `ready`. */
+        LoopReadinessEstimate: {
+            /** @constant */
+            isEstimate: true;
+            /** @description The per-run cost cap the loop's model route enforces, or `null` when it sets none. */
+            costCapCentsPerRun: number | null;
+            /** @description The issue the loop would work on, or `null` when none is picked or named. */
+            issue: {
+                number: number;
+                title: string;
+                /** @description The latest stored estimate's size, or `null` while unsized. */
+                size: ("xs" | "s" | "m" | "l" | "xl") | null;
+                /** @description What produced that size (`heuristic-v0`), or `null` while unsized. */
+                sizedBy: string | null;
+            } | null;
         };
         /** @description One stage of the loop capability report. */
         LoopStageCapability: {
@@ -32633,6 +32873,8 @@ export interface components {
              *     **Added in 0.37.2.**
              */
             runId: string | null;
+            /** @description Where the build came from (DJ.1) — what the UI's origin badge reads (DJ.3). */
+            origin: components["schemas"]["DataOrigin"];
         };
         /**
          * FarmLiveBuild
@@ -32655,6 +32897,8 @@ export interface components {
              * @description The card's elapsed timer counts from here.
              */
             startedAt: string | null;
+            /** @description Where the build came from (DJ.1) — what the UI's origin badge reads (DJ.3). */
+            origin: components["schemas"]["DataOrigin"];
         };
         /**
          * ArtifactUploadRequest
@@ -33231,6 +33475,15 @@ export interface components {
          * @example 30d
          */
         InsightsRange: "7d" | "30d" | "90d";
+        /**
+         * @description Which data origin the aggregates are computed from (DJ.2,
+         *     [#1315](https://github.com/NobuData/ouroboros/issues/1315)): `live` when absent —
+         *     `simulated` or `seeded` for those rows alone, or `all` for every origin summed, which the
+         *     answer then marks `mixed`. A window with no row of the asked origin answers **no data** (a
+         *     null figure), never zero and never another origin's rows.
+         * @example live
+         */
+        InsightsOrigin: components["schemas"]["OriginFilter"];
         /**
          * @description One repository, as `owner/name` — `acme-robotics/helios-firmware`. The whole workspace when
          *     absent. Compared case-insensitively.
@@ -34255,7 +34508,17 @@ export interface operations {
     };
     readDashboard: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Which data origin the aggregates are computed from (DJ.2,
+                 *     [#1315](https://github.com/NobuData/ouroboros/issues/1315)): `live` when absent —
+                 *     `simulated` or `seeded` for those rows alone, or `all` for every origin summed, which the
+                 *     answer then marks `mixed`. A window with no row of the asked origin answers **no data** (a
+                 *     null figure), never zero and never another origin's rows.
+                 * @example live
+                 */
+                origin?: components["parameters"]["InsightsOrigin"];
+            };
             header?: {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
@@ -34326,6 +34589,11 @@ export interface operations {
                 content: {
                     /**
                      * @example {
+                     *       "origin": "live",
+                     *       "originsPresent": [
+                     *         "live"
+                     *       ],
+                     *       "mixed": false,
                      *       "stats": {
                      *         "loopsLive": {
                      *           "total": 3,
@@ -34371,7 +34639,8 @@ export interface operations {
                      *           "finishedAt": null,
                      *           "prNumber": null,
                      *           "checksPassed": null,
-                     *           "checksTotal": null
+                     *           "checksTotal": null,
+                     *           "origin": "seeded"
                      *         }
                      *       ],
                      *       "recentRuns": [
@@ -34389,7 +34658,8 @@ export interface operations {
                      *           "finishedAt": "2026-08-13T13:55:41.000Z",
                      *           "prNumber": 512,
                      *           "checksPassed": 14,
-                     *           "checksTotal": 14
+                     *           "checksTotal": 14,
+                     *           "origin": "seeded"
                      *         }
                      *       ],
                      *       "queueHead": [
@@ -34525,6 +34795,11 @@ export interface operations {
                 /** @description Narrow to one repository, by `github_repos.id`. */
                 repo?: string;
                 /**
+                 * @description Narrow to one data origin's runs (DJ.3, [#1316](https://github.com/NobuData/ouroboros/issues/1316))
+                 *     — `live`, `simulated` or `seeded`. Absent or `all` lists every origin.
+                 */
+                origin?: components["schemas"]["OriginFilter"];
+                /**
                  * @description How many rows to return. The ceiling is not a suggestion: without it, a `limit` of a
                  *     million is a client's way of asking this service to hold a table in memory, and the
                  *     request that does it is indistinguishable from a mistake in a loop.
@@ -34605,7 +34880,8 @@ export interface operations {
                      *           "finishedAt": null,
                      *           "prNumber": null,
                      *           "checksPassed": null,
-                     *           "checksTotal": null
+                     *           "checksTotal": null,
+                     *           "origin": "seeded"
                      *         }
                      *       ],
                      *       "total": 3,
@@ -34759,7 +35035,8 @@ export interface operations {
                      *         "finishedAt": null,
                      *         "prNumber": null,
                      *         "checksPassed": null,
-                     *         "checksTotal": null
+                     *         "checksTotal": null,
+                     *         "origin": "seeded"
                      *       },
                      *       "head": {
                      *         "loopSeq": 1847,
@@ -39219,7 +39496,9 @@ export interface operations {
                      *             "scope": "global"
                      *           }
                      *         ],
-                     *         "pickedTicket": null
+                     *         "pickedTicket": null,
+                     *         "workflow": null,
+                     *         "firstRun": null
                      *       },
                      *       "surfacing": {
                      *         "offer": true,
@@ -40680,6 +40959,12 @@ export interface operations {
              *     `onboarding_pick_required` — there is no issue to queue: nothing is picked, the pick is
              *     not an issue of this repository, or the repository's backlog does not hold it yet.
              *     `message` and `details.reason` are the stated reason.
+             *
+             *     `onboarding_loop_not_ready` — live execution is on and the readiness preflight
+             *     (`GET /api/v1/loop/readiness`, DK.1) is not ready for this repository, its instantiated
+             *     workflow and the pick. `message` is the first blocking check's reason;
+             *     `details.checks` are the checks that did not pass, as the preflight answers them.
+             *     Nothing was queued. With live execution off the launch never asks.
              *
              *     `queue_issues_conflict` — the queue write's own refusal: the workspace's queue already
              *     holds this issue number for another repository.
@@ -50347,6 +50632,189 @@ export interface operations {
             };
         };
     };
+    readLoopReadiness: {
+        parameters: {
+            query: {
+                /**
+                 * @description `owner/name`, compared case-insensitively.
+                 * @example acme-live-slice/helios-greeter
+                 */
+                repository: string;
+                /**
+                 * @description The workflow's slug. Its version in force is the one checked.
+                 * @example live-slice
+                 */
+                workflow: string;
+                /** @description The issue to size and to ask the pull-request source about; absent, the repository's onboarding pick. */
+                issue?: number;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The preflight. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "repository": "acme/helios",
+                     *       "workflow": {
+                     *         "slug": "live-slice",
+                     *         "version": 1
+                     *       },
+                     *       "ready": false,
+                     *       "checks": [
+                     *         {
+                     *           "id": "deployment",
+                     *           "state": "pass",
+                     *           "code": null,
+                     *           "reason": "Live execution is enabled for this deployment.",
+                     *           "fix": null
+                     *         },
+                     *         {
+                     *           "id": "runner",
+                     *           "state": "fail",
+                     *           "code": "no_runner",
+                     *           "reason": "No runner is online in pool-a.",
+                     *           "fix": {
+                     *             "label": "Build Farm · enrol a runner",
+                     *             "href": "/build-farm"
+                     *           }
+                     *         },
+                     *         {
+                     *           "id": "push_credential",
+                     *           "state": "unknown",
+                     *           "code": "permission_unconfirmed",
+                     *           "reason": "Whether the token can push a branch could not be confirmed: GitHub's answer carries no permission for the token.",
+                     *           "fix": {
+                     *             "label": "Sources · check the token",
+                     *             "href": "/settings/sources"
+                     *           }
+                     *         }
+                     *       ],
+                     *       "estimate": {
+                     *         "isEstimate": true,
+                     *         "costCapCentsPerRun": 200,
+                     *         "issue": {
+                     *           "number": 1,
+                     *           "title": "Greet by name",
+                     *           "size": "s",
+                     *           "sizedBy": "heuristic-v0"
+                     *         }
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LoopReadiness"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `repository_not_found` — the workspace has no repository by that name.
+             *
+             *     `issue_not_found` — the named `issue` is not in the repository's synced backlog.
+             *
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `repository` is not `owner/name`, `workflow` is not a slug, or
+             *     `issue` is not a positive integer.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     readDryRunPolicy: {
         parameters: {
             query?: never;
@@ -50618,6 +51086,15 @@ export interface operations {
                  * @example acme-robotics/helios-firmware
                  */
                 repo?: components["parameters"]["InsightsRepo"];
+                /**
+                 * @description Which data origin the aggregates are computed from (DJ.2,
+                 *     [#1315](https://github.com/NobuData/ouroboros/issues/1315)): `live` when absent —
+                 *     `simulated` or `seeded` for those rows alone, or `all` for every origin summed, which the
+                 *     answer then marks `mixed`. A window with no row of the asked origin answers **no data** (a
+                 *     null figure), never zero and never another origin's rows.
+                 * @example live
+                 */
+                origin?: components["parameters"]["InsightsOrigin"];
             };
             header?: {
                 /**
@@ -50669,6 +51146,11 @@ export interface operations {
                 content: {
                     /**
                      * @example {
+                     *       "origin": "live",
+                     *       "originsPresent": [
+                     *         "live"
+                     *       ],
+                     *       "mixed": false,
                      *       "range": "7d",
                      *       "window": {
                      *         "from": "2026-09-25",
@@ -50691,6 +51173,7 @@ export interface operations {
                      *           "key": "autonomous_merge_rate",
                      *           "unit": "pct",
                      *           "value": 95.45454545454545,
+                     *           "n": 22,
                      *           "prior": 92.5925925925926,
                      *           "delta": 2.861952861952858,
                      *           "trend": {
@@ -50709,13 +51192,15 @@ export interface operations {
                      *             "unit": "pct",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "merged_untouched_rate",
                      *           "unit": "pct",
                      *           "value": 76.19047619047619,
+                     *           "n": 22,
                      *           "prior": 80,
                      *           "delta": -3.80952380952381,
                      *           "trend": {
@@ -50733,13 +51218,15 @@ export interface operations {
                      *             "unit": "pct",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "cycle_time",
                      *           "unit": "duration_ms",
                      *           "value": 820000,
+                     *           "n": 22,
                      *           "prior": 860000,
                      *           "delta": -40000,
                      *           "trend": {
@@ -50757,13 +51244,15 @@ export interface operations {
                      *             "unit": "duration_ms",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "median"
+                     *             "aggregation": "median",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "cost_per_merged_pr",
                      *           "unit": "cents",
                      *           "value": 203.61904761904762,
+                     *           "n": 22,
                      *           "prior": 242.12,
                      *           "delta": -38.500952380952384,
                      *           "trend": {
@@ -50782,13 +51271,15 @@ export interface operations {
                      *             "unit": "cents",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "human_interventions",
                      *           "unit": "count",
                      *           "value": 8,
+                     *           "n": 22,
                      *           "prior": 2,
                      *           "delta": 6,
                      *           "trend": {
@@ -50808,7 +51299,8 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 2,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         }
                      *       ],
@@ -50869,7 +51361,8 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         "cost": {
@@ -50933,7 +51426,8 @@ export interface operations {
                      *             "unit": "cents",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         "builds": {
@@ -50985,7 +51479,8 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         }
                      *       },
@@ -51024,7 +51519,8 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 2,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         "stages": {
@@ -51074,7 +51570,8 @@ export interface operations {
                      *             "unit": "duration_ms",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "median"
+                     *             "aggregation": "median",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         "suites": {
@@ -51114,7 +51611,8 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         "effort": {
@@ -51161,7 +51659,8 @@ export interface operations {
                      *             "unit": "duration_ms",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "median"
+                     *             "aggregation": "median",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         "tokens": {
@@ -51216,7 +51715,8 @@ export interface operations {
                      *             "unit": "tokens",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         }
                      *       },
@@ -51225,6 +51725,7 @@ export interface operations {
                      *           "key": "builds",
                      *           "unit": "count",
                      *           "value": 110,
+                     *           "n": 22,
                      *           "methodology": {
                      *             "metricId": "builds",
                      *             "title": "Builds",
@@ -51236,13 +51737,15 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "build_success_rate",
                      *           "unit": "pct",
                      *           "value": 93.63636363636364,
+                     *           "n": 22,
                      *           "components": {
                      *             "numerator": 103,
                      *             "denominator": 110
@@ -51258,13 +51761,15 @@ export interface operations {
                      *             "unit": "pct",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "test_cases_run",
                      *           "unit": "count",
                      *           "value": 5622,
+                     *           "n": 22,
                      *           "methodology": {
                      *             "metricId": "test_cases_run",
                      *             "title": "Test cases run",
@@ -51276,13 +51781,15 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "test_pass_rate",
                      *           "unit": "pct",
                      *           "value": 99.62646744930629,
+                     *           "n": 22,
                      *           "components": {
                      *             "numerator": 5601,
                      *             "denominator": 5622
@@ -51298,13 +51805,15 @@ export interface operations {
                      *             "unit": "pct",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "tokens",
                      *           "unit": "tokens",
                      *           "value": 27846076,
+                     *           "n": 22,
                      *           "methodology": {
                      *             "metricId": "tokens",
                      *             "title": "Tokens",
@@ -51316,13 +51825,15 @@ export interface operations {
                      *             "unit": "tokens",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "total_cost",
                      *           "unit": "cents",
                      *           "value": 4276,
+                     *           "n": 22,
                      *           "methodology": {
                      *             "metricId": "cost_cents",
                      *             "title": "Total cost",
@@ -51334,7 +51845,8 @@ export interface operations {
                      *             "unit": "cents",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         }
                      *       ],
@@ -51383,6 +51895,11 @@ export interface operations {
                      *         ]
                      *       },
                      *       "scoreboard": {
+                     *         "origin": "live",
+                     *         "originsPresent": [
+                     *           "live"
+                     *         ],
+                     *         "mixed": false,
                      *         "range": "7d",
                      *         "window": {
                      *           "from": "2026-09-25",
@@ -51406,7 +51923,8 @@ export interface operations {
                      *             "unit": "pct",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           },
                      *           "costPerSuccess": {
                      *             "metricId": "scoreboard_cost_per_success",
@@ -51421,7 +51939,8 @@ export interface operations {
                      *             "unit": "cents",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           },
                      *           "trend": {
                      *             "metricId": "scoreboard_trend",
@@ -51435,7 +51954,8 @@ export interface operations {
                      *             "unit": "pct",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           },
                      *           "sample": {
                      *             "metricId": "scoreboard_merged",
@@ -51450,7 +51970,8 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         }
                      *       },
@@ -51459,6 +51980,7 @@ export interface operations {
                      *           "key": "deploy_frequency",
                      *           "unit": "per_day",
                      *           "value": 7.285714285714286,
+                     *           "n": 22,
                      *           "prior": 4.428571428571429,
                      *           "delta": 2.8571428571428568,
                      *           "trend": {
@@ -51486,13 +52008,15 @@ export interface operations {
                      *             "unit": "count",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "sum"
+                     *             "aggregation": "sum",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "lead_time",
                      *           "unit": "duration_ms",
                      *           "value": 1613333.3333333333,
+                     *           "n": 22,
                      *           "prior": 1371200,
                      *           "delta": 242133.33333333326,
                      *           "trend": {
@@ -51521,13 +52045,15 @@ export interface operations {
                      *             "unit": "duration_ms",
                      *             "version": 1,
                      *             "proxy": false,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "change_failure_rate",
                      *           "unit": "pct",
                      *           "value": 4.761904761904762,
+                     *           "n": 22,
                      *           "prior": 0,
                      *           "delta": 4.761904761904762,
                      *           "trend": {
@@ -51555,13 +52081,15 @@ export interface operations {
                      *             "unit": "pct",
                      *             "version": 1,
                      *             "proxy": true,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         },
                      *         {
                      *           "key": "mttr",
                      *           "unit": "duration_ms",
                      *           "value": 1135500,
+                     *           "n": 22,
                      *           "prior": 1247916.6666666667,
                      *           "delta": -112416.66666666674,
                      *           "trend": {
@@ -51590,7 +52118,8 @@ export interface operations {
                      *             "unit": "duration_ms",
                      *             "version": 1,
                      *             "proxy": true,
-                     *             "aggregation": "ratio"
+                     *             "aggregation": "ratio",
+                     *             "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                      *           }
                      *         }
                      *       ],
@@ -52317,6 +52846,15 @@ export interface operations {
                  * @example 30d
                  */
                 window?: components["parameters"]["CalibrationWindow"];
+                /**
+                 * @description Which data origin the aggregates are computed from (DJ.2,
+                 *     [#1315](https://github.com/NobuData/ouroboros/issues/1315)): `live` when absent —
+                 *     `simulated` or `seeded` for those rows alone, or `all` for every origin summed, which the
+                 *     answer then marks `mixed`. A window with no row of the asked origin answers **no data** (a
+                 *     null figure), never zero and never another origin's rows.
+                 * @example live
+                 */
+                origin?: components["parameters"]["InsightsOrigin"];
             };
             header?: {
                 /**
@@ -52368,6 +52906,11 @@ export interface operations {
                 content: {
                     /**
                      * @example {
+                     *       "origin": "live",
+                     *       "originsPresent": [
+                     *         "live"
+                     *       ],
+                     *       "mixed": false,
                      *       "window": "30d",
                      *       "from": "2026-09-01T12:00:00.000Z",
                      *       "to": "2026-10-01T12:00:00.000Z",
@@ -52507,6 +53050,15 @@ export interface operations {
                  * @example infra_rig
                  */
                 cause?: components["schemas"]["InterventionCause"];
+                /**
+                 * @description Which data origin the aggregates are computed from (DJ.2,
+                 *     [#1315](https://github.com/NobuData/ouroboros/issues/1315)): `live` when absent —
+                 *     `simulated` or `seeded` for those rows alone, or `all` for every origin summed, which the
+                 *     answer then marks `mixed`. A window with no row of the asked origin answers **no data** (a
+                 *     null figure), never zero and never another origin's rows.
+                 * @example live
+                 */
+                origin?: components["parameters"]["InsightsOrigin"];
             };
             header?: {
                 /**
@@ -52559,6 +53111,7 @@ export interface operations {
                     /**
                      * @example {
                      *       "range": "30d",
+                     *       "origin": "live",
                      *       "window": {
                      *         "from": "2026-09-02",
                      *         "to": "2026-10-01"

@@ -12,6 +12,7 @@ import type { InsightsPollOptions } from "./insights-poll";
 import { InsightsProvider } from "./insights-store";
 import { KpiRow } from "./kpi-row";
 import { LagBanner } from "./lag-banner";
+import { InsightsOriginStrip } from "./origin-badges";
 import { PerformanceStrip } from "./performance-strip";
 import { EffortCard, SuitesCard, TokensCard } from "./ranked-cards";
 import { ScoreboardCard } from "./scoreboard-card";
@@ -68,6 +69,7 @@ export function InsightsScreen({
       <main className="insights">
         <InsightsBanner />
         <LagBanner />
+        <InsightsOriginStrip />
         <InsightsHead />
         <InsightsGrid>
           <CardBoundary className="insights-col--12" label={KPI_LABEL}>

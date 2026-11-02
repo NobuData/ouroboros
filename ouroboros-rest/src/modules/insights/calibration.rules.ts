@@ -11,7 +11,15 @@
  * total in-band over total estimated, not the mean of the five slice rates.
  */
 
-import { ISSUE_ESTIMATE_EFFORTS, type EstimateEffort } from "../db/schema";
+import { ISSUE_ESTIMATE_EFFORTS, type DataOrigin, type EstimateEffort } from "../db/schema";
+import {
+  DEFAULT_ORIGIN,
+  isMixed,
+  keeps,
+  originsPresent,
+  type OriginFilter,
+} from "./metrics/metrics.origin";
+import type { OriginFacts } from "./metrics/metrics.types";
 
 /** The windows the Insights range segment offers — mockup 15's `7d · 30d · 90d`. */
 export const CALIBRATION_WINDOWS = ["7d", "30d", "90d"] as const;
@@ -54,6 +62,8 @@ export function windowRange(window: CalibrationWindow, now: Date): CalibrationRa
 export interface CalibrationSliceSums {
   /** The predicted effort, or null for merges with no governing estimate. */
   readonly effort: EstimateEffort | null;
+  /** The data origin of the merged pull requests in the group (V141, DJ.2). */
+  readonly origin: DataOrigin;
   /** Merged loops in the group. */
   readonly merged: number;
   /** Of those, how many landed inside their band. */
@@ -98,7 +108,7 @@ export interface EffortCalibration {
 }
 
 /** `GET /api/v1/insights/calibration` — the report. */
-export interface CalibrationReport {
+export interface CalibrationReport extends OriginFacts {
   /** The window asked for. */
   readonly window: CalibrationWindow;
   /** The window's first instant, ISO-8601. */
@@ -187,8 +197,18 @@ export function calibrationReport(
   window: CalibrationWindow,
   range: CalibrationRange,
   groups: readonly CalibrationSliceSums[],
+  origin: OriginFilter = DEFAULT_ORIGIN,
 ): CalibrationReport {
-  const byEffort = new Map(groups.map((group) => [group.effort, group]));
+  const kept = groups.filter((group) => keeps(origin, group.origin));
+  const byEffort = new Map<EstimateEffort | null, CalibrationSliceSums>();
+
+  // One origin per effort unless `all` was asked for, when the origins' counts are summed.
+  for (const group of kept) {
+    const seen = byEffort.get(group.effort);
+
+    byEffort.set(group.effort, seen === undefined ? group : sumSlices(seen, group));
+  }
+
   const efforts = ISSUE_ESTIMATE_EFFORTS.map((effort) =>
     effortCalibration(effort, byEffort.get(effort)),
   );
@@ -197,6 +217,9 @@ export function calibrationReport(
   const unestimated = byEffort.get(null)?.merged ?? 0;
 
   return {
+    origin,
+    originsPresent: originsPresent(groups),
+    mixed: isMixed(origin, originsPresent(kept)),
     window,
     from: range.from.toISOString(),
     to: range.to.toISOString(),
@@ -206,5 +229,25 @@ export function calibrationReport(
     withinBand,
     withinBandPct: percentage(withinBand, estimated),
     efforts,
+  };
+}
+
+/**
+ * Two groups of one effort, summed — only ever two origins under `all`.
+ *
+ * @param a - One group.
+ * @param b - Another of the same effort.
+ * @returns Their counts and sums added; `a`'s origin, which the caller does not read again.
+ */
+function sumSlices(a: CalibrationSliceSums, b: CalibrationSliceSums): CalibrationSliceSums {
+  return {
+    effort: a.effort,
+    origin: a.origin,
+    merged: a.merged + b.merged,
+    withinBand: a.withinBand + b.withinBand,
+    over: a.over + b.over,
+    under: a.under + b.under,
+    deviationMs: a.deviationMs + b.deviationMs,
+    midpointMs: a.midpointMs + b.midpointMs,
   };
 }

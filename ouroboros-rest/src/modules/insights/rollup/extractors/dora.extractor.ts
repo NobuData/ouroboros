@@ -19,11 +19,15 @@
  *
  * A negative interval — a host clock behind the loop's — is clamped to zero rather than allowed to
  * refuse the day's fill.
+ *
+ * **Per origin** (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315)): a deploy and a
+ * recovery take their build job's origin, a lead time and a change failure their PR's. Revert
+ * evidence is read across origins — it only says whether a merge was undone, it is not counted.
  */
 
 import { sql, type Kysely } from "kysely";
 
-import type { Database } from "../../../db/schema";
+import type { Database, DataOrigin } from "../../../db/schema";
 import { dayBounds } from "../rollup.days";
 import { ratioRow, sumRow } from "../rollup.rows";
 import { joinRepo, num, REPO_REF } from "../rollup.sql";
@@ -33,6 +37,7 @@ import { repositoryUrl, revertedTitle } from "../revert.detection";
 /** A loop PR merged on the day. */
 interface MergedPr {
   repo_ref: string;
+  origin: DataOrigin;
   title: string;
   external_url: string;
   merged_at: Date;
@@ -56,6 +61,7 @@ interface RevertCommit {
 /** One finished farm job of a loop with a green on the day. */
 interface LoopJob {
   repo_ref: string;
+  origin: DataOrigin;
   run_id: string;
   status: "succeeded" | "failed" | "retried";
   finished_at: Date;
@@ -64,26 +70,38 @@ interface LoopJob {
 /** One repository's deploys. */
 interface DeployGroup {
   repo_ref: string;
+  origin: DataOrigin;
   deploys: string;
 }
 
-/** Running totals per repository for a ratio metric. */
-type Ratios = Map<string, { numerator: number; denominator: number }>;
+/** Running totals per repository and origin for a ratio metric. */
+type Ratios = Map<
+  string,
+  { repoRef: string; origin: DataOrigin; numerator: number; denominator: number }
+>;
 
 /**
  * Add to a repository's ratio components.
  *
  * @param ratios - The totals.
  * @param repoRef - The repository.
+ * @param origin - The origin of the row the observation came from; origins are never summed.
  * @param numerator - Added to the numerator.
  * @param denominator - Added to the denominator.
  */
-function addRatio(ratios: Ratios, repoRef: string, numerator: number, denominator: number): void {
-  const totals = ratios.get(repoRef) ?? { numerator: 0, denominator: 0 };
+function addRatio(
+  ratios: Ratios,
+  repoRef: string,
+  origin: DataOrigin,
+  numerator: number,
+  denominator: number,
+): void {
+  const key = JSON.stringify([repoRef, origin]);
+  const totals = ratios.get(key) ?? { repoRef, origin, numerator: 0, denominator: 0 };
 
   totals.numerator += numerator;
   totals.denominator += denominator;
-  ratios.set(repoRef, totals);
+  ratios.set(key, totals);
 }
 
 /**
@@ -163,7 +181,7 @@ async function mttr(
   to: Date,
 ): Promise<Ratios> {
   const { rows } = await sql<LoopJob>`
-    select ${REPO_REF} as repo_ref, b.run_id, b.status, b.finished_at
+    select ${REPO_REF} as repo_ref, b.origin, b.run_id, b.status, b.finished_at
       from ouroboros.build_jobs b
       ${joinRepo("b")}
      where b.organization_id = ${organizationId}
@@ -185,7 +203,7 @@ async function mttr(
   for (const jobs of byRun.values()) {
     for (const recovery of recoveries(jobs)) {
       if (recovery.at >= from) {
-        addRatio(ratios, jobs[0].repo_ref, recovery.ms, 1);
+        addRatio(ratios, jobs[0].repo_ref, jobs[0].origin, recovery.ms, 1);
       }
     }
   }
@@ -195,23 +213,23 @@ async function mttr(
 
 export const doraExtractor: FamilyExtractor = {
   family: "dora",
-  metrics: { deploy_frequency: 1, lead_time: 1, change_failure_rate: 1, mttr: 1 },
+  metrics: { deploy_frequency: 2, lead_time: 2, change_failure_rate: 2, mttr: 2 },
 
   async extract(db, organizationId, day): Promise<RollupRow[]> {
     const { from, to } = dayBounds(day);
 
     const deploys = await sql<DeployGroup>`
-      select ${REPO_REF} as repo_ref, count(*) as deploys
+      select ${REPO_REF} as repo_ref, b.origin, count(*) as deploys
         from ouroboros.build_jobs b
         ${joinRepo("b")}
        where b.organization_id = ${organizationId} and b.status = 'succeeded'
          and b.finished_at >= ${from} and b.finished_at < ${to}
          and gr.default_branch is not null
          and b.git_ref in (gr.default_branch, 'refs/heads/' || gr.default_branch)
-       group by 1`.execute(db);
+       group by 1, 2`.execute(db);
 
     const merged = await sql<MergedPr>`
-      select ${REPO_REF} as repo_ref, pr.title, pr.external_url, pr.merged_at,
+      select ${REPO_REF} as repo_ref, pr.origin, pr.title, pr.external_url, pr.merged_at,
              greatest(0, ouroboros.lead_time_ms(r.started_at, pr.merged_at)) as lead_ms
         from ouroboros.pull_requests pr
         join ouroboros.runs r on r.id = pr.run_id
@@ -220,7 +238,11 @@ export const doraExtractor: FamilyExtractor = {
          and pr.merged_at >= ${from} and pr.merged_at < ${to}`.execute(db);
 
     const out: RollupRow[] = deploys.rows.map((group) =>
-      sumRow({ repoRef: group.repo_ref, metricId: "deploy_frequency" }, num(group.deploys)),
+      sumRow(
+        { repoRef: group.repo_ref, origin: group.origin, metricId: "deploy_frequency" },
+        num(group.deploys),
+        num(group.deploys),
+      ),
     );
 
     if (merged.rows.length > 0) {
@@ -242,25 +264,31 @@ export const doraExtractor: FamilyExtractor = {
       const failures: Ratios = new Map();
 
       for (const pr of merged.rows) {
-        addRatio(lead, pr.repo_ref, num(pr.lead_ms), 1);
+        addRatio(lead, pr.repo_ref, pr.origin, num(pr.lead_ms), 1);
         addRatio(
           failures,
           pr.repo_ref,
+          pr.origin,
           isReverted(pr, revertPrs.rows, revertCommits.rows) ? 1 : 0,
           1,
         );
       }
 
-      for (const [repoRef, totals] of lead) {
+      for (const { repoRef, origin, ...totals } of lead.values()) {
         out.push(
-          ratioRow({ repoRef, metricId: "lead_time" }, totals.numerator, totals.denominator, 1),
+          ratioRow(
+            { repoRef, origin, metricId: "lead_time" },
+            totals.numerator,
+            totals.denominator,
+            1,
+          ),
         );
       }
 
-      for (const [repoRef, totals] of failures) {
+      for (const { repoRef, origin, ...totals } of failures.values()) {
         out.push(
           ratioRow(
-            { repoRef, metricId: "change_failure_rate" },
+            { repoRef, origin, metricId: "change_failure_rate" },
             totals.numerator,
             totals.denominator,
             100,
@@ -269,8 +297,12 @@ export const doraExtractor: FamilyExtractor = {
       }
     }
 
-    for (const [repoRef, totals] of await mttr(db, organizationId, from, to)) {
-      out.push(ratioRow({ repoRef, metricId: "mttr" }, totals.numerator, totals.denominator, 1));
+    for (const { repoRef, origin, ...totals } of (
+      await mttr(db, organizationId, from, to)
+    ).values()) {
+      out.push(
+        ratioRow({ repoRef, origin, metricId: "mttr" }, totals.numerator, totals.denominator, 1),
+      );
     }
 
     return out;

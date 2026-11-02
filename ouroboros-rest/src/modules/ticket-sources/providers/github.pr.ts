@@ -652,6 +652,8 @@ export function snapshotOf(pull: PullPayload): PullRequestSnapshot {
     mergedAt: state === "merged" ? instantOf(pull.merged_at ?? "", PULL_ROUTE) : null,
     mergedBy: state === "merged" ? (pull.merged_by?.login ?? null) : null,
     mergeable: state === "open" ? (pull.mergeable ?? null) : null,
+    // Absent from a repository without draft support, where no PR is one.
+    draft: pull.draft ?? false,
     updatedAt: instantOf(pull.updated_at, PULL_ROUTE),
   };
 }

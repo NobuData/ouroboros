@@ -184,6 +184,7 @@ const SEEDED_RUNNERS: readonly Partial<FarmRunner>[] = [
       title: "Add OTA rollback on failed checksum",
       startedAt: "2026-09-19T13:58:19.000Z",
       runId: null,
+      origin: "live",
     },
   },
   {
@@ -224,6 +225,7 @@ const SEEDED_RUNNERS: readonly Partial<FarmRunner>[] = [
       title: "Overnight HIL sweep on rig-02",
       startedAt: "2026-09-19T09:42:00.000Z",
       runId: null,
+      origin: "live",
     },
   },
   {
@@ -464,6 +466,7 @@ export function liveBuild(over: Partial<NonNullable<FarmPage["live"]>> = {}): No
     runner: "forge-01",
     runnerId: "5eed0400-0000-4000-8000-0000000000a1",
     startedAt: "2026-09-19T13:58:19.000Z",
+    origin: "live",
     ...over,
   };
 }

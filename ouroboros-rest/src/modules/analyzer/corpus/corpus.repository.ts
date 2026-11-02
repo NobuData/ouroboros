@@ -13,12 +13,20 @@
  *
  * Days are UTC days (`(timestamptz at time zone 'UTC')::date`), as everywhere in the analysis and
  * insights domains.
+ *
+ * **Live rows only** (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315)). Every
+ * plane read here that carries a data origin — builds, runs, test runs, waivers through their
+ * run, and the rollup series — is read for {@link CORPUS_ORIGIN} alone, so no finding is computed
+ * over demo or simulated rows, and none mixes origins. Two reads carry no origin: a log is read
+ * by a job id a live page returned, and `flake_scores` is the flakes plane's own per-case score,
+ * which that plane computes from every test run it is given.
  */
 
 import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
 
 import { DatabaseService } from "../../db/db.service";
+import type { DataOrigin } from "../../db/schema";
 import { addDays, dayStart } from "../../insights/rollup/rollup.days";
 import type {
   EngineCandidateEvent,
@@ -30,6 +38,9 @@ import type {
 } from "../../engine/engine.analysis";
 import type { CorpusWindow } from "./corpus.manifest";
 import type { LogChunk } from "./log.tail";
+
+/** The one data origin the corpus reads (DJ.2): the analyzer reasons about real runs only. */
+export const CORPUS_ORIGIN: DataOrigin = "live";
 
 /** Builds per page. */
 export const BUILD_PAGE = 500;
@@ -156,11 +167,13 @@ export class CorpusRepository {
              (select count(*) from ouroboros.runs r
                where r.organization_id = ${scope.organizationId}
                  and r.github_repo_id = ${scope.repoId}
+                 and r.origin = ${CORPUS_ORIGIN}
                  and r.started_at >= ${from} and r.started_at < ${to}) as loops
         from ouroboros.build_jobs b
         join ouroboros.runner_pools pool on pool.id = b.pool_id
        where b.organization_id = ${scope.organizationId}
          and b.github_repo_id = ${scope.repoId}
+         and b.origin = ${CORPUS_ORIGIN}
          and b.status in ('succeeded', 'failed', 'retried')
          and b.finished_at >= ${from} and b.finished_at < ${to}`.execute(this.database.db);
 
@@ -194,6 +207,7 @@ export class CorpusRepository {
         from ouroboros.build_jobs b
        where b.organization_id = ${scope.organizationId}
          and b.github_repo_id = ${scope.repoId}
+         and b.origin = ${CORPUS_ORIGIN}
          and b.status = 'succeeded'
          and b.finished_at >= ${from} and b.finished_at < ${to}
        group by b.label
@@ -244,6 +258,7 @@ export class CorpusRepository {
         join ouroboros.runner_pools pool on pool.id = b.pool_id
        where b.organization_id = ${scope.organizationId}
          and b.github_repo_id = ${scope.repoId}
+         and b.origin = ${CORPUS_ORIGIN}
          and b.status in ('succeeded', 'failed', 'retried')
          and b.finished_at >= ${from} and b.finished_at < ${to}
          and ${resume}
@@ -317,6 +332,7 @@ export class CorpusRepository {
           from ouroboros.build_jobs job
          where job.organization_id = ${scope.organizationId}
            and job.github_repo_id = ${scope.repoId}
+           and job.origin = ${CORPUS_ORIGIN}
       ),
       first_builds as (
         select distinct on (job.commit_sha) job.commit_sha, job.queued_day, job.title
@@ -396,6 +412,7 @@ export class CorpusRepository {
         left join ouroboros.runs r on r.id = tr.run_id
         left join ouroboros.build_jobs b on b.id = tr.build_job_id
        where tr.organization_id = ${scope.organizationId}
+         and tr.origin = ${CORPUS_ORIGIN}
          and (r.github_repo_id = ${scope.repoId} or b.github_repo_id = ${scope.repoId})
          and tr.started_at >= ${from} and tr.started_at < ${to}
          and ${resume}
@@ -507,6 +524,7 @@ export class CorpusRepository {
         from ouroboros.runs r
        where r.organization_id = ${scope.organizationId}
          and r.github_repo_id = ${scope.repoId}
+         and r.origin = ${CORPUS_ORIGIN}
          and r.started_at >= ${from} and r.started_at < ${to}
          and ${resume}
        order by r.id
@@ -544,6 +562,7 @@ export class CorpusRepository {
         join ouroboros.runs r on r.id = w.run_id
        where w.organization_id = ${scope.organizationId}
          and r.github_repo_id = ${scope.repoId}
+         and r.origin = ${CORPUS_ORIGIN}
          and w.created_at >= ${from} and w.created_at < ${to}
        order by w.created_at, w.id`.execute(this.database.db);
 
@@ -575,6 +594,7 @@ export class CorpusRepository {
         from ouroboros.metric_daily d
        where d.organization_id = ${scope.organizationId}
          and d.repo_ref = ${scope.repoRef}
+         and d.origin = ${CORPUS_ORIGIN}
          and d.metric_id = ${metricId}
          and d.day between ${window.from}::date and ${window.to}::date
        order by d.day, d.dimension`.execute(this.database.db);

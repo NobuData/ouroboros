@@ -137,7 +137,7 @@ position the graph left open.
 | **R5** | The surfaces say which data is live | ✅ 3/3 | 3 | 8 |
 | **R6** | The gate — live-slice acceptance | ✅ 1/1 | 1 | 5 |
 | **R7** | First loop, reference demonstration & release hardening | ✅ 10/10 | 10 | 21 |
-| | **Total** | **44/44** | **44** | **116** |
+| | **Total** | **✅ 44/44** | **44** | **116** |
 
 ```mermaid
 flowchart TD
@@ -358,7 +358,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **1 issue** · 5 complexity points · order **#34**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epic DI; Phase 5)
-> **Status:** ✅ **Complete** — 1 of 1 issue closed
+> **Status:** ✅ **Complete** — 1 of 1 issue closed. Leg 34 (`tests/e2e/specs/live-loop.spec.ts`) is green from cold and its failure-mode pairs are registered. Not yet committed: the real-provider report (`docs/acceptance/` holds only its template). Open follow-ups outside this order: [#1816](https://github.com/NobuData/ouroboros/issues/1816) and [#1817](https://github.com/NobuData/ouroboros/issues/1817).
 
 **Goal.** One automated proof that the whole path works from a cold compose stack against a recorded provider fixture, with every component above the provider's socket real — plus a documented real-provider run against the sample repository.
 
@@ -376,7 +376,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **10 issues** · 21 complexity points across the eight sized issues · order **#35–#44**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epics DK, DL, DG; Phase 6) · promoted from Onboarding (BD.1) · two Settings defects
-> **Status:** ✅ **Complete** — 10 of 10 issues closed
+> **Status:** ✅ **Complete** — 10 of 10 issues closed. Not yet committed: the first real reference-run bundle under `docs/reference-run/` (#1327); the hero shows real figures only once it lands (#1328).
 
 **Goal.** Turn the gate into something a person meets: a readiness preflight, wizard states that never start a simulated first loop, the live first-loop experience, the administration page for switching execution on, a reproducible and recorded reference run, site numbers that are that run's numbers, and the final documentation sweep. Close the two remaining defects.
 

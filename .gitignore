@@ -103,3 +103,6 @@ desktop.ini
 # Deployment tooling
 # ---------------------------------------------------------------------------
 .vercel
+
+# scripts/reference-run.sh exports (DL.2, #1326) — a run's evidence, kept by whoever ran it
+/reference-run-*/

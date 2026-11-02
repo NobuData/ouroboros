@@ -167,6 +167,7 @@ export function weekFacts(overrides: Partial<PageFacts> = {}): PageFacts {
 
   return {
     range: "7d",
+    origin: "live",
     repo: null,
     week: windowsOf(
       weekWindow("merged_prs", { value: 27, prior: 22, fill: 4 }),

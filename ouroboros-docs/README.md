@@ -62,6 +62,7 @@ yarn check:config-reference   # fail if that reference is stale (yarn test check
                               # see "The configuration reference" below
 yarn check:coverage           # fail if a UI route, a variable or a flag is undocumented —
                               # see "The docs coverage gate" below
+yarn check:loop-wording       # fail if a page says "simulated" outside loop-wording.allow.json
 ```
 
 **CI.** [`ci/docs`](../.github/workflows/docs.yml) runs `yarn install --immutable`, `lint`,
@@ -224,7 +225,12 @@ the React page `src/pages/index.tsx` ([#1169](https://github.com/NobuData/ourobo
 `<SectionCards>`, quick links to getting started, deploying and enrolling a runner, and the
 dashboard as `<Screenshot id="home.dashboard" />`. Its copy follows the root `README.md`,
 not the marketing site. The navbar lists the sections in the order User Guide, Administration, CLI, with a GitHub link
-and the colour-mode toggle on the right, after the search box. The footer has a link
+and the colour-mode toggle on the right, after the search box, then the release marker
+(`RELEASE` in `site.constants.ts`, **RC1**). The marker links to the release's feature list,
+`src/pages/releases/rc1.mdx` at `/releases/rc1` (`RELEASE_NOTES_PATH`). Like the home page,
+that page is not a doc and sits in no section. It names features in the reader's terms and
+links each one to the page that documents it, with no ticket numbers; the home page links it
+too. When the release moves on, add the next release's page and repoint both constants. The footer has a link
 column per section, a "More" column (GitHub, ouroboros.build) and the copyright line
 `Copyright © 2025-2026 NobuData LLC`, which a test holds exactly.
 
@@ -307,6 +313,14 @@ screenshots/
    and the manifest entry is stamped with `capturedAt`, `uiVersion` (from
    `ouroboros-ui/package.json`) and `seedRef` (the commit). Look at every changed image
    before committing — a changed screenshot is a changed page.
+
+A few entries capture a state the seed cannot hold, prepared by a recipe beside the
+harness — run it against a throwaway stack only, before capturing those ids:
+
+| Recipe | Ids | What it prepares |
+| --- | --- | --- |
+| `screenshots/live-run.mjs` | `user-guide.run.live` | A live-origin run, opened through the executor routes |
+| `screenshots/first-loop.sql` | `user-guide.first-loop.timeline`, `user-guide.first-loop.review` | `acme-onboarding`'s first loop on #488 — the workflow, the run and its draft pull request (`psql -f`) |
 
 The command checks the manifest and your `--only` before a browser starts, so a typo fails
 at once (exit 2). An entry that fails — its `ready` selector never appears, its route
@@ -602,6 +616,15 @@ beside it, so one command answers whether anything shipped undocumented. `ci/doc
 `ouroboros-ui/app/**/page.tsx`, so a new route fails the pull request that adds it until the
 entry is there. The reading is [`scripts/coverage.ts`](scripts/coverage.ts), pure, and
 `tests/coverage.test.ts` holds it.
+
+**Loop wording.** The loop runs for real, so a page may say "simulated" only where
+[`loop-wording.allow.json`](loop-wording.allow.json) allows it: the run simulator (a test tool),
+the **Simulated** data origin, and a workflow dry run, which really does simulate. Each entry is a
+phrase, the pages it may appear on and the reason it is true. `yarn check:loop-wording`
+([`scripts/check-loop-wording.ts`](scripts/check-loop-wording.ts), a step of `ci/docs`,
+[#1322](https://github.com/NobuData/ouroboros/issues/1322)) fails on any other occurrence and on
+an entry that no longer matches its page. Rewrite the sentence to say what it means (a live run,
+a draft-only loop, the run simulator); add an entry only when "simulated" is true there.
 
 ### Diagrams
 

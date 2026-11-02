@@ -19,7 +19,7 @@ import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
 
 import { DatabaseService } from "../../db/db.service";
-import { SCHEMA_NAME } from "../../db/schema";
+import { SCHEMA_NAME, type DataOrigin } from "../../db/schema";
 
 /** The most measurements one window reads. Far above any real window; a guard, not a page. */
 export const MAX_SAMPLES = 20_000;
@@ -118,6 +118,13 @@ export interface Stretch {
   readonly to: Date;
 }
 
+/**
+ * The one data origin the telemetry tool reads runs, usage and rollups for (DJ.2,
+ * [#1315](https://github.com/NobuData/ouroboros/issues/1315)): an investigation cites real runs
+ * only — not seeded demo rows, and not the simulator's (which `not simulated` alone let through
+ * when seeded).
+ */
+export const TELEMETRY_ORIGIN: DataOrigin = "live";
 @Injectable()
 export class TelemetryRepository {
   /** @param database - The connection. */
@@ -360,7 +367,7 @@ export class TelemetryRepository {
              count(*) filter (where r.status = 'needs_human') as needs_human
         from ${schema}.runs r
        where r.organization_id = ${organizationId}
-         and not r.simulated
+         and r.origin = ${TELEMETRY_ORIGIN}
          and r.started_at >= ${window.from}
          and r.started_at < ${window.to}
          and (${repo}::text is null or r.github_repo_id in (${this.repositories(organizationId, repo)}))
@@ -408,6 +415,7 @@ export class TelemetryRepository {
              count(*) filter (where u.cost_cents is null) as unpriced_events
         from ${schema}.token_usage u
        where u.organization_id = ${organizationId}
+         and u.origin = ${TELEMETRY_ORIGIN}
          and u.occurred_at >= ${window.from}
          and u.occurred_at < ${window.to}
          and (${repo}::text is null
@@ -448,7 +456,8 @@ export class TelemetryRepository {
              (select count(distinct h.case_key) from ${schema}.test_case_history h
                where h.organization_id = ${organizationId}) as cases,
              (select count(distinct d.metric_id) from ${schema}.metric_daily d
-               where d.organization_id = ${organizationId}) as metrics,
+               where d.organization_id = ${organizationId}
+                 and d.origin = ${TELEMETRY_ORIGIN}) as metrics,
              (select count(*) from ${schema}.regression_baselines b
                where b.organization_id = ${organizationId}) as baselines
     `.execute(this.database.db);

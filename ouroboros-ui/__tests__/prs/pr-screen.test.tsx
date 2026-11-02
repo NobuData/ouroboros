@@ -11,6 +11,7 @@ import { PR_CRUMB, PrScreen, type ReturnSender, type ReviewSender } from "@/app/
 import {
   ACTIONS_LABEL,
   ALREADY_ARMED,
+  DRAFT_LABEL,
   MERGE_LABEL,
   NO_REVISION,
   RECEIPT_LINK,
@@ -41,6 +42,7 @@ import {
   TICKET_URL,
   armedPlan,
   blockedPage,
+  prHeadOf,
   prPage,
   returned,
   review,
@@ -281,6 +283,41 @@ describe("the loop and issue tag", () => {
       "href",
       "https://acme.atlassian.net/browse/HEL-12",
     );
+  });
+
+  it("draws a loop-opened draft with its loop tag linked to the run, then a neutral Draft chip (#1311)", () => {
+    draw({ initial: prPage({ pullRequest: prHeadOf({ draft: true }) }) });
+
+    expect(meta()).toEqual([
+      "loop #1847 · issue #482",
+      DRAFT_LABEL,
+      "verifying — 5 of 7 gates green",
+      "loop/482-canbus-flake → main",
+      "+68 −15 · 3 files",
+    ]);
+    expect(screen.getByRole("link", { name: "loop #1847" })).toHaveAttribute(
+      "href",
+      runPath(SEEDED_RUN_ID, DASHBOARD_ORIGIN.id),
+    );
+
+    const chip = screen.getByText(DRAFT_LABEL);
+    expect(chip).toHaveClass("ou-chip");
+    expect(chip).not.toHaveClass("ou-chip--warn", "ou-chip--err", "ou-chip--ok");
+  });
+
+  it("draws no Draft chip for a PR that is not a draft", () => {
+    draw({ initial: prPage({ pullRequest: prHeadOf({ draft: false }) }) });
+
+    expect(screen.queryByText(DRAFT_LABEL)).toBeNull();
+  });
+
+  it("draws a draft no loop opened with the Draft chip and no loop link", () => {
+    draw({
+      initial: prPage({ pullRequest: prHeadOf({ run: null, draft: true }) }),
+    });
+
+    expect(screen.getByText(DRAFT_LABEL)).toHaveClass("ou-chip");
+    expect(screen.queryByRole("link", { name: /^loop #/ })).toBeNull();
   });
 
   it("draws a PR no loop opened with no tag, and a URL that is not http(s) with no link", () => {

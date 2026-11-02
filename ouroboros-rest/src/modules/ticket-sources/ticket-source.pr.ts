@@ -169,6 +169,13 @@ export interface PullRequestSnapshot {
    * refuses on `false` rather than asking the host to merge a conflict.
    */
   readonly mergeable: boolean | null;
+  /**
+   * Whether the host holds it as a draft — one that cannot merge until someone marks it ready.
+   * The mirror writes it on every sync (V152, DI.3
+   * [#1311](https://github.com/NobuData/ouroboros/issues/1311)); a host without drafts answers
+   * `false`.
+   */
+  readonly draft: boolean;
   /** When the host last changed it. */
   readonly updatedAt: Date;
 }

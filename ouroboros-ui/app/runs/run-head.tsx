@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { OriginBadge } from "@/app/origin/origin-badge";
 import { Chip, Eyebrow, Tag } from "@/app/ui";
 
 import { CopyBranch } from "./copy-branch";
@@ -15,6 +16,9 @@ import { NO_BRANCH, type RunHeadView } from "./view";
  * only while the run is live), the pinned workflow's tag, the model pill, the anchored
  * *elapsed*, and the branch with its copy control. Every value is `view.ts`'s; this file only
  * draws.
+ *
+ * A demo or simulated run carries its origin badge beside the status pill (DJ.3,
+ * [#1316](https://github.com/NobuData/ouroboros/issues/1316)); a live run carries none.
  *
  * A merged run adds a sixth: the pull request it opened (#314), which is what a reader wants from
  * the page once the run has landed. A run whose pull request Ouroboros mirrors also links to its
@@ -56,6 +60,7 @@ export function RunHead({
           <Chip dot={view.statusDot} tone={view.statusTone}>
             {view.statusLabel}
           </Chip>
+          <OriginBadge origin={view.origin} />
           <Tag>{view.workflow}</Tag>
           <Chip mono tone="model">
             {view.model}

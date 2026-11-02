@@ -105,13 +105,14 @@ describe("the shipped extractors", () => {
     }
   });
 
-  it("declare the versions the migrations ship — 1, but human_interventions' cause bump to 2", () => {
-    // V079 (#434) gave human_interventions the cause dimension, a formula change with its bump.
-    const bumped: Record<string, number> = { human_interventions: 2 };
+  it("declare the versions the migrations ship — 2 after V154's origin split, human_interventions 3", () => {
+    // V079 (#434) gave human_interventions the cause dimension, a formula change with its bump;
+    // V154 (DJ.2, #1315) split every rolled-up metric per origin and raised each by one more.
+    const bumped: Record<string, number> = { human_interventions: 3 };
 
     for (const extractor of ROLLUP_EXTRACTORS) {
       for (const [metricId, version] of Object.entries(extractor.metrics)) {
-        expect({ metricId, version }).toEqual({ metricId, version: bumped[metricId] ?? 1 });
+        expect({ metricId, version }).toEqual({ metricId, version: bumped[metricId] ?? 2 });
       }
     }
   });

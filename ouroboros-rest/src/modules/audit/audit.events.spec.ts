@@ -109,6 +109,7 @@ import {
   RUNNER_SOURCE_CREDENTIAL_REDEEMED_EVENT,
   RUN_PUSH_GRANTED_EVENT,
   RUN_BRANCH_PUSHED_EVENT,
+  RUN_PULL_REQUEST_OPENED_EVENT,
   ROADMAP_SUGGESTION_DISMISSED_EVENT,
 } from "./audit.events";
 
@@ -276,6 +277,7 @@ describe("the vocabulary", () => {
       "runner.source_credential_redeemed",
       "run.push_granted",
       "run.branch_pushed",
+      "run.pull_request_opened",
     ]);
   });
 
@@ -458,6 +460,7 @@ describe("the vocabulary", () => {
       RUNNER_SOURCE_CREDENTIAL_REDEEMED_EVENT,
       RUN_PUSH_GRANTED_EVENT,
       RUN_BRANCH_PUSHED_EVENT,
+      RUN_PULL_REQUEST_OPENED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

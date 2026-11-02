@@ -28,7 +28,7 @@
  * closed in the meantime.
  */
 
-import type { BuildJob, Runner, RunnerCertificate, RunnerPool } from "../../db/schema";
+import type { BuildJob, DataOrigin, Runner, RunnerCertificate, RunnerPool } from "../../db/schema";
 import { renewAfter } from "../farm.resources";
 
 /** *Runners online* — mockup 08's `4/5` and the line under it. */
@@ -141,6 +141,8 @@ export interface RunnerJobRef {
    * ([#309](https://github.com/NobuData/ouroboros/issues/309)).
    */
   readonly runId: string | null;
+  /** Where the build came from (V141, DJ.1) — what the UI's origin badge reads (DJ.3, #1316). */
+  readonly origin: DataOrigin;
 }
 
 /**
@@ -262,6 +264,8 @@ export interface LiveBuildResource {
   readonly runnerId: string | null;
   /** When it started, ISO 8601. The card's `3m 41s` counts from here. */
   readonly startedAt: string | null;
+  /** Where the build came from (V141, DJ.1) — what the UI's origin badge reads (DJ.3, #1316). */
+  readonly origin: DataOrigin;
 }
 
 /** Everything mockup 08 reads, in one payload. */
@@ -395,6 +399,7 @@ function runnerJobRef(job: BuildJob): RunnerJobRef {
     title: job.title,
     startedAt: job.started_at?.toISOString() ?? null,
     runId: job.run_id,
+    origin: job.origin,
   };
 }
 
@@ -440,5 +445,6 @@ export function liveBuildResource(job: BuildJob, runner: string | null): LiveBui
     runner,
     runnerId: job.runner_id,
     startedAt: job.started_at?.toISOString() ?? null,
+    origin: job.origin,
   };
 }

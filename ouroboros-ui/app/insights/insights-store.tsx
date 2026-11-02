@@ -14,12 +14,13 @@ import {
 import type { InsightsPage, InsightsRange } from "@/app/api/insights";
 import type { Reading } from "@/app/api/reading";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
+import type { OriginFilter } from "@/app/origin/origin";
 import { INSIGHTS_PATH } from "@/app/paths";
 import type { PollSnapshot } from "@/app/poll";
 
 import type { InsightsReadings } from "./data";
 import { type InsightsPollOptions, createInsightsPoll, insightsUrl } from "./insights-poll";
-import { rangeSearch } from "./range";
+import { insightsSearch } from "./origin-view";
 
 /**
  * Where the insights poll and the range meet React — one store per screen, read by every region
@@ -51,6 +52,8 @@ import { rangeSearch } from "./range";
 export interface InsightsView {
   /** The range the reader chose — what the segment shows as pressed. */
   readonly range: InsightsRange;
+  /** The data origin the reader chose (DJ.3) — live unless another was asked for. */
+  readonly origin: OriginFilter;
   /**
    * The latest page there is — the poll's, else the server's — or `null` when none was read. Its
    * own `range` is the window its figures cover, which differs from {@link InsightsView.range}
@@ -69,11 +72,14 @@ export interface InsightsView {
   readonly retry: () => void;
   /** Choose a range: the segment's press. */
   readonly select: (range: InsightsRange) => void;
+  /** Choose a data origin: the origin segment's press (DJ.3). */
+  readonly selectOrigin: (origin: OriginFilter) => void;
 }
 
 /** What is read outside a provider: nothing is known, and pressing does nothing. */
 const NO_INSIGHTS: InsightsView = Object.freeze({
   range: "30d",
+  origin: "live",
   page: null,
   pending: false,
   failure: null,
@@ -81,6 +87,7 @@ const NO_INSIGHTS: InsightsView = Object.freeze({
   retrying: false,
   retry: () => {},
   select: () => {},
+  selectOrigin: () => {},
 });
 
 /** Defaulted, so a region rendered outside the provider — in a test — reads *nothing yet*. */
@@ -133,6 +140,8 @@ export function InsightsProvider({ readings, children, poll }: InsightsProviderP
   const [navigating, startNavigation] = useTransition();
   const [range, setRange] = useState<InsightsRange>(readings.range);
   const [heldRange, setHeldRange] = useState<InsightsRange>(readings.range);
+  const [origin, setOrigin] = useState<OriginFilter>(readings.origin);
+  const [heldOrigin, setHeldOrigin] = useState<OriginFilter>(readings.origin);
 
   // The address moved under the screen — a back-button press, a link — so the chosen range
   // follows it. Compared during render, React's *adjusting state when a prop changes*.
@@ -141,13 +150,20 @@ export function InsightsProvider({ readings, children, poll }: InsightsProviderP
     setRange(readings.range);
   }
 
-  const { snapshot, refresh } = useKeyedPoll(insightsUrl(range), (url) =>
+  // The origin follows the address the same way.
+  if (heldOrigin !== readings.origin) {
+    setHeldOrigin(readings.origin);
+    setOrigin(readings.origin);
+  }
+
+  const { snapshot, refresh } = useKeyedPoll(insightsUrl(range, origin), (url) =>
     createInsightsPoll(url, poll),
   );
 
   const { page, failure, dataAt } = insightsReading(readings.page, readings.readAt, snapshot);
-  // The page on screen is another range's until the new range's first answer lands.
-  const pending = navigating || (page !== null && page.range !== range);
+  // The page on screen is another range's or origin's until the new one's first answer lands.
+  const pending =
+    navigating || (page !== null && (page.range !== range || page.origin !== origin));
 
   /** The snapshot a retry was pressed against — *in flight* is *it has not moved since*. */
   const [asked, setAsked] = useState<PollSnapshot<InsightsPage> | null>(null);
@@ -166,15 +182,27 @@ export function InsightsProvider({ readings, children, poll }: InsightsProviderP
 
       setRange(next);
       startNavigation(() => {
-        router.replace(`${INSIGHTS_PATH}${rangeSearch(next)}`, { scroll: false });
+        router.replace(`${INSIGHTS_PATH}${insightsSearch(next, origin)}`, { scroll: false });
       });
     },
-    [range, router],
+    [range, origin, router],
+  );
+
+  const selectOrigin = useCallback(
+    (next: OriginFilter) => {
+      if (next === origin) return;
+
+      setOrigin(next);
+      startNavigation(() => {
+        router.replace(`${INSIGHTS_PATH}${insightsSearch(range, next)}`, { scroll: false });
+      });
+    },
+    [range, origin, router],
   );
 
   const view = useMemo<InsightsView>(
-    () => ({ range, page, pending, failure, dataAt, retrying, retry, select }),
-    [range, page, pending, failure, dataAt, retrying, retry, select],
+    () => ({ range, origin, page, pending, failure, dataAt, retrying, retry, select, selectOrigin }),
+    [range, origin, page, pending, failure, dataAt, retrying, retry, select, selectOrigin],
   );
 
   return <InsightsContext.Provider value={view}>{children}</InsightsContext.Provider>;

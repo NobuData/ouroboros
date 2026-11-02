@@ -73,13 +73,17 @@ export function trendOf(delta: number | null, higherIsBetter: boolean): Insights
  * The page head's numbers — always the last seven days.
  *
  * @param week - The 7-day windows of `merged_prs` and `human_interventions`.
- * @returns What *"27 PRs merged this week. 2 needed a human."* is composed from.
+ * @returns What *"27 PRs merged this week. 2 needed a human."* is composed from. Merged PRs is
+ *   null — no data — when the week holds no loop PR of the asked origin (DJ.2); interventions is
+ *   then null too, and otherwise 0 when none was recorded beside the merges.
  */
 export function headOf(week: Windows): InsightsHead {
+  const merged = windowOf(week, "merged_prs").value;
+
   return {
     range: "7d",
-    mergedPrs: windowOf(week, "merged_prs").value ?? 0,
-    interventions: windowOf(week, "human_interventions").value ?? 0,
+    mergedPrs: merged,
+    interventions: merged === null ? null : (windowOf(week, "human_interventions").value ?? 0),
   };
 }
 
@@ -105,6 +109,7 @@ function kpiFrom(key: InsightsKpiKey, window: MetricWindow, higherIsBetter: bool
     key,
     unit: window.methodology.unit,
     value: window.value,
+    n: window.n,
     prior: window.prior,
     delta: window.delta,
     trend: trendOf(window.delta, higherIsBetter),
@@ -132,6 +137,7 @@ function tokensPerMergedPr(windows: Windows): InsightsKpi {
     key: "cost_per_merged_pr",
     unit: "tokens",
     value,
+    n: merged.n,
     prior,
     delta,
     trend: trendOf(delta, false),
@@ -179,15 +185,23 @@ export function performanceOf(windows: Windows, usage: InsightsMoney): InsightsP
       key,
       unit: window.methodology.unit,
       value: window.value,
+      n: window.n,
       ...(window.components ? { components: window.components } : {}),
       methodology: window.methodology,
     };
   });
-  const cost: MetricMethodology = windowOf(windows, "cost_cents").methodology;
+  const cost = windowOf(windows, "cost_cents");
+  const methodology: MetricMethodology = cost.methodology;
 
   return [
     ...cells,
-    { key: "total_cost", unit: cost.unit, value: usage.costCents ?? null, methodology: cost },
+    {
+      key: "total_cost",
+      unit: methodology.unit,
+      value: usage.costCents ?? null,
+      n: cost.n,
+      methodology,
+    },
   ];
 }
 
@@ -225,6 +239,7 @@ export function doraOf(windows: Windows): InsightsDoraCell[] {
       key,
       unit: perDay ? "per_day" : window.methodology.unit,
       value,
+      n: window.n,
       prior,
       delta,
       trend: trendOf(delta, higherIsBetter),

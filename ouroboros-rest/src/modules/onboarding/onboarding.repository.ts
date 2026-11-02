@@ -20,7 +20,7 @@ import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
-import type { OnboardingState, TicketSourceStatus } from "../db/schema";
+import type { OnboardingState, RunStatus, TicketSourceStatus } from "../db/schema";
 
 /** The choice columns a `PATCH` may set. Absent keys are left alone. */
 export interface OnboardingChoices {
@@ -49,6 +49,16 @@ export interface InstantiatedWorkflowRow {
   slug: string;
   template_slug: string;
   template_version: number;
+  /** The version in force — `workflows.current_version`, null while nothing is published. */
+  current_version: number | null;
+}
+
+/** An issue's first run, and the definition its pin names (BD.1, #396). */
+export interface FirstRunRow {
+  id: string;
+  status: RunStatus;
+  /** The pinned `workflow_versions.definition`, or `undefined` when the pin does not read. */
+  definition: unknown;
 }
 
 /** A canonical ticket of the workspace, with its source's kind. */
@@ -270,7 +280,7 @@ export class OnboardingRepository {
   ): Promise<InstantiatedWorkflowRow | undefined> {
     const row = await this.database.db
       .selectFrom("workflows")
-      .select(["slug", "template_slug", "template_version"])
+      .select(["slug", "template_slug", "template_version", "current_version"])
       .where("organization_id", "=", organizationId)
       .where("template_slug", "=", templateSlug)
       .orderBy("created_at", "desc")
@@ -285,6 +295,7 @@ export class OnboardingRepository {
       slug: row.slug,
       template_slug: row.template_slug,
       template_version: row.template_version,
+      current_version: row.current_version,
     };
   }
 
@@ -408,6 +419,51 @@ export class OnboardingRepository {
       .executeTakeFirst();
 
     return { queued: queued !== undefined, run: run !== undefined };
+  }
+
+  /**
+   * The first run of an issue of a repository — the wizard's first loop (BD.1, #396): the oldest
+   * by start, so a retry or a later run of the same issue never takes its place.
+   *
+   * @param organizationId - The workspace.
+   * @param repositoryId - `github_repos.id`.
+   * @param issueNumber - The issue's number.
+   * @returns The run's id and status, and its pinned version's definition (`undefined` when the
+   *   pin no longer reads) — or `undefined` when no run of the issue exists.
+   */
+  async firstRun(
+    organizationId: string,
+    repositoryId: string,
+    issueNumber: number,
+  ): Promise<FirstRunRow | undefined> {
+    const row = await this.database.db
+      .selectFrom("runs")
+      .leftJoin("workflows", (join) =>
+        join
+          .onRef("workflows.organization_id", "=", "runs.organization_id")
+          .onRef("workflows.slug", "=", "runs.workflow_tag"),
+      )
+      .leftJoin("workflow_versions", (join) =>
+        join
+          .onRef("workflow_versions.workflow_id", "=", "workflows.id")
+          .onRef("workflow_versions.version", "=", "runs.workflow_version_pin"),
+      )
+      .select([
+        "runs.id as id",
+        "runs.status as status",
+        "workflow_versions.definition as definition",
+      ])
+      .where("runs.organization_id", "=", organizationId)
+      .where("runs.github_repo_id", "=", repositoryId)
+      .where("runs.issue_number", "=", issueNumber)
+      .orderBy("runs.started_at")
+      .orderBy("runs.id")
+      .limit(1)
+      .executeTakeFirst();
+
+    return row === undefined
+      ? undefined
+      : { id: row.id, status: row.status, definition: row.definition ?? undefined };
   }
 
   /**

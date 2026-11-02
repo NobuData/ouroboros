@@ -311,6 +311,7 @@ def test_the_execution_paths_are_the_contracts() -> None:
         "/internal/runs/{id}/checkpoint",
         "/internal/runs/{id}/push",
         "/internal/runs/{id}/push/result",
+        "/internal/runs/{id}/pull-request",
         "/internal/runs/{id}/finish",
     )
 

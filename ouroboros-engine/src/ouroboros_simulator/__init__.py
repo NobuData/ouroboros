@@ -1,4 +1,4 @@
-"""The simulated-run driver: scripted run lifecycles through the real ingestion contract.
+"""The run simulator: scripted run lifecycles through the real ingestion contract.
 
 AP.5 (`#307 <https://github.com/NobuData/ouroboros/issues/307>`_). The Run Console is fed
 by a contract (AP.1, `#303 <https://github.com/NobuData/ouroboros/issues/303>`_) and steered

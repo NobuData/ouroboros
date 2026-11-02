@@ -3,6 +3,7 @@
 import { type FormEvent, useEffect, useId, useState } from "react";
 
 import type { InsightsRange, InterventionCause, InterventionList } from "@/app/api/insights";
+import type { OriginFilter } from "@/app/origin/origin";
 import { Button, SelectField, TextAreaField } from "@/app/ui";
 
 import {
@@ -71,6 +72,7 @@ export function submitBlocker(saving: boolean, target: string, reason: string): 
  * through a polite live region.
  *
  * @param props.range The page's range — the list covers the bars' own window.
+ * @param props.origin The page's data origin — the list holds the events the bars count (DJ.3).
  * @param props.bars The card's bars; each is a choice of row.
  * @param props.onMoved Called after a correction lands, to re-read the page.
  * @param props.actions Test seam; the card passes none.
@@ -78,11 +80,13 @@ export function submitBlocker(saving: boolean, target: string, reason: string): 
  */
 export function RecategorizePanel({
   range,
+  origin,
   bars,
   onMoved,
   actions = SERVER_ACTIONS,
 }: Readonly<{
   range: InsightsRange;
+  origin: OriginFilter;
   bars: readonly (KeyedBar & { key: InterventionCause })[];
   onMoved: () => void;
   actions?: RecategorizeActions;
@@ -105,19 +109,19 @@ export function RecategorizePanel({
 
   // A bar that left the card — every event moved off it — falls back to the top bar.
   const shown = bars.some((bar) => bar.key === cause) ? cause : bars[0]!.key;
-  const request = `${range}|${shown}|${version}`;
+  const request = `${range}|${origin}|${shown}|${version}`;
 
   useEffect(() => {
     let current = true;
 
-    void actions.list(range, shown).then((outcome) => {
+    void actions.list(range, shown, origin).then((outcome) => {
       if (current) setLoaded({ key: request, outcome });
     });
 
     return () => {
       current = false;
     };
-  }, [actions, range, shown, request]);
+  }, [actions, range, origin, shown, request]);
 
   const answer = loaded?.key === request ? loaded.outcome : null;
   const list = answer?.ok === true ? answer.value : null;

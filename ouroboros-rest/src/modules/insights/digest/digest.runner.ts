@@ -281,7 +281,11 @@ export class DigestRunner {
 
     // As of the slot, not of now: a run that starts late still reports the week its slot names.
     const assembly = assembleDigest(
-      await this.pages.read(run.organizationId, { range: DIGEST_RANGE, now: run.slotAt }),
+      await this.pages.read(run.organizationId, {
+        range: DIGEST_RANGE,
+        origin: "live",
+        now: run.slotAt,
+      }),
     );
 
     return this.repository.storeContent(run.id, assembly, assembly.window, DIGEST_CONTENT_VERSION);

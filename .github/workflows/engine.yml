@@ -142,11 +142,23 @@ jobs:
           context: ouroboros-engine
           file: ouroboros-engine/Dockerfile
           push: false
+          # Loaded into the runner's Docker so the next step can look inside it (DJ.4).
+          load: true
+          tags: ouroboros-engine:ci
           # A cache of its own. The default scope is one bucket shared by every image in
           # the repository, and four unrelated builds evicting each other's layers is a
           # cache that costs more than it saves.
           cache-from: type=gha,scope=ouroboros-engine
           cache-to: type=gha,mode=max,scope=ouroboros-engine
+
+      # The run simulator is a test tool (DJ.4, #1317): the wheel the image installs leaves
+      # `ouroboros_simulator` out (tests/test_simulator_packaging.py), and this asserts the
+      # image that ships agrees — the built artifact, not the configuration that should
+      # produce it. Run as the image's own Python, with no network and no secrets.
+      - name: Assert the image has no run simulator
+        run: |
+          docker run --rm --network none --entrypoint python ouroboros-engine:ci -c \
+            "import importlib.util, sys; found = importlib.util.find_spec('ouroboros_simulator'); print('ouroboros_simulator:', 'present' if found else 'absent'); sys.exit(1 if found else 0)"
 
       # Everything below this line runs on a push to main or a manual dispatch, never on
       # a pull request — the same rule db.yml and docker-publish.yml apply.

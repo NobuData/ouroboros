@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { PulseCard } from "@/app/dashboard/pulse-card";
-import { PULSE_UNMEASURED } from "@/app/dashboard/view";
+import { NO_VALUE, PULSE_NO_LIVE, PULSE_UNMEASURED } from "@/app/dashboard/view";
 
 import { dashboardPayload, emptyDashboard, failed, read } from "../helpers/dashboard";
 import { membership } from "../helpers/login";
@@ -259,6 +259,26 @@ describe("the auto-merge switch", () => {
 describe("a workspace with nothing to measure", () => {
   it("draws empty bars and says why, rather than reporting a bad week", () => {
     render(<PulseCard aggregate={read(emptyDashboard())} workspace={membership()} />);
+
+    // No live data (DJ.3): each meter an em dash over an empty bar, and the note saying so.
+    expect(within(card()).getByText(PULSE_NO_LIVE)).toBeInTheDocument();
+    expect(within(card()).getAllByText(NO_VALUE)).toHaveLength(3);
+    expect(within(card()).queryByText("0%")).toBeNull();
+  });
+
+  it("says nothing has finished, not that no live loop has, for a zero pulse of another origin", () => {
+    const zeros = emptyDashboard();
+
+    render(
+      <PulseCard
+        aggregate={read({
+          ...zeros,
+          origin: "seeded",
+          pulse: { ...zeros.pulse, mergeRate: 0, avgCycleSeconds: 0, interventions7d: 0 },
+        })}
+        workspace={membership()}
+      />,
+    );
 
     expect(within(card()).getByText(PULSE_UNMEASURED)).toBeInTheDocument();
     expect(within(card()).getByText("0%")).toBeInTheDocument();

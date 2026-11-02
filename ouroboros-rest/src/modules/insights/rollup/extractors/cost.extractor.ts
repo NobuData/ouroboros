@@ -30,10 +30,16 @@
  *
  * Usage is attributed to a repository through its run. A call with no run belongs to no
  * repository and is outside every per-repository row; it waits for #451's org-level rows.
+ *
+ * **Per origin** (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315)): every row is
+ * one origin's — the usage row's own `token_usage.origin`, which V141 holds to its run's. Each
+ * row's population is the usage rows behind it: all of them for `tokens`, the unpriced ones for
+ * `unpriced_tokens`, the priced ones for `cost_cents`, and so on.
  */
 
 import { sql } from "kysely";
 
+import type { DataOrigin } from "../../../db/schema";
 import { LOCAL_PROVIDER_KINDS } from "../../../internal/providers";
 import { dayBounds } from "../rollup.days";
 import { sumRow } from "../rollup.rows";
@@ -43,79 +49,102 @@ import type { FamilyExtractor, RollupRow } from "../rollup.types";
 /** The longest label `metric_daily.dimension` admits (V078's `metric_daily_dimension_format`). */
 const DIMENSION_MAX_LENGTH = 200;
 
-/** One repository's usage on the day, for one task kind (or for usage that names none). */
+/** One repository's usage on the day, for one origin and task kind (or usage that names none). */
 interface UsageGroup {
   repo_ref: string;
+  origin: DataOrigin;
   /** The trimmed task kind, or null for usage recorded with none. */
   task_kind: string | null;
   tokens: string;
   unpriced_tokens: string;
   local_tokens: string;
+  events: string;
+  unpriced_events: string;
+  local_events: string;
   priced_events: string;
   cost_cents: string | null;
 }
 
-/** One repository's day, folded across its task kinds. */
+/** One repository's day for one origin, folded across its task kinds. */
 interface RepoUsage {
+  repoRef: string;
+  origin: DataOrigin;
   tokens: number;
   unpricedTokens: number;
   localTokens: number;
+  /** Usage rows: all, unpriced, local-served and priced — each total's population. */
+  events: number;
+  unpricedEvents: number;
+  localEvents: number;
   pricedEvents: number;
   costCents: number;
-  /** Tokens per named task kind. */
-  byTaskKind: Map<string, number>;
+  /** Tokens and usage rows per named task kind. */
+  byTaskKind: Map<string, { tokens: number; events: number }>;
 }
 
 /**
- * Fold the per-task-kind groups into one total per repository, keeping each kind's tokens.
+ * Fold the per-task-kind groups into one total per repository and origin, keeping each kind's
+ * tokens.
  *
- * @param groups - The query's rows: one per repository and task kind.
- * @returns Each repository's day, in the order the query answered them.
+ * @param groups - The query's rows: one per repository, origin and task kind.
+ * @returns Each repository's day per origin, in the order the query answered them.
  */
-function foldByRepo(groups: readonly UsageGroup[]): Map<string, RepoUsage> {
+function foldByRepo(groups: readonly UsageGroup[]): RepoUsage[] {
   const repos = new Map<string, RepoUsage>();
 
   for (const group of groups) {
-    const usage = repos.get(group.repo_ref) ?? {
+    const key = JSON.stringify([group.repo_ref, group.origin]);
+    const usage = repos.get(key) ?? {
+      repoRef: group.repo_ref,
+      origin: group.origin,
       tokens: 0,
       unpricedTokens: 0,
       localTokens: 0,
+      events: 0,
+      unpricedEvents: 0,
+      localEvents: 0,
       pricedEvents: 0,
       costCents: 0,
-      byTaskKind: new Map<string, number>(),
+      byTaskKind: new Map<string, { tokens: number; events: number }>(),
     };
 
     usage.tokens += num(group.tokens);
     usage.unpricedTokens += num(group.unpriced_tokens);
     usage.localTokens += num(group.local_tokens);
+    usage.events += num(group.events);
+    usage.unpricedEvents += num(group.unpriced_events);
+    usage.localEvents += num(group.local_events);
     usage.pricedEvents += num(group.priced_events);
     usage.costCents += num(group.cost_cents);
 
     if (group.task_kind !== null) {
-      usage.byTaskKind.set(group.task_kind, num(group.tokens));
+      usage.byTaskKind.set(group.task_kind, {
+        tokens: num(group.tokens),
+        events: num(group.events),
+      });
     }
 
-    repos.set(group.repo_ref, usage);
+    repos.set(key, usage);
   }
 
-  return repos;
+  return [...repos.values()];
 }
 
 export const costExtractor: FamilyExtractor = {
   family: "cost",
   metrics: {
-    cost_cents: 1,
-    tokens: 1,
-    unpriced_tokens: 1,
-    tokens_by_task_kind: 1,
-    local_tokens: 1,
+    cost_cents: 2,
+    tokens: 2,
+    unpriced_tokens: 2,
+    tokens_by_task_kind: 2,
+    local_tokens: 2,
   },
 
   async extract(db, organizationId, day): Promise<RollupRow[]> {
     const { from, to } = dayBounds(day);
 
     const usage = await sql<UsageGroup>`
-      select ${REPO_REF} as repo_ref,
+      select ${REPO_REF} as repo_ref, tu.origin,
              nullif(btrim(left(btrim(tu.task_kind), ${DIMENSION_MAX_LENGTH})), '') as task_kind,
              sum(tu.tokens_in::bigint + tu.tokens_out) as tokens,
              coalesce(sum(tu.tokens_in::bigint + tu.tokens_out)
@@ -123,6 +152,10 @@ export const costExtractor: FamilyExtractor = {
              coalesce(sum(tu.tokens_in::bigint + tu.tokens_out)
                         filter (where tu.provider = any(${sql.val([...LOCAL_PROVIDER_KINDS])}::text[])),
                       0) as local_tokens,
+             count(*) as events,
+             count(*) filter (where tu.cost_cents is null) as unpriced_events,
+             count(*) filter (where tu.provider = any(${sql.val([...LOCAL_PROVIDER_KINDS])}::text[]))
+               as local_events,
              count(*) filter (where tu.cost_cents is not null) as priced_events,
              sum(tu.cost_cents) as cost_cents
         from ouroboros.token_usage tu
@@ -130,22 +163,35 @@ export const costExtractor: FamilyExtractor = {
         ${joinRepo("r")}
        where tu.organization_id = ${organizationId}
          and tu.occurred_at >= ${from} and tu.occurred_at < ${to}
-       group by 1, 2
-       order by 1, 2`.execute(db);
+       group by 1, 2, 3
+       order by 1, 2, 3`.execute(db);
 
-    return [...foldByRepo(usage.rows)].flatMap(([repoRef, repo]) => {
+    return foldByRepo(usage.rows).flatMap((repo) => {
+      const { repoRef, origin } = repo;
       const out: RollupRow[] = [
-        sumRow({ repoRef, metricId: "tokens" }, repo.tokens),
-        sumRow({ repoRef, metricId: "unpriced_tokens" }, repo.unpricedTokens),
-        sumRow({ repoRef, metricId: "local_tokens" }, repo.localTokens),
+        sumRow({ repoRef, origin, metricId: "tokens" }, repo.tokens, repo.events),
+        sumRow(
+          { repoRef, origin, metricId: "unpriced_tokens" },
+          repo.unpricedTokens,
+          repo.unpricedEvents,
+        ),
+        sumRow({ repoRef, origin, metricId: "local_tokens" }, repo.localTokens, repo.localEvents),
       ];
 
       if (repo.pricedEvents > 0) {
-        out.push(sumRow({ repoRef, metricId: "cost_cents" }, repo.costCents));
+        out.push(
+          sumRow({ repoRef, origin, metricId: "cost_cents" }, repo.costCents, repo.pricedEvents),
+        );
       }
 
-      for (const [taskKind, tokens] of repo.byTaskKind) {
-        out.push(sumRow({ repoRef, metricId: "tokens_by_task_kind", dimension: taskKind }, tokens));
+      for (const [taskKind, kind] of repo.byTaskKind) {
+        out.push(
+          sumRow(
+            { repoRef, origin, metricId: "tokens_by_task_kind", dimension: taskKind },
+            kind.tokens,
+            kind.events,
+          ),
+        );
       }
 
       return out;

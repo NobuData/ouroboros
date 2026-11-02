@@ -107,7 +107,9 @@ const GREETED_NAME = SEED_OWNER.displayName.split(" ")[0] ?? SEED_OWNER.displayN
 async function enterDashboard(context: BrowserContext, page: Page, slug: string): Promise<void> {
   await signIn(context, SEED_OWNER.id);
   await selectWorkspace(context, slug);
-  await page.goto("/dashboard");
+  // The seed is demo data: the dashboard shows live data by default (DJ.3, #1316), so this leg
+  // asks for the seed's origin to read mockup 02 from it.
+  await page.goto("/dashboard?origin=seeded");
 
   // The greeting is client-rendered from the reader's own clock, so waiting for it to name
   // somebody is also waiting for hydration — which every interactive assertion below needs

@@ -108,8 +108,8 @@ export interface InMemoryPull {
   readonly title: string;
   /** Its description. */
   readonly body: string | null;
-  /** Whether it was opened as a draft. */
-  readonly draft: boolean;
+  /** Whether it is a draft — opened as one, until {@link InMemoryPrHost.markReady}. */
+  draft: boolean;
   /** Where it stands. */
   state: HostPrState;
   /** The head it merged at — frozen once merged, since the branch may then be deleted. */
@@ -282,6 +282,19 @@ export class InMemoryPrHost {
     const pull = this.pullOf(number);
 
     pull.conflicted = conflicted;
+    this.touch(pull);
+  }
+
+  /**
+   * Mark a draft PR ready for review, as a person does on the host — the next sync mirrors
+   * `draft: false` (V152, #1311).
+   *
+   * @param number - The PR.
+   */
+  markReady(number: number): void {
+    const pull = this.pullOf(number);
+
+    pull.draft = false;
     this.touch(pull);
   }
 
@@ -1090,6 +1103,7 @@ export class InMemoryPrTicketSourceProvider
       mergedAt: pull.mergedAt === null ? null : new Date(pull.mergedAt),
       mergedBy: pull.state === "merged" ? this.host.merger : null,
       mergeable: pull.state === "open" ? !pull.conflicted : null,
+      draft: pull.draft,
       updatedAt: new Date(pull.updated),
     };
   }

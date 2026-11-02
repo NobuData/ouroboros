@@ -4,6 +4,7 @@ import { deriveRail } from "./onboarding.derivation";
 import {
   issueNotFound,
   issueTicketMissing,
+  loopNotReady,
   ONBOARDING_ERRORS,
   pickAmbiguous,
   pickRequired,
@@ -26,6 +27,35 @@ describe("the onboarding errors", () => {
       issueTicketMissing: "onboarding_issue_ticket_missing",
       pickAmbiguous: "onboarding_pick_ambiguous",
       pickRequired: "onboarding_pick_required",
+      loopNotReady: "onboarding_loop_not_ready",
+    });
+  });
+
+  it("answers a launch the readiness preflight holds with a 409 carrying the blocking checks", () => {
+    const blocking = {
+      id: "runner" as const,
+      state: "fail" as const,
+      code: "no_runner" as const,
+      reason: "No runner is online in pool-a.",
+      fix: { label: "Build Farm · enrol a runner", href: "/build-farm" },
+    };
+    const error = loopNotReady({
+      repository: "acme/helios",
+      workflow: { slug: "live-slice", version: 1 },
+      ready: false,
+      checks: [{ id: "deployment", state: "pass", code: null, reason: "On.", fix: null }, blocking],
+      estimate: { isEstimate: true, costCapCentsPerRun: null, issue: null },
+    });
+
+    expect(error.getStatus()).toBe(409);
+    expect(error.getResponse()).toMatchObject({
+      code: "onboarding_loop_not_ready",
+      message: "No runner is online in pool-a.",
+      details: {
+        repository: "acme/helios",
+        workflow: { slug: "live-slice", version: 1 },
+        checks: [blocking],
+      },
     });
   });
 

@@ -272,6 +272,18 @@ describe("composing the audit card's lines", () => {
       }),
     ).toBe("could not push ouro/run-1-482");
   });
+
+  it("names the draft pull request a run opened (#1311)", () => {
+    expect(
+      eventSentence({
+        action: "run.pull_request_opened",
+        detail: { number: 7, url: "https://github.com/acme/helios-greeter/pull/7", draft: true },
+      }),
+    ).toBe("opened draft pull request #7 for a run");
+    expect(eventSentence({ action: "run.pull_request_opened", detail: {} })).toBe(
+      "opened a run's draft pull request",
+    );
+  });
 });
 
 describe("the actor column", () => {

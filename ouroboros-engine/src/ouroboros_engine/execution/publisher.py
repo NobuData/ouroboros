@@ -63,6 +63,7 @@ from dulwich.objects import Commit, ObjectID
 from dulwich.pack import UnpackedObject
 from dulwich.refs import Ref
 
+from ouroboros_engine.code.git_tls import git_tls_config
 from ouroboros_engine.control_plane.client import ControlPlaneError
 from ouroboros_engine.control_plane.execution import PushGrant, StartedBy
 from ouroboros_engine.control_plane.ingest import IngestCommit
@@ -326,7 +327,11 @@ class DulwichPushTransport:
     """dulwich's smart-HTTP client, in process: no subprocess, no config, no URL credential."""
 
     def __init__(
-        self, *, timeout_seconds: float = 60.0, allow_local: bool = False
+        self,
+        *,
+        timeout_seconds: float = 60.0,
+        allow_local: bool = False,
+        ca_file: Path | None = None,
     ) -> None:
         """Configure it.
 
@@ -334,9 +339,12 @@ class DulwichPushTransport:
             timeout_seconds: The socket timeout of one push.
             allow_local: Accept an existing local repository path — for tests only, like
                 :class:`~ouroboros_engine.code.clones.CloneStore`'s.
+            ca_file: ``OURO_ENGINE_GIT_CA_FILE`` — a private CA bundle the push verifies the
+                remote against, or ``None`` for the system's trust store.
         """
         self._timeout = timeout_seconds
         self._allow_local = allow_local
+        self._ca_file = ca_file
 
     def connect(
         self, remote: str, username: str, password: str
@@ -361,6 +369,7 @@ class DulwichPushTransport:
                 raise PushFailedError("the remote must be https://host/owner/name")
             client: GitClient = HttpGitClient(
                 f"https://{parts.netloc}",
+                config=git_tls_config(self._ca_file),
                 username=username,
                 password=password,
                 timeout=self._timeout,

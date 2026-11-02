@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Fragment, useId, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useState } from "react";
 
 import type { RepoDetection } from "@/app/api/detection";
 import type { Enablement } from "@/app/api/enablement";
@@ -17,7 +17,7 @@ import type { TicketSource } from "@/app/api/sources";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { SOURCES_PATH } from "@/app/paths";
 import type { SourcesReadings } from "@/app/sources/data";
-import { Button, Eyebrow } from "@/app/ui";
+import { Button, Eyebrow, Tag } from "@/app/ui";
 import { cx } from "@/app/ui/class-names";
 
 import { continueStep, enableRepository, launchFirstLoop, skipWizard } from "./actions";
@@ -28,8 +28,15 @@ import { COLUMN_LABEL } from "./defaults-view";
 import { DetectionCard } from "./detection-card";
 import type { DetectionPollOptions } from "./detection-poll";
 import { FirstIssueCard } from "./first-issue-card";
+import { FirstLoopCard } from "./first-loop-card";
+import { type FirstLoopPollOptions, createFirstLoopPoll } from "./first-loop-poll";
+import { recordDuration, useReviewedAt } from "./first-loop-store";
+import { firstLoopEndpoint, liveTimelineRows } from "./first-loop-view";
 import type { FirstIssuePollOptions } from "./first-issue-poll";
 import { type OnboardingPollOptions, createOnboardingPoll, onboardingEndpoint } from "./poll";
+import { ReadinessCard } from "./readiness-card";
+import { type ReadinessPollOptions, createReadinessPoll } from "./readiness-poll";
+import { NO_WORKFLOW_READINESS, readinessEndpoint } from "./readiness-view";
 import { ReceiptCard } from "./receipt-card";
 import { RepoPicker } from "./repo-picker";
 import { TemplatesCard } from "./templates-card";
@@ -38,6 +45,8 @@ import {
   BACK_FROM_FIRST_HREF,
   BACK_LABEL,
   CONNECT_LABEL,
+  EXPECTATION_NOTE,
+  EXPECTATION_TAG,
   EYEBROW,
   NO_REPOSITORY_LINE,
   NO_REPOSITORY_TITLE,
@@ -55,6 +64,7 @@ import {
   WORKING,
   type Abilities,
   type PrimaryAction,
+  type ReadinessGate,
   isComplete,
   openingStep,
   primaryAction,
@@ -106,6 +116,10 @@ export interface GetStartedScreenProps {
   readonly firstIssuePoll?: FirstIssuePollOptions;
   /** Test seams for the right column's poll. */
   readonly defaultsPoll?: DefaultsPollOptions;
+  /** Test seams for step 4's readiness poll (DK.2, #1319). */
+  readonly readinessPoll?: ReadinessPollOptions;
+  /** Test seams for the first loop's poll (BD.1, #396). */
+  readonly firstLoopPoll?: FirstLoopPollOptions;
   /** The detection, first-issue and defaults cards' clock — a test seam. */
   readonly now?: () => number;
 }
@@ -144,6 +158,9 @@ function WizardHead({ repo, abilities }: Readonly<{ repo: string | null; abiliti
       <div className="wizard__headings">
         <Eyebrow>{EYEBROW}</Eyebrow>
         <h1 className="wizard__title">{TITLE}</h1>
+        <Tag className="wizard__expectation" title={EXPECTATION_NOTE}>
+          {EXPECTATION_TAG}
+        </Tag>
         <p className="wizard__sub">
           {/* "Ouroboros starts in **dry-run**: it opens draft PRs and never merges until you say so." */}
           {promise[0]!.slice(0, promise[0]!.length - PROMISE_TERM.length)}
@@ -350,6 +367,8 @@ export function GetStartedScreen({
   templatesPoll,
   firstIssuePoll,
   defaultsPoll,
+  readinessPoll,
+  firstLoopPoll,
   now,
 }: GetStartedScreenProps) {
   const { snapshot, refresh } = useKeyedPoll(repo === null ? null : onboardingEndpoint(repo), (endpoint) =>
@@ -360,15 +379,64 @@ export function GetStartedScreen({
   const [viewed, setViewed] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ tone: "ok" | "refused"; text: string } | null>(null);
-  const [suggested, setSuggested] = useState<string | null>(null);
+  const [suggested, setSuggested] = useState<{ readonly id: string; readonly number: number } | null>(null);
+  // Stable, and a no-op for the same suggestion: the card calls it from an effect on every change.
+  const suggest = useCallback((issueId: string | null, number: number | null) => {
+    setSuggested((held) =>
+      issueId === null || number === null
+        ? null
+        : held?.id === issueId && held.number === number
+          ? held
+          : { id: issueId, number },
+    );
+  }, []);
   const [receipt, setReceipt] = useState<OnboardingLaunchReceipt | null>(null);
   const content = useId();
 
   const step = viewed ?? (wizard === null ? 1 : openingStep(wizard));
+  const firstLoopDone = wizard?.steps.find((one) => one.step === 4)?.status === "done";
+  // Step 4's preflight (DK.2, #1319): asked for the instantiated workflow and the issue the launch
+  // would queue — the stored pick, or the picker's suggestion while nothing is stored.
+  const workflow = wizard?.refs.workflow ?? null;
+  const askIssue = wizard?.choices.pickedTicketId === null ? (suggested?.number ?? null) : null;
+  const { snapshot: readinessSnapshot } = useKeyedPoll(
+    repo === null || workflow === null || firstLoopDone ? null : readinessEndpoint(repo, workflow.slug, askIssue),
+    (endpoint) => createReadinessPoll(endpoint, readinessPoll),
+  );
+  const readiness: ReadinessGate =
+    workflow === null
+      ? { state: "failed", reason: NO_WORKFLOW_READINESS }
+      : readinessSnapshot.data !== null
+        ? { state: "read", value: readinessSnapshot.data }
+        : readinessSnapshot.error !== null
+          ? { state: "failed", reason: readinessSnapshot.error }
+          : { state: "pending" };
   const action: PrimaryAction =
     wizard === null
       ? { kind: "link", label: CONNECT_LABEL, href: SOURCES_PATH, blocked: null }
-      : primaryAction(wizard, step, abilities, { suggestedIssueId: suggested });
+      : primaryAction(wizard, step, abilities, { suggestedIssueId: suggested?.id ?? null, readiness });
+  // The first loop, live (BD.1, #396): the picked issue's first run, re-read as it moves. A
+  // deployment that runs nothing never opens one, and the wizard reads as it always has.
+  const firstRun = wizard?.refs.firstRun ?? null;
+  const firstRunId = firstRun?.id ?? null;
+  const nowMs = now ?? Date.now;
+  const { snapshot: firstLoopSnapshot } = useKeyedPoll(
+    firstRun === null ? null : firstLoopEndpoint(firstRun.id),
+    (endpoint) => createFirstLoopPoll(endpoint, firstLoopPoll),
+  );
+  const firstLoop = firstLoopSnapshot.data;
+  // What this browser recorded of the run's guided review (storage is the browser's).
+  const [reviewedAt, acknowledgeReview] = useReviewedAt(firstRunId, nowMs);
+
+  // The first loop's duration, start to pull request — kept here once, never transmitted (#400).
+  useEffect(() => {
+    const opened = firstLoop?.pullRequest?.createdAt;
+    if (firstRunId === null || firstLoop === null || opened === undefined) return;
+    recordDuration(firstRunId, firstLoop.console.run.startedAt, opened);
+  }, [firstRunId, firstLoop]);
+
+  const liveRows =
+    firstRun === null || firstLoop === null ? null : liveTimelineRows(firstLoop, firstRun.planStage, reviewedAt);
   const regressions = wizard === null ? [] : regressionsOf(wizard);
   const onScreen = wizard?.steps.find((one) => one.step === step);
   const stepDone = (number: number): boolean => wizard?.steps.find((one) => one.step === number)?.status === "done";
@@ -441,6 +509,16 @@ export function GetStartedScreen({
           </section>
         )}
         {complete && wizard !== null && <ReceiptCard view={receiptView(receipt, wizard, enablement?.ok === true ? enablement.value : null)} />}
+        {firstRun !== null && (
+          <FirstLoopCard
+            failure={firstLoop === null ? firstLoopSnapshot.error : null}
+            loop={firstLoop}
+            now={nowMs()}
+            onReviewed={acknowledgeReview}
+            reviewedAt={reviewedAt}
+            runId={firstRun.id}
+          />
+        )}
         {wizard === null ? (
           <section className="wizard-panel">
             <h2 className="wizard-panel__title" id={content}>
@@ -475,6 +553,12 @@ export function GetStartedScreen({
           // The mockup's two columns: the step cards, and beside them the right column (BC.5, #394).
           <div className="wizard__columns">
             <div className="wizard__main">
+              {step === 4 && !complete && (
+                <ReadinessCard
+                  failure={readiness.state === "failed" ? readiness.reason : null}
+                  readiness={readiness.state === "read" ? readiness.value : null}
+                />
+              )}
               <DetectionCard
                 abilities={abilities}
                 initial={detection}
@@ -496,7 +580,7 @@ export function GetStartedScreen({
                 initial={firstIssue}
                 now={now}
                 onChanged={refresh}
-                onSuggestion={setSuggested}
+                onSuggestion={suggest}
                 pickedTicket={wizard?.refs.pickedTicket ?? null}
                 poll={firstIssuePoll}
                 repo={repo}
@@ -504,7 +588,7 @@ export function GetStartedScreen({
               />
             </div>
             <aside aria-label={COLUMN_LABEL} className="wizard__aside">
-              <DefaultsColumn initial={defaults} now={now} poll={defaultsPoll} repo={repo} />
+              <DefaultsColumn initial={defaults} live={liveRows} now={now} poll={defaultsPoll} repo={repo} />
             </aside>
           </div>
         )}

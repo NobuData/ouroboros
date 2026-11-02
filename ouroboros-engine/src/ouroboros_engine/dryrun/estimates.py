@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol
+from typing import Any, Protocol
 from urllib import error, request
 from urllib.parse import quote, urljoin
 
@@ -21,11 +21,10 @@ from ouroboros_engine.control_plane.contract import (
     DRY_RUN_REPLAY_ESTIMATES_PATH,
     INTERNAL_KEY_HEADER,
 )
+from ouroboros_engine.workflows.infra import InfraKind
 
 #: Seconds to wait for the estimator.
 ESTIMATE_TIMEOUT_SECONDS = 30.0
-
-InfraKind = Literal["build", "test"]
 
 
 class EstimateUnavailableError(RuntimeError):

@@ -49,6 +49,17 @@ describe("the listing query", () => {
     expect(await queryViolations({ status: "active", repo: "helios-firmware" })).toEqual(["repo"]);
   });
 
+  it.each(["live", "simulated", "seeded", "all"])(
+    "admits the origin filter %s (DJ.3)",
+    async (origin) => {
+      expect(await queryViolations({ status: "active", origin })).toEqual([]);
+    },
+  );
+
+  it("refuses an origin outside the vocabulary", async () => {
+    expect(await queryViolations({ status: "active", origin: "demo" })).toEqual(["origin"]);
+  });
+
   it("keeps the #31 window rules by extension, not by copy", async () => {
     // One definition of limit/offset: the inherited decorators are the convention's own.
     expect(await queryViolations({ status: "active", limit: "10", offset: "30" })).toEqual([]);

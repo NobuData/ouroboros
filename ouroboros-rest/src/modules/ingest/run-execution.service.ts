@@ -30,8 +30,12 @@ import { Injectable, Logger } from "@nestjs/common";
 
 import type { Run } from "../db/schema";
 import { describeForLog } from "../errors/failure";
+import { DomainError } from "../errors/error.envelope";
 import { GuardrailService } from "../guardrails/guardrails.service";
 import { CodeWorkspace } from "../research/code/code.workspace";
+import type { Resolution } from "../routing/resolution";
+import { ResolutionService } from "../routing/resolution.service";
+import { ROUTING_ERRORS } from "../routing/routing.errors";
 import {
   baseCommitMismatch,
   repositoryNotFound,
@@ -59,6 +63,7 @@ import type {
   RunStartedResource,
 } from "./run-execution.resources";
 import { RunNeedsHumanEmitter } from "./run-needs-human.emitter";
+import { taskModels } from "./run-task-models";
 
 /** Where each finish outcome leaves the run. */
 export const FINISH_STATUS = {
@@ -86,7 +91,27 @@ export class RunExecutionService {
     private readonly code: CodeWorkspace,
     private readonly guardrails: GuardrailService,
     private readonly needsHuman: RunNeedsHumanEmitter,
+    private readonly resolutions: ResolutionService,
   ) {}
+
+  /**
+   * Routing's resolution of one task kind in a workspace, for the start answer's `task_models`.
+   *
+   * @param organizationId - The run's workspace.
+   * @param taskKind - The task kind a stage inherits.
+   * @returns The resolution, or `null` when the workspace routes no such task.
+   */
+  private async routedTask(organizationId: string, taskKind: string): Promise<Resolution | null> {
+    try {
+      return await this.resolutions.resolve(organizationId, taskKind);
+    } catch (error) {
+      if (error instanceof DomainError && error.envelope().code === ROUTING_ERRORS.routeNotFound) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
 
   /**
    * Start (or restart) executing a run: take a new epoch, and answer everything the interpreter
@@ -165,6 +190,9 @@ export class RunExecutionService {
 
     const { started, repository } = context;
     const ref = await this.code.repositoryRef(started.organization_id, repository);
+    const models = await taskModels(context.document, (taskKind) =>
+      this.routedTask(started.organization_id, taskKind),
+    );
 
     return {
       run_id: started.id,
@@ -177,6 +205,7 @@ export class RunExecutionService {
       effort: context.effort,
       acceptance_criteria: context.criteria.map(({ id, text }) => ({ id, text })),
       model: started.model,
+      task_models: models,
       started_by: context.starter ?? null,
       // Set by the start when the run had none, so never null here.
       branch_name: started.branch_name ?? "",

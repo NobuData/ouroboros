@@ -1,0 +1,107 @@
+---
+title: RC1 — what is in this release
+description: "Ouroboros RC1, release candidate 1: the first release in which the loop runs for real — an issue in, a workflow executed, a model called through your registry, a build on your own runner and a draft pull request out — and what it does not do yet."
+---
+
+# RC1 — release candidate 1
+
+**RC1 is the first release in which the loop runs for real.** One issue goes in. The workflow
+pinned to it executes stage by stage, models are called through your own model registry, the
+change is built and tested on your own runner, and a **draft pull request** comes out — with
+every screen saying which of its numbers come from live runs.
+
+Live execution is **off** on a new deployment. An administrator turns it on — see
+[Live execution](/administration/live-execution#turning-it-on) — and until then every screen
+says which part of the loop cannot run, and why.
+
+## What is new in RC1
+
+### The live loop
+
+- **Live execution, with an admission check.** A deployment switch turns real execution on. A
+  queued issue starts only when its repository is in dry-run, the workspace is not paused, a slot
+  is free under the workspace's concurrency ceiling, and a person with loop approval confirms it.
+  See [Live execution § The admission check](/administration/live-execution#the-admission-check)
+  and [Issues § Why a queued issue is waiting](/user-guide/issues#why-a-queued-issue-is-waiting).
+- **Workflows execute.** A run follows the workflow version it was queued with, stage by stage,
+  and the run console shows each stage, attempt and transcript entry as it happens. See
+  [The run console](/user-guide/runs/console).
+- **Models are called through your registry.** Every model call resolves an alias through your
+  routes and fallback chain, against your provider connections, and is metered against the
+  route's cost cap. A connection whose terms do not allow automated use is never invoked. See
+  [Models § Routing](/user-guide/models#routing) and
+  [Providers § Which connections can run a loop](/administration/providers#which-connections-can-run-a-loop).
+- **A coding agent writes the change.** Coding stages run the Claude Agent SDK executor in a
+  working tree of the run's own, with file tools only. See
+  [Live execution § Stage executors](/administration/live-execution#stage-executors).
+- **Guardrails are enforced, not reported.** Each tool call is checked against the stage's
+  guardrails as it happens; a blocked write stops the run and names the rule. See
+  [The run console § Changes, resources and guardrails](/user-guide/runs/console#changes-resources-and-guardrails).
+- **Builds run on your own runner.** A build or test stage checks out the run's branch on a
+  runner in the pool it names, and its exit code decides the gate. See
+  [The run console § Build stages](/user-guide/runs/console#build-stages) and
+  [Build farm](/administration/build-farm).
+- **A branch and a draft pull request.** The loop pushes its commits to a branch of its own and
+  opens the pull request as a **draft**, never as a ready one. See
+  [Pull requests § The loop's branch on your host](/user-guide/pull-requests#the-loops-branch-on-your-host)
+  and [§ The draft pull request a loop opens](/user-guide/pull-requests#the-draft-pull-request-a-loop-opens).
+
+### Knowing what is real
+
+- **The loop says what it cannot do.** The deployment reports which stages can run for real —
+  calling models, executing, building, publishing — and each screen shows a one-line notice, with
+  where to fix it, only where one cannot. See
+  [Concepts § When a stage cannot run for real](/user-guide/concepts#when-a-stage-cannot-run-for-real).
+- **Every number has a data origin.** Runs, and the pull requests, builds, tests and usage that
+  come from them, are **live**, **simulated** or **demo**. Mission Control, Insights and the
+  Build Analyzer count live data by default, label anything else in words, and show **—**
+  rather than **0** when there is nothing live to count. See
+  [Concepts § Where the data comes from](/user-guide/concepts#where-the-data-comes-from) and
+  [Insights § Where the numbers come from](/user-guide/insights#where-the-numbers-come-from).
+- **The run simulator is a test tool only.** A production deployment refuses to run it unless an
+  administrator allows it explicitly. See
+  [Containers § `ouroboros-rest`](/administration/deploy/containers#ouroboros-rest).
+
+### Your first loop
+
+- **A readiness check before the first loop.** The Get Started wizard's **Ready to run?** card
+  checks everything a live loop needs for your repository, workflow and issue before it starts,
+  and names each item still blocking with a link to fix it. When live execution is off, the
+  wizard saves your configuration and queues the first issue to wait for it. See
+  [The Get Started wizard § Ready to run?](/user-guide/getting-started/wizard#ready-to-run).
+- **The first loop is a real one.** It runs live and is followed from the wizard into its run
+  console and its first review. See [Your first loop](/user-guide/getting-started/first-loop).
+- **Turning live execution on, step by step.** Prerequisites, the switch, what the loop may do
+  and what it cannot protect you from. See [Live execution](/administration/live-execution).
+- **A screen for the backlog token.** The workspace's backlog GitHub token is set from
+  <UiPath path="Settings > Sources" /> instead of by hand. See
+  [Sources § Setting the backlog token](/administration/sources#setting-the-backlog-token).
+
+### Fixed in RC1
+
+- **Workflow Copilot.** A copilot task kind and route exist, so the Copilot can be routed;
+  drafts made on a blank workflow can be promoted and dry-run; edits on the canvas and in code
+  are recorded in the draft's history; the promote dialog names an unknown model alias; the
+  dry-run diff matches the in-memory overlay; shortened plan and review excerpts say so. See
+  [Workflow Copilot](/user-guide/workflows/copilot).
+- **Invitations.** Resending an invitation now states the time it really has left — 48 hours —
+  instead of "another week". See
+  [Members and tokens](/administration/members-and-tokens).
+
+## What RC1 does not do
+
+- **It does not merge.** A live run needs dry-run on, and opens its pull request only as a
+  draft. A person reviews and merges it.
+- **It is off until you switch it on.** Live execution is off on every new deployment.
+- **The coding agent has file tools only**, inside one working tree — no shell, no network
+  tool, no MCP servers, no settings or hooks taken from your repository. Code runs only on your
+  runners.
+- **It does not protect you from everything.** Issue text is untrusted input and there is no
+  egress control yet. See
+  [Live execution § What it cannot protect you from](/administration/live-execution#what-it-cannot-protect-you-from).
+- **It publishes no success rate.** No figure in these pages or on the product site is a rate
+  drawn from one run.
+
+The engineering plan behind RC1 — every item, in the order it was built — is
+[`docs/finished/ROADMAP_OOE_RC1.md`](https://github.com/NobuData/ouroboros/blob/main/docs/finished/ROADMAP_OOE_RC1.md)
+in the repository.

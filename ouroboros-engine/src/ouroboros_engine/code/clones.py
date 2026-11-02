@@ -43,6 +43,7 @@ from dulwich.client import (
 )
 from dulwich.repo import Repo
 
+from ouroboros_engine.code.git_tls import git_tls_config
 from ouroboros_engine.code.repo import ReadOnlyRepo
 
 #: ``owner/name`` — GitHub's alphabet, the locator's too.
@@ -135,6 +136,7 @@ class CloneStore:
         refresh_seconds: float = 300.0,
         timeout_seconds: float = 120.0,
         allow_local: bool = False,
+        ca_file: Path | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         """Configure the store. Nothing is created until a clone is first opened.
@@ -144,12 +146,15 @@ class CloneStore:
             refresh_seconds: How long a fetch stays fresh.
             timeout_seconds: The socket timeout of one fetch.
             allow_local: Accept a filesystem path as a remote — tests only.
+            ca_file: ``OURO_ENGINE_GIT_CA_FILE`` — a private CA bundle every ``https://``
+                fetch verifies against, or ``None`` for the system's trust store.
             clock: The time source, for freshness.
         """
         self.root = root
         self.refresh_seconds = refresh_seconds
         self.timeout_seconds = timeout_seconds
         self.allow_local = allow_local
+        self.ca_file = ca_file
         self._clock = clock
         self._locks: dict[Path, threading.Lock] = {}
         self._locks_guard = threading.Lock()
@@ -270,6 +275,7 @@ class CloneStore:
             parts = urlsplit(repository.remote)
             client = HttpGitClient(
                 f"https://{parts.netloc}",
+                config=git_tls_config(self.ca_file),
                 username=TOKEN_USERNAME if repository.token else None,
                 password=repository.token,
                 timeout=self.timeout_seconds,

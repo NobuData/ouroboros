@@ -77,6 +77,7 @@ describe("the console service", () => {
         unpricedEvents: 0,
       }),
       guardrails: jest.fn().mockResolvedValue(mockupGuardrails()),
+      stageBuilds: jest.fn().mockResolvedValue([]),
       reservation: jest.fn().mockResolvedValue({
         id: "job-483",
         number: 483,

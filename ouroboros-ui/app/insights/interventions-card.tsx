@@ -74,7 +74,13 @@ export function InterventionsCard({
           </Button>
           {open && (
             <div id={panelId}>
-              <RecategorizePanel actions={actions} bars={causes} onMoved={retry} range={page.range} />
+              <RecategorizePanel
+                actions={actions}
+                bars={causes}
+                onMoved={retry}
+                origin={page.origin}
+                range={page.range}
+              />
             </div>
           )}
         </div>

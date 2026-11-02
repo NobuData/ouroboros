@@ -10,7 +10,7 @@
  * * **Parity** — a *finished* seeded run (`#474`, merged) in both palettes: the outcome pill,
  *   the frozen elapsed, the pull request link, the transcript closed to steering with its reason.
  *   Mockup 10 draws only a run mid-flight, which leg 17's pairs already photograph.
- * * **The live scenario** — the simulated-run driver's `482-gate-return` (#307), watched: stepper
+ * * **The live scenario** — the run simulator's `482-gate-return` (#307), watched: stepper
  *   transitions advance, transcript entries append, a steer typed mid-attempt comes back as the
  *   service's own `user` entry *acknowledged*, guardrail verdicts render, a pause reaches
  *   *acknowledged*, and the run carries on once resumed.
@@ -197,6 +197,7 @@ test.describe("the run console, certified (#314)", () => {
     page,
   }) => {
     test.setTimeout(LIVE_TIMEOUT_MS);
+    // Driver (DJ.4): a gate that fails and returns the run to an earlier stage — a scripted failure.
     const simulation = await startSimulation("482-gate-return", LIVE_SPEED);
 
     try {
@@ -279,6 +280,7 @@ test.describe("the run console, certified (#314)", () => {
     page,
   }) => {
     test.setTimeout(LIVE_TIMEOUT_MS);
+    // Driver (DJ.4): a run still running when the abort lands, and the watermark the export must carry.
     const simulation = await startSimulation("control-responsive", ABORT_SPEED);
     const { runId, loopSeq } = simulation;
 

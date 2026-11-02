@@ -20,6 +20,7 @@
 import { Inject, Injectable, Optional } from "@nestjs/common";
 
 import { dayBounds } from "../rollup/rollup.days";
+import { DEFAULT_ORIGIN, isMixed, keeps, originsPresent } from "../metrics/metrics.origin";
 import { MetricsRepository, type MetricDefinition } from "../metrics/metrics.repository";
 import { METRICS_CLOCK, methodologyOf } from "../metrics/metrics.service";
 import type { MetricMethodology } from "../metrics/metrics.types";
@@ -31,6 +32,7 @@ import type {
   ScoreboardMethodology,
   ScoreboardScope,
   ScoreboardSuggestionSource,
+  ScoreboardTally,
 } from "./scoreboard.types";
 
 /**
@@ -90,10 +92,19 @@ export class ScoreboardService {
       this.repository.tallies(scope.organizationId, instantsOf(resolved.prior), scope.repo),
     ]);
 
-    const rows = composeRows(current, prior, SCOREBOARD_MIN_SAMPLE);
+    const origin = scope.origin ?? DEFAULT_ORIGIN;
+    const kept = current.filter((tally) => keeps(origin, tally.origin));
+    const rows = composeRows(
+      mergeOrigins(kept),
+      mergeOrigins(prior.filter((tally) => keeps(origin, tally.origin))),
+      SCOREBOARD_MIN_SAMPLE,
+    );
     const suggestion = (await this.suggestions?.suggestion(scope, rows)) ?? null;
 
     return {
+      origin,
+      originsPresent: originsPresent(current),
+      mixed: isMixed(origin, originsPresent(kept)),
       range: resolved.range,
       window: resolved.current,
       prior: resolved.prior,
@@ -103,6 +114,41 @@ export class ScoreboardService {
       ...(suggestion === null ? {} : { suggestion }),
     };
   }
+}
+
+/**
+ * Tallies of one (task kind, model, hop) summed across the origins kept — only ever more than one
+ * under `all` (DJ.2), when the scoreboard row is the sum and the answer is marked mixed.
+ *
+ * @param tallies - The kept tallies, any number per key.
+ * @returns One tally per key.
+ */
+export function mergeOrigins(tallies: readonly ScoreboardTally[]): ScoreboardTally[] {
+  const byKey = new Map<string, ScoreboardTally>();
+
+  for (const tally of tallies) {
+    const key = JSON.stringify([tally.taskKind, tally.model, tally.hop]);
+    const seen = byKey.get(key);
+
+    byKey.set(
+      key,
+      seen === undefined
+        ? tally
+        : {
+            ...seen,
+            merged: seen.merged + tally.merged,
+            untouched: seen.untouched + tally.untouched,
+            tokens: seen.tokens + tally.tokens,
+            unpricedTokens: seen.unpricedTokens + tally.unpricedTokens,
+            costCents:
+              seen.costCents === null && tally.costCents === null
+                ? null
+                : (seen.costCents ?? 0) + (tally.costCents ?? 0),
+          },
+    );
+  }
+
+  return [...byKey.values()];
 }
 
 /**

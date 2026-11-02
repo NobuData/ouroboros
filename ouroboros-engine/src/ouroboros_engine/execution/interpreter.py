@@ -11,15 +11,21 @@ trigger              follow its default edge
 llm                  an attempt on a registered executor (``active`` → ``succeeded`` |
                      ``failed``), its events reported as they arrive, the change-set read
                      from the working tree at the end; retried while ``max_retries`` allows
-infra                the run branch is pushed (DI.2), then ``active`` → ``failed``, and the
-                     run finishes ``failed`` (``infra_unavailable`` until #265)
+infra                the run branch is pushed (DI.2), then the job runs on the farm (AJ.3,
+                     #265): ``active`` while it waits, is offered, accepted and runs —
+                     each phase written to the transcript — then ``succeeded`` on exit 0
+                     (its check passes) or ``failed``: a non-zero exit records a failed
+                     check and goes to the gate that requires it; no runner, no pool, or a
+                     farm refusal finishes the run ``failed``, saying why
 flow ``decision``    the first ``branch`` edge whose condition holds (paths, labels, effort,
                      source), else the default edge
 flow ``gate``        passes → the default edge; fails → its ``loop`` edge, bounded by the
-                     loop target's ``max_retries``; undecidable → the run fails, saying why
+                     loop target's ``max_retries``; undecidable → the run fails, saying why.
+                     ``require`` is judged on this round's checks — build exit codes and
+                     succeeded model stages — with ccache results as evidence
 term                 ``needs_review`` → ``needs_human``; ``open_pr_automerge`` → the run
-                     branch is pushed (DI.2), then ``review``; ``back_to_queue`` →
-                     ``back_to_queue``
+                     branch is pushed (DI.2), its draft pull request opened (DI.3), then
+                     ``review``; ``back_to_queue`` → ``back_to_queue``
 ==================== =======================================================================
 
 **It keeps nothing it cannot lose** (A.1). The position is checkpointed to the control plane
@@ -70,9 +76,11 @@ from ouroboros_engine.control_plane.client import ControlPlaneError
 from ouroboros_engine.control_plane.execution import FinishOutcome, RunStarted
 from ouroboros_engine.control_plane.ingest import ChangeSet, StageReturn
 from ouroboros_engine.control_plane.transport import TransportError
+from ouroboros_engine.execution.build import BuildSettings, BuildWatcher, command_argv
+from ouroboros_engine.execution.checks import CheckResult
 from ouroboros_engine.execution.controls import Controls, RunAborted, Running
 from ouroboros_engine.execution.events import StageEvent
-from ouroboros_engine.execution.facts import TicketFacts, judge
+from ouroboros_engine.execution.facts import Judgement, TicketFacts, judge
 from ouroboros_engine.execution.graph import WorkflowGraph
 from ouroboros_engine.execution.guardrails import halt_reason
 from ouroboros_engine.execution.heartbeat import Heartbeat, Sleep
@@ -102,12 +110,14 @@ from ouroboros_engine.execution.workspace import (
     WorkspaceError,
 )
 from ouroboros_engine.workflows.dsl import (
+    ChecksPredicate,
     FlowConfig,
     InfraConfig,
     LlmConfig,
     TermConfig,
     WorkflowNode,
 )
+from ouroboros_engine.workflows.infra import infra_kind
 from ouroboros_engine.workflows.validate import validate_workflow_document
 
 _log = logging.getLogger(__name__)
@@ -183,6 +193,8 @@ class Interpreter:
         sleep: Sleep = asyncio.sleep,
         poll_sleep: Sleep | None = None,
         publisher: Publisher | None = None,
+        build: BuildSettings | None = None,
+        build_sleep: Sleep | None = None,
     ) -> None:
         """Hold the collaborators.
 
@@ -199,6 +211,10 @@ class Interpreter:
             publisher: Pushes the run branch before each build stage and at the pull
                 request terminal (DI.2, #1310). ``None`` publishes nothing — the tree is
                 kept at ``review`` as before; the engine's composition root always sets it.
+            build: How a build stage's farm job is watched (AJ.3, #265) — the poll cadence
+                and the no-runner grace window; the defaults unless a test shortens them.
+            build_sleep: Waits between reads of a build; ``poll_sleep`` unless a test
+                separates the two.
         """
         self._control = control
         self._clones = clones
@@ -209,6 +225,8 @@ class Interpreter:
         self._sleep = sleep
         self._poll_sleep = poll_sleep or sleep
         self._publisher = publisher
+        self._build = build or BuildSettings()
+        self._build_sleep = build_sleep or self._poll_sleep
 
     async def execute(self, run_id: str) -> None:
         """Take a run and walk it until it finishes, parks, or is lost.
@@ -385,7 +403,7 @@ class Interpreter:
         if isinstance(config, LlmConfig):
             return await self._llm(run, node, config)
         if isinstance(config, InfraConfig):
-            return await self._infra(run, node)
+            return await self._infra(run, node, config)
         if isinstance(config, FlowConfig):
             if config.kind == "gate":
                 return await self._gate(run, node, config)
@@ -511,6 +529,7 @@ class Interpreter:
                 assert run.workspace is not None  # noqa: S101
                 await asyncio.to_thread(run.workspace.checkpoint, node.id, attempt)
                 await run.reporter.transition(node.id, "succeeded", attempt)
+                run.state.checks[node.id] = CheckResult(passed=True)
                 if not correction or attempt >= min(limit, MAX_ATTEMPT):
                     return await self._forward(run, node)
             else:
@@ -582,7 +601,7 @@ class Interpreter:
             stage_key=node.id,
             attempt=attempt,
             prompt=with_notes(prompt, await run.controls.notes_for(attempt)),
-            model=stage_model(config, started.model),
+            model=stage_model(config, started.model, started.task_models),
             policy=stage_policy(
                 config, str(run.workspace.path), started.protected_paths
             ),
@@ -771,26 +790,161 @@ class Interpreter:
 
     # --- infrastructure, forks and terminals -----------------------------------------------
 
-    async def _infra(self, run: _Run, node: WorkflowNode) -> None:
-        """Fail an infrastructure stage honestly: there is no build farm to run it on yet.
+    async def _infra(
+        self, run: _Run, node: WorkflowNode, config: InfraConfig
+    ) -> str | None:
+        """Run a build stage on the farm and record its check (AJ.3, #265).
+
+        The run branch is pushed first (DI.2), and the commit the host now holds is what the
+        runner checks out. A stage restarted mid-attempt resubmits the same attempt, which the
+        control plane answers with the job it already created.
 
         Args:
             run: The execution.
             node: The stage.
+            config: Its pool and command.
+
+        Returns:
+            The default edge after a passing build; the gate that decides on a failing one;
+            ``None`` when the run was finished here.
+
+        Raises:
+            RunAborted: A person aborted the run while the job was live.
         """
         if not await self._publish(run, node.id):
-            return
-        attempt = run.state.attempts.get(node.id, 0) + 1
-        run.state.attempts[node.id] = attempt
-        await run.reporter.transition(node.id, "active", attempt)
-        await run.reporter.transition(node.id, "failed", attempt)
-        await self._end(
-            run,
-            "failed",
-            f"infra_unavailable: stage `{node.id}` needs the build farm, which runs no "
-            "stage until AR.1 (#991).",
-            node.id,
+            return None
+        resumed = run.state.mid_stage(node.id)
+        attempt = (
+            (run.state.attempt or 1)
+            if resumed
+            else run.state.attempts.get(node.id, 0) + 1
         )
+        run.state.attempts[node.id] = attempt
+        run.state.stage_key = node.id
+        run.state.attempt = attempt
+        run.state.checks.pop(node.id, None)
+        await self._save(run)
+        await run.reporter.transition(
+            node.id,
+            "active",
+            attempt,
+            returned_from=run.returned_from,
+            tolerate_invalid=resumed,
+        )
+        run.returned_from = None
+
+        refusal, command = self._build_inputs(run, node, config)
+        if refusal is not None:
+            return await self._infra_failed(run, node, attempt, refusal)
+        assert run.workspace is not None  # noqa: S101
+        commit = await asyncio.to_thread(run.workspace.published)
+        if commit is None:
+            return await self._infra_failed(
+                run,
+                node,
+                attempt,
+                f"build_branch_unpublished: stage `{node.id}` builds the run's pushed "
+                "branch, and nothing has been pushed.",
+            )
+
+        outcome = await BuildWatcher(
+            run.reporter, self._build_sleep, self._build, lambda: self._stopping(run)
+        ).run(node.id, attempt, config.runner_pool or "", commit, command)
+        if outcome.kind == "stopped" and run.controls.abort is not None:
+            raise RunAborted(run.controls.abort)
+        job = outcome.job
+        if outcome.kind == "refused" or job is None:
+            return await self._infra_failed(run, node, attempt, outcome.reason)
+        if job.phase == "canceled":
+            return await self._infra_failed(
+                run,
+                node,
+                attempt,
+                f"Build #{job.number} was cancelled on the farm before it finished.",
+            )
+
+        passed = job.phase == "succeeded"
+        run.state.checks[node.id] = CheckResult(
+            passed=passed,
+            failure=None
+            if passed
+            else ("failed_tests" if infra_kind(node) == "test" else "failed_build"),
+            exit_code=job.exit_code,
+            job_number=job.number,
+            ccache_hit_rate_pct=None if job.ccache is None else job.ccache.hit_rate_pct,
+        )
+        await run.reporter.transition(
+            node.id, "succeeded" if passed else "failed", attempt
+        )
+        if passed:
+            return await self._forward(run, node)
+        gate = _deciding_gate(run, node.id)
+        if gate is None:
+            await self._end(
+                run,
+                "failed",
+                f"Build #{job.number} of `{node.id}` failed (exit {job.exit_code}), and no "
+                "gate after it decides on its result.",
+                node.id,
+            )
+            return None
+        return gate
+
+    def _build_inputs(
+        self, run: _Run, node: WorkflowNode, config: InfraConfig
+    ) -> tuple[str | None, list[str] | None]:
+        """What a build stage submits, or why it cannot submit anything.
+
+        Args:
+            run: The execution.
+            node: The stage.
+            config: Its pool and command.
+
+        Returns:
+            ``(refusal, argv)`` — a refusal sentence and no argv, or no refusal and the argv
+            (``None`` for the pool's default command).
+        """
+        del run
+        if config.runner_pool is None:
+            return (
+                f"build_pool_required: stage `{node.id}` names no runner pool. A live build "
+                "runs on a named pool — set the stage's Runner pool.",
+                None,
+            )
+        try:
+            return None, command_argv(config.command)
+        except ValueError as unsplittable:
+            return (
+                f"build_command_invalid: stage `{node.id}`'s command cannot be split into "
+                f"arguments ({unsplittable}).",
+                None,
+            )
+
+    async def _infra_failed(
+        self, run: _Run, node: WorkflowNode, attempt: int, reason: str
+    ) -> None:
+        """Fail a build stage that never produced a result, and the run with it.
+
+        Args:
+            run: The execution.
+            node: The stage.
+            attempt: Its attempt.
+            reason: The sentence the run ends with.
+        """
+        await run.reporter.transition(node.id, "failed", attempt)
+        await self._end(run, "failed", reason[:500], node.id)
+
+    async def _stopping(self, run: _Run) -> bool:
+        """Poll the controls between reads of a build: has a person aborted the run?
+
+        Args:
+            run: The execution.
+
+        Returns:
+            ``True`` when an abort is pending.
+        """
+        await run.controls.poll()
+        return run.controls.abort is not None
 
     async def _decision(self, run: _Run, node: WorkflowNode) -> str | None:
         """Take the first branch whose condition holds, else the default edge.
@@ -815,6 +969,32 @@ class Interpreter:
                 return edge.to
         return await self._forward(run, node)
 
+    async def _pass(self, run: _Run, node: WorkflowNode) -> str | None:
+        """Leave a gate that held: its pass ``branch`` edge, else its default edge.
+
+        The workflow language draws a gate's pass as either: a plain ``default`` edge, or — as
+        ``standard-fix`` and the live slice do — a ``branch`` edge labelled *pass* whose
+        condition says so (``checks all_passed``). The first branch whose condition holds is
+        taken, judged with the run's checks as the gate was (DI.6, #1321); with none, the
+        default edge, and with neither the run fails as before.
+
+        Args:
+            run: The execution.
+            node: The gate, which held.
+
+        Returns:
+            The target, or ``None`` after failing the run.
+        """
+        assert run.graph is not None  # noqa: S101
+        changed = await self._changed_paths(run)
+        for edge in run.graph.outgoing(node.id, "branch"):
+            if (
+                edge.condition is not None
+                and judge(edge.condition, changed, _facts(run), run.state.checks).holds
+            ):
+                return edge.to
+        return await self._forward(run, node)
+
     async def _gate(
         self, run: _Run, node: WorkflowNode, config: FlowConfig
     ) -> str | None:
@@ -829,7 +1009,14 @@ class Interpreter:
             The next node, or ``None`` after failing the run.
         """
         assert run.graph is not None  # noqa: S101
-        judgement = judge(config.predicate, await self._changed_paths(run), _facts(run))
+        judgement = judge(
+            config.predicate,
+            await self._changed_paths(run),
+            _facts(run),
+            run.state.checks,
+        )
+        if isinstance(config.predicate, ChecksPredicate):
+            await self._report_gate(run, node, judgement)
         if judgement.holds is None:
             await self._end(
                 run,
@@ -839,7 +1026,7 @@ class Interpreter:
             )
             return None
         if judgement.holds:
-            return await self._forward(run, node)
+            return await self._pass(run, node)
         loop = run.graph.loop_edge(node.id)
         if loop is None:
             await self._end(
@@ -864,9 +1051,41 @@ class Interpreter:
         key = edge_id(loop.from_, loop.to)
         run.state.loop_rounds[key] = run.state.loop_rounds.get(key, 0) + 1
         run.returned_from = StageReturn(
-            stage_key=node.id, kind="gate", reason="gate_rejected"
+            stage_key=node.id, kind="gate", reason=judgement.failure or "gate_rejected"
         )
+        # A new round: its builds are what the gate decides on next, never this round's.
+        run.state.checks.clear()
         return loop.to
+
+    async def _report_gate(
+        self, run: _Run, node: WorkflowNode, judgement: Judgement
+    ) -> None:
+        """Write a ``require`` gate's verdict and its evidence to the transcript.
+
+        The exit codes and ccache results the gate decided on, so the console shows *why* the
+        loop went back — or on.
+
+        Args:
+            run: The execution.
+            node: The gate.
+            judgement: Its verdict.
+        """
+        verdict = {True: "passed", False: "did not pass", None: "cannot be decided"}[
+            judgement.holds
+        ]
+        await run.reporter.note(
+            node.id,
+            1,
+            f"Gate `{node.id}` {verdict}: {judgement.clause}.",
+            actor="gate",
+            payload={
+                "kind": "gate",
+                "holds": judgement.holds,
+                "checks": {
+                    name: result.to_json() for name, result in run.state.checks.items()
+                },
+            },
+        )
 
     async def _term(self, run: _Run, node: WorkflowNode, config: TermConfig) -> None:
         """End the run the way its terminal says.
@@ -882,12 +1101,16 @@ class Interpreter:
             await asyncio.to_thread(run.workspace.checkpoint, node.id)
             if not await self._publish(run, node.id):
                 return
-            await run.reporter.finish(
-                "review",
+            reason = (
                 f"The workflow reached `{node.id}`; the branch is ready for its pull "
-                "request.",
-                node.id,
+                "request."
             )
+            if self._publisher is not None:
+                opened = await self._open_pull_request(run, node.id)
+                if opened is None:
+                    return
+                reason = f"The workflow reached `{node.id}`; {opened}."
+            await run.reporter.finish("review", reason, node.id)
             if self._publisher is not None and run.workspace.published() is not None:
                 workspace, run.workspace = run.workspace, None
                 await asyncio.to_thread(workspace.finish, "pushed")
@@ -935,6 +1158,64 @@ class Interpreter:
             await asyncio.to_thread(workspace.close)
             return False
         return True
+
+    async def _open_pull_request(self, run: _Run, stage_key: str) -> str | None:
+        """Open the run branch's draft pull request, after the branch was pushed (DI.3).
+
+        Called only with a publisher: without one nothing reached the host to open a pull
+        request from, and the run finishes ``review`` as before. ``ouroboros-rest``
+        composes and opens the pull request, always as a draft, and answers the one already
+        open for the run when there is one — so a resumed terminal asks again and opens no
+        second pull request.
+
+        A refusal (``not_pushed``, ``pr_source_unavailable``, ``draft_refused``,
+        ``pr_create_failed``, or anything else) finishes the run ``failed`` with the code and
+        the host's message, and **keeps the tree**, as a failed publish does. ``fenced`` and
+        ``run_not_executable`` raise :class:`RunLostError` and take the stop path.
+
+        Args:
+            run: The execution.
+            stage_key: The terminal the pull request is opened at.
+
+        Returns:
+            The clause naming the pull request for the ``review`` reason, or ``None`` when
+            the run was finished ``failed``.
+        """
+        try:
+            opened = await run.reporter.open_pull_request()
+        except ControlPlaneError as refused:
+            return await self._pull_request_failed(
+                run,
+                stage_key,
+                f"ouroboros-rest refused the draft pull request ({refused.code}): "
+                f"{_refusal_text(refused)}",
+            )
+        if not opened.draft:
+            return await self._pull_request_failed(
+                run,
+                stage_key,
+                f"ouroboros-rest answered pull request #{opened.number} as not a draft: "
+                f"{opened.url}",
+            )
+        state = "opened" if opened.created else "already open"
+        return f"draft pull request #{opened.number} {state}: {opened.url}"
+
+    async def _pull_request_failed(
+        self, run: _Run, stage_key: str, reason: str
+    ) -> None:
+        """Finish the run ``failed`` over its pull request, keeping the tree (DI.3).
+
+        Args:
+            run: The execution.
+            stage_key: The terminal.
+            reason: Why, naming the cause and the host's message.
+
+        """
+        _log.warning("run %s: %s", run.started.run_id, reason)
+        await run.reporter.finish("failed", reason[:500], stage_key)
+        assert run.workspace is not None  # noqa: S101
+        workspace, run.workspace = run.workspace, None
+        await asyncio.to_thread(workspace.close)
 
     async def _end(
         self,
@@ -988,7 +1269,7 @@ def _publish_run(run: _Run) -> PublishRun:
     assert run.graph is not None  # noqa: S101
     started = run.started
     aliases = {
-        node.id: stage_model(node.config, started.model)
+        node.id: stage_model(node.config, started.model, started.task_models)
         for node in run.graph.document.nodes
         if isinstance(node.config, LlmConfig)
     }
@@ -1006,6 +1287,23 @@ def _publish_run(run: _Run) -> PublishRun:
     )
 
 
+def _refusal_text(refused: ControlPlaneError) -> str:
+    """A refusal's sentence, followed by what its details name — the host's message or url.
+
+    Args:
+        refused: The control plane's refusal.
+
+    Returns:
+        ``<message>`` or ``<message> (<key>: <value>, …)`` over the scalar details.
+    """
+    named = ", ".join(
+        f"{key}: {value}"
+        for key, value in refused.details.items()
+        if isinstance(value, str | int | float) and not isinstance(value, bool)
+    )
+    return f"{refused} ({named})" if named else str(refused)
+
+
 def _limit(run: _Run, stage_key: str) -> int:
     """The most attempts a stage may make.
 
@@ -1021,6 +1319,53 @@ def _limit(run: _Run, stage_key: str) -> int:
     if node is None or not isinstance(node.config, LlmConfig):
         return MAX_ATTEMPT
     return min(node.config.limits.max_retries + 1, MAX_ATTEMPT)
+
+
+def _deciding_gate(run: _Run, stage_key: str) -> str | None:
+    """The gate that decides on a failed build: where the run goes instead of onwards.
+
+    Walks forward along default and branch edges from the stage and stops at the first gate
+    whose ``checks`` predicate names it — or names no check, meaning every one. The stages in
+    between are not run: a failed build's tests and review would be judged on a tree that
+    does not build. The gate then loops back along its ``onFail`` edge.
+
+    Args:
+        run: The execution, with its graph.
+        stage_key: The failed build stage.
+
+    Returns:
+        The gate's node id, or ``None`` when no gate downstream decides on this stage.
+    """
+    assert run.graph is not None  # noqa: S101
+    graph = run.graph
+    queue = [
+        edge.to
+        for kind in ("default", "branch")
+        for edge in graph.outgoing(stage_key, kind)
+    ]
+    seen: set[str] = {stage_key}
+    while queue:
+        current = queue.pop(0)
+        if current in seen:
+            continue
+        seen.add(current)
+        node = graph.node(current)
+        if node is None:
+            continue
+        config = node.config
+        if (
+            isinstance(config, FlowConfig)
+            and config.kind == "gate"
+            and isinstance(config.predicate, ChecksPredicate)
+            and (config.predicate.names is None or stage_key in config.predicate.names)
+        ):
+            return node.id
+        queue.extend(
+            edge.to
+            for kind in ("default", "branch")
+            for edge in graph.outgoing(current, kind)
+        )
+    return None
 
 
 def _facts(run: _Run) -> TicketFacts:

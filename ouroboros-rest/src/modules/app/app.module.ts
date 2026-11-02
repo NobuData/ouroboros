@@ -30,6 +30,7 @@ import { FarmFleetModule } from "../farm/fleet/fleet.module";
 import { FarmLogsModule } from "../farm/logs/logs.module";
 import { FarmInstallerModule } from "../farm/installer/installer.module";
 import { IngestModule } from "../ingest/ingest.module";
+import { RunBuildsModule } from "../run-builds/run-builds.module";
 import { ControlsModule } from "../controls/controls.module";
 import { InternalModule } from "../internal/internal.module";
 import { OnboardingModule } from "../onboarding/onboarding.module";
@@ -52,6 +53,7 @@ import { ResearchToolsModule } from "../research/tools/research-tools.module";
 import { RoutingModule } from "../routing/routing.module";
 import { LifecycleModule } from "../lifecycle/lifecycle.module";
 import { LoopModule } from "../loop/loop.module";
+import { LoopReadinessModule } from "../loop/readiness.module";
 import { AdmissionModule } from "../admission/admission.module";
 import { GuardrailModesModule } from "../guardrails/guardrail-modes.module";
 import { MembersModule } from "../members/members.module";
@@ -518,6 +520,9 @@ export class AppModule {
         // report under `/api/v1/loop/capabilities`. It reads the engine's status, the dry-run
         // policy and the workspace's connections and runners; nothing else claims the prefix.
         LoopModule,
+        // DK.1 ([#1318](https://github.com/NobuData/ouroboros/issues/1318)) — the live-loop
+        // readiness preflight under `/api/v1/loop/readiness`. Read-only; the launcher asks it too.
+        LoopReadinessModule,
         // DI.4 ([#1312](https://github.com/NobuData/ouroboros/issues/1312)) — live-run admission:
         // `POST /api/v1/queue/{id}/confirm` beside `QueueModule`'s read, and
         // `/api/v1/settings/live-execution`. The claim, the queue, the dashboard and the backlog
@@ -685,6 +690,11 @@ export class AppModule {
         // routes under `/internal/runs` for an executor. After `InternalModule` for the reason
         // `IngestModule` is.
         ControlsModule,
+        // AJ.3 ([#265](https://github.com/NobuData/ouroboros/issues/265)) — a run's build stage on
+        // the farm: submit, read and cancel under `/internal/runs/:id/builds`, and the run's
+        // `building` status kept by its job's completion. After `InternalModule` for the reason
+        // `IngestModule` is.
+        RunBuildsModule,
         // AT.4 ([#332](https://github.com/NobuData/ouroboros/issues/332)) — classification &
         // routing: the Mark & Route card's hints, classify, re-run and waive under
         // `/api/v1/test-runs/:id`. After `ControlsModule` and `FarmDispatchModule`, whose services

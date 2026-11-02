@@ -127,17 +127,19 @@ export class ConsoleService {
     const run = await this.find(tenant.id, id);
     const asOf = this.now();
 
-    const [repository, stages, files, commits, spend, guardrails, reservation] = await Promise.all([
-      this.console.repository(tenant.id, run.github_repo_id),
-      this.console.stages(run.id),
-      this.console.files(run.id),
-      this.console.commits(run.id),
-      this.console.spend(run.id),
-      this.console.guardrails(run.id),
-      run.reserved_build_job_id === null
-        ? Promise.resolve(undefined)
-        : this.console.reservation(tenant.id, run.reserved_build_job_id),
-    ]);
+    const [repository, stages, files, commits, spend, guardrails, reservation, builds] =
+      await Promise.all([
+        this.console.repository(tenant.id, run.github_repo_id),
+        this.console.stages(run.id),
+        this.console.files(run.id),
+        this.console.commits(run.id),
+        this.console.spend(run.id),
+        this.console.guardrails(run.id),
+        run.reserved_build_job_id === null
+          ? Promise.resolve(undefined)
+          : this.console.reservation(tenant.id, run.reserved_build_job_id),
+        this.console.stageBuilds(tenant.id, run.id),
+      ]);
 
     const budgetStage = budgetStageOf(stages);
     const route =
@@ -155,7 +157,7 @@ export class ConsoleService {
         live: isLive(run.status),
         ...(repository === undefined ? {} : { repository }),
       },
-      timeline: timelineOf(run.workflow_tag, run.workflow_version_pin, stages),
+      timeline: timelineOf(run.workflow_tag, run.workflow_version_pin, stages, builds),
       changes: changesOf(files, commits, run.merge_strategy),
       resources: resourcesOf({
         spend,

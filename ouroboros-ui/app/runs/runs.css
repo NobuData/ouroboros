@@ -497,6 +497,45 @@
   text-decoration: underline;
 }
 
+/* A build stage's farm job (AJ.3, #265) — its number and real phase, under the node. */
+.run-step__build {
+  max-width: 12rem;
+  margin: 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.run-step--active .run-step__build {
+  color: var(--accent);
+}
+
+.run-step--failed .run-step__build {
+  color: var(--err);
+}
+
+/* …and the way to its log: a button, because it opens the farm's log sheet in place. */
+.run-step__log {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  cursor: pointer;
+}
+
+.run-step__log:hover {
+  text-decoration: underline;
+}
+
+.run-step__log:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
 /* The warn note wraps — never truncates: it is the story of why the loop went backwards. */
 .run-step__note {
   max-width: 12rem;

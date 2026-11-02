@@ -16381,7 +16381,9 @@ insert into ouroboros.run_ingest_receipts
          ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.finish',
           'cover-finish', repeat('7', 64), '{}'::jsonb),
          ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.push_result',
-          'cover-push-result', repeat('8', 64), '{}'::jsonb);
+          'cover-push-result', repeat('8', 64), '{}'::jsonb),
+         ('org-vocab', 'a9200000-0000-0000-0000-000000000482', 'run.pull_request',
+          'cover-pull-request', repeat('9', 64), '{}'::jsonb);
 
 select pg_temp.must_hold(
   pg_temp.vocabulary('ouroboros.run_ingest_receipts', 'run_ingest_receipts_operation')
@@ -26675,7 +26677,7 @@ returns void language plpgsql as $$
 begin
   insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, day, value)
   values ('org-v076', 'acme/zephyr', 'merged_prs', false, d, extract(day from d))
-  on conflict (organization_id, repo_ref, metric_id, dimension, day) do update
+  on conflict (organization_id, repo_ref, metric_id, dimension, origin, day) do update
     set value = excluded.value, computed_at = now();
 
   if crash then
@@ -27731,10 +27733,10 @@ select pg_temp.must_hold(
   'intervention_cause_daily counts events per UTC day and cause — #902''s handoff and its late call on their own days');
 
 select pg_temp.must_hold(
-  (select version = 2 and dimension_kind = 'cause' and aggregation = 'sum'
+  (select version = 3 and dimension_kind = 'cause' and aggregation = 'sum'
           and source_planes = '{runs,tests,interventions}'
      from ouroboros.metric_definitions where metric_id = 'human_interventions'),
-  'human_interventions is version 2, broken out by cause');
+  'human_interventions is version 3 (V154 raised it for origin), broken out by cause');
 
 insert into ouroboros.metric_daily
   (organization_id, repo_ref, metric_id, is_rate, dimension, day, value)
@@ -29147,7 +29149,7 @@ select pg_temp.must_hold(
 select pg_temp.must_hold(
   (select array_agg(metric_id || ':' || unit || ':' || is_rate::text order by metric_id)
             = '{scoreboard_cost_per_success:cents:false,scoreboard_merged:count:false,scoreboard_trend:pct:true}'
-          and bool_and(version = 1 and not proxy and dimension_kind is null
+          and bool_and(version = 2 and not proxy and dimension_kind is null
                        and 'resolution_snapshots' = any (source_planes)
                        and caveats <> '' and formula_text <> '')
      from ouroboros.metric_definitions where family = 'scoreboard'),
@@ -29181,7 +29183,7 @@ select pg_temp.must_hold(
   (select array_agg(metric_id || ':' || coalesce(dimension_kind, '-') order by metric_id)
             = '{local_tokens:-,tokens_by_task_kind:task_kind}'
           and bool_and(family = 'cost' and unit = 'tokens' and aggregation = 'sum'
-                       and version = 1 and not is_rate and not proxy
+                       and version = 2 and not is_rate and not proxy
                        and source_planes = '{usage}' and caveats <> '' and formula_text <> '')
      from ouroboros.metric_definitions
     where metric_id in ('tokens_by_task_kind', 'local_tokens')),
@@ -30634,7 +30636,7 @@ select pg_temp.must_hold(
 select pg_temp.must_hold(
   (select family = 'build_duration' and aggregation = 'median' and dimension_kind = 'job_label'
           and unit = 'duration_ms' and not is_rate and not proxy
-          and source_planes = '{builds}' and version = 1
+          and source_planes = '{builds}' and version = 2
      from ouroboros.metric_definitions where metric_id = 'build_duration'),
   'build_duration is registered: its own family, a median per job label, in milliseconds');
 
@@ -30648,7 +30650,7 @@ select pg_temp.must_hold(
 select pg_temp.must_hold(
   (select family = 'queue_wait' and aggregation = 'median' and dimension_kind = 'pool'
           and unit = 'duration_ms' and not is_rate and not proxy
-          and source_planes = '{builds}' and version = 1
+          and source_planes = '{builds}' and version = 2
      from ouroboros.metric_definitions where metric_id = 'queue_wait'),
   'queue_wait is registered: its own family, a median per pool, in milliseconds');
 
@@ -45120,6 +45122,221 @@ select pg_temp.must_hold(
   'deleting the person keeps the run they started — the starter becomes null, the history stays');
 
 delete from ouroboros.organization where "id" = 'org-v151';
+
+-- ===========================================================================
+-- V152 — whether a mirrored pull request is a draft (#1311, DI.3).
+-- ===========================================================================
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v152', 'Draft Publisher', 'draft-publisher-v152', now());
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name, config, status) values
+  ('a1520000-0000-0000-0000-00000000000a', 'org-v152', 'github', 'GitHub · draft-v152',
+   '{"login": "draft-v152", "repos": ["helios-greeter"]}', 'active');
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title, head_branch, base_branch)
+  values
+    ('a1520000-0000-0000-0000-000000000001', 'org-v152', 'a1520000-0000-0000-0000-00000000000a',
+     1, 'https://github.com/draft-v152/helios-greeter/pull/1', 'Mirrored before V152',
+     'feature/one', 'main');
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title, head_branch, base_branch,
+     draft)
+  values
+    ('a1520000-0000-0000-0000-000000000002', 'org-v152', 'a1520000-0000-0000-0000-00000000000a',
+     2, 'https://github.com/draft-v152/helios-greeter/pull/2', 'Opened by a loop',
+     'ouro/run-a1520000-2', 'main', true);
+
+select pg_temp.must_hold(
+  (select not draft from ouroboros.pull_requests where id = 'a1520000-0000-0000-0000-000000000001'),
+  'a PR written without saying is not a draft — the reading every pre-V152 row had');
+
+select pg_temp.must_hold(
+  (select draft from ouroboros.pull_requests where id = 'a1520000-0000-0000-0000-000000000002'),
+  'a PR the host holds as a draft is mirrored as one');
+
+select pg_temp.must_hold(
+  (select is_nullable = 'NO' and column_default = 'false'
+     from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'pull_requests' and column_name = 'draft'),
+  'pull_requests.draft is not null, default false');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set draft = null
+     where id = 'a1520000-0000-0000-0000-000000000002'$$,
+  'a PR is a draft or it is not — never unknown');
+
+update ouroboros.pull_requests set draft = false
+ where id = 'a1520000-0000-0000-0000-000000000002';
+
+select pg_temp.must_hold(
+  (select not draft from ouroboros.pull_requests where id = 'a1520000-0000-0000-0000-000000000002'),
+  'a sync may clear draft once the host marks the PR ready');
+
+select pg_temp.must_hold(
+  (select col_description('ouroboros.pull_requests'::regclass, attnum) like '%#1311%'
+     from pg_attribute
+    where attrelid = 'ouroboros.pull_requests'::regclass and attname = 'draft'),
+  'pull_requests.draft says what writes it');
+
+delete from ouroboros.organization where "id" = 'org-v152';
+
+-- ===========================================================================
+-- V153 — which stage of a run a build job is (#265, AJ.3).
+-- ===========================================================================
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v153', 'Build Stage Works', 'build-stage-works-v153', now());
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a1530000-0000-0000-0000-00000000000a', 'org-v153', 'build-stage-works', true);
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a153f000-0000-0000-0000-00000000000a', 'a1530000-0000-0000-0000-00000000000a', 'helios-firmware', true, 'main');
+insert into ouroboros.runner_pools (id, organization_id, name, executor) values
+  ('a1537000-0000-0000-0000-00000000000a', 'org-v153', 'pool-a', 'shell');
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq, simulated)
+  values
+    ('a1530000-0000-0000-0000-000000000001', 'org-v153', 'a153f000-0000-0000-0000-00000000000a',
+     1, 'Build on the farm', 'standard-fix', 'coder-max', 'building', 'Build', 5, 7, now(), 1, false);
+insert into ouroboros.build_jobs
+    (id, organization_id, number, pool_id, run_id, github_repo_id, git_ref, commit_sha, label,
+     title, executor, command, status, stage_key, stage_attempt)
+  values
+    ('a1538000-0000-0000-0000-000000000001', 'org-v153', 1,
+     'a1537000-0000-0000-0000-00000000000a', 'a1530000-0000-0000-0000-000000000001',
+     'a153f000-0000-0000-0000-00000000000a', 'refs/heads/ouro/run-1', repeat('c', 40), 'pool-a',
+     'Build on the farm', 'shell', 'make all', 'queued', 'build', 1),
+    ('a1538000-0000-0000-0000-000000000002', 'org-v153', 2,
+     'a1537000-0000-0000-0000-00000000000a', null,
+     'a153f000-0000-0000-0000-00000000000a', 'refs/heads/main', repeat('c', 40), 'pool-a',
+     'A person''s build', 'shell', 'make all', 'queued', null, null);
+
+select pg_temp.must_hold(
+  (select stage_key = 'build' and stage_attempt = 1 from ouroboros.build_jobs
+    where id = 'a1538000-0000-0000-0000-000000000001'),
+  'a run''s build job names the stage and attempt it builds for');
+
+select pg_temp.must_hold(
+  (select stage_key is null and stage_attempt is null from ouroboros.build_jobs
+    where id = 'a1538000-0000-0000-0000-000000000002'),
+  'a build no stage submitted has neither');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set stage_attempt = null
+     where id = 'a1538000-0000-0000-0000-000000000001'$$,
+  'a stage and its attempt are set together or not at all', 'build_jobs_stage_pair');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set stage_key = 'build'
+     where id = 'a1538000-0000-0000-0000-000000000002'$$,
+  'a stage without its attempt is refused', 'build_jobs_stage_pair');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set stage_attempt = 0
+     where id = 'a1538000-0000-0000-0000-000000000001'$$,
+  'a stage attempt is 1-based', 'build_jobs_stage_attempt_positive');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set stage_key = ''
+     where id = 'a1538000-0000-0000-0000-000000000001'$$,
+  'a stage key is not empty', 'build_jobs_stage_key_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.build_jobs
+        (organization_id, number, pool_id, run_id, github_repo_id, git_ref, commit_sha, label,
+         title, executor, command, status, stage_key, stage_attempt)
+      values ('org-v153', 3, 'a1537000-0000-0000-0000-00000000000a',
+              'a1530000-0000-0000-0000-000000000001', 'a153f000-0000-0000-0000-00000000000a',
+              'refs/heads/ouro/run-1', repeat('c', 40), 'pool-a', 'Built twice', 'shell',
+              'make all', 'queued', 'build', 1)$$,
+  'one stage attempt submits one job — a resend is the same job', 'build_jobs_run_stage_key');
+
+-- An automatic retry copies the stage: a second row for the same attempt, by design.
+insert into ouroboros.build_jobs
+    (id, organization_id, number, pool_id, run_id, github_repo_id, git_ref, commit_sha, label,
+     title, executor, command, status, stage_key, stage_attempt, retry_of)
+  values
+    ('a1538000-0000-0000-0000-000000000003', 'org-v153', 3,
+     'a1537000-0000-0000-0000-00000000000a', 'a1530000-0000-0000-0000-000000000001',
+     'a153f000-0000-0000-0000-00000000000a', 'refs/heads/ouro/run-1', repeat('c', 40), 'pool-a',
+     'Build on the farm', 'shell', 'make all', 'queued', 'build', 1,
+     'a1538000-0000-0000-0000-000000000001');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.build_jobs
+    where run_id = 'a1530000-0000-0000-0000-000000000001' and stage_key = 'build'
+      and stage_attempt = 1),
+  'a retry of a stage attempt''s job carries the stage, beside the job it retries');
+
+update ouroboros.build_jobs set run_id = null
+ where id = 'a1538000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select run_id is null and stage_key = 'build' from ouroboros.build_jobs
+    where id = 'a1538000-0000-0000-0000-000000000001'),
+  'a job detached from its run keeps the stage it built for, as history');
+
+delete from ouroboros.organization where "id" = 'org-v153';
+
+-- ===========================================================================
+-- V154 — origin-aware rollups: the Insights grain split per data origin (#1315, DJ.2).
+-- ===========================================================================
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v154', 'Origin Rollups', 'origin-rollups-v154', now());
+
+-- One day of `merged_prs` for one repository, once per origin: the grain keeps them apart.
+insert into ouroboros.metric_daily
+    (organization_id, repo_ref, metric_id, is_rate, day, value, origin, population)
+  values
+    ('org-v154', 'origin-v154/helios', 'merged_prs', false, '2026-10-01', 3, 'live', 3),
+    ('org-v154', 'origin-v154/helios', 'merged_prs', false, '2026-10-01', 40, 'simulated', 40),
+    ('org-v154', 'origin-v154/helios', 'merged_prs', false, '2026-10-01', 7, 'seeded', 7);
+
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.metric_daily where organization_id = 'org-v154'),
+  'one day of a metric holds a row per origin, never one sum of them');
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+        (organization_id, repo_ref, metric_id, is_rate, day, value, origin, population)
+      values ('org-v154', 'origin-v154/helios', 'merged_prs', false, '2026-10-01', 1, 'live', 1)$$,
+  'a second live row for the same grain collides — origin is part of the grain key',
+  'metric_daily_grain_key');
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+        (organization_id, repo_ref, metric_id, is_rate, day, value, origin)
+      values ('org-v154', 'origin-v154/helios', 'merged_prs', false, '2026-10-02', 1, 'imported')$$,
+  'an origin outside live, simulated and seeded is refused',
+  'metric_daily_origin_known');
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+        (organization_id, repo_ref, metric_id, is_rate, day, value, origin, population)
+      values ('org-v154', 'origin-v154/helios', 'merged_prs', false, '2026-10-02', 1, 'live', -1)$$,
+  'a population is a count — never negative',
+  'metric_daily_population_nonnegative');
+
+-- A row that states no origin is live outside a seed file, seeded inside one (V141's default).
+insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, day, value)
+  values ('org-v154', 'origin-v154/helios', 'merged_prs', false, '2026-10-03', 2);
+select pg_temp.must_hold(
+  (select origin = 'live' and population is null from ouroboros.metric_daily
+    where organization_id = 'org-v154' and day = '2026-10-03'),
+  'a row that states no origin outside a seed file is live, with no population recorded');
+
+select pg_temp.must_hold(
+  (select bool_and(btrim(origin_rule) <> '') from ouroboros.metric_definitions),
+  'every metric definition records its origin rule');
+select pg_temp.must_hold(
+  (select bool_and(origin_rule like 'Not split by origin%') from ouroboros.metric_definitions
+    where family = 'decisions'),
+  'the decisions family says it is not split — decisions carry no origin');
+select pg_temp.must_hold(
+  (select bool_and(version >= 2) from ouroboros.metric_definitions where family <> 'decisions'),
+  'every metric split per origin had its version raised');
+select pg_temp.must_hold(
+  (select count(*) = 1 from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'token_usage_daily'
+      and column_name = 'origin'),
+  'token_usage_daily keeps each origin''s usage on its own row');
+
+delete from ouroboros.organization where "id" = 'org-v154';
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

@@ -13,6 +13,7 @@
 
 import { sql } from "kysely";
 
+import type { DataOrigin } from "../../../db/schema";
 import { dayBounds } from "../rollup.days";
 import { ratioRow, sumRow } from "../rollup.rows";
 import { joinRepo, num, REPO_REF } from "../rollup.sql";
@@ -21,6 +22,7 @@ import type { FamilyExtractor, RollupRow } from "../rollup.types";
 /** One suite name's counts in one repository on the day. */
 interface SuiteGroup {
   repo_ref: string;
+  origin: DataOrigin;
   suite: string;
   ran: string;
   passed: string;
@@ -29,13 +31,13 @@ interface SuiteGroup {
 
 export const testsExtractor: FamilyExtractor = {
   family: "tests",
-  metrics: { test_cases_run: 1, test_pass_rate: 1, test_failures_by_suite: 1 },
+  metrics: { test_cases_run: 2, test_pass_rate: 2, test_failures_by_suite: 2 },
 
   async extract(db, organizationId, day): Promise<RollupRow[]> {
     const { from, to } = dayBounds(day);
 
     const { rows } = await sql<SuiteGroup>`
-      select ${REPO_REF} as repo_ref, btrim(left(btrim(s.name), 200)) as suite,
+      select ${REPO_REF} as repo_ref, t.origin, btrim(left(btrim(s.name), 200)) as suite,
              sum(s.passed + s.failed + s.flaky) as ran,
              sum(s.passed + s.flaky) as passed,
              sum(s.failed) as failed
@@ -45,33 +47,40 @@ export const testsExtractor: FamilyExtractor = {
         ${joinRepo("r")}
        where t.organization_id = ${organizationId} and t.status <> 'running'
          and t.started_at >= ${from} and t.started_at < ${to}
-       group by 1, 2`.execute(db);
+       group by 1, 2, 3`.execute(db);
 
-    const repos = new Map<string, { ran: number; passed: number }>();
+    const repos = new Map<
+      string,
+      { repoRef: string; origin: DataOrigin; ran: number; passed: number }
+    >();
     const out: RollupRow[] = [];
 
     for (const group of rows) {
-      const totals = repos.get(group.repo_ref) ?? { ran: 0, passed: 0 };
+      const { repo_ref: repoRef, origin } = group;
+      const key = JSON.stringify([repoRef, origin]);
+      const totals = repos.get(key) ?? { repoRef, origin, ran: 0, passed: 0 };
 
       totals.ran += num(group.ran);
       totals.passed += num(group.passed);
-      repos.set(group.repo_ref, totals);
+      repos.set(key, totals);
 
+      // A suite's failures are over the cases it ran — its population.
       if (num(group.failed) > 0) {
         out.push(
           sumRow(
-            { repoRef: group.repo_ref, metricId: "test_failures_by_suite", dimension: group.suite },
+            { repoRef, origin, metricId: "test_failures_by_suite", dimension: group.suite },
             num(group.failed),
+            num(group.ran),
           ),
         );
       }
     }
 
-    for (const [repoRef, totals] of repos) {
-      out.push(sumRow({ repoRef, metricId: "test_cases_run" }, totals.ran));
+    for (const { repoRef, origin, ran, passed } of repos.values()) {
+      out.push(sumRow({ repoRef, origin, metricId: "test_cases_run" }, ran, ran));
 
-      if (totals.ran > 0) {
-        out.push(ratioRow({ repoRef, metricId: "test_pass_rate" }, totals.passed, totals.ran, 100));
+      if (ran > 0) {
+        out.push(ratioRow({ repoRef, origin, metricId: "test_pass_rate" }, passed, ran, 100));
       }
     }
 

@@ -14,15 +14,18 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ValidationError
 
+from ouroboros_engine.control_plane.builds import BUILD_PATHS
 from ouroboros_engine.control_plane.client import ControlPlaneClient, ControlPlaneError
 from ouroboros_engine.control_plane.contract import INTERNAL_KEY_HEADER
 from ouroboros_engine.control_plane.execution import (
     EXECUTION_ERRORS,
     EXECUTION_PATHS,
+    PULL_REQUEST_REFUSALS,
     PUSH_REFUSALS,
     RUN_CHECKPOINT_PATH,
     RUN_FINISH_PATH,
     RUN_HEARTBEAT_PATH,
+    RUN_PULL_REQUEST_PATH,
     RUN_PUSH_PATH,
     RUN_PUSH_RESULT_PATH,
     RUN_START_PATH,
@@ -90,14 +93,20 @@ def _wire(model: type[BaseModel]) -> set[str]:
 
 def test_the_seven_paths_are_the_documents_runs_family() -> None:
     # AP.1's six run routes, and #91's queue claim, which opens the family. #160's four
-    # execution routes may share the tag; they are mirrored in `control_plane.execution`.
+    # execution routes may share the tag; they are mirrored in `control_plane.execution`, and
+    # AJ.3's three build routes (#265) in `control_plane.builds`.
     documented = {
         path
         for path, item in _document()["paths"].items()
         if any("runs" in op.get("tags", []) for op in item.values())
     }
 
-    assert set(INGEST_PATHS) <= documented <= set(INGEST_PATHS) | set(EXECUTION_PATHS)
+    builds = {path.replace("{job}", "{jobId}") for path in BUILD_PATHS}
+    assert (
+        set(INGEST_PATHS)
+        <= documented
+        <= set(INGEST_PATHS) | set(EXECUTION_PATHS) | builds
+    )
     assert len(INGEST_PATHS) == 7
 
 
@@ -110,11 +119,14 @@ def test_the_execution_paths_are_documented_with_their_verbs() -> None:
         RUN_CHECKPOINT_PATH: {"put"},
         RUN_PUSH_PATH: {"post"},
         RUN_PUSH_RESULT_PATH: {"post"},
+        RUN_PULL_REQUEST_PATH: {"post"},
         RUN_FINISH_PATH: {"post"},
     }
 
 
-@pytest.mark.parametrize("code", (*EXECUTION_ERRORS, *PUSH_REFUSALS))
+@pytest.mark.parametrize(
+    "code", (*EXECUTION_ERRORS, *PUSH_REFUSALS, *PULL_REQUEST_REFUSALS)
+)
 def test_every_execution_refusal_named_here_is_documented(code: str) -> None:
     text = json.dumps({path: _document()["paths"][path] for path in EXECUTION_PATHS})
 

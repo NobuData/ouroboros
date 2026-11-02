@@ -167,7 +167,7 @@ describe("the preview", () => {
     const preview = await service.preview(ACME);
 
     // The clock's now, not a slot's.
-    expect(read.mock.calls).toEqual([[ACME.id, { range: "7d" }]]);
+    expect(read.mock.calls).toEqual([[ACME.id, { range: "7d", origin: "live" }]]);
     expect(preview).toMatchObject({
       subject: "Weekly insights · Acme Robotics · Aug 2 – Aug 8, 2026",
       window: { from: "2026-08-02", to: "2026-08-08" },

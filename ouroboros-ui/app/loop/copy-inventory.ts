@@ -67,7 +67,7 @@ export const CLAIM_INVENTORY: readonly ClaimEntry[] = [
   {
     surface: "Run console — simulated-run banner",
     file: "app/runs/view.ts",
-    text: "no executor, repository or model did",
+    text: "no executor, repository or model",
     falsifiedBy: "run-origin",
     owner: DG3,
     handling: "per-run",
@@ -166,16 +166,6 @@ export const CLAIM_INVENTORY: readonly ClaimEntry[] = [
     text: "which arrives with its ingestion bridge (#91)",
     falsifiedBy: "execution",
     owner: 91,
-    handling: "until-owner",
-  },
-
-  // --- Build Farm ----------------------------------------------------------------------
-  {
-    surface: "Build Farm — full-log sheet",
-    file: "app/farm/live.ts",
-    text: "A build links to its run console with #265",
-    falsifiedBy: "feature",
-    owner: 265,
     handling: "until-owner",
   },
 
@@ -368,6 +358,8 @@ export const RETIRED_CLAIMS: readonly string[] = [
   "simulated — live runs arrive with invocation",
   "The run console is not built yet",
   "The run console arrives with #309",
+  // AJ.3 (#265) linked a loop's build to its run console.
+  "A build links to its run console with #265",
 ];
 
 /**

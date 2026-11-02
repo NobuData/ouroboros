@@ -1,0 +1,82 @@
+/*
+ * Data origin (DJ.3, #1316): the badge on a non-live row, the page strip, and the filter.
+ * Every value is a design token; the badge's tint repeats its words and never replaces them.
+ */
+
+.origin-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: var(--sp-1) var(--sp-4);
+  border: 1px dashed var(--model-line);
+  border-radius: var(--r-sm);
+  background: var(--model-tint);
+  color: var(--ink);
+  font-size: var(--t-2xs);
+  font-weight: 500;
+  line-height: var(--lh-tight);
+  white-space: nowrap;
+}
+
+.origin-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-6);
+  margin: 0 0 var(--sp-8);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--model-line);
+  border-radius: var(--r-md);
+  background: var(--model-tint);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.origin-strip__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.origin-strip__link {
+  flex: none;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.origin-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.origin-seg__option {
+  padding: var(--sp-2) var(--sp-6);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.origin-seg__option:hover {
+  color: var(--ink);
+}
+
+.origin-seg__option--selected {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 500;
+}
+
+.origin-seg__option--selected:hover {
+  color: var(--accent-ink);
+}

@@ -99,7 +99,12 @@ describe("the onboarding service", () => {
         // Step 3: pick, instantiate (BB.3's job — simulated), complete.
         await service.update(ORG, REPO, { selectedTemplate: "quick-fixes" });
         fake.workflows = [
-          { slug: "quick-fixes", template_slug: "quick-fixes", template_version: 1 },
+          {
+            slug: "quick-fixes",
+            template_slug: "quick-fixes",
+            template_version: 1,
+            current_version: 1,
+          },
         ];
         await service.completeStep(ORG, REPO, 3);
 
@@ -157,7 +162,14 @@ describe("the onboarding service", () => {
     it("refuses step 4 without a queued run", async () => {
       fake.sources = [SOURCE];
       fake.repositoryRow = { id: "repo-1", enabled: true, account_enabled: true };
-      fake.workflows = [{ slug: "quick-fixes", template_slug: "quick-fixes", template_version: 1 }];
+      fake.workflows = [
+        {
+          slug: "quick-fixes",
+          template_slug: "quick-fixes",
+          template_version: 1,
+          current_version: 1,
+        },
+      ];
       fake.tickets = [TICKET];
       fake.rows.set(REPO, {
         ...emptyRow(),
@@ -372,6 +384,34 @@ describe("the onboarding service", () => {
         ticket: undefined,
         issueNumber: undefined,
       });
+    });
+  });
+
+  describe("the first loop's run (BD.1, #396)", () => {
+    it("names no run while the picked issue only waits in the queue", async () => {
+      fake.readyToLaunch();
+      fake.queued.add(488);
+
+      expect((await service.read(ORG, REPO)).refs.firstRun).toBeNull();
+    });
+
+    it("names the picked issue's first run once one exists", async () => {
+      fake.readyToLaunch();
+      fake.runs.add(488);
+
+      expect((await service.read(ORG, REPO)).refs.firstRun).toEqual({
+        id: "5eed0051-0000-4000-8000-000000000488",
+        status: "coding",
+        planStage: null,
+      });
+    });
+
+    it("names no run for a pick that is another repository's", async () => {
+      fake.readyToLaunch();
+      fake.runs.add(488);
+      fake.tickets = [{ ...TICKET, meta: { github: { owner: "acme-robotics", repo: "other" } } }];
+
+      expect((await service.read(ORG, REPO)).refs.firstRun).toBeNull();
     });
   });
 

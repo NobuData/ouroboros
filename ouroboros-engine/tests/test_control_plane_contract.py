@@ -21,6 +21,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from ouroboros_engine.control_plane.builds import BUILD_PATHS
 from ouroboros_engine.control_plane.contract import (
     CONTROL_ERRORS,
     CONTROL_KINDS,
@@ -86,7 +87,7 @@ def test_every_path_the_document_describes_is_one_this_package_mirrors() -> None
     """The whole internal surface is mirrored now: lease, invoke, ingestion and controls.
 
     AP.1 (`#303 <https://github.com/NobuData/ouroboros/issues/303>`_) added six operations
-    under ``/internal/runs``, and until the simulated-run driver (AP.5,
+    under ``/internal/runs``, and until the run simulator (AP.5,
     `#307 <https://github.com/NobuData/ouroboros/issues/307>`_) called them this module left
     them out. They are mirrored in :mod:`ouroboros_engine.control_plane.ingest`, so this is
     an equality: a path added to the document without a mirror here, or one removed from it
@@ -98,6 +99,7 @@ def test_every_path_the_document_describes_is_one_this_package_mirrors() -> None
         set(INGEST_PATHS)
         | set(EXECUTION_PATHS)
         | _openapi(controls)
+        | _openapi(set(BUILD_PATHS))
         | {LEASE_PATH, INVOKE_PATH, RESEARCH_TOOL_PATH}
         | set(RESEARCH_INVESTIGATION_PATHS)
         | {DRY_RUN_REPLAY_ESTIMATES_PATH}
@@ -110,12 +112,16 @@ def _openapi(paths: set[str]) -> set[str]:
     """Spell this module's paths the way the document does.
 
     Args:
-        paths: Paths carrying Python format fields, ``{control_id}`` among them.
+        paths: Paths carrying Python format fields, ``{control_id}`` and ``{job}`` among
+            them.
 
     Returns:
         The same paths with the document's ``camelCase`` parameter names.
     """
-    return {path.replace("{control_id}", "{controlId}") for path in paths}
+    return {
+        path.replace("{control_id}", "{controlId}").replace("{job}", "{jobId}")
+        for path in paths
+    }
 
 
 def test_the_research_tool_path_is_the_one_the_control_plane_serves() -> None:

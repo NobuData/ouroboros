@@ -8,7 +8,7 @@
  * the card payloads so the page composes in one round trip.
  */
 
-import type { OnboardingState } from "../db/schema";
+import type { OnboardingState, RunStatus } from "../db/schema";
 import type {
   DerivedRail,
   DerivedStep,
@@ -16,7 +16,14 @@ import type {
   OnboardingStepSource,
   OnboardingStepStatus,
 } from "./onboarding.derivation";
-import type { ScanRow, TemplateRow, TicketRow } from "./onboarding.repository";
+import { firstModelStageKey } from "./first-loop.stages";
+import type {
+  FirstRunRow,
+  InstantiatedWorkflowRow,
+  ScanRow,
+  TemplateRow,
+  TicketRow,
+} from "./onboarding.repository";
 import type { SurfacingDecision } from "./onboarding.surfacing";
 
 /** Each step's stable key and the name the rail prints (mockup 13). */
@@ -64,6 +71,28 @@ export interface OnboardingRefsResource {
   }[];
   /** The picked ticket, or null. */
   readonly pickedTicket: { id: string; externalKey: string; title: string; source: string } | null;
+  /**
+   * The workflow instantiated from the selected template — its slug and version in force — or
+   * null while none is. What the readiness preflight is asked about (DK.2, #1319).
+   */
+  readonly workflow: { slug: string; version: number | null } | null;
+  /**
+   * The first run of the picked issue in this repository — the wizard's first loop — or null
+   * while none has opened. The live timeline and the guided review read it (BD.1, #396).
+   */
+  readonly firstRun: FirstRunResource | null;
+}
+
+/** `refs.firstRun` — the wizard's first loop (BD.1, #396). */
+export interface FirstRunResource {
+  readonly id: string;
+  readonly status: RunStatus;
+  /**
+   * The run's first model stage — the node id of the first `llm` node of its pinned version, the
+   * stage key the run console reports it under — or null when the pin has none or does not read.
+   * The timeline's *plan posted* row is that stage's first attempt finishing.
+   */
+  readonly planStage: string | null;
 }
 
 /** `GET /api/v1/onboarding`. */
@@ -93,6 +122,10 @@ export interface OnboardingParts {
   readonly scan: ScanRow | undefined;
   readonly templates: readonly TemplateRow[];
   readonly ticket: TicketRow | undefined;
+  /** The workflow instantiated from the selected template, or undefined. */
+  readonly workflow: InstantiatedWorkflowRow | undefined;
+  /** The picked issue's first run, or undefined while none exists. */
+  readonly firstRun: FirstRunRow | undefined;
   readonly surfacing: SurfacingDecision;
 }
 
@@ -159,6 +192,21 @@ export function onboardingResource(parts: OnboardingParts): OnboardingResource {
               externalKey: ticket.external_key,
               title: ticket.title,
               source: ticket.kind,
+            },
+      workflow:
+        parts.workflow === undefined
+          ? null
+          : { slug: parts.workflow.slug, version: parts.workflow.current_version },
+      firstRun:
+        parts.firstRun === undefined
+          ? null
+          : {
+              id: parts.firstRun.id,
+              status: parts.firstRun.status,
+              planStage:
+                parts.firstRun.definition === undefined
+                  ? null
+                  : (firstModelStageKey(parts.firstRun.definition) ?? null),
             },
     },
     surfacing: parts.surfacing,

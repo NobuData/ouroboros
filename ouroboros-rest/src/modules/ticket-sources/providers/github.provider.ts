@@ -70,6 +70,8 @@ import type {
   RepoDocState,
   UpdatePrInput,
 } from "../ticket-source.repo-doc";
+import type { RepositoryAccess, RepositoryAccessProvider } from "../ticket-source.access";
+import { pushPermission, REPOSITORY_ROUTE } from "../../github/github.permissions";
 import {
   TicketSourceError,
   classifyHttpStatus,
@@ -186,7 +188,12 @@ export interface RepoWalk {
  */
 @Injectable()
 export class GithubTicketSourceProvider
-  implements WriteCapableProvider, PrCapableProvider, ProbeCapableProvider, RepoDocCapableProvider
+  implements
+    WriteCapableProvider,
+    PrCapableProvider,
+    ProbeCapableProvider,
+    RepoDocCapableProvider,
+    RepositoryAccessProvider
 {
   /** V030's `ticket_sources.kind` value this provider answers for. */
   readonly kind = "github" as const;
@@ -453,6 +460,30 @@ export class GithubTicketSourceProvider
     mirror: EpicMirrorRef,
   ): Promise<void> {
     return this.writing(context, (writer) => writer.attachToEpic(ticket, mirror));
+  }
+
+  /**
+   * What the token's account may do on the push target — a permission lookup, never a write
+   * (DK.1, #1318). The live-loop readiness preflight asks it before a run opens a pull request.
+   *
+   * @param context - The source, opened.
+   * @returns The push target and its push permission (`null` when GitHub's answer did not say).
+   * @throws {TicketSourceError} On a refusal; `auth` or `not_found` when the token cannot see it.
+   */
+  async repositoryAccess(context: TicketSyncContext): Promise<RepositoryAccess> {
+    try {
+      const target = pushTarget(readGithubConfig(context.config));
+      const client = new GithubClient(
+        context.organizationId,
+        this.octokit(tokenOf(context)),
+        this.budget,
+      );
+      const { data } = await client.request<unknown>(REPOSITORY_ROUTE, { ...target });
+
+      return { repository: `${target.owner}/${target.repo}`, push: pushPermission(data) };
+    } catch (error) {
+      throw asTicketSourceWriteError(error);
+    }
   }
 
   /**

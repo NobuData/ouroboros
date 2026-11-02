@@ -25,14 +25,22 @@ import { addDays, utcDay } from "../rollup/rollup.days";
 import type { FamilyExtractor } from "../rollup/rollup.types";
 import { MetricsCache, type MetricsCacheKey } from "./metrics.cache";
 import {
-  compose,
+  composeKept,
   deltaOf,
   DERIVED_RATIOS,
   planMetrics,
+  populationOf,
   seriesOf,
   unitScale,
   type MetricPlan,
 } from "./metrics.compose";
+import {
+  DEFAULT_ORIGIN,
+  isMixed,
+  keeps,
+  originsPresent,
+  type OriginFilter,
+} from "./metrics.origin";
 import { MetricsRepository, type MetricDefinition, type RowFilter } from "./metrics.repository";
 import type {
   DailyRow,
@@ -126,6 +134,7 @@ export class MetricsService {
       metricId,
       repo: scope.repo,
       dimension: scope.dimension,
+      origin: scope.origin ?? DEFAULT_ORIGIN,
       range: scope.range,
       today: resolved.today,
     });
@@ -148,7 +157,13 @@ export class MetricsService {
       const rows = await this.rows(planned, scope, resolved);
 
       for (const { definition, plan } of planned) {
-        const computed = windowFrom(definition, plan, rows, resolved);
+        const computed = windowFrom(
+          definition,
+          plan,
+          rows,
+          resolved,
+          scope.origin ?? DEFAULT_ORIGIN,
+        );
 
         this.cache.set(keyFor(definition.metricId), computed);
         found.set(definition.metricId, computed);
@@ -179,11 +194,13 @@ export class MetricsService {
   ): Promise<MetricBreakdown> {
     const resolved = resolveWindow(scope.range, scope.now ?? new Date(this.clock()));
     const stamp = await this.repository.stamp(scope.organizationId);
+    const origin = scope.origin ?? DEFAULT_ORIGIN;
     const key: MetricsCacheKey = {
       organizationId: scope.organizationId,
       stamp,
       metricId,
       repo: scope.repo,
+      origin,
       range: scope.range,
       today: resolved.today,
     };
@@ -205,13 +222,18 @@ export class MetricsService {
 
     const plan = this.planFor(definition);
     const rows = await this.rows([{ definition, plan }], scope, resolved);
-    const labels = [...new Set(rows.map((row) => row.dimension))].sort();
+    const kept = rows.filter((row) => keeps(origin, row.origin));
+    const labels = [...new Set(kept.map((row) => row.dimension))].sort();
+    const current = kept.filter((row) => row.day >= resolved.current.from);
     const breakdown: MetricBreakdown = {
       metricId,
       dimensionKind: definition.dimensionKind,
       range: resolved.range,
       from: resolved.current.from,
       to: resolved.current.to,
+      origin,
+      originsPresent: originsPresent(rows.filter((row) => row.day >= resolved.current.from)),
+      mixed: isMixed(origin, originsPresent(current)),
       entries: labels.map((dimension) => ({
         dimension,
         window: windowFrom(
@@ -219,6 +241,7 @@ export class MetricsService {
           plan,
           rows.filter((row) => row.dimension === dimension),
           resolved,
+          origin,
         ),
       })),
       methodology: methodologyOf(definition),
@@ -268,8 +291,10 @@ export class MetricsService {
         this.repository.tail(scope.organizationId, extractor, today, filter),
       ),
     ]);
-    const rows = [...stored, ...live.flat()].filter((row) => metricIds.includes(row.metricId));
-    const composed = compose(plan, rows);
+    const origin = scope.origin ?? DEFAULT_ORIGIN;
+    const all = [...stored, ...live.flat()].filter((row) => metricIds.includes(row.metricId));
+    const rows = all.filter((row) => keeps(origin, row.origin));
+    const composed = composeKept(plan, rows);
 
     return {
       metricId: definition.metricId,
@@ -282,6 +307,7 @@ export class MetricsService {
           ? rows.flatMap((row) => row.samples).sort((a, b) => a - b)
           : [],
       days: new Set(rows.map((row) => row.day)).size,
+      originsPresent: originsPresent(all),
       methodology: methodologyOf(definition),
     };
   }
@@ -424,36 +450,49 @@ export class MetricsService {
  *
  * @param definition - The registry entry.
  * @param plan - How the figure is composed.
- * @param rows - The request's rows — any metric, both windows; the plan takes its own.
+ * @param rows - The request's rows — any metric, any origin, both windows; the plan takes its own
+ *   and the filter's origin.
  * @param resolved - The window's boundaries.
- * @returns The window.
+ * @param origin - Which origins' rows the figure is computed from (DJ.2).
+ * @returns The window. No kept row in the current window is no data: a null value, a null series
+ *   and `n` 0 — never a zero figure.
  */
 function windowFrom(
   definition: MetricDefinition,
   plan: MetricPlan,
   rows: readonly DailyRow[],
   resolved: ResolvedWindow,
+  origin: OriginFilter,
 ): MetricWindow {
   // Its own rows only: a batch read holds other metrics' rows too, and a day's tooltip figures
   // (`meta`) are summed over whatever rows the series is handed.
   const metricIds = planMetrics(plan);
   const own = rows.filter((row) => metricIds.includes(row.metricId));
-  const inCurrent = own.filter((row) => row.day >= resolved.current.from);
-  const inPrior = own.filter((row) => row.day <= resolved.prior.to);
-  const current = compose(plan, inCurrent);
-  const prior = compose(plan, inPrior);
+  const kept = own.filter((row) => keeps(origin, row.origin));
+  const inCurrent = kept.filter((row) => row.day >= resolved.current.from);
+  const inPrior = kept.filter((row) => row.day <= resolved.prior.to);
+  const current = composeKept(plan, inCurrent);
+  const prior = composeKept(plan, inPrior);
+  const series = seriesOf(plan, daysOf(resolved.current), inCurrent);
 
   return {
     metricId: definition.metricId,
     range: resolved.range,
     from: resolved.current.from,
     to: resolved.current.to,
+    origin,
+    originsPresent: originsPresent(own.filter((row) => row.day >= resolved.current.from)),
+    mixed: isMixed(origin, originsPresent(inCurrent)),
     value: current.value,
+    n: populationOf(plan, inCurrent),
     ...(current.components ? { components: current.components } : {}),
     prior: prior.value,
     ...(prior.components ? { priorComponents: prior.components } : {}),
     delta: deltaOf(current.value, prior.value),
-    series: seriesOf(plan, daysOf(resolved.current), inCurrent),
+    series:
+      current.value === null && inCurrent.length === 0
+        ? series.map((point) => ({ ...point, value: null }))
+        : series,
     methodology: methodologyOf(definition),
   };
 }
@@ -475,5 +514,6 @@ export function methodologyOf(definition: MetricDefinition): MetricMethodology {
     version: definition.version,
     proxy: definition.proxy,
     aggregation: definition.aggregation,
+    originRule: definition.originRule,
   };
 }

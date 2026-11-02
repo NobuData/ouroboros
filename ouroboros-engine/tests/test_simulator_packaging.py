@@ -1,4 +1,4 @@
-"""The production build does not contain the simulated-run driver.
+"""The production build does not contain the run simulator.
 
 AP.5's criterion is that this is *verified by an artifact test*, not stated in a comment, so
 this file builds the wheel, which is exactly what the image installs (the Dockerfile's

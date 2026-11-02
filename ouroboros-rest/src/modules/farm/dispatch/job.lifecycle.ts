@@ -136,6 +136,9 @@ export async function insertRetryAttempt(
       status: "queued",
       queued_at: at,
       retry_of: failed.id,
+      // A run's build stage follows its job down the chain (V153, AJ.3 #265).
+      stage_key: failed.stage_key,
+      stage_attempt: failed.stage_attempt,
     })
     .returningAll()
     .executeTakeFirstOrThrow();

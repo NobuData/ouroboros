@@ -15,6 +15,7 @@
 
 import { sql } from "kysely";
 
+import type { DataOrigin } from "../../../db/schema";
 import { dayBounds } from "../rollup.days";
 import { medianRow } from "../rollup.rows";
 import { joinRepo, num, REPO_REF } from "../rollup.sql";
@@ -23,19 +24,20 @@ import type { FamilyExtractor, RollupRow } from "../rollup.types";
 /** One started job's wait. */
 interface WaitSample {
   repo_ref: string;
+  origin: DataOrigin;
   pool: string;
   ms: string;
 }
 
 export const queueWaitExtractor: FamilyExtractor = {
   family: "queue_wait",
-  metrics: { queue_wait: 1 },
+  metrics: { queue_wait: 2 },
 
   async extract(db, organizationId, day): Promise<RollupRow[]> {
     const { from, to } = dayBounds(day);
 
     const { rows } = await sql<WaitSample>`
-      select ${REPO_REF} as repo_ref, p.name as pool,
+      select ${REPO_REF} as repo_ref, b.origin, p.name as pool,
              greatest(round(extract(epoch from (b.started_at - b.queued_at)) * 1000), 0)::bigint as ms
         from ouroboros.build_jobs b
         ${joinRepo("b")}
@@ -43,11 +45,19 @@ export const queueWaitExtractor: FamilyExtractor = {
        where b.organization_id = ${organizationId}
          and b.started_at >= ${from} and b.started_at < ${to}`.execute(db);
 
-    const groups = new Map<string, { repoRef: string; pool: string; samples: number[] }>();
+    const groups = new Map<
+      string,
+      { repoRef: string; origin: DataOrigin; pool: string; samples: number[] }
+    >();
 
     for (const row of rows) {
-      const key = JSON.stringify([row.repo_ref, row.pool]);
-      const group = groups.get(key) ?? { repoRef: row.repo_ref, pool: row.pool, samples: [] };
+      const key = JSON.stringify([row.repo_ref, row.origin, row.pool]);
+      const group = groups.get(key) ?? {
+        repoRef: row.repo_ref,
+        origin: row.origin,
+        pool: row.pool,
+        samples: [],
+      };
 
       group.samples.push(num(row.ms));
       groups.set(key, group);
@@ -55,7 +65,12 @@ export const queueWaitExtractor: FamilyExtractor = {
 
     return [...groups.values()].map((group) =>
       medianRow(
-        { repoRef: group.repoRef, metricId: "queue_wait", dimension: group.pool },
+        {
+          repoRef: group.repoRef,
+          origin: group.origin,
+          metricId: "queue_wait",
+          dimension: group.pool,
+        },
         group.samples,
       ),
     );

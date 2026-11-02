@@ -6,7 +6,7 @@
  * GitHub's REST API that `ouroboros-rest` sends at a tracker, on one port:
  *
  * ```
- * GET    /repos/{o}/{r}                                    the probe Test connection sends
+ * GET    /repos/{o}/{r}                                    the probe Test connection sends; readiness's permission lookup
  * GET    /repos/{o}/{r}/issues                             the walk both syncs make
  * POST   /repos/{o}/{r}/issues                             a push creating one
  * GET    /repos/{o}/{r}/issues/{n}                         a push reading one back
@@ -177,6 +177,25 @@ const SEEDED_REPOS = [
   // so a run's branch is pushed to one fixture and its pull request opened on this one. Last,
   // for the fifth's reason: its numbers begin at 11500.
   "acme-robotics/helios-greeter",
+];
+
+/**
+ * Issues a repository starts with, every reset — the live slice's one bug (#1314, DI.5), as
+ * `R__dev_seed_live_slice.sql` mirrors it and the provider fixture's recording was made against
+ * it, so a deployment with no seed (`scripts/reference-run.sh --fixture`, DL.2 #1326) reaches the
+ * same issue through ordinary sync. Numbered below {@link FIRST_ISSUE_NUMBER}, so nothing a leg
+ * files can collide with it.
+ */
+const SEEDED_ISSUES = [
+  {
+    slug: "acme-robotics/helios-greeter",
+    number: 1,
+    title: "greet: the exclamation mark is missing",
+    body:
+      "`bin/greet World` prints `Hello, World` — the exclamation mark the README promises is missing.\n\n" +
+      "Expected: `Hello, World!` for `bin/greet World`, and `Hello, world!` when no name is given. `sh tests/check.sh` must pass.",
+    labels: ["live-slice"],
+  },
 ];
 
 /**
@@ -384,6 +403,24 @@ function reset() {
 
   nextIssueId = 1;
   creationsBeforeRefusal = null;
+
+  const seededAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  for (const seeded of SEEDED_ISSUES) {
+    repos.get(seeded.slug).issues.push({
+      id: nextIssueId,
+      number: seeded.number,
+      title: seeded.title,
+      body: seeded.body,
+      state: "open",
+      labels: [...seeded.labels],
+      milestone: null,
+      createdAt: seededAt,
+      updatedAt: seededAt,
+      blockedBy: [],
+      subIssues: [],
+    });
+    nextIssueId += 1;
+  }
 
   pulls.clear();
   comments.clear();
@@ -907,9 +944,14 @@ async function handle(request, response) {
   const rest = parts.slice(3);
   const now = new Date().toISOString();
 
-  // GET /repos/{o}/{r} — the probe `validateConfig` sends.
+  // GET /repos/{o}/{r} — the probe `validateConfig` sends, and the readiness preflight's
+  // permission lookup (DK.1, #1318): the sandbox token's account may push, as GitHub would say.
   if (rest.length === 0 && method === "GET") {
-    json(response, 200, { full_name: slug, has_issues: true });
+    json(response, 200, {
+      full_name: slug,
+      has_issues: true,
+      permissions: { admin: false, maintain: false, push: true, triage: true, pull: true },
+    });
     return;
   }
 

@@ -21,15 +21,30 @@ import { summary } from "../helpers/dashboard";
 
 vi.mock("server-only", () => ({}));
 
+/** The reader's remembered data origin (DJ.3) — the `ouro_origin` cookie, or nothing. */
+let remembered: string | undefined;
+
+vi.mock("next/headers", () => ({
+  cookies: () =>
+    Promise.resolve({
+      get: (name: string) =>
+        name === "ouro_origin" && remembered !== undefined ? { value: remembered } : undefined,
+    }),
+}));
+
 /** What the stubbed reader answers with. Reassigned per case. */
 let answer: SummaryAnswer = { state: "gone" };
 
 /** What the reader was asked for — the tag the poll echoed, or `null`. */
 let askedWith: string | null | undefined;
 
+/** Which data origin the reader was asked for. */
+let askedOrigin: string | undefined;
+
 vi.mock("@/app/api/dashboard-summary", () => ({
-  readDashboardSummary: (options: { etag?: string | null }) => {
+  readDashboardSummary: (options: { etag?: string | null; origin?: string }) => {
     askedWith = options.etag;
+    askedOrigin = options.origin;
     return Promise.resolve(answer);
   },
 }));
@@ -52,6 +67,45 @@ function poll(etag?: string): Request {
 
 beforeEach(() => {
   askedWith = undefined;
+  askedOrigin = undefined;
+  remembered = undefined;
+});
+
+describe("the data origin it asks for (DJ.3)", () => {
+  it("asks for live when nothing names an origin", async () => {
+    answer = { state: "gone" };
+
+    await GET(poll());
+
+    expect(askedOrigin).toBe("live");
+  });
+
+  it("asks for the reader's remembered origin, so the shell's pills count what the page shows", async () => {
+    answer = { state: "gone" };
+    remembered = "seeded";
+
+    await GET(poll());
+
+    expect(askedOrigin).toBe("seeded");
+  });
+
+  it("lets the address win over the remembered origin", async () => {
+    answer = { state: "gone" };
+    remembered = "seeded";
+
+    await GET(new Request("http://ui.test/api/dashboard?origin=simulated"));
+
+    expect(askedOrigin).toBe("simulated");
+  });
+
+  it("ignores an origin it does not know", async () => {
+    answer = { state: "gone" };
+    remembered = "imported";
+
+    await GET(new Request("http://ui.test/api/dashboard?origin=everything"));
+
+    expect(askedOrigin).toBe("live");
+  });
 });
 
 describe("the dashboard poll endpoint", () => {

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RunStepper } from "@/app/runs/run-stepper";
 import {
+  BUILD_LOG_LINK,
   NO_STAGES,
   STEPPER_LABEL,
   STEPPER_TITLE,
@@ -276,5 +277,58 @@ describe("the Test stage's link to its results (#335)", () => {
 
     draw(withTest("active"));
     expect(screen.queryByRole("link", { name: TEST_RESULTS_LINK })).toBeNull();
+  });
+});
+
+describe("a build stage's farm job and its log (AJ.3 #265)", () => {
+  const JOB = {
+    jobId: "5eed0028-0000-4000-8000-000000000483",
+    jobNumber: 483,
+    phase: "failed",
+    pool: "pool-a",
+    runnerName: "forge-02",
+    exitCode: 2,
+    ccacheHitRatePct: 78.4,
+    retries: 0,
+  } as const;
+
+  /** The seed with a failed Build stage that ran job #483. */
+  function withBuild(): StepperView {
+    return runStepper(
+      runConsole({
+        stages: seededStages().map((stage) =>
+          stage.stageKey === "build" ? { ...stage, status: "failed", build: JOB } : stage,
+        ),
+      }),
+    );
+  }
+
+  it("prints the job's number and outcome under the Build node", () => {
+    render(<RunStepper onSelect={vi.fn()} selected={null} view={withBuild()} />);
+
+    const build = steps().find((step) => step.textContent?.includes("Build"))!;
+    expect(build).toHaveTextContent("#483 · exit 2 · ccache 78.4%");
+  });
+
+  it("opens the build's log with the job and the stage's label", () => {
+    const onOpenLog = vi.fn();
+    render(<RunStepper onOpenLog={onOpenLog} onSelect={vi.fn()} selected={null} view={withBuild()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: BUILD_LOG_LINK }));
+
+    expect(onOpenLog).toHaveBeenCalledWith(
+      { jobId: JOB.jobId, number: "#483", line: "#483 · exit 2 · ccache 78.4%", runner: "forge-02" },
+      "Build",
+    );
+  });
+
+  it("offers no log link where nothing can open it, nor on a stage with no job", () => {
+    draw(withBuild());
+    expect(screen.queryByRole("button", { name: BUILD_LOG_LINK })).toBeNull();
+  });
+
+  it("offers exactly one log link — the stage that ran a job", () => {
+    render(<RunStepper onOpenLog={vi.fn()} onSelect={vi.fn()} selected={null} view={withBuild()} />);
+    expect(screen.getAllByRole("button", { name: BUILD_LOG_LINK })).toHaveLength(1);
   });
 });

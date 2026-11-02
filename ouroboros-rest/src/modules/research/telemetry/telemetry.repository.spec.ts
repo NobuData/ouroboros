@@ -232,10 +232,16 @@ describe("the telemetry repository", () => {
       }
     });
 
-    it("leaves a simulator's runs out of the series", async () => {
+    it("reads live runs and usage only — no simulated or seeded rows (DJ.2)", async () => {
       await repository.runDays(ORG, WINDOW, null);
+      await repository.tokenDays(ORG, WINDOW, null);
 
-      expect(database.statements[0].sql).toContain("not r.simulated");
+      const [runs, usage] = database.statements;
+
+      expect(runs.sql).toContain("r.origin = $2");
+      expect(runs.parameters[1]).toBe("live");
+      expect(usage.sql).toContain("u.origin = $2");
+      expect(usage.parameters[1]).toBe("live");
     });
   });
 

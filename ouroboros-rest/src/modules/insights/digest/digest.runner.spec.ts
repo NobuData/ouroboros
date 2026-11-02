@@ -132,7 +132,7 @@ describe("the weekly run", () => {
       errors: [],
     });
     // One read of the page, for seven days, as of the slot — not as of five minutes later.
-    expect(read.mock.calls).toEqual([[ACME, { range: "7d", now: SLOT }]]);
+    expect(read.mock.calls).toEqual([[ACME, { range: "7d", origin: "live", now: SLOT }]]);
     expect(mailer.sent.map((message) => message.to)).toEqual(["ken@acme.dev", "maya@acme.dev"]);
     expect(new Set(mailer.sent.map((message) => message.subject))).toEqual(
       new Set(["Weekly insights · Acme Robotics · Aug 2 – Aug 8, 2026"]),

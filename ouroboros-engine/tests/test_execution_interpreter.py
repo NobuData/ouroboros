@@ -334,15 +334,18 @@ def test_a_change_set_the_guardrails_flag_hands_the_run_to_a_person(bench) -> No
 # --- infrastructure, forks ------------------------------------------------------------------
 
 
-def test_an_infra_stage_fails_with_infra_unavailable(bench) -> None:
+def test_a_build_stage_with_nothing_pushed_fails_saying_so(bench) -> None:
+    # No publisher, so no branch on the host: a runner would have nothing to check out.
+    # The farm itself is driven in test_execution_build_stage.py (AJ.3, #265).
     doc = chain(trigger(), infra("build"), term("done", "open_pr_automerge"))
     run = bench(doc, writes("a.md"))
     control = run.run()
 
     assert control.transitions() == [("build", "active", 1), ("build", "failed", 1)]
+    assert not control.bodies("build")
     finished = control.finished()
     assert finished.outcome == "failed"
-    assert finished.reason.startswith("infra_unavailable")
+    assert finished.reason.startswith("build_branch_unpublished")
 
 
 def _decision_doc(globs: list[str]) -> dict[str, Any]:
@@ -478,6 +481,47 @@ def test_a_passing_gate_follows_its_default_edge(bench) -> None:
     assert control.finished().outcome == "review"
 
 
+def _branch_gate_doc(pass_globs: list[str]) -> dict[str, Any]:
+    """A gate whose pass is a labelled ``branch`` edge, as ``standard-fix`` draws it."""
+    return document(
+        [
+            trigger(),
+            llm("implement", max_retries=0),
+            flow(
+                "docs-only",
+                "gate",
+                {"kind": "paths", "op": "any", "globs": ["docs/**"]},
+            ),
+            term("done", "open_pr_automerge"),
+        ],
+        [
+            edge("trigger", "implement"),
+            edge("implement", "docs-only"),
+            edge(
+                "docs-only",
+                "done",
+                "branch",
+                condition={"kind": "paths", "op": "any", "globs": pass_globs},
+            ),
+            edge("docs-only", "implement", "loop"),
+        ],
+    )
+
+
+def test_a_passing_gate_takes_its_pass_branch(bench) -> None:
+    """DI.6 (#1321): a gate's pass drawn as a ``branch`` edge is followed, not refused."""
+    control = bench(_branch_gate_doc(["docs/**"]), writes("docs/a.md")).run()
+
+    assert control.finished().outcome == "review"
+
+
+def test_a_passing_gate_with_no_branch_that_holds_and_no_default_fails(bench) -> None:
+    """With neither a holding branch nor a default edge the run still fails, as before."""
+    control = bench(_branch_gate_doc(["nowhere/**"]), writes("docs/a.md")).run()
+
+    assert control.finished().outcome == "failed"
+
+
 def test_a_failing_gate_loops_back_with_the_next_attempt_until_the_bound(bench) -> None:
     control = bench(_gate_doc(["docs/**"], 1), writes("src/a.c")).run()
 
@@ -500,7 +544,7 @@ def test_a_failing_gate_loops_back_with_the_next_attempt_until_the_bound(bench) 
     assert {"docs-only->implement": 1} in loops
 
 
-def test_a_gate_on_check_results_fails_honestly_without_infra(bench) -> None:
+def test_a_gate_on_every_check_judges_the_rounds_stages(bench) -> None:
     doc = document(
         [
             trigger(),
@@ -516,12 +560,34 @@ def test_a_gate_on_check_results_fails_honestly_without_infra(bench) -> None:
     )
     control = bench(doc, writes("a.md")).run()
 
+    # `implement` succeeded, so it is this round's one check, and it passed (AJ.3, #265).
+    assert control.finished().outcome == "review"
+
+
+def test_a_gate_on_a_check_that_never_ran_fails_honestly(bench) -> None:
+    doc = document(
+        [
+            trigger(),
+            llm("implement"),
+            flow(
+                "green",
+                "gate",
+                {"kind": "checks", "op": "all_passed", "names": ["build"]},
+            ),
+            term("done", "open_pr_automerge"),
+        ],
+        [
+            edge("trigger", "implement"),
+            edge("implement", "green"),
+            edge("green", "done"),
+        ],
+    )
+    control = bench(doc, writes("a.md")).run()
+
     finished = control.finished()
     assert finished.outcome == "failed"
-    assert (
-        "cannot be decided" in finished.reason
-        and "infra_unavailable" in finished.reason
-    )
+    assert "cannot be decided" in finished.reason
+    assert "no result for `build`" in finished.reason
 
 
 # --- terminals ------------------------------------------------------------------------------

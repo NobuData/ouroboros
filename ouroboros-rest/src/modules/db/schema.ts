@@ -1651,6 +1651,13 @@ export interface PullRequestsTable {
    * `never`.
    */
   origin: ColumnType<DataOrigin, DataOrigin | undefined, never>;
+  /**
+   * Whether the host holds it as a draft (V152, DI.3
+   * [#1311](https://github.com/NobuData/ouroboros/issues/1311)) — sync-owned, written from the
+   * host's PR on every sync, and set true by the draft publisher when it links a loop-opened PR to
+   * its run. `default false`.
+   */
+  draft: Generated<boolean>;
 }
 
 /**
@@ -2336,9 +2343,10 @@ export type RunIngestOperation =
   | "run.commits"
   | "run.resources"
   | "run.finish"
-  | "run.push_result";
+  | "run.push_result"
+  | "run.pull_request";
 
-/** The eight, in the order the contract performs them — what a DTO validates and a test iterates. */
+/** The nine, in the order the contract performs them — what a DTO validates and a test iterates. */
 export const RUN_INGEST_OPERATIONS = [
   "run.create",
   "run.stage_transition",
@@ -2348,6 +2356,7 @@ export const RUN_INGEST_OPERATIONS = [
   "run.resources",
   "run.finish",
   "run.push_result",
+  "run.pull_request",
 ] as const satisfies readonly RunIngestOperation[];
 
 /**
@@ -5126,6 +5135,8 @@ export interface TokenUsageDailyView {
   tokens_total: string;
   /** Cost of the day's **priced** events in cents, and null when none of them are priced. */
   cost_cents: string | null;
+  /** The usage rows' data origin (V154, DJ.2): one row per origin. */
+  origin: DataOrigin;
 }
 
 /**
@@ -5613,6 +5624,14 @@ export interface BuildJobsTable {
    * `never`.
    */
   origin: ColumnType<DataOrigin, DataOrigin | undefined, never>;
+  /**
+   * The run's workflow stage this job builds for — `run_stages.stage_key` (V153, AJ.3
+   * [#265](https://github.com/NobuData/ouroboros/issues/265)). Null for every job no build stage
+   * submitted; copied onto an automatic retry.
+   */
+  stage_key: ColumnType<string | null, string | null | undefined, never>;
+  /** The attempt of `stage_key` it builds for, 1-based; set with `stage_key` or not at all (V153). */
+  stage_attempt: ColumnType<number | null, number | null | undefined, never>;
 }
 
 /** `build_jobs.test_selection.scope` — which re-run button asked (V061). */
@@ -7151,6 +7170,8 @@ export interface MetricDefinitionsTable {
   /** What `metric_daily.dimension` names for the metric, or null when undimensioned (V078). */
   dimension_kind:
     "stage" | "suite" | "effort" | "cause" | "task_kind" | "job_label" | "pool" | null;
+  /** How the metric treats data origin, in words (V154, DJ.2 #1315). */
+  origin_rule: Generated<string>;
   created_at: Stamped;
   updated_at: Stamped;
 }
@@ -7182,6 +7203,10 @@ export interface MetricDailyTable {
   denominator: ColumnType<string | null, number | null, number | null>;
   /** Raw numbers for the tooltip; a median row's ascending `samples`. */
   meta: ColumnType<Record<string, unknown>, string | undefined, string>;
+  /** The origin of every source row behind the figure (V154, DJ.2 #1315); part of the grain key. */
+  origin: ColumnType<DataOrigin, DataOrigin | undefined, never>;
+  /** How many source rows are behind the figure; a `bigint`, so a string when read. */
+  population: ColumnType<string | null, number | null | undefined, number | null>;
   computed_at: Generated<Date>;
 }
 
@@ -9643,6 +9668,8 @@ export const TABLE_COLUMNS = {
     "test_selection",
     "log_lines",
     "origin",
+    "stage_key",
+    "stage_attempt",
   ],
   build_log_chunks: [
     "id",
@@ -10712,6 +10739,7 @@ export const TABLE_COLUMNS = {
     "tokens_out",
     "tokens_total",
     "cost_cents",
+    "origin",
   ],
   workspace_settings_effective: [
     "organization_id",

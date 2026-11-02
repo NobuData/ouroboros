@@ -16,12 +16,18 @@ import {
 } from "./modules/config/configuration.fixture";
 import { environmentWithDotenv } from "./modules/config/dotenv";
 import { REDACTED } from "./modules/config/redaction";
-import { CONFIGURATION_EXIT_CODE, bootstrap, main, runAsProgram } from "./main";
+import {
+  CONFIGURATION_EXIT_CODE,
+  SIMULATOR_IN_PRODUCTION_WARNING,
+  bootstrap,
+  main,
+  runAsProgram,
+} from "./main";
 import { SERVICE_NAME, serviceVersion } from "./version";
 
 /** A logger whose calls can be asserted on. */
-function testLogger(): { log: jest.Mock; error: jest.Mock } {
-  return { log: jest.fn(), error: jest.fn() };
+function testLogger(): { log: jest.Mock; warn: jest.Mock; error: jest.Mock } {
+  return { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
 }
 
 /**
@@ -225,6 +231,70 @@ describe("main", () => {
     await main({ env: testEnvironment(), start: started("http://127.0.0.1:4000") });
 
     expect(log).toHaveBeenCalledWith(expect.stringContaining(API_BASE_PATH));
+  });
+});
+
+describe("main — the run simulator in production (DJ.4, #1317)", () => {
+  const PRODUCTION = {
+    NODE_ENV: "production",
+    OURO_RUN_SIMULATOR_SECRET: "a-simulator-secret-1234",
+  };
+
+  it("refuses to boot a production deployment holding the simulator secret, saying why", async () => {
+    const logger = testLogger();
+    const start = jest.fn();
+
+    const code = await main({ env: testEnvironment(PRODUCTION), logger, start });
+
+    expect(code).toBe(CONFIGURATION_EXIT_CODE);
+    expect(start).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /OURO_RUN_SIMULATOR_SECRET.*production deployment.*test tool.*OURO_RUN_SIMULATOR_IN_PRODUCTION=true/s,
+      ),
+    );
+  });
+
+  it("boots with the explicit flag, and warns at every start", async () => {
+    const logger = testLogger();
+
+    const code = await main({
+      env: testEnvironment({ ...PRODUCTION, OURO_RUN_SIMULATOR_IN_PRODUCTION: "true" }),
+      logger,
+      start: started("http://127.0.0.1:4000"),
+    });
+
+    expect(code).toBe(0);
+    expect(logger.warn).toHaveBeenCalledWith(SIMULATOR_IN_PRODUCTION_WARNING);
+  });
+
+  it("boots a production deployment without the secret, and warns about nothing", async () => {
+    const logger = testLogger();
+
+    const code = await main({
+      env: testEnvironment({ NODE_ENV: "production" }),
+      logger,
+      start: started("http://127.0.0.1:4000"),
+    });
+
+    expect(code).toBe(0);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("lets a development deployment hold the secret without the flag", async () => {
+    const logger = testLogger();
+
+    const code = await main({
+      env: testEnvironment({
+        NODE_ENV: "development",
+        OURO_RUN_SIMULATOR_SECRET: "a-simulator-secret-1234",
+      }),
+      logger,
+      start: started("http://127.0.0.1:4000"),
+    });
+
+    expect(code).toBe(0);
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });
 

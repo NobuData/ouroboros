@@ -70,5 +70,35 @@ describe("the runs service", () => {
       });
       expect(repository.count).toHaveBeenCalledWith("acme-robotics-id", filter);
     });
+
+    it("hands one origin to both statements (DJ.3)", async () => {
+      await service.list("acme-robotics-id", { status: "active", origin: "seeded" });
+
+      const filter = { status: "active", repoId: undefined, origin: "seeded" };
+      expect(repository.list).toHaveBeenCalledWith("acme-robotics-id", filter, {
+        limit: 25,
+        offset: 0,
+      });
+      expect(repository.count).toHaveBeenCalledWith("acme-robotics-id", filter);
+    });
+
+    it.each([undefined, "all"] as const)("narrows nothing for the origin %s", async (origin) => {
+      await service.list("acme-robotics-id", { status: "active", origin });
+
+      expect(repository.list).toHaveBeenCalledWith(
+        "acme-robotics-id",
+        { status: "active", repoId: undefined },
+        { limit: 25, offset: 0 },
+      );
+    });
+
+    it("carries each run's origin into the summary", async () => {
+      repository.list.mockResolvedValue([row({ origin: "seeded" })]);
+      repository.count.mockResolvedValue(1);
+
+      const page = await service.list("acme-robotics-id", { status: "active" });
+
+      expect(page.items[0]?.origin).toBe("seeded");
+    });
   });
 });

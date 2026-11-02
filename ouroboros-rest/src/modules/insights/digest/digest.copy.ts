@@ -119,6 +119,13 @@ export function deltaNote(kpi: DigestKpi): string {
  * @returns The sentence.
  */
 export function emptyNote(context: DigestContext, assembly: DigestAssembly): string {
+  if (assembly.noLiveData) {
+    return (
+      `No live loop ran in ${context.workspaceName} between ${windowText(assembly.window)}. ` +
+      `This digest reports real runs only, so demo and simulated activity is left out.`
+    );
+  }
+
   return (
     `No merges, interventions, builds, test runs or model usage were recorded for ` +
     `${context.workspaceName} between ${windowText(assembly.window)}.`

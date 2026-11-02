@@ -4,6 +4,8 @@ import { Button, Eyebrow } from "@/app/ui";
 
 import { DigestAction } from "./digest-sheet";
 import { useInsights } from "./insights-store";
+import { OriginSegment } from "@/app/origin/origin-segment";
+
 import { RangeSegment } from "./range-segment";
 import {
   INSIGHTS_ACTIONS,
@@ -32,16 +34,17 @@ import {
  * @returns The head.
  */
 export function InsightsHead() {
-  const { page } = useInsights();
+  const { page, origin, selectOrigin } = useInsights();
 
   return (
     <div className="insights__head">
       <div className="insights__headings">
         <Eyebrow>{INSIGHTS_EYEBROW}</Eyebrow>
-        <h1 className="insights__title">{insightsHeadline(page?.head ?? null)}</h1>
+        <h1 className="insights__title">{insightsHeadline(page?.head ?? null, page?.origin ?? origin)}</h1>
         <p className="insights__sub">{INSIGHTS_SUBLINE}</p>
       </div>
       <RangeSegment />
+      <OriginSegment onSelect={selectOrigin} value={origin} />
       <div className="insights__actions">
         {INSIGHTS_ACTIONS.map((action) =>
           action.href !== null ? (

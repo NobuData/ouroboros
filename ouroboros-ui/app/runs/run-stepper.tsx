@@ -6,10 +6,12 @@ import { useEffect, useId, useRef } from "react";
 import { Card, CardHead, Tag } from "@/app/ui";
 
 import {
+  BUILD_LOG_LINK,
   NO_STAGES,
   STEPPER_LABEL,
   STEPPER_TITLE,
   TEST_RESULTS_LINK,
+  type StepBuild,
   type StepTone,
   type StepperView,
   linksToTests,
@@ -34,10 +36,19 @@ export interface RunStepperProps {
   readonly onSelect: (stage: string | null) => void;
   /** Where the Test stage links — the run's test results (#335) — or `null` for no link. */
   readonly testsHref?: string | null;
+  /**
+   * Open a build stage's farm job log (AJ.3, #265). Absent, the job's line is still drawn and
+   * no log link is offered.
+   */
+  readonly onOpenLog?: (build: StepBuild, label: string) => void;
 }
 
 /**
  * Mockup 10's stage timeline ([#311](https://github.com/NobuData/ouroboros/issues/311)).
+ *
+ * **A build stage shows its farm job** (AJ.3, [#265](https://github.com/NobuData/ouroboros/issues/265)):
+ * a line with the job's number and real phase — *#483 · building on forge-02* — and a
+ * **Build log ↗** link that opens the farm's full-log sheet over the console.
  *
  * **Every word is the service's.** Labels, durations, attempt counts and the warn note come
  * from `stepper.ts`, which reads them off AP.2's timeline; this file only draws. The note in
@@ -60,7 +71,7 @@ export interface RunStepperProps {
  * @param props See {@link RunStepperProps}.
  * @returns The card.
  */
-export function RunStepper({ view, selected, onSelect, testsHref = null }: RunStepperProps) {
+export function RunStepper({ view, selected, onSelect, testsHref = null, onOpenLog }: RunStepperProps) {
   const titleId = useId();
   const scroller = useRef<HTMLDivElement>(null);
   const nodes = useRef(new Map<string, HTMLElement>());
@@ -124,7 +135,19 @@ export function RunStepper({ view, selected, onSelect, testsHref = null }: RunSt
                       </span>
                     )}
                   </button>
+                  {step.build !== null && <p className="run-step__build">{step.build.line}</p>}
                   {step.note !== null && <p className="run-step__note">{step.note}</p>}
+                  {step.build !== null && onOpenLog !== undefined && (
+                    <button
+                      className="run-step__log"
+                      onClick={() => {
+                        if (step.build !== null) onOpenLog(step.build, step.label);
+                      }}
+                      type="button"
+                    >
+                      {BUILD_LOG_LINK}
+                    </button>
+                  )}
                   {testsHref !== null && linksToTests(step) && (
                     <Link className="run-step__tests" href={testsHref}>
                       {TEST_RESULTS_LINK}

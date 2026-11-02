@@ -22,6 +22,7 @@ import { type InsightsPage, type InsightsRange, insights } from "@/app/api/insig
 import { mayContribute } from "@/app/api/membership";
 import { playbooks } from "@/app/api/playbooks";
 import { type Reading, attempt } from "@/app/api/reading";
+import type { OriginFilter } from "@/app/origin/origin";
 
 import { type FlakyPlaybook, flakyPlaybookOf } from "./flaky-view";
 
@@ -29,6 +30,8 @@ import { type FlakyPlaybook, flakyPlaybookOf } from "./flaky-view";
 export interface InsightsReadings {
   /** The range the page was read for. */
   readonly range: InsightsRange;
+  /** The data origin the page was read for (DJ.3). */
+  readonly origin: OriginFilter;
   /** The page, or why it could not be read. */
   readonly page: Reading<InsightsPage>;
   /**
@@ -57,6 +60,7 @@ export interface InsightsReadings {
  * @param access The workspace the gate returned. The call is scoped to the session's own active
  *   organization; the membership's roles decide whether the re-categorize control is drawn.
  * @param range The range the address names.
+ * @param origin The data origin the address or the remembered choice names (DJ.3).
  * @param now The clock. Defaults to the real one; a suite passes one to hold `readAt` still.
  * @returns The page, read or explained, for that range, and when.
  * @throws Whatever is not an `ApiError` — Next.js's redirect signal above all.
@@ -64,12 +68,17 @@ export interface InsightsReadings {
 export async function readInsights(
   access: Workspace,
   range: InsightsRange,
+  origin: OriginFilter,
   now: () => number = Date.now,
 ): Promise<InsightsReadings> {
-  const [page, list] = await Promise.all([attempt(() => insights.page(range)), attempt(() => playbooks.list())]);
+  const [page, list] = await Promise.all([
+    attempt(() => insights.page(range, origin)),
+    attempt(() => playbooks.list()),
+  ]);
 
   return {
     range,
+    origin,
     page,
     readAt: now(),
     mayRecategorize: mayContribute(access.membership.roles),

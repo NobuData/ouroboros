@@ -37,6 +37,7 @@
 import { type ApiClient, unwrap } from "@/app/api/client";
 import type { components } from "@/app/api/schema";
 import { api } from "@/app/api/server";
+import { DEFAULT_ORIGIN, type OriginFilter } from "@/app/origin/origin";
 
 /**
  * The whole dashboard for one workspace, measured between one set of boundaries.
@@ -157,14 +158,16 @@ export const dashboard = {
   /**
    * The whole dashboard for the workspace this session is acting in.
    *
+   * @param origin Which data origin the aggregates and the run lists count (DJ.3) — live unless
+   *   the reader chose another.
    * @param client The client to call through. Defaults to the server-side one; tests pass
    *   one over a stub `fetch`.
-   * @returns The aggregate, complete — zeros and empty arrays for a workspace with nothing
-   *   in it, never nulls.
+   * @returns The aggregate, complete — empty arrays and zero counts for a workspace with nothing
+   *   in it, and null for a windowed figure with no data (DJ.2).
    * @throws {ApiError} What the service answered. `400 organization_required` is a session
    *   acting in no workspace; a `401` redirects to login before this rejects.
    */
-  async read(client: ApiClient = api()): Promise<Dashboard> {
-    return unwrap(await client.GET("/api/v1/dashboard", {}));
+  async read(origin: OriginFilter = DEFAULT_ORIGIN, client: ApiClient = api()): Promise<Dashboard> {
+    return unwrap(await client.GET("/api/v1/dashboard", { params: { query: { origin } } }));
   },
 };

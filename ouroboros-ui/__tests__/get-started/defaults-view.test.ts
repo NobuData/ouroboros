@@ -11,6 +11,7 @@ import {
   MEASURED_GLYPH,
   TIMELINE_TONES,
   basisLine,
+  PARTLY_MEASURED_LINE,
   claimNote,
   estimatorAffix,
   isAggregateFree,
@@ -177,9 +178,8 @@ describe("the timeline", () => {
     });
     expect(rows[1]!.tone).toBe("loop");
     expect(rows.slice(2).every((row) => row.projected)).toBe(true);
-    expect(basisLine(projectedTimeline(), rows)).toBe(
-      BASIS_LINES.issue_estimate,
-    );
+    // Part measured: the line says which rows are which, never that nothing was timed (#396).
+    expect(basisLine(projectedTimeline(), rows)).toBe(PARTLY_MEASURED_LINE);
   });
 
   it("drops the basis line once every row is measured — there is no projection left to explain", () => {

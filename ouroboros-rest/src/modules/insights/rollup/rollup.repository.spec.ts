@@ -59,14 +59,23 @@ describe("the rollup repository", () => {
 
   it("fills a backfill day in one transaction: lock, extract, replace, advance", async () => {
     const extractor = extractorOf([
-      { repoRef: "acme/helios", metricId: "merged_prs", dimension: "", value: 6 },
+      {
+        repoRef: "acme/helios",
+        metricId: "merged_prs",
+        dimension: "",
+        origin: "live",
+        value: 6,
+        population: 6,
+      },
       {
         repoRef: "acme/helios",
         metricId: "merge_rate",
         dimension: "",
+        origin: "live",
         value: 50,
         numerator: 1,
         denominator: 2,
+        population: 2,
       },
     ]);
 
@@ -86,7 +95,8 @@ describe("the rollup repository", () => {
     expect(extractor.extract).toHaveBeenCalledWith(expect.anything(), ORG, DAY);
     expect(database.statements[1].parameters).toEqual([ORG, "throughput"]);
     expect(database.statements[2].parameters).toEqual([ORG, ["merged_prs", "merge_rate"], DAY]);
-    // Each row states its definition's is_rate, and only a rate carries components.
+    // Each row states its definition's is_rate, and only a rate carries components; every row
+    // states its origin and population (DJ.2).
     expect(database.statements[3].parameters).toEqual([
       ORG,
       "acme/helios",
@@ -98,6 +108,8 @@ describe("the rollup repository", () => {
       null,
       null,
       "{}",
+      "live",
+      6,
       ORG,
       "acme/helios",
       "merge_rate",
@@ -108,7 +120,35 @@ describe("the rollup repository", () => {
       1,
       2,
       "{}",
+      "live",
+      2,
     ]);
+  });
+
+  it("writes one row per origin for the same day — two origins are never summed (DJ.2)", async () => {
+    const row = (origin: "live" | "simulated", value: number) => ({
+      repoRef: "acme/helios",
+      metricId: "merged_prs",
+      dimension: "",
+      origin,
+      value,
+      population: value,
+    });
+
+    await repository.fillDay(
+      ORG,
+      extractorOf([row("live", 3), row("simulated", 40)]),
+      REGISTRY,
+      DAY,
+      "tail",
+    );
+
+    const parameters = database.statements[3].parameters;
+
+    expect(database.sql()[3]).toContain('"origin", "population"');
+    expect(parameters.filter((value) => value === "merged_prs")).toHaveLength(2);
+    expect(parameters).toEqual(expect.arrayContaining(["live", 3, "simulated", 40]));
+    expect(parameters.indexOf("simulated")).toBe(parameters.indexOf(40) + 4);
   });
 
   it("fills today's tail without touching the cursor — today is not over", async () => {
@@ -132,8 +172,10 @@ describe("the rollup repository", () => {
             repoRef: "acme/helios",
             metricId: "cycle_time",
             dimension: "",
+            origin: "live",
             value: 15,
             samples: [10, 20],
+            population: 2,
           },
         ]),
     };
@@ -145,7 +187,14 @@ describe("the rollup repository", () => {
 
   it("refuses a row for a metric the family does not declare, rolling the day back", async () => {
     const extractor = extractorOf([
-      { repoRef: "acme/helios", metricId: "cycle_time", dimension: "", value: 1 },
+      {
+        repoRef: "acme/helios",
+        metricId: "cycle_time",
+        dimension: "",
+        origin: "live",
+        value: 1,
+        population: 1,
+      },
     ]);
 
     await expect(repository.fillDay(ORG, extractor, REGISTRY, DAY, "tail")).rejects.toThrow(

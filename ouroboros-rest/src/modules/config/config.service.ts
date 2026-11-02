@@ -99,6 +99,16 @@ export class AppConfigService {
     return this.config.get<string>("runSimulatorSecret");
   }
 
+  /**
+   * Whether a production deployment runs the run simulator on purpose —
+   * `OURO_RUN_SIMULATOR_IN_PRODUCTION` (DJ.4, #1317). Ignored outside production.
+   *
+   * @returns The flag; `false` when unset.
+   */
+  get runSimulatorInProduction(): boolean {
+    return this.config.getOrThrow<boolean>("runSimulatorInProduction");
+  }
+
   /** BetterAuth's signing and encryption key — `BETTER_AUTH_SECRET`. */
   get betterAuthSecret(): string {
     return this.config.getOrThrow<string>("betterAuthSecret");
@@ -704,6 +714,7 @@ export class AppConfigService {
       engineUrl: this.engineUrl,
       engineSharedSecret: this.engineSharedSecret,
       runSimulatorSecret: this.runSimulatorSecret,
+      runSimulatorInProduction: this.runSimulatorInProduction,
       betterAuthSecret: this.betterAuthSecret,
       betterAuthUrl: this.betterAuthUrl,
       githubClientId: this.githubClientId,

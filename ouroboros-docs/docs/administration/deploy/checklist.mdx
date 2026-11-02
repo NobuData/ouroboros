@@ -71,3 +71,14 @@ names the page that explains it. Most take one command.
       merge nothing — [Policies](../policies.mdx).
 - [ ] **Backups are scheduled** for the database and the artifact store —
       [Operations](../operations.mdx#backups).
+
+## Live execution — only when you turn the loop on
+
+- [ ] **The engine can reach the REST service and has its volumes**: <EnvVar name="OURO_REST_URL" />
+      on the engine, and volumes at <EnvVar name="OURO_ENGINE_CLONE_DIR" /> and
+      <EnvVar name="OURO_ENGINE_RUN_DIR" /> — [Live execution § Turning it on](../live-execution.mdx#turning-it-on).
+- [ ] **`harness` is listed** under `executors` in the engine's `GET /v0/status`.
+- [ ] **You have read** [what the loop cannot protect you from](../live-execution.mdx#what-it-cannot-protect-you-from).
+- [ ] **<EnvVar name="OURO_LIVE_EXECUTION_ENABLED" /> is `true`** on the REST service, and the
+      wizard's **Ready to run?** passes for the first repository —
+      [Live execution § Prerequisites](../live-execution.mdx#prerequisites).

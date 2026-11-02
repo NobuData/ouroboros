@@ -793,6 +793,15 @@ export const RUN_PUSH_GRANTED_EVENT = "run.push_granted";
 export const RUN_BRANCH_PUSHED_EVENT = "run.branch_pushed";
 
 /**
+ * The control plane opened a live run's pull request on its host — always as a draft — and linked
+ * it to the run (DI.3, [#1311](https://github.com/NobuData/ouroboros/issues/1311)). Subject
+ * `run`; the actor is **the person who started the run** (`runs.started_by`), null when no person
+ * did. The detail is flat: `number`, `url`, and `draft` (always `true`). Written once per run: a
+ * repeated request finds the linked PR and writes nothing.
+ */
+export const RUN_PULL_REQUEST_OPENED_EVENT = "run.pull_request_opened";
+
+/**
  * An owner or admin queued the Slack connection's dead-lettered messages again (CA.5, #545).
  * Subject `chat_connection`. The detail is flat: `messages`, how many were queued, and `routes`,
  * the kinds of the routes they belong to, comma-joined. Not written when there was nothing to retry.
@@ -916,6 +925,7 @@ export const AUDIT_ACTIONS = [
   RUNNER_SOURCE_CREDENTIAL_REDEEMED_EVENT,
   RUN_PUSH_GRANTED_EVENT,
   RUN_BRANCH_PUSHED_EVENT,
+  RUN_PULL_REQUEST_OPENED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

@@ -22,6 +22,7 @@ import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
 
 import { DatabaseService } from "../../db/db.service";
+import type { DataOrigin } from "../../db/schema";
 import { joinRepo, num, REPO_REF } from "../rollup/rollup.sql";
 import { untouchedPr } from "../untouched.sql";
 import type { ScoreboardTally } from "./scoreboard.types";
@@ -37,6 +38,7 @@ interface TallyRow {
   task_kind: string;
   model_id: string;
   hop: number;
+  origin: DataOrigin;
   merged: string;
   untouched: string;
   tokens: string;
@@ -55,7 +57,8 @@ export class ScoreboardRepository {
    * @param organizationId - The workspace.
    * @param span - The window, `[from, to)`.
    * @param repo - One repository's `owner/name`, or undefined for the workspace.
-   * @returns One tally per (task kind, model, hop) with a merge or usage in the window.
+   * @returns One tally per (task kind, model, hop, data origin) with a merge or usage in the
+   *   window — every origin; the service keeps the one asked for (DJ.2).
    */
   async tallies(
     organizationId: string,
@@ -101,17 +104,17 @@ export class ScoreboardRepository {
          order by s.run_id, s.task_kind, s.resolved_at desc, s.id desc
       ),
       merged as (
-        select sv.task_kind, sv.model_id, sv.hop,
+        select sv.task_kind, sv.model_id, sv.hop, pr.origin,
                count(*) as merged,
                count(*) filter (where ${untouchedPr("pr")}) as untouched
           from ouroboros.pull_requests pr
           join served sv on sv.run_id = pr.run_id
          where pr.organization_id = ${organizationId} and pr.state = 'merged'
            and pr.merged_at >= ${from} and pr.merged_at < ${to}
-         group by 1, 2, 3
+         group by 1, 2, 3, 4
       ),
       usage as (
-        select sv.task_kind, sv.model_id, sv.hop,
+        select sv.task_kind, sv.model_id, sv.hop, tu.origin,
                sum(tu.tokens_in::bigint + tu.tokens_out) as tokens,
                coalesce(sum(tu.tokens_in::bigint + tu.tokens_out)
                           filter (where tu.cost_cents is null), 0) as unpriced_tokens,
@@ -120,18 +123,21 @@ export class ScoreboardRepository {
           join served sv on sv.run_id = tu.run_id and sv.task_kind = tu.task_kind
          where tu.organization_id = ${organizationId}
            and tu.occurred_at >= ${from} and tu.occurred_at < ${to}
-         group by 1, 2, 3
+         group by 1, 2, 3, 4
       )
-      select task_kind, model_id, hop,
+      select task_kind, model_id, hop, origin,
              coalesce(merged, 0) as merged, coalesce(untouched, 0) as untouched,
              coalesce(tokens, 0) as tokens, coalesce(unpriced_tokens, 0) as unpriced_tokens,
              cost_cents
-        from merged full join usage using (task_kind, model_id, hop)`.execute(this.database.db);
+        from merged full join usage using (task_kind, model_id, hop, origin)`.execute(
+      this.database.db,
+    );
 
     return rows.map((row) => ({
       taskKind: row.task_kind,
       model: row.model_id,
       hop: Number(row.hop),
+      origin: row.origin,
       merged: num(row.merged),
       untouched: num(row.untouched),
       tokens: num(row.tokens),

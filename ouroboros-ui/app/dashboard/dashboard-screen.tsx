@@ -1,9 +1,11 @@
 import { GetStartedBanner } from "@/app/get-started/offer-banner";
+import { OriginStrip } from "@/app/origin/origin-strip";
 import { WORKFLOWS_PATH } from "@/app/paths";
 import { Button, type ButtonTone, Eyebrow, cx } from "@/app/ui";
 
 import { ActiveLoopsCard } from "./active-loops-card";
 import { Greeting } from "./greeting";
+import { DashboardOriginControl } from "./origin-control";
 import { PulseCard } from "./pulse-card";
 import { QueueCard } from "./queue-card";
 import { RecentlyClosedCard } from "./recently-closed-card";
@@ -12,6 +14,7 @@ import { SystemCard } from "./system-card";
 import {
   type DashboardReadings,
   PULL_NEXT_SOON,
+  pageOrigins,
   pageSubline,
   statRow,
   systemRows,
@@ -98,6 +101,13 @@ export function DashboardScreen({
         </div>
       </div>
 
+      {/* Which data the figures and run lists count (DJ.3): its own row, under the head. */}
+      <div className="dash__origin">
+        <DashboardOriginControl origin={readings.origin} />
+      </div>
+      {aggregate.ok && (
+        <OriginStrip present={pageOrigins(aggregate.value)} filter={aggregate.value.origin} />
+      )}
       {readings.getStarted != null && <GetStartedBanner offer={readings.getStarted} />}
 
       <div className="dash-grid">

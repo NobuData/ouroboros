@@ -36,7 +36,7 @@ function ledgerFor(token: string, over: Partial<SourceLedger> = {}): SourceLedge
     tokenHash: hashSourceTicket(token),
     expiresAt: new Date(NOW.getTime() + 60_000),
     redeemedAt: null,
-    status: "offered",
+    phase: "offered",
     repository: "acme-robotics/helios-firmware",
     ...over,
   };
@@ -134,6 +134,19 @@ describe("redeeming", () => {
     expect(JSON.stringify(audit.record.mock.calls)).not.toContain(ticket);
   });
 
+  // The runner checks out between `job.accept` and `job.start` (#1818): whichever of the accept and
+  // the redemption the gateway handles first, the checkout gets its credential.
+  it.each(["offered", "accepted", "running"] as const)(
+    "redeems for a job that is %s",
+    async (phase) => {
+      ledgerRow = ledgerFor(ticket, { phase });
+
+      await expect(service.redeem(JOB, `Bearer ${ticket}`)).resolves.toMatchObject({
+        password: TOKEN,
+      });
+    },
+  );
+
   it.each([
     ["no bearer", () => undefined],
     ["a basic credential", () => "Basic abc"],
@@ -162,7 +175,14 @@ describe("redeeming", () => {
     [
       "a job that is not being run",
       () => {
-        ledgerRow = ledgerFor(ticket, { status: "succeeded" });
+        ledgerRow = ledgerFor(ticket, { phase: "succeeded" });
+        return `Bearer ${ticket}`;
+      },
+    ],
+    [
+      "a job whose offer was taken back",
+      () => {
+        ledgerRow = ledgerFor(ticket, { phase: "waiting" });
         return `Bearer ${ticket}`;
       },
     ],

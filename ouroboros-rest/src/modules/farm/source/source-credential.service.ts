@@ -20,12 +20,13 @@
  * anonymously, and a private one fails on the runner with a sentence that says so.
  */
 
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 
 import { RUNNER_SOURCE_CREDENTIAL_REDEEMED_EVENT } from "../../audit/audit.events";
 import { AuditService } from "../../audit/audit.service";
 import type { BuildJob } from "../../db/schema";
 import { GithubCredentialsService } from "../../github/github.credentials.service";
+import { type JobPhase } from "../dispatch/job.states";
 import { GATEWAY_CLOCK, type GatewayClock } from "../gateway/gateway.clock";
 import type { JobSourceCredential } from "../protocol/protocol.messages";
 import { sourceCredentialRefused } from "./source-credential.errors";
@@ -55,8 +56,12 @@ export const SOURCE_TICKET_GRACE_MS = 15 * 60 * 1000;
 /** The user name GitHub expects beside a token over HTTPS — the clone cache's own constant. */
 export const SOURCE_CREDENTIAL_USERNAME = "x-access-token";
 
-/** The job statuses a runner may be checking out under. */
-const REDEEMABLE_STATUSES = new Set<BuildJob["status"]>(["offered", "running"]);
+/**
+ * The phases a runner may be checking out under. A runner sends `job.accept`, checks the source
+ * out, and only then sends `job.start` — so the checkout normally happens while the job is
+ * `accepted` (#1818).
+ */
+const REDEEMABLE_PHASES = new Set<JobPhase>(["offered", "accepted", "running"]);
 
 /** What a redemption answers: a git credential for one fetch. */
 export interface SourceCredentialResource {
@@ -83,6 +88,9 @@ export function sourceCredentialPath(jobId: string): string {
 
 @Injectable()
 export class SourceCredentialService implements OfferSourceCredentials {
+  /** Where a refusal's reason goes — the caller is only ever told the one refusal. */
+  private readonly logger = new Logger(SourceCredentialService.name);
+
   /**
    * @param ledger - The ticket ledger.
    * @param github - The workspace's GitHub token — whether there is one, and the one call that
@@ -130,19 +138,32 @@ export class SourceCredentialService implements OfferSourceCredentials {
 
     const ledger = await this.ledger.ledger(jobId);
     const at = this.now();
+    const why =
+      ledger === undefined
+        ? "no ticket was minted for this job"
+        : !sourceTicketMatches(ledger.tokenHash, ticket)
+          ? "the ticket is not the one last minted for this job"
+          : ledger.redeemedAt !== null
+            ? "the ticket was already redeemed"
+            : ledger.expiresAt.getTime() <= at.getTime()
+              ? "the ticket has expired"
+              : !REDEEMABLE_PHASES.has(ledger.phase)
+                ? `the job is ${ledger.phase}, not offered, accepted or running`
+                : null;
 
-    if (
-      ledger === undefined ||
-      !sourceTicketMatches(ledger.tokenHash, ticket) ||
-      ledger.redeemedAt !== null ||
-      ledger.expiresAt.getTime() <= at.getTime() ||
-      !REDEEMABLE_STATUSES.has(ledger.status)
-    ) {
+    if (why !== null || ledger === undefined) {
+      // The caller is told one thing for every failure; the operator's log says which (DI.6).
+      this.logger.warn(`Source credential for build job ${jobId} refused: ${why ?? "no ledger"}.`);
       throw sourceCredentialRefused();
     }
 
     // The statement is the single-use rule: two presentations at once get one credential.
-    if (!(await this.ledger.redeem(jobId, ledger.tokenHash, at))) throw sourceCredentialRefused();
+    if (!(await this.ledger.redeem(jobId, ledger.tokenHash, at))) {
+      this.logger.warn(
+        `Source credential for build job ${jobId} refused: redeemed or re-minted concurrently.`,
+      );
+      throw sourceCredentialRefused();
+    }
 
     const password = await this.github.tokenFor(ledger.organizationId);
 

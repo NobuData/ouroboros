@@ -1,5 +1,6 @@
 import { dayBounds } from "../rollup/rollup.days";
 import { median, medianRow, ratioRow, sumRow } from "../rollup/rollup.rows";
+import type { DataOrigin } from "../../db/schema";
 import type { Day, FamilyExtractor, RollupRow } from "../rollup/rollup.types";
 import { MetricsCache } from "./metrics.cache";
 import type { MetricDefinition, MetricsRepository, RowFilter } from "./metrics.repository";
@@ -29,6 +30,8 @@ interface LoopEvent {
   readonly autonomous: boolean;
   readonly cycleMs: number;
   readonly costCents: number;
+  /** The loop's data origin (DJ.2); `live` when omitted. */
+  readonly origin?: DataOrigin;
 }
 
 /** A deterministic generator, so the matrix is reproducible. */
@@ -95,6 +98,7 @@ const DEFINITIONS = new Map<string, MetricDefinition>(
       proxy: false,
       aggregation,
       dimensionKind: metricId === "stage_duration" ? "stage" : null,
+      originRule: `Origin rule of ${metricId}`,
     },
   ]),
 );
@@ -111,10 +115,15 @@ function extractorsOver(events: readonly LoopEvent[]): FamilyExtractor[] {
 
     return events.filter((e) => e.org === org && e.at >= from && e.at < to);
   };
-  const byRepo = (list: LoopEvent[]): Map<string, LoopEvent[]> => {
-    const out = new Map<string, LoopEvent[]>();
-    for (const e of list) out.set(e.repo, [...(out.get(e.repo) ?? []), e]);
-    return out;
+  // One group per (repository, origin), as the real extractors group (DJ.2).
+  const byRepo = (list: LoopEvent[]): [Group, LoopEvent[]][] => {
+    const out = new Map<string, [Group, LoopEvent[]]>();
+    for (const e of list) {
+      const group = { repoRef: e.repo, origin: e.origin ?? "live" } as const;
+      const key = JSON.stringify([group.repoRef, group.origin]);
+      out.set(key, [group, [...(out.get(key)?.[1] ?? []), e]]);
+    }
+    return [...out.values()];
   };
 
   return [
@@ -123,10 +132,14 @@ function extractorsOver(events: readonly LoopEvent[]): FamilyExtractor[] {
       metrics: { merged_prs: 1, merge_rate: 3 },
       extract: jest.fn((_db, org: string, day: Day) =>
         Promise.resolve(
-          [...byRepo(on(org, day))].flatMap(([repoRef, list]): RollupRow[] => [
-            sumRow({ repoRef, metricId: "merged_prs" }, list.filter((e) => e.merged).length),
+          byRepo(on(org, day)).flatMap(([group, list]): RollupRow[] => [
+            sumRow(
+              { ...group, metricId: "merged_prs" },
+              list.filter((e) => e.merged).length,
+              list.filter((e) => e.merged).length,
+            ),
             ratioRow(
-              { repoRef, metricId: "merge_rate" },
+              { ...group, metricId: "merge_rate" },
               list.filter((e) => e.autonomous).length,
               list.length,
               100,
@@ -140,9 +153,9 @@ function extractorsOver(events: readonly LoopEvent[]): FamilyExtractor[] {
       metrics: { cycle_time: 1, stage_duration: 1 },
       extract: jest.fn((_db, org: string, day: Day) =>
         Promise.resolve(
-          [...byRepo(on(org, day).filter((e) => e.merged))].map(([repoRef, list]) =>
+          byRepo(on(org, day).filter((e) => e.merged)).map(([group, list]) =>
             medianRow(
-              { repoRef, metricId: "cycle_time" },
+              { ...group, metricId: "cycle_time" },
               list.map((e) => e.cycleMs),
             ),
           ),
@@ -154,16 +167,23 @@ function extractorsOver(events: readonly LoopEvent[]): FamilyExtractor[] {
       metrics: { cost_cents: 1 },
       extract: jest.fn((_db, org: string, day: Day) =>
         Promise.resolve(
-          [...byRepo(on(org, day))].map(([repoRef, list]) =>
+          byRepo(on(org, day)).map(([group, list]) =>
             sumRow(
-              { repoRef, metricId: "cost_cents" },
+              { ...group, metricId: "cost_cents" },
               list.reduce((total, e) => total + e.costCents, 0),
+              list.length,
             ),
           ),
         ),
       ),
     },
   ];
+}
+
+/** Where a stand-in extractor row belongs. */
+interface Group {
+  readonly repoRef: string;
+  readonly origin: DataOrigin;
 }
 
 /** A repository stand-in, with its calls recorded. */
@@ -191,6 +211,8 @@ function repositoryOver(extractors: readonly FamilyExtractor[]): FakeRepository 
     metricId: row.metricId,
     repoRef: row.repoRef,
     dimension: row.dimension,
+    origin: row.origin,
+    population: row.population,
     value: row.value,
     numerator: row.numerator ?? null,
     denominator: row.denominator ?? null,
@@ -250,7 +272,8 @@ function oracle(
 
   switch (metricId) {
     case "merged_prs":
-      return merged.length;
+      // No loop closed in the window is no data (DJ.2), not zero merges.
+      return inside.length === 0 ? null : merged.length;
     case "merge_rate":
       return inside.length === 0
         ? null
@@ -324,9 +347,13 @@ describe("the windowed metrics service", () => {
       expectFigure(window.prior, prior);
       expectFigure(window.delta, value === null || prior === null ? null : value - prior);
       expect(window.series).toHaveLength(resolved.days);
-      // Every series point is its own day, by the same oracle.
+      // Every series point is its own day, by the same oracle — except that a quiet day inside a
+      // window with data is a zero count, and every day of a window with none is null (DJ.2).
       for (const point of window.series) {
-        expectFigure(point.value, oracle(events, metricId, { from: point.day, to: point.day }));
+        const day = oracle(events, metricId, { from: point.day, to: point.day });
+        const quiet = metricId === "merged_prs" && day === null && value !== null;
+
+        expectFigure(point.value, quiet ? 0 : day);
       }
     });
 
@@ -452,8 +479,8 @@ describe("the windowed metrics service", () => {
       const rate = await service.span("merge_rate", { organizationId: ORG, span: days, now });
       const median = await service.span("cycle_time", { organizationId: ORG, span: days, now });
 
-      // A sum over nothing is still 0 by composition — `days` is what tells nothing from zero.
-      expect(sum).toMatchObject({ value: 0, days: 0 });
+      // A sum over nothing is no data (DJ.2), and `days` says nothing was recorded.
+      expect(sum).toMatchObject({ value: null, days: 0 });
       expect(rate).toMatchObject({ value: null, days: 0 });
       expect(median).toMatchObject({ value: null, days: 0, samples: [] });
     });
@@ -602,11 +629,12 @@ describe("the windowed metrics service", () => {
           version: definition?.version,
           proxy: false,
           aggregation: definition?.aggregation,
+          originRule: definition?.originRule,
         });
       }
     });
 
-    it("answers an empty window with nulls for rates and medians and zero for sums", async () => {
+    it("answers an empty window with no data — nulls — for rates, medians and sums alike", async () => {
       const extractors = extractorsOver([]);
       const service = new MetricsService(
         repositoryOver(extractors).repository,
@@ -615,17 +643,18 @@ describe("the windowed metrics service", () => {
       );
       const scope = { organizationId: ORG, range: "7d" as const, now: new Date("2026-09-01") };
 
-      expect(await service.window("merge_rate", scope)).toMatchObject({
+      const rate = await service.window("merge_rate", scope);
+
+      expect(rate).toMatchObject({ value: null, prior: null, delta: null, n: 0 });
+      expect(rate.components).toBeUndefined();
+      expect(await service.window("cycle_time", scope)).toMatchObject({ value: null });
+      expect(await service.window("merged_prs", scope)).toMatchObject({
         value: null,
         prior: null,
         delta: null,
-        components: { numerator: 0, denominator: 0 },
-      });
-      expect(await service.window("cycle_time", scope)).toMatchObject({ value: null });
-      expect(await service.window("merged_prs", scope)).toMatchObject({
-        value: 0,
-        prior: 0,
-        delta: 0,
+        n: 0,
+        originsPresent: [],
+        mixed: false,
       });
     });
   });
@@ -724,6 +753,164 @@ describe("the windowed metrics service", () => {
           dimension: "verify",
         }),
       ).resolves.toMatchObject({ value: null });
+    });
+  });
+
+  describe("data origin (DJ.2, #1315)", () => {
+    const now = new Date("2026-09-01T14:00:00.000Z");
+    const scope = { organizationId: ORG, range: "7d" as const, now };
+    /** A loop three days before `now`, merged autonomously. */
+    const loop = (origin: DataOrigin, overrides: Partial<LoopEvent> = {}): LoopEvent => ({
+      org: ORG,
+      at: new Date("2026-08-29T10:00:00.000Z"),
+      repo: "acme/helios",
+      merged: true,
+      autonomous: true,
+      cycleMs: 60_000,
+      costCents: 100,
+      origin,
+      ...overrides,
+    });
+    const serviceOver = (events: readonly LoopEvent[]): MetricsService => {
+      const extractors = extractorsOver(events);
+
+      return new MetricsService(
+        repositoryOver(extractors).repository,
+        new MetricsCache(),
+        extractors,
+      );
+    };
+
+    it("answers no data by default over seeded rows, and says they are there", async () => {
+      const service = serviceOver([loop("seeded"), loop("seeded", { merged: false })]);
+
+      const merged = await service.window("merged_prs", scope);
+
+      expect(merged).toMatchObject({
+        origin: "live",
+        value: null,
+        n: 0,
+        prior: null,
+        originsPresent: ["seeded"],
+        mixed: false,
+      });
+      expect(merged.series.every((point) => point.value === null)).toBe(true);
+      expect(await service.window("merge_rate", scope)).toMatchObject({ value: null, n: 0 });
+      expect(await service.window("cycle_time", scope)).toMatchObject({ value: null, n: 0 });
+    });
+
+    it("describes one live run alone beside forty seeded ones", async () => {
+      const seeded = Array.from({ length: 40 }, () => loop("seeded", { cycleMs: 999_000 }));
+      const service = serviceOver([...seeded, loop("live", { autonomous: false, cycleMs: 5_000 })]);
+
+      expect(await service.window("merged_prs", scope)).toMatchObject({
+        value: 1,
+        n: 1,
+        originsPresent: ["live", "seeded"],
+        mixed: false,
+      });
+      expect(await service.window("merge_rate", scope)).toMatchObject({ value: 0, n: 1 });
+      expect(await service.window("cycle_time", scope)).toMatchObject({ value: 5_000, n: 1 });
+    });
+
+    it("answers one other origin when asked for it", async () => {
+      const service = serviceOver([loop("seeded"), loop("simulated"), loop("simulated")]);
+
+      expect(await service.window("merged_prs", { ...scope, origin: "simulated" })).toMatchObject({
+        origin: "simulated",
+        value: 2,
+        n: 2,
+        mixed: false,
+      });
+    });
+
+    it("sums origins only for all, and marks the answer mixed", async () => {
+      const service = serviceOver([loop("live"), loop("seeded"), loop("seeded")]);
+
+      expect(await service.window("merged_prs", { ...scope, origin: "all" })).toMatchObject({
+        origin: "all",
+        value: 3,
+        n: 3,
+        originsPresent: ["live", "seeded"],
+        mixed: true,
+      });
+      expect(
+        await service.window("merged_prs", { ...scope, origin: "all", repo: "acme/zephyr" }),
+      ).toMatchObject({ value: null, mixed: false });
+    });
+
+    it("is not mixed under all when only one origin is in the window", async () => {
+      const service = serviceOver([loop("seeded")]);
+
+      expect(await service.window("merged_prs", { ...scope, origin: "all" })).toMatchObject({
+        value: 1,
+        mixed: false,
+      });
+    });
+
+    it("never serves a live window from an all window's cache entry", async () => {
+      const extractors = extractorsOver([loop("seeded")]);
+      const fake = repositoryOver(extractors);
+      const service = new MetricsService(fake.repository, new MetricsCache(), extractors);
+
+      const all = await service.window("merged_prs", { ...scope, origin: "all" });
+      const live = await service.window("merged_prs", scope);
+
+      expect(all.value).toBe(1);
+      expect(live.value).toBeNull();
+      expect(fake.scan).toHaveBeenCalledTimes(2);
+    });
+
+    it("breaks a dimensioned metric out by the asked origin's labels only", async () => {
+      const rows: DailyRow[] = [
+        {
+          day: "2026-08-29",
+          metricId: "stage_duration",
+          repoRef: "acme/helios",
+          dimension: "build",
+          origin: "seeded",
+          population: 1,
+          value: 10,
+          numerator: null,
+          denominator: null,
+          samples: [10],
+          meta: {},
+        },
+      ];
+      const extractors = extractorsOver([]);
+      const fake = repositoryOver(extractors);
+      fake.scan.mockResolvedValue(rows);
+      const service = new MetricsService(fake.repository, new MetricsCache(), extractors);
+
+      expect(await service.breakdown("stage_duration", scope)).toMatchObject({
+        origin: "live",
+        entries: [],
+        originsPresent: ["seeded"],
+        mixed: false,
+      });
+      expect(
+        (await service.breakdown("stage_duration", { ...scope, origin: "seeded" })).entries,
+      ).toHaveLength(1);
+    });
+
+    it("keeps a span to the asked origin and reports what else is present", async () => {
+      const service = serviceOver([loop("seeded"), loop("live")]);
+      const span = { from: "2026-08-25", to: "2026-08-31" };
+
+      expect(await service.span("merged_prs", { organizationId: ORG, span, now })).toMatchObject({
+        value: 1,
+        days: 1,
+        originsPresent: ["live", "seeded"],
+      });
+      expect(
+        await service.span("merged_prs", { organizationId: ORG, span, now, origin: "all" }),
+      ).toMatchObject({ value: 2 });
+
+      const seededOnly = serviceOver([loop("seeded")]);
+
+      expect(await seededOnly.span("merged_prs", { organizationId: ORG, span, now })).toMatchObject(
+        { value: null, days: 0, originsPresent: ["seeded"] },
+      );
     });
   });
 

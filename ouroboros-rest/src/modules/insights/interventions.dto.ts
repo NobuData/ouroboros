@@ -11,6 +11,7 @@
 import { IsIn, IsOptional, IsString, IsUUID, Length, Matches } from "class-validator";
 
 import { INTERVENTION_CAUSES, type InterventionCause } from "../db/schema";
+import { ORIGIN_FILTERS, type OriginFilter } from "./metrics/metrics.origin";
 import { METRIC_RANGES, type MetricRange } from "./metrics/metrics.window";
 
 /** V079's `intervention_overrides_reason_present`. */
@@ -55,4 +56,9 @@ export class InterventionListQuery {
   @IsOptional()
   @IsIn(INTERVENTION_CAUSES)
   cause?: InterventionCause;
+
+  /** The data origin whose runs' events to list (DJ.2): `live` when absent, as the card's bars. */
+  @IsOptional()
+  @IsIn(ORIGIN_FILTERS)
+  origin?: OriginFilter;
 }

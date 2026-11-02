@@ -34,6 +34,7 @@ function tally(overrides: Partial<ScoreboardTally>): ScoreboardTally {
     taskKind: "implement",
     model: "claude-fable-5",
     hop: 1,
+    origin: "live",
     merged: 20,
     untouched: 18,
     tokens: 1000,

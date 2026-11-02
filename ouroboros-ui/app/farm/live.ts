@@ -34,6 +34,7 @@
 
 import type { FarmPage } from "@/app/api/farm";
 import { elapsedOfSeconds } from "@/app/format";
+import type { DataOrigin } from "@/app/origin/origin";
 import type { ChipDot, ChipTone } from "@/app/ui/chip";
 
 import { type JobFact, JOB_SHEET_EYEBROW, jobNumber } from "./runners";
@@ -53,6 +54,8 @@ export interface LiveJob {
   readonly runner: string | null;
   /** When it started, or `null` when the page carried no start. */
   readonly startedAt: string | null;
+  /** Where the build came from (DJ.1) — the header's origin badge (DJ.3). */
+  readonly origin: DataOrigin;
 }
 
 /**
@@ -71,6 +74,7 @@ export function newestJob(page: FarmPage | null): LiveJob | null {
     title: live.title,
     runner: live.runner,
     startedAt: live.startedAt,
+    origin: live.origin,
   };
 }
 
@@ -95,6 +99,7 @@ export function selectedJob(page: FarmPage | null, runnerId: string | null): Liv
     title: job.title,
     runner: runner.name,
     startedAt: job.startedAt,
+    origin: job.origin,
   };
 }
 
@@ -157,7 +162,8 @@ function sameJob(a: LiveJob, b: LiveJob): boolean {
     a.number === b.number &&
     a.title === b.title &&
     a.runner === b.runner &&
-    a.startedAt === b.startedAt
+    a.startedAt === b.startedAt &&
+    a.origin === b.origin
   );
 }
 
@@ -282,14 +288,11 @@ export function emptyLogNote(live: boolean | null, retained: boolean): string {
 /* ------------------------------------------------------------------ the full-log sheet */
 
 /**
- * Why **Full log ↗** opens a sheet rather than a page — `JOB_SHEET_NOTE`'s argument, for the
- * log: its honest destination is mockup 10's run console (#309, built), and a build is linked to
- * its run's console by AJ.3 (#265), which is not built yet. DG.3 (#1301) retired the claim that
- * the console itself was still to come.
+ * What the full-log sheet says about itself. The same sheet opens from the farm's **Full log ↗**
+ * and from a build stage's **Build log ↗** in its run's console (AJ.3, #265), so it says only
+ * what is true of both.
  */
-export const LOG_SHEET_NOTE =
-  "A build links to its run console with #265 — until then this is the build's whole log, " +
-  "from its first byte.";
+export const LOG_SHEET_NOTE = "This is the build's whole log, from its first byte.";
 
 /**
  * The sheet's name — its eyebrow, and what the dialog answers to.

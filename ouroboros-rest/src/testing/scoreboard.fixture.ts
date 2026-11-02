@@ -148,6 +148,7 @@ function tallyOf(row: FixtureRow, window: "current" | "prior"): ScoreboardTally 
     taskKind: row.taskKind,
     model: row.model,
     hop: row.hop,
+    origin: "live",
     merged: figures.merged,
     untouched: figures.untouched,
     tokens,

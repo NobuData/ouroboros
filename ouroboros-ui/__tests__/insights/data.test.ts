@@ -15,7 +15,9 @@ const page = vi.fn();
 /** What the playbooks read answers, per case. */
 const list = vi.fn();
 
-vi.mock("@/app/api/insights", () => ({ insights: { page: (range: string) => page(range) } }));
+vi.mock("@/app/api/insights", () => ({
+  insights: { page: (range: string, origin: string) => page(range, origin) },
+}));
 vi.mock("@/app/api/playbooks", () => ({ playbooks: { list: () => list() } }));
 
 /**
@@ -58,15 +60,16 @@ describe("readInsights", () => {
   ] as const)("lets %j re-categorize: %s (#445)", async (roles, may) => {
     const access = { ...ACCESS, membership: { ...membership(), roles: [...roles] } } as typeof ACCESS;
 
-    expect((await readInsights(access, "30d")).mayRecategorize).toBe(may);
+    expect((await readInsights(access, "30d", "live")).mayRecategorize).toBe(may);
   });
 
   it("reads the page once for the range, and stamps when", async () => {
-    const readings = await readInsights(ACCESS, "90d", () => INSIGHTS_READ_AT);
+    const readings = await readInsights(ACCESS, "90d", "seeded", () => INSIGHTS_READ_AT);
 
-    expect(page).toHaveBeenCalledExactlyOnceWith("90d");
+    expect(page).toHaveBeenCalledExactlyOnceWith("90d", "seeded");
     expect(readings).toEqual({
       range: "90d",
+      origin: "seeded",
       page: { ok: true, value: seededInsights() },
       readAt: INSIGHTS_READ_AT,
       mayRecategorize: true,
@@ -77,7 +80,7 @@ describe("readInsights", () => {
   it("finds the flaky-test recipe by name, case-blind and trimmed (#446)", async () => {
     list.mockResolvedValue({ items: [recipe("hunt", "  flaky TEST hunt ")] });
 
-    expect((await readInsights(ACCESS, "30d")).flakyPlaybook).toEqual({
+    expect((await readInsights(ACCESS, "30d", "live")).flakyPlaybook).toEqual({
       ok: true,
       value: { id: "hunt", name: "  flaky TEST hunt " },
     });
@@ -86,13 +89,13 @@ describe("readInsights", () => {
   it("answers null when the workspace has no flaky-test recipe (#446)", async () => {
     list.mockResolvedValue({ items: [recipe("cve", "CVE bump")] });
 
-    expect((await readInsights(ACCESS, "30d")).flakyPlaybook).toEqual({ ok: true, value: null });
+    expect((await readInsights(ACCESS, "30d", "live")).flakyPlaybook).toEqual({ ok: true, value: null });
   });
 
   it("keeps a refused playbooks read as its reason, and still reads the page (#446)", async () => {
     list.mockRejectedValue(new ApiError(503, "unavailable", "Playbooks are unavailable."));
 
-    const readings = await readInsights(ACCESS, "30d");
+    const readings = await readInsights(ACCESS, "30d", "live");
 
     expect(readings.flakyPlaybook).toEqual({ ok: false, reason: "Playbooks are unavailable." });
     expect(readings.page).toEqual({ ok: true, value: seededInsights() });
@@ -101,13 +104,13 @@ describe("readInsights", () => {
   it("keeps a refusal as the service's sentence rather than throwing", async () => {
     page.mockRejectedValue(new ApiError(400, "organization_required", "Choose a workspace."));
 
-    expect((await readInsights(ACCESS, "30d")).page).toEqual({ ok: false, reason: "Choose a workspace." });
+    expect((await readInsights(ACCESS, "30d", "live")).page).toEqual({ ok: false, reason: "Choose a workspace." });
   });
 
   it("lets through what is not a refusal — Next.js's redirect signal above all", async () => {
     const redirect = new Error("NEXT_REDIRECT");
     page.mockRejectedValue(redirect);
 
-    await expect(readInsights(ACCESS, "30d")).rejects.toBe(redirect);
+    await expect(readInsights(ACCESS, "30d", "live")).rejects.toBe(redirect);
   });
 });

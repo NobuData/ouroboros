@@ -393,14 +393,15 @@ def _infra_annotation(config: InfraConfig) -> str:
         if config.command is None
         else f"`{config.command}`"
     )
-    pool = (
-        "the default runner pool"
-        if config.runner_pool is None
-        else f"the `{config.runner_pool}` runner pool"
-    )
+    if config.runner_pool is None:
+        # A live run builds on a named pool (AJ.3, #265): say so before anything executes.
+        return (
+            f"A build stage: runs {command}, but names no runner pool — a live run fails "
+            "this stage until one is set. Not dispatched — a dry run starts no build."
+        )
     return (
-        f"A build stage: runs {command} on {pool}. Not dispatched — a dry run starts no "
-        "build."
+        f"A build stage: runs {command} on the `{config.runner_pool}` runner pool; a live "
+        "run's gate decides on its exit code. Not dispatched — a dry run starts no build."
     )
 
 

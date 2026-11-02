@@ -7,14 +7,17 @@
  * answered. **There is no session gate here**: a visitor with no session gets a plain `401`
  * rather than a redirect a `fetch` nobody sees would follow.
  *
- * It takes one thing from the request — the range — parsed by the same function the page uses
- * (`app/insights/range.ts`), so a range the service does not answer is the default here exactly
- * as it is on the page, and never a `422` passed through to the screen.
+ * It takes two things from the request — the range and the data origin — parsed by the same
+ * functions the page uses (`app/insights/range.ts`, `app/origin/origin-server.ts`), so a value the
+ * service does not answer is the default here exactly as it is on the page, and never a `422`
+ * passed through to the screen.
  */
 
 import { INSIGHTS_UNAVAILABLE_CODE, readInsightsPage } from "@/app/api/insights-page";
 import { pollResponse } from "@/app/api/poll-response";
 import { RANGE_PARAM, parseRange } from "@/app/insights/range";
+import { ORIGIN_PARAM } from "@/app/origin/origin";
+import { readOriginFilter } from "@/app/origin/origin-server";
 
 /**
  * Answer one poll.
@@ -24,7 +27,9 @@ import { RANGE_PARAM, parseRange } from "@/app/insights/range";
  *   reported it — each in the shape `app/insights/insights-poll.ts` reads back.
  */
 export async function GET(request: Request): Promise<Response> {
-  const range = parseRange(new URL(request.url).searchParams.get(RANGE_PARAM));
+  const params = new URL(request.url).searchParams;
+  const range = parseRange(params.get(RANGE_PARAM));
+  const origin = await readOriginFilter(params.get(ORIGIN_PARAM));
 
-  return pollResponse(await readInsightsPage(range), INSIGHTS_UNAVAILABLE_CODE);
+  return pollResponse(await readInsightsPage(range, origin), INSIGHTS_UNAVAILABLE_CODE);
 }

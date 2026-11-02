@@ -11,6 +11,7 @@
  * Not shipped: `tsconfig.build.json` excludes `*.fixture.ts`.
  */
 
+import type { DataOrigin } from "../../db/schema";
 import type { FlakeCardCase } from "../../flakes/flakes.resources";
 import { metricWindow } from "../metrics/metrics.fixture";
 import type {
@@ -19,6 +20,7 @@ import type {
   MetricMethodology,
   MetricWindow,
 } from "../metrics/metrics.types";
+import type { OriginFilter } from "../metrics/metrics.origin";
 import type { MetricRange } from "../metrics/metrics.window";
 import type { Day } from "../rollup/rollup.types";
 import type { Scoreboard } from "../scoreboard/scoreboard.types";
@@ -96,6 +98,14 @@ export interface WindowOptions {
   readonly aggregation?: MetricMethodology["aggregation"];
   readonly days?: readonly Day[];
   readonly range?: MetricRange;
+  /** The count behind the figure; 1 (some data) when omitted. */
+  readonly n?: number | null;
+  /** Every origin the window holds; `["live"]` when omitted. */
+  readonly originsPresent?: readonly DataOrigin[];
+  /** Whether the figure sums origins; false when omitted. */
+  readonly mixed?: boolean;
+  /** The filter the window was read under; `live` when omitted. */
+  readonly origin?: OriginFilter;
 }
 
 /**
@@ -119,6 +129,7 @@ export function methodology(
     version: 1,
     proxy: options.proxy ?? false,
     aggregation: options.aggregation ?? "sum",
+    originRule: `Origin rule of ${metricId}`,
   };
 }
 
@@ -140,7 +151,11 @@ export function pageWindow(metricId: string, options: WindowOptions = {}): Metri
     range: options.range ?? "30d",
     from: days[0],
     to: days[days.length - 1],
+    origin: options.origin ?? "live",
+    originsPresent: options.originsPresent ?? ["live"],
+    mixed: options.mixed ?? false,
     value,
+    n: options.n === undefined ? 1 : options.n,
     ...(options.components ? { components: options.components } : {}),
     prior,
     delta: value === null || prior === null ? null : value - prior,
@@ -184,6 +199,9 @@ export function breakdownOf(
     range: "30d",
     from: DAYS[0],
     to: TODAY,
+    origin: "live",
+    originsPresent: ["live"],
+    mixed: false,
     entries: [...entries]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([dimension, value, prior]) => ({
@@ -403,6 +421,9 @@ export function emptyScoreboard(): Scoreboard {
   const column = methodology("scoreboard_merged");
 
   return {
+    origin: "live",
+    originsPresent: ["live"],
+    mixed: false,
     range: "30d",
     window: { from: DAYS[0], to: TODAY },
     prior: { from: "2026-06-10", to: "2026-07-09" },
@@ -457,6 +478,7 @@ export const CURRENT_FRESHNESS: InsightsFreshness = Object.freeze({
 export function mockupFacts(overrides: Partial<PageFacts> = {}): PageFacts {
   return {
     range: "30d",
+    origin: "live",
     repo: "acme-robotics/helios-firmware",
     week: mockupWeek(),
     windows: mockupWindows(),

@@ -258,6 +258,9 @@ describe("invitations", () => {
     fireEvent.click(screen.getByRole("button", { name: "Resend invitation to sam@acme.dev" }));
     await settle();
     expect(actions.resend).toHaveBeenCalledWith("inv-sam@acme.dev");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Invitation to sam@acme.dev resent — it is good for another 48 hours.",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Revoke invitation to sam@acme.dev" }));
     await settle();

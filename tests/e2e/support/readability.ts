@@ -93,7 +93,8 @@ export const MATRIX_PAGES: readonly MatrixPage[] = [
   {
     key: "dashboard",
     label: "the dashboard",
-    route: "/dashboard",
+    // The seed's own origin (DJ.3, #1316): the default live view of a seeded stack is empty.
+    route: "/dashboard?origin=seeded",
     // The greeting is client-rendered from the reader's own clock, so waiting for it is
     // also waiting for hydration.
     heading: /^Good (morning|afternoon|evening), /,

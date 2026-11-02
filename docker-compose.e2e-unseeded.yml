@@ -1,0 +1,25 @@
+# docker-compose.e2e-unseeded.yml — the e2e stack **without the development seed** (DJ.3, #1316).
+#
+# Layered over docker-compose.yml and docker-compose.e2e.yml by `tests/e2e/scripts/run.sh
+# --unseeded`, under its own compose project (so its database volume is never the seeded one).
+# It answers the question the data-origin inventory left open: what does a fresh, production-like
+# deployment show? The leg (`tests/e2e/specs-unseeded/`) signs up a stranger and asserts every
+# surface draws its empty state and nothing from the demo tenant.
+#
+#   flyway   applies the versioned migrations only — `flyway.toml` without `flyway.seed.toml`, so
+#            the `ouro_dev_seed` placeholder stays `false` and every R__dev_seed_* file is a no-op.
+#   rest     names the leg's one person an application administrator, so the account it signs up
+#            is approved rather than held (account approval, PR #1805).
+services:
+  flyway:
+    command:
+      - -workingDirectory=/flyway/project
+      - -configFiles=/flyway/project/flyway.toml
+      - -url=jdbc:postgresql://db:5432/${OURO_DB_NAME:-ouroboros}
+      - -user=${OURO_DB_USER:-ouroboros}
+      - -password=${OURO_DB_PASSWORD:-ouroboros}
+      - -schemas=${OURO_DB_SCHEMA:-ouroboros}
+      - migrate
+  rest:
+    environment:
+      OURO_APP_ADMIN_EMAILS: unseeded-leg@example.test

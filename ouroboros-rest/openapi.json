@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.42.0",
+    "version": "0.43.6",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -1048,6 +1048,9 @@
         "operationId": "readDashboard",
         "parameters": [
           {
+            "$ref": "#/components/parameters/InsightsOrigin"
+          },
+          {
             "$ref": "#/components/parameters/TenantHeader"
           }
         ],
@@ -1083,6 +1086,11 @@
                   "$ref": "#/components/schemas/Dashboard"
                 },
                 "example": {
+                  "origin": "live",
+                  "originsPresent": [
+                    "live"
+                  ],
+                  "mixed": false,
                   "stats": {
                     "loopsLive": {
                       "total": 3,
@@ -1128,7 +1136,8 @@
                       "finishedAt": null,
                       "prNumber": null,
                       "checksPassed": null,
-                      "checksTotal": null
+                      "checksTotal": null,
+                      "origin": "seeded"
                     }
                   ],
                   "recentRuns": [
@@ -1146,7 +1155,8 @@
                       "finishedAt": "2026-08-13T13:55:41.000Z",
                       "prNumber": 512,
                       "checksPassed": 14,
-                      "checksTotal": 14
+                      "checksTotal": 14,
+                      "origin": "seeded"
                     }
                   ],
                   "queueHead": [
@@ -1297,6 +1307,15 @@
             }
           },
           {
+            "name": "origin",
+            "in": "query",
+            "required": false,
+            "description": "Narrow to one data origin's runs (DJ.3, [#1316](https://github.com/NobuData/ouroboros/issues/1316))\n— `live`, `simulated` or `seeded`. Absent or `all` lists every origin.",
+            "schema": {
+              "$ref": "#/components/schemas/OriginFilter"
+            }
+          },
+          {
             "$ref": "#/components/parameters/Limit"
           },
           {
@@ -1327,7 +1346,8 @@
                       "finishedAt": null,
                       "prNumber": null,
                       "checksPassed": null,
-                      "checksTotal": null
+                      "checksTotal": null,
+                      "origin": "seeded"
                     }
                   ],
                   "total": 3,
@@ -1439,7 +1459,8 @@
                     "finishedAt": null,
                     "prNumber": null,
                     "checksPassed": null,
-                    "checksTotal": null
+                    "checksTotal": null,
+                    "origin": "seeded"
                   },
                   "head": {
                     "loopSeq": 1847,
@@ -5156,7 +5177,9 @@
                         "scope": "global"
                       }
                     ],
-                    "pickedTicket": null
+                    "pickedTicket": null,
+                    "workflow": null,
+                    "firstRun": null
                   },
                   "surfacing": {
                     "offer": true,
@@ -6136,7 +6159,7 @@
             }
           },
           "409": {
-            "description": "`onboarding_step_incomplete` — a step 1–3 is not done. `message` is the blocking step's\nstated reason; `details.step` is `4`, `details.blockingStep` the first step not done.\n\n`onboarding_pick_required` — there is no issue to queue: nothing is picked, the pick is\nnot an issue of this repository, or the repository's backlog does not hold it yet.\n`message` and `details.reason` are the stated reason.\n\n`queue_issues_conflict` — the queue write's own refusal: the workspace's queue already\nholds this issue number for another repository.",
+            "description": "`onboarding_step_incomplete` — a step 1–3 is not done. `message` is the blocking step's\nstated reason; `details.step` is `4`, `details.blockingStep` the first step not done.\n\n`onboarding_pick_required` — there is no issue to queue: nothing is picked, the pick is\nnot an issue of this repository, or the repository's backlog does not hold it yet.\n`message` and `details.reason` are the stated reason.\n\n`onboarding_loop_not_ready` — live execution is on and the readiness preflight\n(`GET /api/v1/loop/readiness`, DK.1) is not ready for this repository, its instantiated\nworkflow and the pick. `message` is the first blocking check's reason;\n`details.checks` are the checks that did not pass, as the preflight answers them.\nNothing was queued. With live execution off the launch never asks.\n\n`queue_issues_conflict` — the queue write's own refusal: the workspace's queue already\nholds this issue number for another repository.",
             "content": {
               "application/json": {
                 "schema": {
@@ -13667,6 +13690,164 @@
         }
       }
     },
+    "/api/v1/loop/readiness": {
+      "get": {
+        "tags": [
+          "loop"
+        ],
+        "summary": "Everything a first live loop needs, checked",
+        "description": "The live-loop readiness preflight (DK.1,\n[#1318](https://github.com/NobuData/ouroboros/issues/1318)) — every prerequisite a first\nlive loop has, checked for one repository and one workflow, each with a reason and, when it\ndoes not pass, a fix link. The wizard's last step renders it (DK.2).\n\n**Read-only and safe to poll.** It invokes no model, dispatches no job and writes nothing;\nthe two GitHub calls are permission lookups (`GET /repos/{owner}/{repo}`), never writes.\n\nThe checks, always all of them, in this order:\n\n| Check | Fails or is unknown with |\n|---|---|\n| `deployment` | `deployment_disabled` — `OURO_LIVE_EXECUTION_ENABLED` is off |\n| `workspace` | `workspace_paused`, `workspace_pending_delete` |\n| `provider_connection` | `no_invocable_connection`; `connection_unhealthy` (every one failed its last test); `connection_untested` (unknown — none tested yet) |\n| `routes` | `route_unresolved` (a task kind has no route, or none to a kept hop); `route_unpriced` (the first kept hop's model has no price); `workflow_unreadable` (unknown) |\n| `stage_executors` | `engine_unavailable`, `no_executor` (only when the workflow has a model stage); `workflow_unreadable` |\n| `runner` | `build_pool_required`, `pool_not_found`, `pool_disabled`, `no_runner`, `no_source_checkout` (per build stage's pool); `workflow_unreadable` |\n| `repository` | `repository_disabled` |\n| `push_credential` | the workspace GitHub token: `github_not_configured`, `repository_unreadable`, `push_denied`; `permission_unconfirmed` (unknown) |\n| `pull_request_credential` | the issue's GitHub source: `no_issue_chosen` (unknown), `no_pr_source`, `pr_source_other_repository`, `repository_unreadable`, `push_denied`; `permission_unconfirmed` (unknown) |\n| `dry_run` | `policy_not_dry_run` |\n| `workflow_published` | `workflow_not_found`, `workflow_unpublished` |\n| `concurrency` | `concurrency_ceiling` |\n\n`ready` is true only when every check passes — an `unknown` blocks like a `fail`. GitHub's\npermission answer is the account's access, not the token's scopes, so a `pass` on a\ncredential confirms what GitHub can say and no more. The `estimate` is labelled as one and\nis never part of `ready`: the per-run cost cap of the loop's model route and the issue's\nlatest stored size. The issue is `issue`, else the repository's onboarding pick. Codes are\nstable; a reason never names another workspace's rows. **Any member may read it**, viewers\nincluded.",
+        "operationId": "readLoopReadiness",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "repository",
+            "in": "query",
+            "required": true,
+            "description": "`owner/name`, compared case-insensitively.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?!\\.\\.?/)[A-Za-z0-9._-]+/(?!\\.\\.?$)[A-Za-z0-9._-]+$"
+            },
+            "example": "acme-live-slice/helios-greeter"
+          },
+          {
+            "name": "workflow",
+            "in": "query",
+            "required": true,
+            "description": "The workflow's slug. Its version in force is the one checked.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+              "maxLength": 64
+            },
+            "example": "live-slice"
+          },
+          {
+            "name": "issue",
+            "in": "query",
+            "required": false,
+            "description": "The issue to size and to ask the pull-request source about; absent, the repository's onboarding pick.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The preflight.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoopReadiness"
+                },
+                "example": {
+                  "repository": "acme/helios",
+                  "workflow": {
+                    "slug": "live-slice",
+                    "version": 1
+                  },
+                  "ready": false,
+                  "checks": [
+                    {
+                      "id": "deployment",
+                      "state": "pass",
+                      "code": null,
+                      "reason": "Live execution is enabled for this deployment.",
+                      "fix": null
+                    },
+                    {
+                      "id": "runner",
+                      "state": "fail",
+                      "code": "no_runner",
+                      "reason": "No runner is online in pool-a.",
+                      "fix": {
+                        "label": "Build Farm · enrol a runner",
+                        "href": "/build-farm"
+                      }
+                    },
+                    {
+                      "id": "push_credential",
+                      "state": "unknown",
+                      "code": "permission_unconfirmed",
+                      "reason": "Whether the token can push a branch could not be confirmed: GitHub's answer carries no permission for the token.",
+                      "fix": {
+                        "label": "Sources · check the token",
+                        "href": "/settings/sources"
+                      }
+                    }
+                  ],
+                  "estimate": {
+                    "isEstimate": true,
+                    "costCapCentsPerRun": 200,
+                    "issue": {
+                      "number": 1,
+                      "title": "Greet by name",
+                      "size": "s",
+                      "sizedBy": "heuristic-v0"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`repository_not_found` — the workspace has no repository by that name.\n\n`issue_not_found` — the named `issue` is not in the repository's synced backlog.\n\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `repository` is not `owner/name`, `workflow` is not a slug, or\n`issue` is not a positive integer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/policies/dry-run": {
       "get": {
         "tags": [
@@ -13862,6 +14043,9 @@
             "$ref": "#/components/parameters/InsightsRepo"
           },
           {
+            "$ref": "#/components/parameters/InsightsOrigin"
+          },
+          {
             "$ref": "#/components/parameters/TenantHeader"
           }
         ],
@@ -13874,6 +14058,11 @@
                   "$ref": "#/components/schemas/Insights"
                 },
                 "example": {
+                  "origin": "live",
+                  "originsPresent": [
+                    "live"
+                  ],
+                  "mixed": false,
                   "range": "7d",
                   "window": {
                     "from": "2026-09-25",
@@ -13896,6 +14085,7 @@
                       "key": "autonomous_merge_rate",
                       "unit": "pct",
                       "value": 95.45454545454545,
+                      "n": 22,
                       "prior": 92.5925925925926,
                       "delta": 2.861952861952858,
                       "trend": {
@@ -13914,13 +14104,15 @@
                         "unit": "pct",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "ratio"
+                        "aggregation": "ratio",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     {
                       "key": "merged_untouched_rate",
                       "unit": "pct",
                       "value": 76.19047619047619,
+                      "n": 22,
                       "prior": 80,
                       "delta": -3.80952380952381,
                       "trend": {
@@ -13938,13 +14130,15 @@
                         "unit": "pct",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "ratio"
+                        "aggregation": "ratio",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     {
                       "key": "cycle_time",
                       "unit": "duration_ms",
                       "value": 820000,
+                      "n": 22,
                       "prior": 860000,
                       "delta": -40000,
                       "trend": {
@@ -13962,13 +14156,15 @@
                         "unit": "duration_ms",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "median"
+                        "aggregation": "median",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     {
                       "key": "cost_per_merged_pr",
                       "unit": "cents",
                       "value": 203.61904761904762,
+                      "n": 22,
                       "prior": 242.12,
                       "delta": -38.500952380952384,
                       "trend": {
@@ -13987,13 +14183,15 @@
                         "unit": "cents",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "ratio"
+                        "aggregation": "ratio",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     {
                       "key": "human_interventions",
                       "unit": "count",
                       "value": 8,
+                      "n": 22,
                       "prior": 2,
                       "delta": 6,
                       "trend": {
@@ -14013,7 +14211,8 @@
                         "unit": "count",
                         "version": 2,
                         "proxy": false,
-                        "aggregation": "sum"
+                        "aggregation": "sum",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     }
                   ],
@@ -14074,7 +14273,8 @@
                         "unit": "count",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "sum"
+                        "aggregation": "sum",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     "cost": {
@@ -14138,7 +14338,8 @@
                         "unit": "cents",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "sum"
+                        "aggregation": "sum",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     "builds": {
@@ -14190,7 +14391,8 @@
                         "unit": "count",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "sum"
+                        "aggregation": "sum",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     }
                   },
@@ -14229,7 +14431,8 @@
                         "unit": "count",
                         "version": 2,
                         "proxy": false,
-                        "aggregation": "sum"
+                        "aggregation": "sum",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     "stages": {
@@ -14279,7 +14482,8 @@
                         "unit": "duration_ms",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "median"
+                        "aggregation": "median",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     "suites": {
@@ -14319,7 +14523,8 @@
                         "unit": "count",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "sum"
+                        "aggregation": "sum",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     "effort": {
@@ -14366,7 +14571,8 @@
                         "unit": "duration_ms",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "median"
+                        "aggregation": "median",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     "tokens": {
@@ -14421,7 +14627,8 @@
                         "unit": "tokens",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "sum"
+                        "aggregation": "sum",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     }
                   },
@@ -14430,6 +14637,7 @@
                       "key": "builds",
                       "unit": "count",
                       "value": 110,
+                      "n": 22,
                       "methodology": {
                         "metricId": "builds",
                         "title": "Builds",
@@ -14441,13 +14649,15 @@
                         "unit": "count",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "sum"
+                        "aggregation": "sum",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     {
                       "key": "build_success_rate",
                       "unit": "pct",
                       "value": 93.63636363636364,
+                      "n": 22,
                       "components": {
                         "numerator": 103,
                         "denominator": 110
@@ -14463,13 +14673,15 @@
                         "unit": "pct",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "ratio"
+                        "aggregation": "ratio",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     {
                       "key": "test_cases_run",
                       "unit": "count",
                       "value": 5622,
+                      "n": 22,
                       "methodology": {
                         "metricId": "test_cases_run",
                         "title": "Test cases run",
@@ -14481,13 +14693,15 @@
                         "unit": "count",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "sum"
+                        "aggregation": "sum",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     {
                       "key": "test_pass_rate",
                       "unit": "pct",
                       "value": 99.62646744930629,
+                      "n": 22,
                       "components": {
                         "numerator": 5601,
                         "denominator": 5622
@@ -14503,13 +14717,15 @@
                         "unit": "pct",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "ratio"
+                        "aggregation": "ratio",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     {
                       "key": "tokens",
                       "unit": "tokens",
                       "value": 27846076,
+                      "n": 22,
                       "methodology": {
                         "metricId": "tokens",
                         "title": "Tokens",
@@ -14521,13 +14737,15 @@
                         "unit": "tokens",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "sum"
+                        "aggregation": "sum",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     {
                       "key": "total_cost",
                       "unit": "cents",
                       "value": 4276,
+                      "n": 22,
                       "methodology": {
                         "metricId": "cost_cents",
                         "title": "Total cost",
@@ -14539,7 +14757,8 @@
                         "unit": "cents",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "sum"
+                        "aggregation": "sum",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     }
                   ],
@@ -14588,6 +14807,11 @@
                     ]
                   },
                   "scoreboard": {
+                    "origin": "live",
+                    "originsPresent": [
+                      "live"
+                    ],
+                    "mixed": false,
                     "range": "7d",
                     "window": {
                       "from": "2026-09-25",
@@ -14611,7 +14835,8 @@
                         "unit": "pct",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "ratio"
+                        "aggregation": "ratio",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       },
                       "costPerSuccess": {
                         "metricId": "scoreboard_cost_per_success",
@@ -14626,7 +14851,8 @@
                         "unit": "cents",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "sum"
+                        "aggregation": "sum",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       },
                       "trend": {
                         "metricId": "scoreboard_trend",
@@ -14640,7 +14866,8 @@
                         "unit": "pct",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "ratio"
+                        "aggregation": "ratio",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       },
                       "sample": {
                         "metricId": "scoreboard_merged",
@@ -14655,7 +14882,8 @@
                         "unit": "count",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "sum"
+                        "aggregation": "sum",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     }
                   },
@@ -14664,6 +14892,7 @@
                       "key": "deploy_frequency",
                       "unit": "per_day",
                       "value": 7.285714285714286,
+                      "n": 22,
                       "prior": 4.428571428571429,
                       "delta": 2.8571428571428568,
                       "trend": {
@@ -14691,13 +14920,15 @@
                         "unit": "count",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "sum"
+                        "aggregation": "sum",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     {
                       "key": "lead_time",
                       "unit": "duration_ms",
                       "value": 1613333.3333333333,
+                      "n": 22,
                       "prior": 1371200,
                       "delta": 242133.33333333326,
                       "trend": {
@@ -14726,13 +14957,15 @@
                         "unit": "duration_ms",
                         "version": 1,
                         "proxy": false,
-                        "aggregation": "ratio"
+                        "aggregation": "ratio",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     {
                       "key": "change_failure_rate",
                       "unit": "pct",
                       "value": 4.761904761904762,
+                      "n": 22,
                       "prior": 0,
                       "delta": 4.761904761904762,
                       "trend": {
@@ -14760,13 +14993,15 @@
                         "unit": "pct",
                         "version": 1,
                         "proxy": true,
-                        "aggregation": "ratio"
+                        "aggregation": "ratio",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     },
                     {
                       "key": "mttr",
                       "unit": "duration_ms",
                       "value": 1135500,
+                      "n": 22,
                       "prior": 1247916.6666666667,
                       "delta": -112416.66666666674,
                       "trend": {
@@ -14795,7 +15030,8 @@
                         "unit": "duration_ms",
                         "version": 1,
                         "proxy": true,
-                        "aggregation": "ratio"
+                        "aggregation": "ratio",
+                        "originRule": "Computed separately for each data origin (live, simulated, seeded) from the origin of the rows it counts."
                       }
                     }
                   ],
@@ -15353,6 +15589,9 @@
             "$ref": "#/components/parameters/CalibrationWindow"
           },
           {
+            "$ref": "#/components/parameters/InsightsOrigin"
+          },
+          {
             "$ref": "#/components/parameters/TenantHeader"
           }
         ],
@@ -15365,6 +15604,11 @@
                   "$ref": "#/components/schemas/CalibrationReport"
                 },
                 "example": {
+                  "origin": "live",
+                  "originsPresent": [
+                    "live"
+                  ],
+                  "mixed": false,
                   "window": "30d",
                   "from": "2026-09-01T12:00:00.000Z",
                   "to": "2026-10-01T12:00:00.000Z",
@@ -15505,6 +15749,9 @@
             "example": "infra_rig"
           },
           {
+            "$ref": "#/components/parameters/InsightsOrigin"
+          },
+          {
             "$ref": "#/components/parameters/TenantHeader"
           }
         ],
@@ -15518,6 +15765,7 @@
                 },
                 "example": {
                   "range": "30d",
+                  "origin": "live",
                   "window": {
                     "from": "2026-09-02",
                     "to": "2026-10-01"
@@ -51245,6 +51493,16 @@
         },
         "example": "30d"
       },
+      "InsightsOrigin": {
+        "name": "origin",
+        "in": "query",
+        "required": false,
+        "description": "Which data origin the aggregates are computed from (DJ.2,\n[#1315](https://github.com/NobuData/ouroboros/issues/1315)): `live` when absent —\n`simulated` or `seeded` for those rows alone, or `all` for every origin summed, which the\nanswer then marks `mixed`. A window with no row of the asked origin answers **no data** (a\nnull figure), never zero and never another origin's rows.",
+        "schema": {
+          "$ref": "#/components/schemas/OriginFilter"
+        },
+        "example": "live"
+      },
       "InsightsRepo": {
         "name": "repo",
         "in": "query",
@@ -51768,6 +52026,18 @@
           "seeded"
         ],
         "description": "Where a row came from (DJ.1, [#1313](https://github.com/NobuData/ouroboros/issues/1313)):\n`live` — a real executor or a person; `simulated` — the run simulator; `seeded` — a seed\nfile (development and e2e only). Set once by the path that wrote the row, inherited from\nthe run where there is one, and never accepted from a caller."
+      },
+      "OriginFilter": {
+        "type": "string",
+        "title": "OriginFilter",
+        "enum": [
+          "live",
+          "simulated",
+          "seeded",
+          "all"
+        ],
+        "default": "live",
+        "description": "Which data origin an aggregate reads (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315)):\none `DataOrigin`, or `all` — every origin summed, and the answer marked `mixed`."
       },
       "Error": {
         "type": "object",
@@ -57002,11 +57272,16 @@
           "createdAt",
           "updatedAt",
           "syncedAt",
-          "origin"
+          "origin",
+          "draft"
         ],
         "properties": {
           "origin": {
             "$ref": "#/components/schemas/DataOrigin"
+          },
+          "draft": {
+            "type": "boolean",
+            "description": "Whether the host holds the PR as a draft — it cannot merge until someone marks it\nready (V152, #1311). A PR a loop opened is always one."
           },
           "id": {
             "type": "string",
@@ -57196,11 +57471,16 @@
           "latestRevision",
           "gates",
           "reviewRequested",
-          "origin"
+          "origin",
+          "draft"
         ],
         "properties": {
           "origin": {
             "$ref": "#/components/schemas/DataOrigin"
+          },
+          "draft": {
+            "type": "boolean",
+            "description": "Whether the host holds the PR as a draft (V152,"
           },
           "id": {
             "type": "string",
@@ -58680,7 +58960,8 @@
           "finishedAt",
           "prNumber",
           "checksPassed",
-          "checksTotal"
+          "checksTotal",
+          "origin"
         ],
         "properties": {
           "id": {
@@ -58762,6 +59043,9 @@
             ],
             "minimum": 0,
             "description": "Total checks on the pull request. `0` of `0` is a repository with no checks, which\nis **not** the same as `null` — not knowing yet."
+          },
+          "origin": {
+            "$ref": "#/components/schemas/DataOrigin"
           }
         }
       },
@@ -58893,7 +59177,7 @@
           },
           "simulated": {
             "type": "boolean",
-            "description": "Decision R4's watermark: the run was opened by the simulated-run driver. Set from\nthe principal that opened it, never from a client's claim."
+            "description": "Decision R4's watermark: the run was opened by the run simulator. Set from\nthe principal that opened it, never from a client's claim."
           },
           "live": {
             "type": "boolean",
@@ -59047,6 +59331,80 @@
             "items": {
               "$ref": "#/components/schemas/RunStageAttempt"
             }
+          },
+          "build": {
+            "$ref": "#/components/schemas/RunStageBuild"
+          }
+        }
+      },
+      "RunStageBuild": {
+        "type": "object",
+        "title": "RunStageBuild",
+        "description": "The farm job a build stage's latest attempt submitted (AJ.3, #265), followed to the latest\nattempt of its retry chain — the stage's real lifecycle, and the job whose log the\nconsole's *Build log* link opens (`GET /api/v1/farm/jobs/{id}/log`). Omitted for a stage\nthat submitted none.",
+        "additionalProperties": false,
+        "required": [
+          "jobId",
+          "jobNumber",
+          "phase",
+          "pool",
+          "runnerName",
+          "exitCode",
+          "ccacheHitRatePct",
+          "retries"
+        ],
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobNumber": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The job's number within the workspace — mockup 08's `#479`."
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "offered",
+              "accepted",
+              "running",
+              "succeeded",
+              "failed",
+              "retried",
+              "canceled"
+            ],
+            "description": "`waiting` (queued, no runner) → `offered` → `accepted` → `running` → `succeeded` |\n`failed` | `canceled`. A retried attempt is followed to its successor."
+          },
+          "pool": {
+            "type": "string"
+          },
+          "runnerName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The runner holding or last holding it; `null` while it waits."
+          },
+          "exitCode": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "ccacheHitRatePct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "The ccache hit rate to one decimal, or `null` when nothing was measured."
+          },
+          "retries": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Automatic retries the farm made before this attempt."
           }
         }
       },
@@ -60257,13 +60615,19 @@
         ],
         "properties": {
           "count": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "minimum": 0,
-            "description": "Loop PRs merged over the last seven UTC days, today included — the registry's\n`merged_prs`, from the shared windowed metrics service."
+            "description": "Loop PRs merged over the last seven UTC days, today included — the registry's\n`merged_prs`, from the shared windowed metrics service. Null — no data — when the\nwindow holds no loop PR of the asked origin (DJ.2)."
           },
           "deltaVsPrior": {
-            "type": "integer",
-            "description": "This window's count less the seven UTC days before it — rendered as\n`▲ 8 vs last week`.\n**Signed**: a negative value is a week that merged less than the one before, and\nthe direction is read from the sign rather than from a separate flag."
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Null when either week has no data.\n\nThis window's count less the seven UTC days before it — rendered as\n`▲ 8 vs last week`.\n**Signed**: a negative value is a week that merged less than the one before, and\nthe direction is read from the sign rather than from a separate flag."
           }
         }
       },
@@ -60280,12 +60644,18 @@
         ],
         "properties": {
           "tokens": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "minimum": 0,
-            "description": "Input plus output tokens across every provider — rendered as `4.2M`."
+            "description": "Input plus output tokens across every provider — rendered as `4.2M`. Null — no data —\nwhen the day holds no usage of the asked origin (DJ.2); `costCents` is then null too."
           },
           "costCents": {
-            "type": "number",
+            "type": [
+              "number",
+              "null"
+            ],
             "minimum": 0,
             "description": "What the day's **priced** events cost, in cents. Cents rather than a decimal\ncurrency amount so that nothing rounds on the way through JSON; it may carry\nfractions of a cent.\n\nIt is a **lower bound** whenever `unpricedEvents` is non-zero."
           },
@@ -60340,22 +60710,31 @@
         ],
         "properties": {
           "mergeRate": {
-            "type": "number",
+            "type": [
+              "number",
+              "null"
+            ],
             "minimum": 0,
             "maximum": 1,
-            "description": "**Autonomous merge rate** (`merge_rate`): loop PRs merged with no human handoff and\nno failed guardrail ÷ every loop PR that closed, merged or not, over seven UTC days,\nas a fraction between 0 and 1. Recomposed from the days' components — Σ autonomous\n÷ Σ closed — never an average of daily rates.\n\n**`0` when no PR closed in the window.** That is a floor rather than a measurement:\nan organization with no history reads `0` here with `0` merged and `0`\ninterventions, and a meter should render *no data* rather than a bad week.",
+            "description": "**Autonomous merge rate** (`merge_rate`): loop PRs merged with no human handoff and\nno failed guardrail ÷ every loop PR that closed, merged or not, over seven UTC days,\nas a fraction between 0 and 1. Recomposed from the days' components — Σ autonomous\n÷ Σ closed — never an average of daily rates.\n\n**Null — no data — when no PR of the asked origin closed in the window** (DJ.2): never\na zero floor, so a workspace with no history cannot read as one that merged nothing.",
             "example": 0.92
           },
           "avgCycleSeconds": {
-            "type": "number",
+            "type": [
+              "number",
+              "null"
+            ],
             "minimum": 0,
-            "description": "**Cycle time** (`cycle_time`): the **median** of `finishedAt − startedAt` over loops\nthat finished merged in the window, in seconds, pooled across the window's days. The\nfield keeps its name for compatibility; since 0.38.0 the figure is the registry's\nmedian rather than a mean over every terminal run.\n\n`0` when nothing merged in the window, with the same reading as `mergeRate`'s zero.",
+            "description": "**Cycle time** (`cycle_time`): the **median** of `finishedAt − startedAt` over loops\nthat finished merged in the window, in seconds, pooled across the window's days. The\nfield keeps its name for compatibility; since 0.38.0 the figure is the registry's\nmedian rather than a mean over every terminal run.\n\nNull when nothing of the asked origin merged in the window — no data, as `mergeRate`.",
             "example": 860
           },
           "interventions7d": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "minimum": 0,
-            "description": "**Human interventions** (`human_interventions`): every moment a person stepped into\na loop in the window — a needs-human handoff, a human failure classification, a\nwaiver, a failed gate, a blocking vote — across every cause."
+            "description": "**Human interventions** (`human_interventions`): every moment a person stepped into\na loop in the window — a needs-human handoff, a human failure classification, a\nwaiver, a failed gate, a blocking vote — across every cause. Null when the window\nholds no intervention of the asked origin."
           },
           "autoMerge": {
             "type": "boolean",
@@ -60385,18 +60764,24 @@
             "description": "Issues waiting — the same number as `stats.queued.count`."
           },
           "mergedSinceMorning": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "minimum": 0,
-            "description": "Loop PRs merged since **midnight UTC** — today's point of the same `merged_prs`\nwindow `stats.merged7d` counts, so the sentence and the card cannot disagree. It is\nthe same day boundary `stats.tokensToday` uses, so the two cannot mean different\nmornings."
+            "description": "Loop PRs merged since **midnight UTC** — today's point of the same `merged_prs`\nwindow `stats.merged7d` counts, so the sentence and the card cannot disagree. It is\nthe same day boundary `stats.tokensToday` uses, so the two cannot mean different\nmornings. Null exactly when `stats.merged7d.count` is."
           }
         }
       },
       "Dashboard": {
         "type": "object",
         "title": "Dashboard",
-        "description": "The whole dashboard for one workspace, measured between one set of boundaries.\n\n**Every field is always present.** An organization with nothing in it answers zeros\nand empty arrays — never `null`, and never an absent key — so a card renders from this\nwithout a fallback branch. The nullable values are all *inside* a row, where a null is\na fact about that row: a run in flight has no `finishedAt`, a queued issue may carry no\nestimate.",
+        "description": "The whole dashboard for one workspace, measured between one set of boundaries.\n\n**Every field is always present.** Lists are lists, and counts of what is in flight or\nqueued are numbers. A windowed aggregate with no row of the asked origin is **null** — no\ndata, never a zero floor (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315))\n— and `originsPresent` says what the workspace does hold. Aggregates count `live` rows\nunless `origin` asks otherwise. The two run lists are filtered by `origin` too (DJ.3,\n[#1316](https://github.com/NobuData/ouroboros/issues/1316)) and each run carries its own; the\nqueue holds issues rather than runs and is not filtered.",
         "additionalProperties": false,
         "required": [
+          "origin",
+          "originsPresent",
+          "mixed",
           "stats",
           "pulse",
           "activeRuns",
@@ -60405,6 +60790,20 @@
           "activity"
         ],
         "properties": {
+          "origin": {
+            "$ref": "#/components/schemas/OriginFilter"
+          },
+          "originsPresent": {
+            "type": "array",
+            "description": "Every data origin with a row in the window, whichever was asked for — `[\"seeded\"]`\nbeside a null figure is \"no live data\", not zero (DJ.2).",
+            "items": {
+              "$ref": "#/components/schemas/DataOrigin"
+            }
+          },
+          "mixed": {
+            "type": "boolean",
+            "description": "True only when `origin` is `all` and a figure sums more than one origin."
+          },
           "stats": {
             "$ref": "#/components/schemas/DashboardStats"
           },
@@ -60617,7 +61016,9 @@
         "required": [
           "detectionScan",
           "templates",
-          "pickedTicket"
+          "pickedTicket",
+          "workflow",
+          "firstRun"
         ],
         "properties": {
           "detectionScan": {
@@ -60719,6 +61120,67 @@
                   "source": {
                     "type": "string",
                     "description": "The ticket source's kind — `github`, `jira`, …"
+                  }
+                }
+              }
+            ]
+          },
+          "workflow": {
+            "description": "The workflow instantiated from the selected template — its slug and version in force\n— or null while none is. The readiness preflight (`GET /api/v1/loop/readiness`) is\nasked about it (DK.2, #1319).",
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "slug",
+                  "version"
+                ],
+                "properties": {
+                  "slug": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "description": "`workflows.current_version` — null while nothing is published."
+                  }
+                }
+              }
+            ]
+          },
+          "firstRun": {
+            "description": "The first run of the picked issue in this repository — the wizard's first loop, the\noldest by start — or null while none has opened. The live timeline reads the run\nthrough `GET /api/v1/runs/{id}` (BD.1, #396).",
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "status",
+                  "planStage"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "status": {
+                    "$ref": "#/components/schemas/RunStatus"
+                  },
+                  "planStage": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The run's first model stage — the node id of the first `llm` node of its\npinned version, the stage key the run console reports — or null when the pin\nhas none or does not read. The timeline's *plan posted* row is that stage's\nfirst attempt finishing."
                   }
                 }
               }
@@ -65193,6 +65655,7 @@
         "description": "The intervention events behind the Insights card's bars over one range (#445), newest first.",
         "required": [
           "range",
+          "origin",
           "window",
           "cause",
           "total",
@@ -65206,6 +65669,9 @@
               "30d",
               "90d"
             ]
+          },
+          "origin": {
+            "$ref": "#/components/schemas/OriginFilter"
           },
           "window": {
             "$ref": "#/components/schemas/InsightsDaySpan"
@@ -65274,8 +65740,11 @@
         "type": "object",
         "title": "Insights",
         "additionalProperties": false,
-        "description": "Mockup 15's whole page (#438). Values are numbers and the client formats them; the bar\ncards' insight lines are sentences computed on the server. A figure that needs priced usage\ncarries `costCents` only when the usage it covers was priced — otherwise the key is absent,\nnever `0`. Claims whose source does not exist yet (cap alerts, the routing suggestion, the\nanalyzer's cluster note) have no key at all.",
+        "description": "Mockup 15's whole page (#438). Values are numbers and the client formats them; the bar\ncards' insight lines are sentences computed on the server. A figure that needs priced usage\ncarries `costCents` only when the usage it covers was priced — otherwise the key is absent,\nnever `0`. Claims whose source does not exist yet (cap alerts, the routing suggestion, the\nanalyzer's cluster note) have no key at all.\n\n**Live data by default** (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315)):\nevery figure is computed from the asked `origin`'s rows alone. A figure with none is null and\na chart with none has no points — never zeros — and `originsPresent` names what the\nworkspace does hold.",
         "required": [
+          "origin",
+          "originsPresent",
+          "mixed",
           "range",
           "window",
           "repo",
@@ -65291,6 +65760,20 @@
           "freshness"
         ],
         "properties": {
+          "origin": {
+            "$ref": "#/components/schemas/OriginFilter"
+          },
+          "originsPresent": {
+            "type": "array",
+            "description": "Every data origin with a row in the window, whichever was asked for — `[\"seeded\"]`\nbeside a null figure is \"no live data\", not zero (DJ.2).",
+            "items": {
+              "$ref": "#/components/schemas/DataOrigin"
+            }
+          },
+          "mixed": {
+            "type": "boolean",
+            "description": "True only when `origin` is `all` and a figure sums more than one origin."
+          },
           "range": {
             "type": "string",
             "enum": [
@@ -65578,7 +66061,8 @@
           "unit",
           "version",
           "proxy",
-          "aggregation"
+          "aggregation",
+          "originRule"
         ],
         "properties": {
           "metricId": {
@@ -65627,6 +66111,10 @@
               "median"
             ],
             "description": "How a window re-derives the metric from days — never an average of daily values."
+          },
+          "originRule": {
+            "type": "string",
+            "description": "How the metric treats data origin, in words (DJ.2) — printed beside the formula."
           }
         }
       },
@@ -65711,12 +66199,20 @@
             ]
           },
           "mergedPrs": {
-            "type": "number",
-            "minimum": 0
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Null — no data — when the week holds no loop PR of the asked origin (DJ.2)."
           },
           "interventions": {
-            "type": "number",
-            "minimum": 0
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Null exactly when `mergedPrs` is."
           }
         }
       },
@@ -65729,6 +66225,7 @@
           "key",
           "unit",
           "value",
+          "n",
           "prior",
           "delta",
           "trend",
@@ -65760,7 +66257,15 @@
               "number",
               "null"
             ],
-            "description": "The figure; null when the window has nothing to compute it from."
+            "description": "The figure; null — no data — when the window has nothing of the asked origin to compute it from."
+          },
+          "n": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The count behind the figure (DJ.2): how many source rows — pull requests, runs, builds,\nusage rows, test cases — the window's figure was computed from. `0` beside a null\n`value` is no data, not zero; null when a seeded row did not record it."
           },
           "prior": {
             "type": [
@@ -66129,6 +66634,7 @@
           "key",
           "unit",
           "value",
+          "n",
           "methodology"
         ],
         "properties": {
@@ -66158,6 +66664,14 @@
               "number",
               "null"
             ]
+          },
+          "n": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The count behind the figure (DJ.2): how many source rows — pull requests, runs, builds,\nusage rows, test cases — the window's figure was computed from. `0` beside a null\n`value` is no data, not zero; null when a seeded row did not record it."
           },
           "components": {
             "type": "object",
@@ -66320,6 +66834,7 @@
           "key",
           "unit",
           "value",
+          "n",
           "prior",
           "delta",
           "trend",
@@ -66354,6 +66869,14 @@
               "number",
               "null"
             ]
+          },
+          "n": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The count behind the figure (DJ.2): how many source rows — pull requests, runs, builds,\nusage rows, test cases — the window's figure was computed from. `0` beside a null\n`value` is no data, not zero; null when a seeded row did not record it."
           },
           "prior": {
             "type": [
@@ -66394,6 +66917,9 @@
         "additionalProperties": false,
         "description": "Mockup 15's model scoreboard (#439): one row per task kind × the model of the hop that\nserved it. `suggestion` is the learned routing suggestion's payload (#209) and is\n**absent** — not null, not empty — until that source exists.",
         "required": [
+          "origin",
+          "originsPresent",
+          "mixed",
           "range",
           "window",
           "prior",
@@ -66402,6 +66928,20 @@
           "methodology"
         ],
         "properties": {
+          "origin": {
+            "$ref": "#/components/schemas/OriginFilter"
+          },
+          "originsPresent": {
+            "type": "array",
+            "description": "Every data origin with a row in the window, whichever was asked for — `[\"seeded\"]`\nbeside a null figure is \"no live data\", not zero (DJ.2).",
+            "items": {
+              "$ref": "#/components/schemas/DataOrigin"
+            }
+          },
+          "mixed": {
+            "type": "boolean",
+            "description": "True only when `origin` is `all` and a figure sums more than one origin."
+          },
           "range": {
             "type": "string",
             "enum": [
@@ -66632,6 +67172,9 @@
         "additionalProperties": false,
         "description": "Estimator calibration over a window (#435). Rates are percentages to one decimal, null when\nnothing was estimated.",
         "required": [
+          "origin",
+          "originsPresent",
+          "mixed",
           "window",
           "from",
           "to",
@@ -66643,6 +67186,20 @@
           "efforts"
         ],
         "properties": {
+          "origin": {
+            "$ref": "#/components/schemas/OriginFilter"
+          },
+          "originsPresent": {
+            "type": "array",
+            "description": "Every data origin with a row in the window, whichever was asked for — `[\"seeded\"]`\nbeside a null figure is \"no live data\", not zero (DJ.2).",
+            "items": {
+              "$ref": "#/components/schemas/DataOrigin"
+            }
+          },
+          "mixed": {
+            "type": "boolean",
+            "description": "True only when `origin` is `all` and a figure sums more than one origin."
+          },
           "window": {
             "type": "string",
             "enum": [
@@ -67300,6 +67857,245 @@
                 "harness"
               ]
             }
+          }
+        }
+      },
+      "LoopReadiness": {
+        "type": "object",
+        "description": "The live-loop readiness preflight (DK.1,",
+        "additionalProperties": false,
+        "required": [
+          "repository",
+          "workflow",
+          "ready",
+          "checks",
+          "estimate"
+        ],
+        "properties": {
+          "repository": {
+            "type": "string",
+            "description": "`owner/name`, as the workspace stores it."
+          },
+          "workflow": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "slug",
+              "version"
+            ],
+            "properties": {
+              "slug": {
+                "type": "string"
+              },
+              "version": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "The version in force, or `null` when none is (or no such workflow exists)."
+              }
+            }
+          },
+          "ready": {
+            "type": "boolean",
+            "description": "True only when every check passes."
+          },
+          "checks": {
+            "type": "array",
+            "description": "Every check, in the documented order.",
+            "items": {
+              "$ref": "#/components/schemas/LoopReadinessCheck"
+            }
+          },
+          "estimate": {
+            "$ref": "#/components/schemas/LoopReadinessEstimate"
+          }
+        }
+      },
+      "LoopReadinessCheck": {
+        "type": "object",
+        "description": "One readiness check.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "state",
+          "code",
+          "reason",
+          "fix"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "deployment",
+              "workspace",
+              "provider_connection",
+              "routes",
+              "stage_executors",
+              "runner",
+              "repository",
+              "push_credential",
+              "pull_request_credential",
+              "dry_run",
+              "workflow_published",
+              "concurrency"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail",
+              "unknown"
+            ]
+          },
+          "code": {
+            "description": "Why not, or `null` when it passes. Stable codes — add, never rename.",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "deployment_disabled",
+                  "workspace_paused",
+                  "workspace_pending_delete",
+                  "no_invocable_connection",
+                  "connection_unhealthy",
+                  "connection_untested",
+                  "workflow_unreadable",
+                  "route_unresolved",
+                  "route_unpriced",
+                  "engine_unavailable",
+                  "no_executor",
+                  "build_pool_required",
+                  "pool_not_found",
+                  "pool_disabled",
+                  "no_runner",
+                  "no_source_checkout",
+                  "repository_disabled",
+                  "github_not_configured",
+                  "no_issue_chosen",
+                  "no_pr_source",
+                  "pr_source_other_repository",
+                  "repository_unreadable",
+                  "push_denied",
+                  "permission_unconfirmed",
+                  "policy_not_dry_run",
+                  "workflow_not_found",
+                  "workflow_unpublished",
+                  "concurrency_ceiling"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "A sentence — what passed, or what is missing, in the workspace's own names."
+          },
+          "fix": {
+            "description": "Where to clear it, or `null` when it passes.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LoopReadinessFix"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "LoopReadinessFix": {
+        "type": "object",
+        "description": "A readiness check's fix link.",
+        "additionalProperties": false,
+        "required": [
+          "label",
+          "href"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "href": {
+            "type": "string",
+            "description": "A product path (`/build-farm`) or an absolute documentation URL."
+          }
+        }
+      },
+      "LoopReadinessEstimate": {
+        "type": "object",
+        "description": "The estimate beside the checks — labelled as one, never part of `ready`.",
+        "additionalProperties": false,
+        "required": [
+          "isEstimate",
+          "costCapCentsPerRun",
+          "issue"
+        ],
+        "properties": {
+          "isEstimate": {
+            "type": "boolean",
+            "const": true
+          },
+          "costCapCentsPerRun": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The per-run cost cap the loop's model route enforces, or `null` when it sets none."
+          },
+          "issue": {
+            "description": "The issue the loop would work on, or `null` when none is picked or named.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "number",
+                  "title",
+                  "size",
+                  "sizedBy"
+                ],
+                "properties": {
+                  "number": {
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "description": "The latest stored estimate's size, or `null` while unsized.",
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "xs",
+                          "s",
+                          "m",
+                          "l",
+                          "xl"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sizedBy": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "What produced that size (`heuristic-v0`), or `null` while unsized."
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -96529,7 +97325,8 @@
           "label",
           "title",
           "startedAt",
-          "runId"
+          "runId",
+          "origin"
         ],
         "properties": {
           "id": {
@@ -96562,6 +97359,10 @@
             ],
             "format": "uuid",
             "description": "The loop run the build belongs to, or `null` for a build no loop opened\n(decision B6). What the *Current job* cell links to the run console by\n([#309](https://github.com/NobuData/ouroboros/issues/309)).\n\n**Added in 0.37.2.**"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/DataOrigin",
+            "description": "Where the build came from (DJ.1) — what the UI's origin badge reads (DJ.3)."
           }
         }
       },
@@ -96577,7 +97378,8 @@
           "title",
           "runner",
           "runnerId",
-          "startedAt"
+          "startedAt",
+          "origin"
         ],
         "properties": {
           "id": {
@@ -96615,6 +97417,10 @@
             ],
             "format": "date-time",
             "description": "The card's elapsed timer counts from here."
+          },
+          "origin": {
+            "$ref": "#/components/schemas/DataOrigin",
+            "description": "Where the build came from (DJ.1) — what the UI's origin badge reads (DJ.3)."
           }
         }
       },

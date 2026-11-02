@@ -745,6 +745,37 @@ describe("CriteriaService", () => {
     expect((await service.matrix(ORG, PR_ID)).counts.total).toBe(2);
   });
 
+  it("imports plan rows with no author when no person asked — a loop's draft PR (#1311)", async () => {
+    const { service, store } = build();
+
+    store.draft = { id: "draft-1", body: "## Acceptance criteria\n- [ ] Says hello" };
+
+    const imported = await service.importPlan(ORG, PR_ID, { id: null });
+
+    expect(imported.imported.map((row) => [row.claim, row.source, row.createdBy])).toEqual([
+      ["Says hello", "plan", null],
+    ]);
+  });
+
+  it("reads the claims a plan import would write, before any PR exists (#1311)", async () => {
+    const { service, store } = build();
+
+    expect(await service.planClaims(ORG, null)).toEqual([]);
+    expect(await service.planClaims(ORG, "ticket-1")).toEqual([]);
+
+    store.draft = { id: "draft-1", body: "- Decouple PID sampling" };
+    expect(await service.planClaims(ORG, "ticket-1")).toEqual([]);
+
+    store.draft = {
+      id: "draft-1",
+      body: "## Acceptance criteria\n- [ ] Frames in ISR order\n- [ ] No e-stop regression",
+    };
+    expect(await service.planClaims(ORG, "ticket-1")).toEqual([
+      "Frames in ISR order",
+      "No e-stop regression",
+    ]);
+  });
+
   it("says when there is no plan to import, or no criteria in it", async () => {
     const { service, store } = build();
 

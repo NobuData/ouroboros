@@ -1,6 +1,8 @@
 import Image from "next/image";
 import ThemeToggle from "./theme-toggle";
 import RotatingTagline, { RotatingHeadline } from "./rotating-tagline";
+import ReferenceRunStats from "./reference-run";
+import ReleaseSection, { ReleasePill } from "./release-section";
 
 const STAGES = [
   { label: "PULL", x: 50, y: 9.8, cls: "hot" },
@@ -156,8 +158,8 @@ const DIVES = [
   {
     id: "analyzer",
     eyebrow: "BUILD ANALYZER",
-    title: "Your last 1,284 builds have opinions.",
-    copy: "You were never going to read 1,284 build logs. It already has. It mines your entire build history, explains every change in the curve, and drafts what to do about it.",
+    title: "Your build history has opinions.",
+    copy: "You were never going to read every build log. It already has. It mines your entire build history, explains every change in the curve, and drafts what to do about it.",
     points: [
       { b: "Change-point attribution", t: "— every duration or reliability shift pinned to the merge, config, or infra event that caused it." },
       { b: "Process suggestions", t: "— split the test gate, re-warm the cache, rebalance the pools — each with evidence and projected savings." },
@@ -224,6 +226,7 @@ export default function Home() {
             <span>OURO<b>BOROS</b></span>
           </a>
           <nav className="topnav" aria-label="Site">
+            <a href="#rc1">RC1</a>
             <a href="#loop">The Loop</a>
             <a href="#features">Features</a>
             <a href="#studio">Studio</a>
@@ -249,6 +252,7 @@ export default function Home() {
             height={311}
             priority
           />
+          <ReleasePill />
           <span className="eyebrow rise d1">ouroboros.build — autonomous development loops</span>
           <h1 className="rise d2">
             <RotatingHeadline />
@@ -262,13 +266,7 @@ export default function Home() {
             <a className="btn primary" href="#cta">Run your first loop</a>
             <a className="btn ghost" href="#loop">Watch it work ↓</a>
           </div>
-          <div className="hero-stats rise d4">
-            <div><div className="v">92%</div><div className="k">autonomous merge rate</div></div>
-            <div><div className="v">~4 min</div><div className="k">to your first PR</div></div>
-            <div><div className="v">$1.87</div><div className="k">per merged PR</div></div>
-            <div><div className="v">31%</div><div className="k">tokens served locally, free</div></div>
-          </div>
-          <div className="hero-stats-cap">measured on the acme-robotics demo fleet · 90 days · 1,284 builds</div>
+          <ReferenceRunStats />
         </section>
 
         {/* marquee */}
@@ -376,11 +374,15 @@ export default function Home() {
                   <span className="n">VERIFY · MERGE</span>
                   <h3>Merged on evidence, not optimism.</h3>
                   <p>An evidence matrix proves the PR does what the ticket says. Gates green, policy satisfied — the loop merges, closes the issue, and pulls the next one.</p>
+                  <p className="loop-qualifier">Our published reference run stops at a draft pull request: dry-run was on, and a person decides the merge.</p>
                 </div>
               </div>
             </div>
           </div>
         </section>
+
+        {/* what is new in the release */}
+        <ReleaseSection />
 
         {/* product shot */}
         <section className="wrap reveal" style={{ paddingBottom: 96 }}>
@@ -391,6 +393,7 @@ export default function Home() {
             </div>
             <Image src="/shots/02-dashboard.png" alt="The Ouroboros dashboard: live loops, queue, merge rate, and spend" width={1600} height={1200} />
           </div>
+          <p className="demo-cap">Demo workspace — illustrative data, not measured results.</p>
         </section>
 
         {/* features */}
@@ -440,6 +443,7 @@ export default function Home() {
                   </div>
                   <Image src={d.shot} alt={d.alt} width={1600} height={1200} />
                 </div>
+                <p className="demo-cap">Demo workspace — illustrative data.</p>
               </div>
             </div>
           ))}
@@ -464,6 +468,7 @@ export default function Home() {
                 </div>
               ))}
             </div>
+            <p className="demo-cap">Screenshots show a demo workspace — illustrative data, not measured results.</p>
           </div>
         </section>
 

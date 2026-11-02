@@ -296,6 +296,11 @@ export class OnboardingService {
       ticket === undefined
         ? null
         : await this.ticketFact(organizationId, ticket, repo, repository?.id);
+    const issueNumber = ticket === undefined ? undefined : issueNumberIn(ticket, repo);
+    const firstRun =
+      pickedTicket?.run === true && issueNumber !== undefined && repository !== undefined
+        ? await this.onboarding.firstRun(organizationId, repository.id, issueNumber)
+        : undefined;
 
     const rail = deriveRail({
       repo,
@@ -325,6 +330,8 @@ export class OnboardingService {
       scan,
       templates,
       ticket,
+      workflow,
+      firstRun,
       surfacing: surfacing({
         anyWizardFinished: await this.onboarding.anyWizardFinished(organizationId),
         hasRuns: await this.onboarding.hasRuns(organizationId),

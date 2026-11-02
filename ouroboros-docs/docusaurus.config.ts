@@ -11,6 +11,7 @@ import {
   EDIT_URL,
   MARKETING_URL,
   RELEASE,
+  RELEASE_NOTES_PATH,
   REPO_URL,
   SECTIONS,
 } from "./site.constants";
@@ -232,11 +233,11 @@ const config: Config = {
         // Right side: search, GitHub, then the theme's own colour-mode toggle.
         { type: "search", position: "right" },
         { href: REPO_URL, label: "GitHub", position: "right" },
-        // Last: which release these pages describe, on every page.
+        // Last: which release these pages describe, on every page — a link to what it contains.
         {
           type: "html",
           position: "right",
-          value: `<span class="navbar__release" title="The Ouroboros release these pages describe">${RELEASE}</span>`,
+          value: `<a class="navbar__release" href="${RELEASE_NOTES_PATH}" title="What is in ${RELEASE}, the Ouroboros release these pages describe">${RELEASE}</a>`,
         },
       ],
     },

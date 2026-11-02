@@ -1,0 +1,17 @@
+# docker-compose.e2e-production.yml — the e2e stack in **production mode** (DJ.4, #1317).
+#
+# Layered over docker-compose.yml, docker-compose.e2e.yml and docker-compose.e2e-unseeded.yml by
+# `tests/e2e/scripts/run.sh --production`, under its own compose project. It answers one
+# question: can anything a signed-in person reaches start the run simulator on a production
+# deployment? The leg (`tests/e2e/specs-production/`) says no, route by route.
+#
+#   rest   NODE_ENV=production, as the published image runs it, and no run-simulator secret —
+#          the e2e overlay's `test` and its secret are both undone here. (A blank value is an
+#          unset one to ouroboros-rest.) Production turns password sign-in off, so the leg mints
+#          its session in the database rather than through the sign-in route.
+services:
+  rest:
+    environment:
+      NODE_ENV: production
+      OURO_RUN_SIMULATOR_SECRET: ""
+      OURO_RUN_SIMULATOR_IN_PRODUCTION: "false"

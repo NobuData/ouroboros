@@ -58,6 +58,7 @@ import {
   readPollAfter,
 } from "@/app/dashboard/summary";
 import { restUrl } from "@/app/env";
+import { DEFAULT_ORIGIN, ORIGIN_PARAM, type OriginFilter } from "@/app/origin/origin";
 
 /**
  * The aggregate's path on `ouroboros-rest`.
@@ -89,6 +90,11 @@ export interface SummaryReadOptions {
   fetcher?: Fetcher;
   /** Base URL of `ouroboros-rest`. Defaults to the configured one. */
   baseUrl?: string;
+  /**
+   * Which data origin the aggregate counts (DJ.3) — the reader's remembered choice, read by the
+   * route. Defaults to live, as the service does.
+   */
+  origin?: OriginFilter;
 }
 
 /**
@@ -104,12 +110,16 @@ export interface SummaryReadOptions {
 export async function readDashboardSummary(
   options: SummaryReadOptions = {},
 ): Promise<SummaryAnswer> {
-  const { etag = null, fetcher = (input, init) => fetch(input, init), baseUrl = restUrl() } =
-    options;
+  const {
+    etag = null,
+    fetcher = (input, init) => fetch(input, init),
+    baseUrl = restUrl(),
+    origin = DEFAULT_ORIGIN,
+  } = options;
 
   let response: Response;
   try {
-    response = await fetcher(`${baseUrl}${SUMMARY_PATH}`, {
+    response = await fetcher(`${baseUrl}${SUMMARY_PATH}?${ORIGIN_PARAM}=${origin}`, {
       headers: await requestHeaders(etag),
       // The browser's own cache is not in this exchange: the poll holds the tag and this
       // request is the revalidation. A cached answer here would be a pill reporting the

@@ -53,7 +53,8 @@ export class StatusBinding implements CommandBinding {
           queued: dashboard.stats.queued.count,
           runnersOnline: farm.stats.runnersOnline.online,
           runnersTotal: farm.stats.runnersOnline.total,
-          spendTodayCents: dashboard.stats.tokensToday.costCents,
+          // Live usage only (DJ.2): a day with none spent nothing, so no data is $0 here.
+          spendTodayCents: dashboard.stats.tokensToday.costCents ?? 0,
           needsYou: queue.head.count,
         }),
       },

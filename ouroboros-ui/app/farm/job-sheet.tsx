@@ -1,6 +1,7 @@
 "use client";
 
 import { clockTime } from "@/app/dashboard/view";
+import { OriginBadge } from "@/app/origin/origin-badge";
 import { ShellOverlay } from "@/app/shell/overlay";
 import { Eyebrow } from "@/app/ui";
 
@@ -53,6 +54,7 @@ export function JobSheet({
           <div>
             <Eyebrow>{label}</Eyebrow>
             <h2 className="shell-overlay__title">{job.jobTitle ?? job.jobNote}</h2>
+            {job.jobOrigin !== null && <OriginBadge origin={job.jobOrigin} />}
           </div>
 
           <dl className="farm-job">

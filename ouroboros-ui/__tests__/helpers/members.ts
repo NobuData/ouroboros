@@ -84,7 +84,8 @@ export const PRIYA: MemberInvitation = {
   roles: ["admin"],
   displayRole: "Maintainer",
   invitedAt: ago(2 * 3600),
-  expiresAt: ago(-5 * 86_400),
+  // Invited 2 h ago with BetterAuth's 48-hour lifetime (#1248).
+  expiresAt: ago(-46 * 3600),
   expired: false,
 };
 
@@ -191,7 +192,7 @@ export function fakeActions() {
           roles: [role],
           displayRole: role === "owner" ? "Owner" : role === "admin" ? "Maintainer" : "Viewer",
           invitedAt: MEMBERS_READ_AT,
-          expiresAt: ago(-7 * 86_400),
+          expiresAt: ago(-48 * 3600),
           expired: false,
         }),
       ),
@@ -203,6 +204,8 @@ export function fakeActions() {
           ...PRIYA,
           id,
           email: id === PRIYA.id ? PRIYA.email : id.replace(/^inv-/, ""),
+          // A resend starts the 48 hours again.
+          expiresAt: new Date(Date.now() + 48 * 3_600_000).toISOString(),
         }),
       ),
     ),

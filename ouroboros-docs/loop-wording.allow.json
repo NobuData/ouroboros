@@ -1,0 +1,132 @@
+{
+  "$comment": "Where a docs page may say 'simulated' (DG.4, #1322). yarn check:loop-wording fails on any other occurrence, and on an entry here that no longer matches. Each entry is a phrase, the pages it may appear on, and why it is true. Adding one is a reviewed diff: the loop runs for real, so 'simulated' may only name the run simulator (a test tool), the data origin it stamps, or a feature that really does simulate.",
+  "entries": [
+    {
+      "text": "**Simulated**",
+      "files": [
+        "user-guide/concepts.mdx",
+        "user-guide/insights.mdx",
+        "user-guide/dashboard.mdx",
+        "user-guide/runs/console.mdx",
+        "user-guide/glossary.mdx",
+        "administration/deploy/containers.mdx"
+      ],
+      "reason": "The data-origin label the UI shows on a run from the run simulator (DJ.3, #1316)."
+    },
+    {
+      "text": "**Simulated run**",
+      "files": ["user-guide/concepts.mdx", "user-guide/glossary.mdx"],
+      "reason": "The banner and glossary term for a run the run simulator opened (DJ.4, #1317)."
+    },
+    {
+      "text": "**Simulated run.**",
+      "files": ["user-guide/runs/console.mdx"],
+      "reason": "The note the run console shows on a run the run simulator opened (SIMULATED_HEADLINE)."
+    },
+    {
+      "text": "**A simulated run**",
+      "files": ["user-guide/concepts.mdx"],
+      "reason": "Concepts § Dry-run and live defines the simulator's runs as a test tool's."
+    },
+    {
+      "text": "an old simulated run",
+      "files": ["user-guide/concepts.mdx"],
+      "reason": "Says the banner belongs to the run, not to the deployment."
+    },
+    {
+      "text": "say \"simulated\" about the product",
+      "files": ["user-guide/concepts.mdx"],
+      "reason": "States that the product does not call itself simulated."
+    },
+    {
+      "text": "simulated run shows its own banner",
+      "files": ["user-guide/concepts.mdx"],
+      "reason": "Where the simulator's banner replaces the execution notice."
+    },
+    {
+      "text": "**simulated — no run has resolved it yet**",
+      "files": ["user-guide/concepts.mdx"],
+      "reason": "The tag the Models › Registry Resolution chain card shows for a chain no run has resolved."
+    },
+    {
+      "text": "simulated data",
+      "files": ["user-guide/concepts.mdx"],
+      "reason": "Data of origin simulated, as the page's origin note names it."
+    },
+    {
+      "text": "simulated or demo data",
+      "files": ["user-guide/runs/console.mdx"],
+      "reason": "Data of origin simulated or demo, labelled beside a run's title."
+    },
+    {
+      "text": "**simulated** — a run from the run simulator",
+      "files": ["user-guide/insights.mdx"],
+      "reason": "The data-origin values Insights counts."
+    },
+    {
+      "text": "`simulated`",
+      "files": ["user-guide/insights.mdx"],
+      "reason": "A value of the API's ?origin= parameter."
+    },
+    {
+      "text": "demo and simulated",
+      "files": ["user-guide/insights.mdx"],
+      "reason": "Data origins the weekly digest leaves out."
+    },
+    {
+      "text": "**simulated** (the run simulator",
+      "files": ["user-guide/glossary.mdx"],
+      "reason": "The glossary's Data origin entry."
+    },
+    {
+      "text": "never stands a simulated run in",
+      "files": ["user-guide/getting-started/first-loop.mdx"],
+      "reason": "States that a first loop is never simulated."
+    },
+    {
+      "text": "never runs a simulated loop",
+      "files": ["user-guide/getting-started/wizard.mdx"],
+      "reason": "States that the wizard never simulates a loop."
+    },
+    {
+      "text": "An entry marked **simulated**",
+      "files": ["user-guide/pull-requests.mdx"],
+      "reason": "The watermark the PR review thread shows on a demonstration entry (SIMULATED_MARK)."
+    },
+    {
+      "text": "makes a run *simulated*",
+      "files": ["administration/configuration/_generated.mdx"],
+      "reason": "Generated from .env.example: OURO_RUN_SIMULATOR_SECRET, the run simulator's own secret."
+    },
+    {
+      "text": "simulated watermark",
+      "files": ["administration/configuration/_generated.mdx"],
+      "reason": "Generated from .env.example: the watermark OURO_RUN_SIMULATOR_SECRET's runs carry."
+    },
+    {
+      "text": "simulated diff",
+      "files": ["user-guide/workflows/copilot.mdx"],
+      "reason": "A workflow dry run really does simulate: its edits are held in memory, never written (Workflow Copilot)."
+    },
+    {
+      "text": "(simulated)",
+      "files": ["user-guide/workflows/copilot.mdx"],
+      "reason": "The dry-run result row for a model stage whose edits were held in memory."
+    },
+    {
+      "text": "`simulated — no writes",
+      "files": ["user-guide/workflows/copilot.mdx"],
+      "reason": "The dry-run card's pill."
+    },
+    {
+      "text": "**simulated** (a model stage",
+      "files": ["user-guide/workflows/copilot.mdx"],
+      "reason": "A dry-run row status."
+    },
+    {
+      "text": "**Simulated writes**",
+      "files": ["user-guide/workflows/copilot.mdx"],
+      "reason": "The dry-run safety table's row for in-memory edits."
+    }
+  ]
+}

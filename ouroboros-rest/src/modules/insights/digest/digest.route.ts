@@ -58,7 +58,7 @@ export class DigestRouteComposer {
     slot: Date,
   ): Promise<RenderedDigest> {
     const assembly = assembleDigest(
-      await this.pages.read(organizationId, { range: DIGEST_RANGE, now: slot }),
+      await this.pages.read(organizationId, { range: DIGEST_RANGE, origin: "live", now: slot }),
     );
 
     return renderDigest(assembly, {

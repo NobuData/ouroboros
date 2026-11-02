@@ -2,12 +2,15 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { DashboardScreen } from "@/app/dashboard/dashboard-screen";
+import { ORIGIN_GROUP_LABEL } from "@/app/origin/origin";
 import { INBOX_PATH, ISSUES_PATH, PRS_PATH, RUNS_PATH, WORKFLOWS_PATH, prPath } from "@/app/paths";
 import {
   ACTIVITY_NOT_READ,
   NOT_READ,
+  NO_LIVE_MERGES,
+  NO_LIVE_USAGE_TODAY,
   NO_VALUE,
-  PULSE_UNMEASURED,
+  PULSE_NO_LIVE,
   QUIET_SUBLINE,
 } from "@/app/dashboard/view";
 
@@ -225,7 +228,12 @@ describe("the page head's actions", () => {
     // so the tooltip answers "when?" rather than only "not now".
     render(<DashboardScreen readings={readings()} />);
 
-    for (const action of screen.getAllByRole("button")) {
+    // The data-origin filter (DJ.3) is the one control on the page that acts; it is held to its
+    // own suite below.
+    const origin = screen.getByRole("group", { name: ORIGIN_GROUP_LABEL });
+    const inert = screen.getAllByRole("button").filter((button) => !origin.contains(button));
+
+    for (const action of inert) {
       expect(action.getAttribute("title")).toMatch(/#\d+/);
       expect(action).toHaveAttribute("aria-disabled", "true");
       expect(action).not.toBeDisabled();
@@ -365,14 +373,24 @@ describe("the stat row, on seeded data", () => {
     expect(within(card).queryByText(/across/)).not.toBeInTheDocument();
   });
 
-  it("reads a workspace with nothing in it as zeros and sentences, not em dashes", () => {
+  it("reads a workspace with nothing in it as zero loops, and its windowed figures as no data", () => {
     render(<DashboardScreen readings={readings({ aggregate: read(emptyDashboard()) })} />);
 
     const loops = screen.getByRole("region", { name: "Loops live" });
 
+    // A count of what is running is a count: nothing running is 0.
     expect(within(loops).getByText("0")).toBeInTheDocument();
     expect(within(loops).getByText("Nothing is running right now.")).toBeInTheDocument();
-    expect(screen.queryAllByText(NO_VALUE)).toHaveLength(0);
+
+    // A windowed figure with no data is an em dash and what would fill it — never 0 (DJ.3).
+    const merged = screen.getByRole("region", { name: "PRs merged · 7d" });
+    expect(within(merged).getByText(NO_VALUE)).toBeInTheDocument();
+    expect(within(merged).getByText(NO_LIVE_MERGES)).toBeInTheDocument();
+    expect(within(merged).queryByText("0")).toBeNull();
+
+    const tokens = screen.getByRole("region", { name: "Token spend · today" });
+    expect(within(tokens).getByText(NO_VALUE)).toBeInTheDocument();
+    expect(within(tokens).getByText(NO_LIVE_USAGE_TODAY)).toBeInTheDocument();
   });
 
   it("degrades the whole row to em dashes when the aggregate could not be read", () => {
@@ -677,14 +695,25 @@ describe("the grid", () => {
 
 describe("a workspace that is not the seeded one", () => {
   it("reads sensibly on the first minute of a new workspace", () => {
-    // Every figure is real and every caption points somewhere; no card is blank, none of
-    // them is an error, and nothing is drawn as an em dash — these zeros were read.
+    // Every caption points somewhere and no card is blank or an error. The two counts of what
+    // is happening now were read as zeros; the two windowed figures have no data (DJ.3), so they
+    // are em dashes with what would fill them — never a zero nobody measured.
     render(<DashboardScreen readings={readings({ aggregate: read(emptyDashboard()) })} />);
 
-    for (const label of STAT_LABELS) {
+    for (const label of ["Loops live", "Queued issues"]) {
       const card = screen.getByRole("region", { name: label });
       expect(within(card).getByText("0")).toBeInTheDocument();
       expect(card.textContent).not.toContain(NO_VALUE);
+    }
+
+    for (const [label, note] of [
+      ["PRs merged · 7d", NO_LIVE_MERGES],
+      ["Token spend · today", NO_LIVE_USAGE_TODAY],
+    ] as const) {
+      const card = screen.getByRole("region", { name: label });
+      expect(within(card).getByText(NO_VALUE)).toBeInTheDocument();
+      expect(within(card).getByText(note)).toBeInTheDocument();
+      expect(within(card).queryByText("0")).toBeNull();
     }
   });
 
@@ -708,14 +737,14 @@ describe("a workspace that is not the seeded one", () => {
   });
 
   it("fabricates nothing for a workspace with nothing in it (#86)", () => {
-    // The honesty rule at zero: no em dash (these zeros were *read*), no invented row, and no
-    // figure interpolated to make a card look busy. The mockup's own numbers are the specific
-    // thing that must not appear.
+    // The honesty rule at zero: no invented row, no figure interpolated to make a card look
+    // busy, and no zero for a figure nobody measured (DJ.3). The mockup's own numbers are the
+    // specific thing that must not appear.
     const { container } = render(
       <DashboardScreen readings={readings({ aggregate: read(emptyDashboard()) })} />,
     );
 
-    expect(screen.queryAllByText(NO_VALUE)).toHaveLength(0);
+    expect(screen.queryByText("0%")).toBeNull();
     expect(container.textContent).not.toMatch(/#\d{3}/);
     expect(container.textContent).not.toMatch(/\bundefined\b|\bNaN\b|\[object/);
     // No table row survives an empty payload, in either table.
@@ -728,19 +757,19 @@ describe("a workspace that is not the seeded one", () => {
     render(<DashboardScreen readings={readings({ aggregate: read(emptyDashboard()) })} />);
 
     for (const [card, headline] of [
-      ["Active loops", "Nothing is running right now"],
-      ["Recently closed by the loop", "Nothing closed yet"],
+      ["Active loops", "No live loops are running"],
+      ["Recently closed by the loop", "No live loop has closed yet"],
       ["Up next in queue", "Nothing is queued"],
     ] as const) {
       const region = screen.getByRole("region", { name: card });
       expect(within(region).getByText(headline)).toBeInTheDocument();
     }
 
-    // The pulse card's meters stay, at zero, with the note that says why they have nothing
-    // to report — three bars at 0% and no sentence would read as a merge rate of nought.
+    // The pulse card's meters stay, empty, with the note that says why they have nothing to
+    // report — three bars at 0% and no sentence would read as a merge rate of nought.
     const pulse = screen.getByRole("region", { name: "Loop pulse" });
     expect(within(pulse).getAllByRole("progressbar")).toHaveLength(3);
-    expect(within(pulse).getByText(PULSE_UNMEASURED)).toBeInTheDocument();
+    expect(within(pulse).getByText(PULSE_NO_LIVE)).toBeInTheDocument();
   });
 
   // *Says a workspace is suspended* was here. `OrgRow` publishes no lifecycle since

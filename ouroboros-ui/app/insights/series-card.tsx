@@ -7,6 +7,7 @@ import { Card, CardHead, EmptyState, Tag, cx } from "@/app/ui";
 import { useInsights } from "./insights-store";
 import type { SeriesEmpty } from "./series-view";
 import { emptyFor, isColdWorkspace } from "./states-view";
+import { InsightsOriginBadges } from "./origin-badges";
 
 /**
  * The frame both time-series cards share (BK.3, [#444](https://github.com/NobuData/ouroboros/issues/444)):
@@ -63,6 +64,7 @@ export function SeriesCard({
   return (
     <Card aria-busy={busy || undefined} aria-labelledby={titleId} as="section" className={WIDTH_CLASS[width]} fill>
       <CardHead
+        beside={<InsightsOriginBadges />}
         title={title}
         titleId={titleId}
         trailing={tag === null ? <span aria-hidden="true" className="insights-series__tag-slot" /> : <Tag>{tag}</Tag>}

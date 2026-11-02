@@ -151,6 +151,12 @@ export const WIZARD = {
   receipt: "Your first loop is queued",
   regress: "A step that was done is not any more",
   launch: "Run my first loop →",
+  /** Step 4's action while live execution is off — the launcher queues the pick (DK.2, #1319). */
+  finish: "Finish setup",
+  /** Step 4's readiness card (DK.2, #1319). */
+  readiness: "Ready to run?",
+  /** The execution-disabled design names the deployment switch. */
+  liveSwitch: "OURO_LIVE_EXECUTION_ENABLED",
   /** Step 1's evidence for a token source (INTAKE-O.1's App is v2). */
   connected: `${CHAIN.owner} · token`,
 } as const;
@@ -211,9 +217,9 @@ export const DASHBOARD_BROKE =
 export const POLICY_BROKE =
   "completing the wizard must turn dry-run on when the workspace never answered — the first-run promise, read back from the policy";
 
-/** The driver opened no run, or the run did not reach its terminal. */
-export const DRIVER_BROKE =
-  "the simulated driver must open a watermarked run of the queued issue under the wizard's workflow and walk it to Open PR & auto-merge";
+/** A launched first loop was walked by something other than a real executor (DJ.4). */
+export const NO_SIMULATED_WALK =
+  "a launched first loop must stay queued on a stack without live execution — no run, and no simulated one, may be opened for it (DJ.4, #1317)";
 
 /** Pausing the source did not un-tick step 1, or resuming did not tick it again. */
 export const REGRESSION_BROKE =

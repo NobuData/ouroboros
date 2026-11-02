@@ -87,6 +87,12 @@
   gap: var(--sp-6);
 }
 
+/* The data-origin filter (DJ.3): its own row under the head, before the strip and the grid. */
+.dash__origin {
+  display: flex;
+  margin: 0 0 var(--sp-8);
+}
+
 /* ---------- the stale-data banner ---------- */
 
 /*
@@ -197,10 +203,17 @@
  * `center`, so the two sit on one line the way the mockup draws them even though they are
  * different sizes.
  */
+.dash-run__origin {
+  grid-column: 2;
+}
+
 .dash-run__issue {
-  display: inline-flex;
+  /* Two columns, so a non-live row's origin badge (DJ.3) sits under the title, not beside it. */
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  justify-items: start;
   align-items: baseline;
-  gap: var(--sp-4);
+  gap: var(--sp-2) var(--sp-4);
   color: inherit;
   text-decoration: none;
 }
@@ -263,10 +276,17 @@
  * even though they are different sizes — the active-loops table's issue cell, for the same
  * reason.
  */
+.dash-closed__origin {
+  grid-column: 2;
+}
+
 .dash-closed__issue {
-  display: inline-flex;
+  /* Two columns, so a non-live row's origin badge (DJ.3) sits under the title, not beside it. */
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  justify-items: start;
   align-items: baseline;
-  gap: var(--sp-4);
+  gap: var(--sp-2) var(--sp-4);
 }
 
 /*

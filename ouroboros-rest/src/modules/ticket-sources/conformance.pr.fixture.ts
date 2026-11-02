@@ -203,6 +203,10 @@ export function snapshotViolations(pr: unknown, at: string): string[] {
     violations.push(`${at}: mergedBy is only ever set on a merged PR`);
   }
 
+  if (typeof snapshot.draft !== "boolean") {
+    violations.push(`${at}: draft must be true or false`);
+  }
+
   if (snapshot.mergeable !== null && typeof snapshot.mergeable !== "boolean") {
     violations.push(`${at}: mergeable must be true, false or null`);
   } else if (snapshot.mergeable !== null && snapshot.state !== "open") {

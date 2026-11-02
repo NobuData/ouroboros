@@ -18,6 +18,9 @@ describe("the insights payload", () => {
     const page = insightsResource(mockupFacts());
 
     expect(Object.keys(page)).toEqual([
+      "origin",
+      "originsPresent",
+      "mixed",
       "range",
       "window",
       "repo",
@@ -160,5 +163,50 @@ describe("the honesty gates", () => {
       day: "2026-07-31",
       costCents: 3_140,
     });
+  });
+});
+
+describe("data origin (DJ.2)", () => {
+  it("is the live page by default, saying which origins it holds", () => {
+    expect(insightsResource(mockupFacts())).toMatchObject({
+      origin: "live",
+      originsPresent: ["live"],
+      mixed: false,
+    });
+  });
+
+  it("gathers every origin present behind any figure, in vocabulary order", () => {
+    const facts = mockupFacts();
+    const tokens = facts.windows.get("tokens");
+    const windows = new Map(facts.windows);
+
+    windows.set("tokens", {
+      ...(tokens as NonNullable<typeof tokens>),
+      originsPresent: ["seeded"],
+    });
+    const breakdowns = {
+      ...facts.breakdowns,
+      stages: { ...facts.breakdowns.stages, originsPresent: ["simulated" as const] },
+    };
+
+    expect(insightsResource({ ...facts, windows, breakdowns }).originsPresent).toEqual([
+      "live",
+      "simulated",
+      "seeded",
+    ]);
+  });
+
+  it("is mixed when any figure on it sums more than one origin", () => {
+    const facts = mockupFacts({ origin: "all" });
+    const breakdowns = {
+      ...facts.breakdowns,
+      suites: { ...facts.breakdowns.suites, mixed: true },
+    };
+
+    expect(insightsResource({ ...facts, breakdowns })).toMatchObject({
+      origin: "all",
+      mixed: true,
+    });
+    expect(insightsResource(facts).mixed).toBe(false);
   });
 });

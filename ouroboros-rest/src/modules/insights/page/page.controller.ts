@@ -40,6 +40,7 @@ export class InsightsPageController {
     return this.page.read(tenant.id, {
       range: query.range ?? DEFAULT_INSIGHTS_RANGE,
       repo: query.repo,
+      origin: query.origin,
     });
   }
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import type { FarmPage } from "@/app/api/farm";
 import { onSummaryRefresh } from "@/app/dashboard/summary-refresh";
+import { OriginBadge } from "@/app/origin/origin-badge";
 import { useSecondsNow } from "@/app/shell/clock";
 import { Button, Card, CardHead, Chip, EmptyState } from "@/app/ui";
 
@@ -48,9 +49,9 @@ import { useLogStream } from "./use-log-stream";
  *
  * ### `Full log ↗` opens a sheet
  *
- * Its honest destination is mockup 10's run console, which does not exist (#309, linked by
- * #265). Until it does, the control opens `app/farm/log-sheet.tsx`: the whole log, from its
- * first byte. It is a button, not a link, for the reason the runners table's job cell is.
+ * It opens `app/farm/log-sheet.tsx`: the whole log, from its first byte — the same sheet a build
+ * stage's **Build log ↗** opens in its run's console (AJ.3, #265). It is a button, not a link,
+ * for the reason the runners table's job cell is.
  *
  * @param props.log Test seams for the log streams; the screen passes none.
  * @returns The card, as a direct child of the farm's grid.
@@ -161,6 +162,7 @@ function LiveBuild({
             <Chip dot={pill.dot} tone={pill.tone}>
               {pill.label}
             </Chip>
+            <OriginBadge origin={job.origin} />
             <span className="farm-live__elapsed">
               {view.live === false ? (
                 liveElapsed(job, false, view.endedAt, 0)

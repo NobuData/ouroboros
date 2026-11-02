@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Dashboard, RunStatus } from "@/app/api/dashboard";
 import { runPath } from "@/app/paths";
 import { DASHBOARD_ORIGIN } from "@/app/runs/origin";
+import { OriginBadge } from "@/app/origin/origin-badge";
 import { RUN_STATUS_LABEL } from "@/app/runs/view";
 import {
   Button,
@@ -135,6 +136,12 @@ const ALL_RUNS_SOON =
 /** What the card says when the workspace has nothing running. */
 const NOTHING_RUNNING = "Nothing is running right now";
 
+/** The empty card under the live filter (DJ.3): no live loop, whatever demo rows exist. */
+export const NO_LIVE_LOOPS = "No live loops are running";
+
+/** What would put a row there. */
+export const NO_LIVE_LOOPS_NOTE = "A loop appears here when one starts on an issue.";
+
 /**
  * The note under {@link NOTHING_RUNNING} — what would put a row here.
  *
@@ -172,9 +179,11 @@ const LOOPS_NOT_READ = "The loops could not be read";
 function emptyPanel(
   aggregate: Reading<Dashboard>,
 ): Readonly<{ title: string; note?: string }> {
-  return aggregate.ok
-    ? { title: NOTHING_RUNNING, note: NOTHING_RUNNING_NOTE }
-    : { title: LOOPS_NOT_READ };
+  if (!aggregate.ok) return { title: LOOPS_NOT_READ };
+
+  return aggregate.value.origin === "live"
+    ? { title: NO_LIVE_LOOPS, note: NO_LIVE_LOOPS_NOTE }
+    : { title: NOTHING_RUNNING, note: NOTHING_RUNNING_NOTE };
 }
 
 /**
@@ -234,6 +243,13 @@ const COLUMNS: readonly Column<ActiveLoop>[] = [
           own `&nbsp;`, in the one form that survives both layouts.
         */}{" "}
         <span className="dash-run__title">{run.issueTitle}</span>
+        {/* A non-live row says so in words beside its title (DJ.3); a live row carries nothing. */}
+        {run.origin !== "live" && (
+          <>
+            {" "}
+            <OriginBadge className="dash-run__origin" origin={run.origin} />
+          </>
+        )}
       </Link>
     ),
   },

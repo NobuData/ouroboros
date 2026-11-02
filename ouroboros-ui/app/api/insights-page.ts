@@ -17,6 +17,7 @@ import { type InsightsPage, type InsightsRange, insights } from "@/app/api/insig
 import { readForPoll } from "@/app/api/poll-read";
 import { anonymousApi } from "@/app/api/server";
 import { UNREACHABLE_INSIGHTS } from "@/app/insights/insights-poll";
+import type { OriginFilter } from "@/app/origin/origin";
 import type { PollAnswer } from "@/app/poll";
 
 /** The code a failed read is reported under — this hop's own, not the service's. */
@@ -26,15 +27,21 @@ export const INSIGHTS_UNAVAILABLE_CODE = "insights_unavailable";
  * Read the insights page for a poll.
  *
  * @param range The range the poll is for.
- * @param read How to make the read, given the range and the deadline. Defaults to the typed
+ * @param origin The data origin the poll is for (DJ.3).
+ * @param read How to make the read, given the range, the origin and the deadline. Defaults to the typed
  *   client over the session's cookies; tests pass a stub.
  * @returns The answer — the page, *gone* for a session that has ended, or a sentence about why
  *   not. **It does not throw**, for the reason `readForPoll` gives.
  */
 export async function readInsightsPage(
   range: InsightsRange,
-  read: (range: InsightsRange, signal: AbortSignal) => Promise<InsightsPage> = (asked, signal) =>
-    insights.page(asked, anonymousApi(), signal),
+  origin: OriginFilter,
+  read: (
+    range: InsightsRange,
+    origin: OriginFilter,
+    signal: AbortSignal,
+  ) => Promise<InsightsPage> = (asked, askedOrigin, signal) =>
+    insights.page(asked, askedOrigin, anonymousApi(), signal),
 ): Promise<PollAnswer<InsightsPage>> {
-  return readForPoll((signal) => read(range, signal), UNREACHABLE_INSIGHTS);
+  return readForPoll((signal) => read(range, origin, signal), UNREACHABLE_INSIGHTS);
 }
