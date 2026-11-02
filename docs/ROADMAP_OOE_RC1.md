@@ -53,14 +53,12 @@ in RC1; they are candidates for the release candidates after it. The Studio moun
 
 ## Progress
 
-**20 of 44 ordered issues are closed.** Every issue number in this document links to its
+**44 of 44 ordered issues are closed — RC1 is complete.** Every issue number in this document links to its
 GitHub issue, and a **✅** in front of one means that issue is **closed**.
 
 | Status | Phases | Issues |
 |--------|--------|-------:|
-| ✅ **Complete** | R2, R3 | **21** |
-| 🟡 **In progress** | R0, R1, R7 | **8** of 23 |
-| ⬜ **Not started** | R4, R5, R6 | **0** of 9 |
+| ✅ **Complete** | R0–R7 | **44** of 44 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
 > them with `gh issue list --milestone RC1 --state closed --limit 100 --json number`
@@ -131,15 +129,15 @@ position the graph left open.
 
 | Phase | Delivers | Done | Issues | Pts |
 |:-----:|----------|:----:|-------:|----:|
-| **R0** | Decide & promote — two ADRs, the SPI, the terms record, the capability report | ⬜ 0/8 | 8 | 20 |
-| **R1** | A model is invoked through the registry | ⬜ 0/5 | 5 | 21 |
-| **R2** | What the gateway lights up is correct — Workflow Copilot defects | ⬜ 0/6 | 6 | — |
-| **R3** | A workflow version executes, with guardrails that prevent | ⬜ 0/6 | 6 | 26 |
-| **R4** | The run's branch is built on a real runner; a draft pull request opens | ⬜ 0/5 | 5 | 15 |
-| **R5** | The surfaces say which data is live | ⬜ 0/3 | 3 | 8 |
-| **R6** | The gate — live-slice acceptance | ⬜ 0/1 | 1 | 5 |
-| **R7** | First loop, reference demonstration & release hardening | ⬜ 0/10 | 10 | 21 |
-| | **Total** | **0/44** | **44** | **116** |
+| **R0** | Decide & promote — two ADRs, the SPI, the terms record, the capability report | ✅ 8/8 | 8 | 20 |
+| **R1** | A model is invoked through the registry | ✅ 5/5 | 5 | 21 |
+| **R2** | What the gateway lights up is correct — Workflow Copilot defects | ✅ 6/6 | 6 | — |
+| **R3** | A workflow version executes, with guardrails that prevent | ✅ 6/6 | 6 | 26 |
+| **R4** | The run's branch is built on a real runner; a draft pull request opens | ✅ 5/5 | 5 | 15 |
+| **R5** | The surfaces say which data is live | ✅ 3/3 | 3 | 8 |
+| **R6** | The gate — live-slice acceptance | ✅ 1/1 | 1 | 5 |
+| **R7** | First loop, reference demonstration & release hardening | ✅ 10/10 | 10 | 21 |
+| | **Total** | **44/44** | **44** | **116** |
 
 ```mermaid
 flowchart TD
@@ -225,7 +223,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **8 issues** · 20 complexity points · order **#1–#8**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epics DG, DH, DL; Phase 0) · promoted from Model Routing (AB.1), Providers & Keys (AF.1) and Workflow Studio (T.1)
-> **Status:** ⬜ **Not started** — 0 of 8 issues closed
+> **Status:** ✅ **Complete** — 8 of 8 issues closed
 
 **Goal.** Take the decisions the chain is built on and make them reviewable: the promotion pass over the existing issues, the gateway requirements and ADR, the `StageExecutor` SPI and the engine ADR with a harness option, the record of which adapters may serve invocation, a capability endpoint, and the public sample repository.
 
@@ -250,7 +248,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **5 issues** · 21 complexity points · order **#9–#13**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epics DH, DJ, DG; Phase 1) · promoted from Scaffolding (6.5) and Providers & Keys (AF.2)
-> **Status:** ⬜ **Not started** — 0 of 5 issues closed
+> **Status:** ✅ **Complete** — 5 of 5 issues closed
 
 **Goal.** Make `POST /internal/llm/invoke` walk a resolved chain instead of answering `501`, put an Anthropic Messages-format facade over it for the stage harness, give the engine its queue and workers, and add the data-origin column everything downstream reports.
 
@@ -318,7 +316,7 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 > **5 issues** · 15 complexity points · order **#26–#30**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epic DI; Phase 3) · promoted from Build Farm (AG.7, AJ.3)
-> **Status:** ⬜ **Not started** — 0 of 5 issues closed
+> **Status:** ✅ **Complete** — 5 of 5 issues closed
 
 **Goal.** Check the run's branch out on a real runner with a short-lived credential, publish attributed commits to a single branch, link the build job to the run so its exit code decides the gate, open a draft pull request, and seed the slice workflow and the e2e sandbox fixture.
 
@@ -330,17 +328,17 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 26 | **AG.7** | [#991](https://github.com/NobuData/ouroboros/issues/991) | Source checkout — run a submitted build on a real runner | ouroboros-runner, ouroboros-rest, tests/e2e | M | — |
-| 27 | **DI.5** | [#1314](https://github.com/NobuData/ouroboros/issues/1314) | Slice workflow, seeds & the e2e sandbox fixture | ouroboros-db, tests/e2e, docker-compose.e2e.yml | M | AG.7, DJ.1 |
-| 28 | **DI.2** | [#1310](https://github.com/NobuData/ouroboros/issues/1310) | Branch publisher — attributed commits & single-branch push | ouroboros-engine, ouroboros-rest, ouroboros-docs | M | DI.1, AR.1 |
-| 29 | **AJ.3** | [#265](https://github.com/NobuData/ouroboros/issues/265) | Workflow build-stage integration | ouroboros-rest, ouroboros-engine | M | AG.7, T.6, DI.2 |
-| 30 | **DI.3** | [#1311](https://github.com/NobuData/ouroboros/issues/1311) | Draft pull-request publisher under dry-run policy | ouroboros-rest, ouroboros-docs | M | DI.2, T.6 |
+| 26 | **AG.7** | ✅ [#991](https://github.com/NobuData/ouroboros/issues/991) | Source checkout — run a submitted build on a real runner | ouroboros-runner, ouroboros-rest, tests/e2e | M | — |
+| 27 | **DI.5** | ✅ [#1314](https://github.com/NobuData/ouroboros/issues/1314) | Slice workflow, seeds & the e2e sandbox fixture | ouroboros-db, tests/e2e, docker-compose.e2e.yml | M | AG.7, DJ.1 |
+| 28 | **DI.2** | ✅ [#1310](https://github.com/NobuData/ouroboros/issues/1310) | Branch publisher — attributed commits & single-branch push | ouroboros-engine, ouroboros-rest, ouroboros-docs | M | DI.1, AR.1 |
+| 29 | **AJ.3** | ✅ [#265](https://github.com/NobuData/ouroboros/issues/265) | Workflow build-stage integration | ouroboros-rest, ouroboros-engine | M | AG.7, T.6, DI.2 |
+| 30 | **DI.3** | ✅ [#1311](https://github.com/NobuData/ouroboros/issues/1311) | Draft pull-request publisher under dry-run policy | ouroboros-rest, ouroboros-docs | M | DI.2, T.6 |
 
 ## R5 — The surfaces tell the truth
 
 > **3 issues** · 8 complexity points · order **#31–#33**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epic DJ; Phase 4)
-> **Status:** ⬜ **Not started** — 0 of 3 issues closed
+> **Status:** ✅ **Complete** — 3 of 3 issues closed
 
 **Goal.** Make the aggregates origin-aware and live-only by default, label seeded and simulated rows wherever they are shown or counted, give a fresh deployment honest empty states, and take the simulated driver out of the product path.
 
@@ -352,15 +350,15 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 31 | **DJ.2** | [#1315](https://github.com/NobuData/ouroboros/issues/1315) | Origin-aware aggregates — dashboard, Insights, analyzer | ouroboros-rest, ouroboros-db | M | DJ.1 |
-| 32 | **DJ.3** | [#1316](https://github.com/NobuData/ouroboros/issues/1316) | Data-origin labelling & honest empty states | ouroboros-ui, ouroboros-docs | M | DJ.1, DJ.2 |
-| 33 | **DJ.4** | [#1317](https://github.com/NobuData/ouroboros/issues/1317) | Simulated driver out of the product path | ouroboros-engine, ouroboros-rest, ouroboros-ui, tests/e2e, ouroboros-docs | S | AR.1, DI.5, DJ.1 |
+| 31 | **DJ.2** | ✅ [#1315](https://github.com/NobuData/ouroboros/issues/1315) | Origin-aware aggregates — dashboard, Insights, analyzer | ouroboros-rest, ouroboros-db | M | DJ.1 |
+| 32 | **DJ.3** | ✅ [#1316](https://github.com/NobuData/ouroboros/issues/1316) | Data-origin labelling & honest empty states | ouroboros-ui, ouroboros-docs | M | DJ.1, DJ.2 |
+| 33 | **DJ.4** | ✅ [#1317](https://github.com/NobuData/ouroboros/issues/1317) | Simulated driver out of the product path | ouroboros-engine, ouroboros-rest, ouroboros-ui, tests/e2e, ouroboros-docs | S | AR.1, DI.5, DJ.1 |
 
 ## R6 — The gate
 
 > **1 issue** · 5 complexity points · order **#34**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epic DI; Phase 5)
-> **Status:** ⬜ **Not started** — 0 of 1 issue closed
+> **Status:** ✅ **Complete** — 1 of 1 issue closed
 
 **Goal.** One automated proof that the whole path works from a cold compose stack against a recorded provider fixture, with every component above the provider's socket real — plus a documented real-provider run against the sample repository.
 
@@ -372,13 +370,13 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 34 | **DI.6** | [#1321](https://github.com/NobuData/ouroboros/issues/1321) | Live-slice acceptance — e2e leg & real-provider run | tests/e2e, .github, docs | L | DI.3, AJ.3, DI.5, DJ.3, DJ.4, DL.1 |
+| 34 | **DI.6** | ✅ [#1321](https://github.com/NobuData/ouroboros/issues/1321) | Live-slice acceptance — e2e leg & real-provider run | tests/e2e, .github, docs | L | DI.3, AJ.3, DI.5, DJ.3, DJ.4, DL.1 |
 
 ## R7 — First loop, demonstration & release hardening
 
 > **10 issues** · 21 complexity points across the eight sized issues · order **#35–#44**
 > **Source:** [`ROADMAP_OOE_LIVE_LOOP.md`](ROADMAP_OOE_LIVE_LOOP.md) (Epics DK, DL, DG; Phase 6) · promoted from Onboarding (BD.1) · two Settings defects
-> **Status:** ⬜ **Not started** — 0 of 10 issues closed
+> **Status:** ✅ **Complete** — 10 of 10 issues closed
 
 **Goal.** Turn the gate into something a person meets: a readiness preflight, wizard states that never start a simulated first loop, the live first-loop experience, the administration page for switching execution on, a reproducible and recorded reference run, site numbers that are that run's numbers, and the final documentation sweep. Close the two remaining defects.
 
@@ -390,16 +388,16 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 35 | **DK.1** | [#1318](https://github.com/NobuData/ouroboros/issues/1318) | Live-loop readiness preflight | ouroboros-rest, ouroboros-docs | M | DG.2, DH.4, DI.4, AG.7 |
+| 35 | **DK.1** | ✅ [#1318](https://github.com/NobuData/ouroboros/issues/1318) | Live-loop readiness preflight | ouroboros-rest, ouroboros-docs | M | DG.2, DH.4, DI.4, AG.7 |
 | 36 | *bug* | ✅ [#1250](https://github.com/NobuData/ouroboros/issues/1250) | No screen sets the workspace backlog GitHub token (PUT /settings/github-token) | ouroboros-ui | — | — |
-| 37 | **DK.2** | [#1319](https://github.com/NobuData/ouroboros/issues/1319) | Wizard readiness states — no simulated first loop | ouroboros-ui, ouroboros-docs | M | DK.1 |
-| 38 | **BD.1** | [#396](https://github.com/NobuData/ouroboros/issues/396) | Live first-loop experience | ouroboros-ui, ouroboros-rest | M | DK.1, DK.2, DI.6 |
-| 39 | **DK.3** | [#1325](https://github.com/NobuData/ouroboros/issues/1325) | Administration — enabling live execution | ouroboros-docs, HOSTING.md | S | DI.6 |
-| 40 | **DL.2** | [#1326](https://github.com/NobuData/ouroboros/issues/1326) | Reproducible reference run — script & demonstration document | scripts, docs | M | DI.6, DL.1 |
-| 41 | **DL.3** | [#1327](https://github.com/NobuData/ouroboros/issues/1327) | Recorded reference run & evidence bundle | docs, ouroboros-docs | S | DL.2 |
-| 42 | **DL.4** | [#1328](https://github.com/NobuData/ouroboros/issues/1328) | Replace the fictional hero statistics with the reference run's facts | ouroboros-web | S | DL.3 |
-| 43 | **DG.4** | [#1322](https://github.com/NobuData/ouroboros/issues/1322) | Retire "simulated" in the documentation — sweep & wording guard | ouroboros-docs, docs, README.md, HOSTING.md | M | DI.6 |
-| 44 | *bug* | [#1248](https://github.com/NobuData/ouroboros/issues/1248) | Invitation resend toast says 'another week' but invitations last 48 hours | ouroboros-ui | — | — |
+| 37 | **DK.2** | ✅ [#1319](https://github.com/NobuData/ouroboros/issues/1319) | Wizard readiness states — no simulated first loop | ouroboros-ui, ouroboros-docs | M | DK.1 |
+| 38 | **BD.1** | ✅ [#396](https://github.com/NobuData/ouroboros/issues/396) | Live first-loop experience | ouroboros-ui, ouroboros-rest | M | DK.1, DK.2, DI.6 |
+| 39 | **DK.3** | ✅ [#1325](https://github.com/NobuData/ouroboros/issues/1325) | Administration — enabling live execution | ouroboros-docs, HOSTING.md | S | DI.6 |
+| 40 | **DL.2** | ✅ [#1326](https://github.com/NobuData/ouroboros/issues/1326) | Reproducible reference run — script & demonstration document | scripts, docs | M | DI.6, DL.1 |
+| 41 | **DL.3** | ✅ [#1327](https://github.com/NobuData/ouroboros/issues/1327) | Recorded reference run & evidence bundle | docs, ouroboros-docs | S | DL.2 |
+| 42 | **DL.4** | ✅ [#1328](https://github.com/NobuData/ouroboros/issues/1328) | Replace the fictional hero statistics with the reference run's facts | ouroboros-web | S | DL.3 |
+| 43 | **DG.4** | ✅ [#1322](https://github.com/NobuData/ouroboros/issues/1322) | Retire "simulated" in the documentation — sweep & wording guard | ouroboros-docs, docs, README.md, HOSTING.md | M | DI.6 |
+| 44 | *bug* | ✅ [#1248](https://github.com/NobuData/ouroboros/issues/1248) | Invitation resend toast says 'another week' but invitations last 48 hours | ouroboros-ui | — | — |
 
 ---
 
@@ -432,6 +430,10 @@ its phase does. `Cx` is the complexity chip from the issue's roadmap.
 - **Milestone:** [RC1](https://github.com/NobuData/ouroboros/milestone/61).
 
 ## Next Step
+
+> **RC1 is complete** — every issue in this plan is closed on GitHub. What shipped, and what
+> is left for RC2, is summarised in [`RC1_OVERVIEW.md`](RC1_OVERVIEW.md). The text below is
+> the plan as it was written.
 
 Execution starts at **DG.1** ([#1299](https://github.com/NobuData/ouroboros/issues/1299)), with the amendment recorded in the ledger above,
 then the two ADRs and the terms record in parallel; R2 can be staffed the same day. The
