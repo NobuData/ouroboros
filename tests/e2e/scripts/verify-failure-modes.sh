@@ -565,14 +565,22 @@ expect_red() {
   title=${4:-}
   log="$LOG_DIR/$service-$spec${title:+-grep}.log"
 
+  # The farm leg runs under its own config (#2020), which the base config excludes it from, so
+  # the spec is run under the config that collects it — under the base config it would find no
+  # tests at all.
+  config=playwright.config.ts
+  if [ "$spec" = farm.spec.ts ]; then
+    config=playwright.farm.config.ts
+  fi
+
   printf '\n--- %s stopped → specs/%s%s must fail\n' "$service" "$spec" "${title:+ (\"$title\")}"
   compose stop "$service" >/dev/null 2>&1
 
   status=0
   if [ -n "$title" ]; then
-    (cd "$E2E_DIR" && yarn playwright test "specs/$spec" --grep "$title" --reporter=list) >"$log" 2>&1 || status=$?
+    (cd "$E2E_DIR" && yarn playwright test --config "$config" "specs/$spec" --grep "$title" --reporter=list) >"$log" 2>&1 || status=$?
   else
-    (cd "$E2E_DIR" && yarn playwright test "specs/$spec" --reporter=list) >"$log" 2>&1 || status=$?
+    (cd "$E2E_DIR" && yarn playwright test --config "$config" "specs/$spec" --reporter=list) >"$log" 2>&1 || status=$?
   fi
 
   # A run that executed at least one test says so; a wholly parked spec never prints it.

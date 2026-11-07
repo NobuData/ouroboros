@@ -88,10 +88,15 @@ import { EXPECT_TIMEOUT_MS, SUITE_BUDGET_MS, TEST_TIMEOUT_MS, UI_URL } from "./s
  * its acceptance criterion is a budget of its own (three minutes) and `globalTimeout` is
  * the only thing that enforces one. `testIgnore` below is what keeps it from being charged
  * against this suite's ten as well; that file's header argues the split.
+ *
+ * `specs/farm.spec.ts` — leg 16 — runs under
+ * [`playwright.farm.config.ts`](playwright.farm.config.ts) for the same kind of reason
+ * ([#2020](https://github.com/NobuData/ouroboros/issues/2020)): inside this suite its build
+ * test came last and a red run spent the ten minutes before it reported.
  */
 export default defineConfig({
   testDir: "./specs",
-  testIgnore: "readability.spec.ts",
+  testIgnore: ["readability.spec.ts", "farm.spec.ts"],
 
   // The issue's third acceptance criterion, enforced.
   globalTimeout: SUITE_BUDGET_MS,

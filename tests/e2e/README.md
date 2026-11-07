@@ -64,7 +64,7 @@ Leg 8 is [#650](https://github.com/NobuData/ouroboros/issues/650)'s, CQ.3 — th
 bar of `docs/DESIGN_SYSTEM_APP_SHELL.md` § 4, which is a *bar* rather than a promise: *at
 150% no clipped labels, no overlapping chrome, tables degrade to horizontal scroll in their
 wrappers; screenshot matrix (scale × theme × key pages) in CI*. It is the one leg that does
-not run under [`playwright.config.ts`](playwright.config.ts) — see § *The two budgets* — and
+not run under [`playwright.config.ts`](playwright.config.ts) — see § *The three budgets* — and
 it comes with its own falsifier,
 [`scripts/verify-readability.sh`](scripts/verify-readability.sh), which plants four offences
 and requires the audit to go red naming each. Its own note and
@@ -984,7 +984,7 @@ tests/e2e/
 ├── specs/                      # one file per leg
 │   └── __screenshots__/        # legs 6, 9, 10, 11, 12, 15, 16, 17, 18, 19, 20, 21, 23, 26, 27, 28 and 29's baselines, and leg 8's matrix under readability/
 ├── support/
-│   ├── stack.ts                # addresses, timeouts, and the two budgets
+│   ├── stack.ts                # addresses, timeouts, and the three budgets
 │   ├── seed.ts                 # the values R__dev_seed.sql writes, copied on purpose
 │   ├── dashboard.ts            # what mockup 02 renders against those values (leg 6)
 │   ├── routing.ts              # what mockup 06 renders, and putting a route or a rule back (leg 9)
@@ -1042,23 +1042,30 @@ tests/e2e/
     └── verify-chatops.sh       # #545's: the Chat Ops chain's four layers, each broken once
 ```
 
-### The two budgets
+### The three budgets
 
-There are two gates here and they are timed separately, which is the one place this
+There are three gates here and they are timed separately, which is the one place this
 directory's *the budget is one number* rule (§ *Adding a leg*) has an exception — argued
-in [`playwright.readability.config.ts`](playwright.readability.config.ts) rather than
-assumed:
+in [`playwright.readability.config.ts`](playwright.readability.config.ts) and
+[`playwright.farm.config.ts`](playwright.farm.config.ts) rather than assumed:
 
 | gate | budget | enforced by | what it answers |
 |---|---|---|---|
-| the smoke suite, every leg but 8 | 10 minutes | `SUITE_BUDGET_MS` | is the deployment the product? (#56) |
+| the smoke suite, every leg but 8 and 16 | 10 minutes | `SUITE_BUDGET_MS` | is the deployment the product? (#56) |
 | the readability matrix, leg 8 | 3 minutes | `READABILITY_BUDGET_MS` | is it still usable at 150%? (#650) |
+| the farm leg, leg 16 | 5 minutes | `FARM_BUDGET_MS` | does a real runner build a real checkout? (#2020) |
 
-Both are `globalTimeout`s rather than sentences somebody measures. They are separate because
-they are separate acceptance criteria owned by separate issues: folded into one number, the
-first gate to grow would spend the other's allowance and neither issue's criterion would
-still be checked. In CI they are two steps of the same job, sharing one compose stack —
-bringing the stack up is the expensive part, and `run.sh --keep` has already paid for it.
+All three are `globalTimeout`s rather than sentences somebody measures. They are separate
+because they are separate acceptance criteria owned by separate issues: folded into one
+number, the first gate to grow would spend the other's allowance and neither issue's
+criterion would still be checked. In CI they are steps of the same job, sharing one compose
+stack — bringing the stack up is the expensive part, and `run.sh --keep` has already paid
+for it.
+
+The farm leg runs even when the smoke suite is red (#2020). Inside the suite its build test
+came last, and a red run spent the ten minutes before it reported, so epic #239's gate never
+got an answer. Run it locally against a kept stack with `scripts/run.sh --keep` then
+`yarn farm`.
 
 Five things in [`playwright.config.ts`](playwright.config.ts) are decisions rather than
 defaults, and each is argued in that file: there is **no `webServer`** (what is under test
@@ -1392,8 +1399,9 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
    Leg 8 is the exception that proves the rule and is allowed to be one for a stated
    reason: its runtime *is* an acceptance criterion of a different issue, so it has a
    config, a budget and a CI step of its own rather than three minutes of #56's ten (§ *The
-   two budgets*). That is the bar for a second number — a leg with its own gate to answer
-   for, not a leg that turned out to be slow.
+   three budgets*). Leg 16 is the second (#2020): its build test is epic #239's gate, and a
+   red suite starved it before it could answer. That is the bar for another number — a leg
+   with its own gate to answer for, not a leg that turned out to be slow.
 2. **A new leg brings its failure mode.** Add the pair to
    `scripts/verify-failure-modes.sh` — or, for a leg whose subject is CSS rather than a
    service, a plant to `support/plants.ts` and a step to the matching `verify-*.sh`. A leg

@@ -21,7 +21,7 @@ import { READABILITY_BUDGET_MS } from "./support/stack";
  * the ≤ 3 min budget* — enforced rather than measured. It is deliberately outside the smoke
  * suite's ten: that suite is the MVP exit gate and this leg is a QA bar, they run in
  * separate CI steps, and one number covering both is the number the first gate to overrun
- * quietly borrows from the other. `tests/e2e/README.md` § *The two budgets* is the rule.
+ * quietly borrows from the other. `tests/e2e/README.md` § *The three budgets* is the rule.
  *
  * ### One worker
  *

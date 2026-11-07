@@ -127,6 +127,16 @@ jobs:
         working-directory: tests/e2e
         run: scripts/run.sh --keep
 
+      # #2020: the farm leg (leg 16), against the same kept stack, under its own config and its
+      # own five-minute globalTimeout. `!cancelled()` rather than the default `success()`, unlike
+      # the readability step below: inside the smoke suite the build test ran last and a red
+      # suite spent its ten minutes before it reported, so the farm has to answer for itself
+      # whatever the other legs did. A stack that never came up fails this step too, honestly.
+      - name: Run the farm leg
+        if: ${{ !cancelled() }}
+        working-directory: tests/e2e
+        run: yarn farm
+
       # #650, against the stack the step above left up (--keep). Its own config, so its own
       # three-minute globalTimeout: this is the readability gate, not part of the smoke
       # suite's ten. A red smoke suite stops the job before this runs, which is the right
@@ -214,7 +224,12 @@ jobs:
     needs: e2e
     # Nightly always, and on demand only when asked: it is the slowest job in the
     # repository and its answer changes only when a leg's assertions do.
-    if: github.event_name == 'schedule' || inputs.failure-modes
+    #
+    # `!cancelled()` so a red e2e job does not skip it (#2020). Each pair stops one service and
+    # requires its leg to go red *naming why*, and that question has an answer for a leg that is
+    # green even while another leg is red — the farm pairs are what epic #239's gate reads. A
+    # leg that is already red without its service stopped still has to print its marker to pass.
+    if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.failure-modes) }}
     timeout-minutes: 45
 
     steps:
