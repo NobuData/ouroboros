@@ -120,6 +120,19 @@ export const SUITE_BUDGET_MS = 10 * 60 * 1000;
  */
 export const READABILITY_BUDGET_MS = 3 * 60 * 1000;
 
+/**
+ * The farm leg's own wall-clock budget, in milliseconds.
+ *
+ * Five minutes, for `specs/farm.spec.ts` under `playwright.farm.config.ts`
+ * ([#2020](https://github.com/NobuData/ouroboros/issues/2020)). The leg runs about three: two
+ * of its tests wait on the agent's heartbeat and the presence threshold, which are the
+ * product's own clocks and cannot be hurried. It is *not* part of {@link SUITE_BUDGET_MS} for
+ * the reason {@link READABILITY_BUDGET_MS} is not: run inside the smoke suite's ten, the build
+ * test came last and was starved by every slow failure ahead of it, so epic #239's gate never
+ * got an answer from it.
+ */
+export const FARM_BUDGET_MS = 5 * 60 * 1000;
+
 /** How long one test may take before it is failed. */
 export const TEST_TIMEOUT_MS = 60 * 1000;
 
