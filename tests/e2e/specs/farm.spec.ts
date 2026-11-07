@@ -143,6 +143,33 @@ const BUILD_TITLE = "Print the console README";
 const README_FIRST_LINE = "# Helios console";
 
 /**
+ * How long the build stays running after it has printed the README, in seconds
+ * ([#2020](https://github.com/NobuData/ouroboros/issues/2020)).
+ *
+ * The LIVE card binds to the newest build the page *reports as running*, and the page asks
+ * every ten seconds (`app/farm/live.ts`, `X-Ouro-Poll-After: 10`). A bare `cat README.md`
+ * finishes in milliseconds, between two polls, so the card never saw it run: the stat row
+ * counted `1 clean` while LIVE still said *No builds running*. Fifteen seconds is one poll and
+ * the dispatcher's two-second tick with room to spare, and it ends well inside
+ * {@link HEARTBEAT_MS}, so the `finished` pill still has a poll to arrive in. It also makes the
+ * log leg stricter: the README has to stream while the build is still running.
+ */
+const BUILD_HOLD_SECONDS = 15;
+
+/**
+ * The submitted command: print the README from the checked-out tree, then stay running.
+ *
+ * Absolute paths because the shell executor hands the job only its allow-listed environment,
+ * with no `PATH` (`ouroboros-runner/internal/exec/shell.go`). The shell is the test's choice of
+ * argv, not server data being expanded.
+ */
+const BUILD_COMMAND = [
+  "/bin/sh",
+  "-c",
+  `cat README.md && /bin/sleep ${String(BUILD_HOLD_SECONDS)}`,
+];
+
+/**
  * A stat tile, by its caption.
  *
  * @param page - The farm page.
@@ -551,7 +578,7 @@ test.describe("a fresh workspace, and a real machine", () => {
         repository: `${BUILD_REPOSITORY.owner}/${BUILD_REPOSITORY.name}`,
         ref: "refs/heads/main",
         commit,
-        command: ["cat", "README.md"],
+        command: BUILD_COMMAND,
         title: BUILD_TITLE,
       },
       "submitting a build",
