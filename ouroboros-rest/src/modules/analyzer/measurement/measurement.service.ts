@@ -214,7 +214,11 @@ export class MeasurementService {
     const dimension = measurement.baseline.dimension;
     const points = (
       await this.corpus.series(
-        { organizationId: measurement.organization_id, repoRef: measurement.repo_ref },
+        {
+          organizationId: measurement.organization_id,
+          repoRef: measurement.repo_ref,
+          origin: measurement.origin,
+        },
         window,
         measurement.target_metric,
       )

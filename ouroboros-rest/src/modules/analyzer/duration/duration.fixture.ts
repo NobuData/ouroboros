@@ -38,6 +38,7 @@ export function annotatedRun(overrides: Partial<AnalysisRunRow> = {}): AnalysisR
     repo_ref: HELIOS,
     trigger: "every_n_builds",
     schedule_id: null,
+    origin: "live",
     status: "complete",
     corpus_manifest: {
       window: { from: "2026-05-10", to: "2026-08-07", days: 90 },

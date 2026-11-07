@@ -339,6 +339,7 @@ describe("the measurement job", () => {
       repoRef: BENCH_REPO,
       trigger: "manual",
       scheduleId: null,
+      origin: "live",
       analyzerSet: BENCH_ANALYZER_SET,
       progress: pendingProgress(BENCH_ANALYZER_SET),
     });

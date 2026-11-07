@@ -63,7 +63,7 @@ describe("the duration chart's read", () => {
       series: [],
       changePoints: [],
     });
-    expect(reads.annotatedRun).toHaveBeenCalledWith("org", HELIOS);
+    expect(reads.annotatedRun).toHaveBeenCalledWith("org", HELIOS, "live");
     expect(corpus.series).not.toHaveBeenCalled();
     expect(reads.changePoints).not.toHaveBeenCalled();
     expect(evidence.resolve).not.toHaveBeenCalled();
@@ -75,7 +75,7 @@ describe("the duration chart's read", () => {
     await service.chart("org", HELIOS);
 
     expect(corpus.series).toHaveBeenCalledWith(
-      { organizationId: "org", repoRef: HELIOS },
+      { organizationId: "org", repoRef: HELIOS, origin: "live" },
       { from: "2026-05-10", to: "2026-08-07", days: 90 },
       "build_duration",
     );

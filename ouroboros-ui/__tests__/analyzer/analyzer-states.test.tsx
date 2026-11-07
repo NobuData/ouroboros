@@ -333,7 +333,7 @@ describe("never run", () => {
     fireEvent.click(within(panel(NEVER_RUN_TITLE)).getByRole("button", { name: FIRST_RUN_LABEL }));
     await act(async () => {});
 
-    expect(startAnalysis).toHaveBeenCalledExactlyOnceWith(HELIOS);
+    expect(startAnalysis).toHaveBeenCalledExactlyOnceWith(HELIOS, "live");
   });
 
   it("is inert for a member, with the reason — and asks nothing", async () => {

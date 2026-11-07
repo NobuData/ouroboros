@@ -27,6 +27,20 @@ The analyzer works on one repository at a time: the one chosen in the header's w
 **Showing the first enabled repository — choose another from the tenant chip.** The eyebrow
 names the repository — **Build Analyzer · helios-firmware**.
 
+## Which data it analyzes
+
+The analyzer reads **live** data — real loops and their builds — unless you choose otherwise,
+and an analysis never mixes [data origins](./concepts.mdx#where-the-data-comes-from). It follows
+the **Data origin** you chose on the [dashboard](./dashboard.mdx) or [Insights](./insights.mdx),
+kept in the address — `?origin=seeded` for demo data — with one difference: **All origins** reads as **Live** here, because a shift found in a curve that mixes
+demo and real builds would describe neither.
+
+Everything on the page then comes from that origin: the history counted against the floor,
+the latest analysis and its chart, the suggestions, drafted tickets and measurements, and
+**Run analysis now**, which analyzes that origin's builds alone. When the page reads demo data or
+the run simulator's, a note at its top says so. Scheduled analyses — weekly and every N builds —
+always read live data, and only live builds count towards **every N builds**.
+
 ## The header
 
 The headline says how much history there is to learn from — such as

@@ -94,7 +94,7 @@ describe("the corpus-state read", () => {
     expect(state.window).toEqual(WINDOW);
     expect(corpus.repository).toHaveBeenCalledWith("org", HELIOS);
     expect(corpus.counts).toHaveBeenCalledWith(
-      { organizationId: "org", repoRef: HELIOS, repoId: "repo-1" },
+      { organizationId: "org", repoRef: HELIOS, repoId: "repo-1", origin: "live" },
       WINDOW,
     );
     expect(state).toMatchObject({ repo: HELIOS, builds: 1284, daysWithBuilds: 89 });
@@ -127,7 +127,7 @@ describe("the corpus-state read", () => {
     const { service, runs } = build({ repoId: "r", counts: counts(1284, 89) });
 
     expect((await service.state("org", HELIOS)).analyzed).toBeNull();
-    expect(runs.latestJudged).toHaveBeenCalledWith("org", HELIOS);
+    expect(runs.latestJudged).toHaveBeenCalledWith("org", HELIOS, "live");
   });
 
   it("answers the newest judged run's own corpus — its manifest's numbers, not today's", async () => {
@@ -164,6 +164,7 @@ describe("the corpus-state read", () => {
 
     expect(await service.state("org", "acme-robotics/elsewhere")).toEqual({
       repo: "acme-robotics/elsewhere",
+      origin: "live",
       window: WINDOW,
       builds: 0,
       daysWithBuilds: 0,

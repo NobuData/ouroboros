@@ -16,6 +16,7 @@ import { enabledRepos, readEnablement } from "@/app/api/enablement";
 import { mayAdminister, mayContribute } from "@/app/api/membership";
 import { type Reading, attempt } from "@/app/api/reading";
 import { sources } from "@/app/api/sources";
+import type { DataOrigin } from "@/app/origin/origin";
 import { type TrackerOption, trackerOptions } from "@/app/planning/generator";
 
 import { type AnalyzerRepo, analyzerRepos } from "./repo";
@@ -50,17 +51,27 @@ export interface AnalyzerReadings {
   readonly trackers: Reading<readonly TrackerOption[]>;
   /** When the read was made, in epoch milliseconds — the strip's clock until the first poll. */
   readonly readAt: number;
+  /**
+   * The one data origin the page reads (#2022): the address's `?origin=`, else the remembered
+   * choice, else `live` — and `live` for `all`, because an analysis does not mix origins.
+   */
+  readonly origin: DataOrigin;
 }
 
 /**
  * Read what the page needs before it can choose a repository.
  *
  * @param access The workspace the gate returned.
+ * @param origin The one data origin the page reads (#2022), from `analyzerOrigin`.
  * @param now The clock. A suite passes one to hold `readAt` still.
  * @returns The readings.
  * @throws Whatever is not an `ApiError` — Next.js's redirect signal above all.
  */
-export async function readAnalyzer(access: Workspace, now: () => number = Date.now): Promise<AnalyzerReadings> {
+export async function readAnalyzer(
+  access: Workspace,
+  origin: DataOrigin = "live",
+  now: () => number = Date.now,
+): Promise<AnalyzerReadings> {
   const { membership } = access;
   const [repos, connected, catalog] = await Promise.all([
     attempt(async () => analyzerRepos(enabledRepos(await readEnablement(membership.id)))),
@@ -76,5 +87,6 @@ export async function readAnalyzer(access: Workspace, now: () => number = Date.n
     mayContribute: mayContribute(membership.roles),
     trackers: connected.ok ? { ok: true, value: trackerOptions(connected.value.items, catalog) } : connected,
     readAt: now(),
+    origin,
   };
 }

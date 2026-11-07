@@ -28,10 +28,12 @@ import type {
   AnalysisSchedulesTable,
   AnalysisStatus,
   AnalysisTrigger,
+  DataOrigin,
 } from "../db/schema";
 import type { AnalyzerSet, EngineFinding } from "../engine/engine.analysis";
 import { isDatabaseFailure, UNIQUE_VIOLATION } from "../tenancy/constraints";
 import type { CorpusManifest } from "./corpus/corpus.manifest";
+import { DEFAULT_ANALYSIS_ORIGIN } from "./analysis.origin";
 import type { RunProgress } from "./analysis.progress";
 
 /** The guard's name, as V080 declares it. */
@@ -49,6 +51,8 @@ export interface NewRun {
   repoRef: string;
   trigger: AnalysisTrigger;
   scheduleId: string | null;
+  /** The one data origin the run reads (#2022). */
+  origin: DataOrigin;
   analyzerSet: AnalyzerSet;
   progress: RunProgress;
 }
@@ -184,6 +188,7 @@ export class AnalysisRepository {
           repo_ref: run.repoRef,
           trigger: run.trigger,
           schedule_id: run.scheduleId,
+          origin: run.origin,
           analyzer_set: JSON.stringify(run.analyzerSet),
           progress: JSON.stringify(run.progress),
         })
@@ -197,25 +202,34 @@ export class AnalysisRepository {
         error.code === UNIQUE_VIOLATION &&
         error.constraint === ONE_RUNNING_INDEX
       ) {
-        return { started: false, running: await this.running(run.organizationId, run.repoRef) };
+        return {
+          started: false,
+          running: await this.running(run.organizationId, run.repoRef, run.origin),
+        };
       }
       throw error;
     }
   }
 
   /**
-   * The repository's running analysis.
+   * The repository's running analysis of one origin.
    *
    * @param organizationId - The workspace.
    * @param repoRef - The repository.
+   * @param origin - The data origin it reads (#2022) — the guard is per origin.
    * @returns The run, or undefined.
    */
-  async running(organizationId: string, repoRef: string): Promise<AnalysisRunRow | undefined> {
+  async running(
+    organizationId: string,
+    repoRef: string,
+    origin: DataOrigin,
+  ): Promise<AnalysisRunRow | undefined> {
     return this.database.db
       .selectFrom("analysis_runs")
       .selectAll()
       .where("organization_id", "=", organizationId)
       .where("repo_ref", "=", repoRef)
+      .where("origin", "=", origin)
       .where("status", "=", "running")
       .executeTakeFirst();
   }
@@ -237,18 +251,24 @@ export class AnalysisRepository {
   }
 
   /**
-   * A repository's most recent run.
+   * A repository's most recent run of one origin.
    *
    * @param organizationId - The workspace.
    * @param repoRef - The repository.
+   * @param origin - The data origin the run read (#2022).
    * @returns The newest by start, or undefined.
    */
-  async latest(organizationId: string, repoRef: string): Promise<AnalysisRunRow | undefined> {
+  async latest(
+    organizationId: string,
+    repoRef: string,
+    origin: DataOrigin,
+  ): Promise<AnalysisRunRow | undefined> {
     return this.database.db
       .selectFrom("analysis_runs")
       .selectAll()
       .where("organization_id", "=", organizationId)
       .where("repo_ref", "=", repoRef)
+      .where("origin", "=", origin)
       .orderBy("started_at", "desc")
       .orderBy("id", "desc")
       .limit(1)
@@ -266,14 +286,20 @@ export class AnalysisRepository {
    *
    * @param organizationId - The workspace.
    * @param repoRef - The repository.
+   * @param origin - The data origin the run read (#2022).
    * @returns The newest by start, or undefined before any run has ended that way.
    */
-  async latestJudged(organizationId: string, repoRef: string): Promise<AnalysisRunRow | undefined> {
+  async latestJudged(
+    organizationId: string,
+    repoRef: string,
+    origin: DataOrigin,
+  ): Promise<AnalysisRunRow | undefined> {
     return this.database.db
       .selectFrom("analysis_runs")
       .selectAll()
       .where("organization_id", "=", organizationId)
       .where("repo_ref", "=", repoRef)
+      .where("origin", "=", origin)
       .where("status", "in", ["complete", "budget_exceeded"])
       .where(sql<boolean>`corpus_manifest ? 'confidence'`)
       .orderBy("started_at", "desc")
@@ -391,11 +417,15 @@ export class AnalysisRepository {
   }
 
   /**
-   * The repository a build job belongs to.
+   * The repository a live build job belongs to.
+   *
+   * Only a `live` job counts against the every-N trigger, because the run it fires is a live one
+   * (#2022): a demo or simulated build moving the counter would start an analysis of a corpus it
+   * is not part of.
    *
    * @param organizationId - The workspace.
    * @param jobId - The job.
-   * @returns `owner/name`, or undefined.
+   * @returns `owner/name`, or undefined for another workspace's job, none, or a job not `live`.
    */
   async jobRepo(organizationId: string, jobId: string): Promise<string | undefined> {
     const { rows } = await sql<{ repo_ref: string }>`
@@ -403,7 +433,8 @@ export class AnalysisRepository {
         from ouroboros.build_jobs b
         join ouroboros.github_repos repo on repo.id = b.github_repo_id
         join ouroboros.github_orgs gh on gh.id = repo.org_id
-       where b.organization_id = ${organizationId} and b.id = ${jobId}`.execute(this.database.db);
+       where b.organization_id = ${organizationId} and b.id = ${jobId}
+         and b.origin = ${DEFAULT_ANALYSIS_ORIGIN}`.execute(this.database.db);
 
     return rows[0]?.repo_ref;
   }

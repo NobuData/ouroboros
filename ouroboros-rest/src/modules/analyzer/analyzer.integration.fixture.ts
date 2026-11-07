@@ -194,6 +194,7 @@ export async function analyze(
     repoRef: repo,
     trigger: "manual",
     scheduleId: null,
+    origin: "live",
     analyzerSet: BENCH_ANALYZER_SET,
     progress: pendingProgress(BENCH_ANALYZER_SET),
   });
@@ -332,6 +333,7 @@ export async function annotate(
     repoRef: BENCH_REPO,
     trigger: "manual",
     scheduleId: null,
+    origin: "live",
     analyzerSet: BENCH_ANALYZER_SET,
     progress: pendingProgress(BENCH_ANALYZER_SET),
   });

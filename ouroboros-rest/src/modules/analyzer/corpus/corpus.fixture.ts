@@ -40,7 +40,12 @@ export const REPO = "acme-robotics/helios-firmware";
 export const REPO_ID = "7f000003-0000-4000-8000-000000000001";
 
 /** The scope every fixture assembles. */
-export const SCOPE: CorpusScope = { organizationId: ORG, repoRef: REPO, repoId: REPO_ID };
+export const SCOPE: CorpusScope = {
+  organizationId: ORG,
+  repoRef: REPO,
+  repoId: REPO_ID,
+  origin: "live",
+};
 
 /** The mockup's window: Aug 8's run, May 10 … Aug 7. */
 export const WINDOW: CorpusWindow = { from: "2026-05-10", to: "2026-08-07", days: 90 };
@@ -116,6 +121,8 @@ export class FakeCorpusRepository implements Pick<
   logBytesServed = 0;
   /** Build pages served. */
   buildPages = 0;
+  /** The origin each build page was read for, in order (#2022). */
+  originsRead: CorpusScope["origin"][] = [];
 
   private readonly sorted: (FakeBuild & { hash: string })[];
 
@@ -157,12 +164,13 @@ export class FakeCorpusRepository implements Pick<
   }
 
   buildPage(
-    _scope: CorpusScope,
+    scope: CorpusScope,
     _window: CorpusWindow,
     after: BuildCursor | null,
     limit = 500,
   ): Promise<BuildRow[]> {
     this.buildPages += 1;
+    this.originsRead.push(scope.origin);
     const start =
       after === null
         ? 0

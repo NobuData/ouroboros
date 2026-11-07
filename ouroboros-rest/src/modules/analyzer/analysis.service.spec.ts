@@ -59,7 +59,23 @@ describe("Run analysis now", () => {
       subjectType: "analysis_run",
       subjectId: run.id,
       at: new Date(run.startedAt),
-      detail: { repo: REPO, trigger: "manual" },
+      detail: { repo: REPO, trigger: "manual", origin: "live" },
+    });
+  });
+
+  it("reads the origin a person asks for, and audits it (#2022)", async () => {
+    const { audit, service, orchestrator } = harness();
+
+    const run = await service.runNow(ORG, ACTOR, REPO, "seeded");
+    await orchestrator.idle();
+
+    expect(run.origin).toBe("seeded");
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { repo: REPO, trigger: "manual", origin: "seeded" } }),
+    );
+    await expect(service.latest(ORG, REPO)).resolves.toEqual({ run: null });
+    await expect(service.latest(ORG, REPO, "seeded")).resolves.toMatchObject({
+      run: { id: run.id, origin: "seeded" },
     });
   });
 
@@ -137,6 +153,7 @@ describe("the run resource", () => {
       repo_ref: REPO,
       trigger: "every_n_builds",
       schedule_id: null,
+      origin: "live",
       status: "complete",
       corpus_manifest: {
         window: { from: "2026-05-10", to: "2026-08-07", days: 90 },

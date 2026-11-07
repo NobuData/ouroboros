@@ -100,7 +100,17 @@ describe("startAnalysis", () => {
     start.mockResolvedValue(runningRun({ phase: "assembling" }));
 
     await expect(startAnalysis(HELIOS)).resolves.toEqual({ kind: "started", run: runningRun({ phase: "assembling" }) });
-    expect(start).toHaveBeenCalledExactlyOnceWith(HELIOS);
+    expect(start).toHaveBeenCalledExactlyOnceWith(HELIOS, undefined, "live");
+  });
+
+  it("starts an analysis of the origin the page reads, and of live for anything else (#2022)", async () => {
+    start.mockResolvedValue(runningRun({ phase: "assembling" }));
+
+    await startAnalysis(HELIOS, "seeded");
+    expect(start).toHaveBeenLastCalledWith(HELIOS, undefined, "seeded");
+
+    await startAnalysis(HELIOS, "all" as never);
+    expect(start).toHaveBeenLastCalledWith(HELIOS, undefined, "live");
   });
 
   it("answers a 409 with the run that is going — never a second run", async () => {

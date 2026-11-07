@@ -247,6 +247,18 @@ describe("the corpus state (#521)", () => {
     expect(requests[0]?.headers.get("x-ouro-tenant")).toBeNull();
   });
 
+  it("names a non-live origin, and the run it starts reads it too (#2022)", async () => {
+    const { client, requests } = clientAnswering(seededCorpus());
+
+    await analyzer.corpus(HELIOS, client, undefined, "seeded");
+    expect(requests[0]?.url).toBe(
+      `${STUB_BASE_URL}/api/v1/analyzer/corpus?repo=${encodeURIComponent(HELIOS)}&origin=seeded`,
+    );
+
+    await analyzer.start(HELIOS, client, "seeded");
+    expect(await requests[1]?.json()).toEqual({ repo: HELIOS, origin: "seeded" });
+  });
+
   it("answers a repository with no builds as an empty corpus nothing analysed, not an error", async () => {
     const { client } = clientAnswering(corpusOf([0, 0]));
 

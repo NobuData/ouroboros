@@ -11,6 +11,7 @@ import { Controller, Get, Query } from "@nestjs/common";
 
 import type { Organization } from "../../db/schema";
 import { CurrentTenant } from "../../tenancy/tenant.decorators";
+import { analysisOrigin } from "../analysis.origin";
 import { MeasurementsQuery } from "./measurement.dto";
 import { MeasurementRepository } from "./measurement.repository";
 import {
@@ -29,7 +30,7 @@ export class MeasurementController {
    * A repository's measurements, newest apply first, and its calibration with history.
    *
    * @param tenant - The workspace.
-   * @param query - `{repo}`.
+   * @param query - `{repo, origin?}` — `live` when the origin is omitted (#2022).
    * @returns The card's content.
    */
   @Get()
@@ -38,7 +39,12 @@ export class MeasurementController {
     @Query() query: MeasurementsQuery,
   ): Promise<MeasurementsResource> {
     const [rows, cells] = await Promise.all([
-      this.measurements.measurements(tenant.id, query.repo, new Date()),
+      this.measurements.measurements(
+        tenant.id,
+        query.repo,
+        new Date(),
+        analysisOrigin(query.origin),
+      ),
       this.measurements.calibration(tenant.id, query.repo),
     ]);
 

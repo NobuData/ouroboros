@@ -22,6 +22,7 @@ function measurement(overrides: Partial<OpenMeasurement> = {}): OpenMeasurement 
     suggestion_id: "s-2",
     organization_id: "org",
     repo_ref: "acme-robotics/helios-firmware",
+    origin: "live",
     applied_on: "2026-07-09",
     window_ends_on: "2026-07-23",
     window_days: 14,
@@ -99,7 +100,7 @@ describe("closing a window", () => {
     const closed = await world.service.measure(measurement(), AFTER);
 
     expect(world.corpus.series).toHaveBeenCalledWith(
-      { organizationId: "org", repoRef: "acme-robotics/helios-firmware" },
+      { organizationId: "org", repoRef: "acme-robotics/helios-firmware", origin: "live" },
       { from: "2026-07-10", to: "2026-07-23" },
       "build_duration",
     );

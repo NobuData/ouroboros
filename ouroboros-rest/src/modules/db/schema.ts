@@ -7416,8 +7416,8 @@ export interface AnalysisSchedulesTable {
  * `ouroboros.analysis_runs` — one Build Analyzer run (V080, V086;
  * [#506](https://github.com/NobuData/ouroboros/issues/506),
  * [#510](https://github.com/NobuData/ouroboros/issues/510)). The partial unique index
- * `analysis_runs_one_running` admits one `running` row per (workspace, repository) — the
- * concurrent-run guard. `corpus_manifest` and `analyzer_set` are held to their contracts by
+ * `analysis_runs_one_running` admits one `running` row per (workspace, repository, origin) — the
+ * concurrent-run guard (V155, [#2022](https://github.com/NobuData/ouroboros/issues/2022)). `corpus_manifest` and `analyzer_set` are held to their contracts by
  * check functions; the service writes them as JSON text.
  */
 export interface AnalysisRunsTable {
@@ -7438,6 +7438,8 @@ export interface AnalysisRunsTable {
   created_at: Stamped;
   phase: Generated<AnalysisPhase>;
   progress: ColumnType<unknown, string | undefined, string>;
+  /** The one data origin the run read (V155, #2022). Defaults to `data_origin_default()`. */
+  origin: ColumnType<DataOrigin, DataOrigin | undefined, DataOrigin>;
 }
 
 /**

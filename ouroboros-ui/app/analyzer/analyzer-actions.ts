@@ -33,6 +33,7 @@ import { isApiError } from "@/app/api/errors";
 import { type PlanningBatch, planning } from "@/app/api/planning";
 import { attempt } from "@/app/api/reading";
 import { sources } from "@/app/api/sources";
+import type { DataOrigin } from "@/app/origin/origin";
 import { PLANNING_PATH } from "@/app/paths";
 import { type TrackerOption, batchHref, trackerOptions } from "@/app/planning/generator";
 
@@ -43,6 +44,7 @@ import {
   SPIKE_FAILED,
   TRACKERS_FAILED,
 } from "./suggestions-view";
+import { analyzerOrigin } from "./analyzer-origin";
 import { DRAFT_TICKETS_FAILED, PUSH_FAILED, TICK_FAILED } from "./tickets-view";
 import { SCHEDULE_SAVE_FAILED, START_FAILED } from "./view";
 
@@ -87,13 +89,15 @@ function text(value: unknown): string | null {
  * *Run analysis now* — start an analysis of one repository.
  *
  * @param repo The repository, `owner/name`.
+ * @param origin The one data origin to read (#2022). A server action's argument is the caller's,
+ *   so anything but a known origin reads `live`.
  * @returns The outcome. A `409` is `running`, never a second run.
  */
-export async function startAnalysis(repo: string): Promise<StartOutcome> {
+export async function startAnalysis(repo: string, origin?: DataOrigin): Promise<StartOutcome> {
   if (typeof repo !== "string" || repo === "") return { kind: "refused", reason: START_FAILED };
 
   try {
-    return { kind: "started", run: await analyzer.start(repo) };
+    return { kind: "started", run: await analyzer.start(repo, undefined, analyzerOrigin(origin)) };
   } catch (error) {
     if (!isApiError(error)) throw error;
 

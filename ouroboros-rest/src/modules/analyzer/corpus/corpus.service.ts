@@ -13,7 +13,9 @@
 
 import { Inject, Injectable, Optional } from "@nestjs/common";
 
+import type { DataOrigin } from "../../db/schema";
 import { ANALYSIS_CLOCK } from "../analysis.orchestrator";
+import { analysisOrigin } from "../analysis.origin";
 import { AnalysisRepository } from "../analysis.repository";
 import { corpusWindow } from "./corpus.manifest";
 import { CorpusRepository } from "./corpus.repository";
@@ -37,21 +39,34 @@ export class CorpusStateService {
    *
    * @param organizationId - The workspace.
    * @param repoRef - The repository.
-   * @returns The current window's history against the floor, and the newest judged run's. A
-   *   repository the workspace has none of reads as an empty corpus that nothing analysed.
+   * @param requested - The one data origin to count; `live` when omitted (#2022).
+   * @returns The current window's history of that origin against the floor, and the newest judged
+   *   run of it. A repository the workspace has none of reads as an empty corpus that nothing
+   *   analysed.
    */
-  async state(organizationId: string, repoRef: string): Promise<CorpusStateResource> {
+  async state(
+    organizationId: string,
+    repoRef: string,
+    requested?: DataOrigin,
+  ): Promise<CorpusStateResource> {
+    const origin = analysisOrigin(requested);
     const window = corpusWindow(new Date(this.clock()));
     const repoId = await this.corpus.repository(organizationId, repoRef);
     if (repoId === undefined) {
-      return corpusStateResource(repoRef, window, { builds: 0, daysWithBuilds: 0 }, undefined);
+      return corpusStateResource(
+        repoRef,
+        origin,
+        window,
+        { builds: 0, daysWithBuilds: 0 },
+        undefined,
+      );
     }
 
     const [counts, run] = await Promise.all([
-      this.corpus.counts({ organizationId, repoRef, repoId }, window),
-      this.runs.latestJudged(organizationId, repoRef),
+      this.corpus.counts({ organizationId, repoRef, repoId, origin }, window),
+      this.runs.latestJudged(organizationId, repoRef, origin),
     ]);
 
-    return corpusStateResource(repoRef, window, counts, run);
+    return corpusStateResource(repoRef, origin, window, counts, run);
   }
 }

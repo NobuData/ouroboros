@@ -121,6 +121,7 @@ describe("Build Analyzer orchestration", () => {
         repoRef: REPO,
         trigger,
         scheduleId: trigger === "weekly" ? scheduleId : null,
+        origin: "live",
         analyzerSet: ANALYZER_SET,
         progress: pendingProgress(ANALYZER_SET),
       });
@@ -144,6 +145,7 @@ describe("Build Analyzer orchestration", () => {
       repoRef: REPO,
       trigger: "weekly",
       scheduleId: null,
+      origin: "live",
       analyzerSet: ANALYZER_SET,
       progress: pendingProgress(ANALYZER_SET),
     });
@@ -270,6 +272,7 @@ describe("Build Analyzer orchestration", () => {
       repoRef: REPO,
       trigger: "manual",
       scheduleId: null,
+      origin: "live",
       analyzerSet: ANALYZER_SET,
       progress: pendingProgress(ANALYZER_SET),
     });
@@ -351,7 +354,7 @@ describe("Build Analyzer orchestration", () => {
     );
 
     const corpus = api.nest.get(CorpusRepository);
-    const scope = { organizationId: workspace.id, repoRef: REPO, repoId };
+    const scope = { organizationId: workspace.id, repoRef: REPO, repoId, origin: "live" as const };
     const today = new Date();
     const to = new Date(
       Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - 1),

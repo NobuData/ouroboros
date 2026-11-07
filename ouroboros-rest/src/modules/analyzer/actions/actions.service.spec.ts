@@ -67,6 +67,7 @@ const SUGGESTIONS: Record<string, SuggestionRow> = {
     },
     status: "open",
     last_run_id: "run-2",
+    origin: "live",
     evidence_refs: [],
   },
   gate: {
@@ -84,6 +85,7 @@ const SUGGESTIONS: Record<string, SuggestionRow> = {
     },
     status: "open",
     last_run_id: "run-2",
+    origin: "live",
     evidence_refs: [],
   },
   review: {
@@ -101,6 +103,7 @@ const SUGGESTIONS: Record<string, SuggestionRow> = {
     },
     status: "open",
     last_run_id: "run-2",
+    origin: "live",
     evidence_refs: [],
   },
   ticket: {
@@ -115,6 +118,7 @@ const SUGGESTIONS: Record<string, SuggestionRow> = {
     action_binding: { plane: "planning", change: { ticket: "fixture_timeout_ticket" } },
     status: "open",
     last_run_id: "run-2",
+    origin: "live",
     evidence_refs: [{ kind: "build", id: "b-1" }],
   },
 };

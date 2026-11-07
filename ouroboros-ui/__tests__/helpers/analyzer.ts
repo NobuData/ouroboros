@@ -531,6 +531,7 @@ export function analyzerReadings(over: Partial<AnalyzerReadings> = {}): Analyzer
     mayContribute: true,
     trackers: { ok: true, value: trackerOptions(seededSources(), { ok: true, value: writableCatalog() }) },
     readAt: ANALYZER_NOW,
+    origin: "live",
     ...over,
   };
 }

@@ -1108,7 +1108,7 @@
     },
     {
       "id": "user-guide.analyzer",
-      "route": "/analyzer",
+      "route": "/analyzer?origin=seeded",
       "workspace": "acme-robotics",
       "actions": [
         {
@@ -1131,7 +1131,7 @@
     },
     {
       "id": "user-guide.analyzer.duration",
-      "route": "/analyzer",
+      "route": "/analyzer?origin=seeded",
       "workspace": "acme-robotics",
       "actions": [
         {
@@ -1154,7 +1154,7 @@
     },
     {
       "id": "user-guide.analyzer.suggestion",
-      "route": "/analyzer",
+      "route": "/analyzer?origin=seeded",
       "workspace": "acme-robotics",
       "actions": [
         {
@@ -1177,7 +1177,7 @@
     },
     {
       "id": "user-guide.analyzer.predicted-vs-measured",
-      "route": "/analyzer",
+      "route": "/analyzer?origin=seeded",
       "workspace": "acme-robotics",
       "actions": [
         {
@@ -1200,7 +1200,7 @@
     },
     {
       "id": "user-guide.analyzer.tickets",
-      "route": "/analyzer",
+      "route": "/analyzer?origin=seeded",
       "workspace": "acme-robotics",
       "actions": [
         {
@@ -1223,7 +1223,7 @@
     },
     {
       "id": "user-guide.analyzer.gated",
-      "route": "/analyzer",
+      "route": "/analyzer?origin=seeded",
       "workspace": "acme-robotics",
       "actions": [
         {

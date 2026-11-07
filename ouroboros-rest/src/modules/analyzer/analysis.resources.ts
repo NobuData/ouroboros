@@ -8,7 +8,7 @@
  * a key added to a stored document is not published until it is named here.
  */
 
-import type { AnalysisPhase, AnalysisStatus, AnalysisTrigger } from "../db/schema";
+import type { AnalysisPhase, AnalysisStatus, AnalysisTrigger, DataOrigin } from "../db/schema";
 import type { AnalyzerSet } from "../engine/engine.analysis";
 import type { AnalyzerProgress, RunProgress } from "./analysis.progress";
 import type { AnalysisRunRow } from "./analysis.repository";
@@ -84,6 +84,8 @@ export interface AnalyzerProgressResource {
 export interface AnalysisRunResource {
   id: string;
   repo: string;
+  /** The one data origin the run read (#2022). */
+  origin: DataOrigin;
   trigger: AnalysisTrigger;
   status: AnalysisStatus;
   /** The step a running run is in, or the one a finished run ended in. */
@@ -238,6 +240,7 @@ export function analysisRunResource(row: AnalysisRunRow): AnalysisRunResource {
   return {
     id: row.id,
     repo: row.repo_ref,
+    origin: row.origin,
     trigger: row.trigger,
     status: row.status,
     phase: row.phase,

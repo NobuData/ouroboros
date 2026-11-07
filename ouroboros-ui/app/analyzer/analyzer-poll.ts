@@ -28,7 +28,10 @@ import type {
   DurationChart,
   Measurements,
 } from "@/app/api/analyzer";
+import type { DataOrigin } from "@/app/origin/origin";
 import { type Poll, type PollOptions, type PollReader, createPoll, requestPayload } from "@/app/poll";
+
+import { ANALYZER_ORIGIN_PARAM } from "./analyzer-origin";
 
 /** Where the browser asks — **this origin**, not `ouroboros-rest`. */
 export const ANALYZER_ENDPOINT = "/api/analyzer";
@@ -81,10 +84,13 @@ export interface AnalyzerPollOptions extends PollOptions {
  * The address one repository's page is polled at.
  *
  * @param repo The repository, `owner/name`.
- * @returns `/api/analyzer?repo=owner%2Fname`.
+ * @param origin The one data origin the page reads (#2022); `live` adds nothing to the address.
+ * @returns `/api/analyzer?repo=owner%2Fname`, with `&origin=seeded` for another origin.
  */
-export function analyzerUrl(repo: string): string {
-  return `${ANALYZER_ENDPOINT}?${ANALYZER_REPO_PARAM}=${encodeURIComponent(repo)}`;
+export function analyzerUrl(repo: string, origin: DataOrigin = "live"): string {
+  const base = `${ANALYZER_ENDPOINT}?${ANALYZER_REPO_PARAM}=${encodeURIComponent(repo)}`;
+
+  return origin === "live" ? base : `${base}&${ANALYZER_ORIGIN_PARAM}=${origin}`;
 }
 
 /**

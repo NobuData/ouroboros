@@ -16,6 +16,7 @@ import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
 
 import { DatabaseService } from "../../db/db.service";
+import type { DataOrigin } from "../../db/schema";
 import { STILL_CURRENT } from "../suggestions/suggestions.repository";
 
 /** A ticket suggestion nobody has drafted yet. */
@@ -42,9 +43,14 @@ export class TicketsRepository {
    *
    * @param organizationId - The workspace.
    * @param repoRef - The repository.
+   * @param origin - The data origin of the analysis that last composed each (#2022).
    * @returns The suggestions.
    */
-  async undrafted(organizationId: string, repoRef: string): Promise<UndraftedTicketRow[]> {
+  async undrafted(
+    organizationId: string,
+    repoRef: string,
+    origin: DataOrigin,
+  ): Promise<UndraftedTicketRow[]> {
     const { rows } = await sql<UndraftedTicketRow>`
       select s.id::text as id, s.title, s.evidence_line, s.confidence,
              coalesce((select jsonb_agg(distinct e)
@@ -57,6 +63,7 @@ export class TicketsRepository {
        where s.organization_id = ${organizationId} and s.repo_ref = ${repoRef}
          and s.kind = 'ticket_draft'
          and s.status = 'open'
+         and r.origin = ${origin}
          and ${STILL_CURRENT}
        order by s.confidence desc, s.title, s.id`.execute(this.database.db);
 
@@ -68,9 +75,10 @@ export class TicketsRepository {
    *
    * @param organizationId - The workspace.
    * @param repoRef - The repository.
+   * @param origin - The data origin of the analysis that last composed each (#2022).
    * @returns Each batch's id, once.
    */
-  async batchIds(organizationId: string, repoRef: string): Promise<string[]> {
+  async batchIds(organizationId: string, repoRef: string, origin: DataOrigin): Promise<string[]> {
     const { rows } = await sql<{ id: string }>`
       select distinct s.draft_batch_id::text as id
         from ouroboros.analysis_suggestions s
@@ -78,6 +86,7 @@ export class TicketsRepository {
        where s.organization_id = ${organizationId} and s.repo_ref = ${repoRef}
          and s.kind = 'ticket_draft'
          and s.status = 'drafted'
+         and r.origin = ${origin}
          and ${STILL_CURRENT}`.execute(this.database.db);
 
     return rows.map((row) => row.id);

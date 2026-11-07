@@ -27,7 +27,7 @@ export class TicketsController {
    * drafted into.
    *
    * @param tenant - The workspace.
-   * @param query - `{repo}`.
+   * @param query - `{repo, origin?}`.
    * @returns The card's content.
    */
   @Get()
@@ -35,6 +35,6 @@ export class TicketsController {
     @CurrentTenant() tenant: Organization,
     @Query() query: TicketsQuery,
   ): Promise<TicketsResource> {
-    return this.tickets.list(tenant.id, query.repo);
+    return this.tickets.list(tenant.id, query.repo, query.origin);
   }
 }

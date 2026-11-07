@@ -35,12 +35,13 @@
 
 import { Inject, Injectable, Logger, Optional, type OnApplicationShutdown } from "@nestjs/common";
 
-import type { AnalysisTrigger } from "../db/schema";
+import type { AnalysisTrigger, DataOrigin } from "../db/schema";
 import { EngineClient } from "../engine/engine.client";
 import type { AnalysisEvent, AnalyzerSet } from "../engine/engine.analysis";
 import { describeForLog } from "../errors/failure";
 import { isDatabaseFailure } from "../tenancy/constraints";
 import { analysisAlreadyRunning, analysisRepositoryNotFound } from "./analysis.errors";
+import { analysisOrigin } from "./analysis.origin";
 import {
   analyzerEnded,
   analyzerStarted,
@@ -91,6 +92,11 @@ export interface StartRequest {
   trigger: AnalysisTrigger;
   /** The schedule that fired it, for scheduled triggers. */
   scheduleId?: string | null;
+  /**
+   * The one data origin to read (#2022). Omitted — as the scheduler and the every-N counter
+   * omit it — it is `live` (`analysis.origin.ts`): a scheduled analysis is always of real runs.
+   */
+  origin?: DataOrigin;
 }
 
 /** How the dispatch went. */
@@ -135,6 +141,7 @@ export class AnalysisOrchestrator implements OnApplicationShutdown {
    * @throws {ConflictError} `analysis_already_running`, naming the run that is.
    */
   async start(request: StartRequest): Promise<AnalysisRunRow> {
+    const origin = analysisOrigin(request.origin);
     const repoId = await this.corpus.repository(request.organizationId, request.repoRef);
     if (repoId === undefined) {
       throw analysisRepositoryNotFound(request.repoRef);
@@ -152,7 +159,7 @@ export class AnalysisOrchestrator implements OnApplicationShutdown {
 
     // Checked before the engine is asked anything, so a refused start costs one read. The insert
     // below is still what decides: two starts that both pass this check meet at the index.
-    const already = await this.runs.running(request.organizationId, request.repoRef);
+    const already = await this.runs.running(request.organizationId, request.repoRef, origin);
     if (already !== undefined) {
       throw analysisAlreadyRunning(request.repoRef, already);
     }
@@ -165,6 +172,7 @@ export class AnalysisOrchestrator implements OnApplicationShutdown {
       // V080: the schedule that *triggered* it — a manual run borrows only its budget.
       scheduleId:
         request.trigger === "manual" ? null : (request.scheduleId ?? schedule?.id ?? null),
+      origin,
       analyzerSet,
       progress: pendingProgress(analyzerSet),
     });
@@ -178,6 +186,7 @@ export class AnalysisOrchestrator implements OnApplicationShutdown {
       organizationId: request.organizationId,
       repoRef: request.repoRef,
       repoId,
+      origin,
     };
     const execution = this.execute(run, scope, budget, this.clock()).finally(() => {
       this.inFlight.delete(run.id);

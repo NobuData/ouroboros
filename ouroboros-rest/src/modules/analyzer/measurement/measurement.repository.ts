@@ -9,7 +9,8 @@ import { Injectable } from "@nestjs/common";
 import { sql, type Transaction } from "kysely";
 
 import { DatabaseService } from "../../db/db.service";
-import type { Database } from "../../db/schema";
+import type { Database, DataOrigin } from "../../db/schema";
+import { DEFAULT_ANALYSIS_ORIGIN } from "../analysis.origin";
 import type { Confound, Verdict } from "./measurement.math";
 
 /** An open measurement, with what the job needs to judge it. */
@@ -18,6 +19,11 @@ export interface OpenMeasurement {
   suggestion_id: string;
   organization_id: string;
   repo_ref: string;
+  /**
+   * The data origin of the analysis that produced the suggestion (#2022) — what its baseline was
+   * read over, and so what its measured window is read over.
+   */
+  origin: DataOrigin;
   applied_on: string;
   window_ends_on: string;
   window_days: number;
@@ -117,9 +123,12 @@ export class MeasurementRepository {
              m.verdict_under_below::float8 as verdict_under_below,
              m.verdict_over_above::float8 as verdict_over_above, m.confounds,
              d.unit as metric_unit, d.aggregation as metric_aggregation,
-             to_char(s.last_filled_day, 'YYYY-MM-DD') as filled_through
+             to_char(s.last_filled_day, 'YYYY-MM-DD') as filled_through,
+             coalesce(run.origin, ${DEFAULT_ANALYSIS_ORIGIN}) as origin
         from ouroboros.suggestion_measurements m
         join ouroboros.metric_definitions d on d.metric_id = m.target_metric
+        join ouroboros.analysis_suggestions sg on sg.id = m.suggestion_id
+        left join ouroboros.analysis_runs run on run.id = sg.last_run_id
         left join ouroboros.metric_rollup_state s
           on s.organization_id = m.organization_id and s.family = d.family
        where m.verdict = 'pending'
@@ -237,9 +246,15 @@ export class MeasurementRepository {
    * @param organizationId - The workspace.
    * @param repoRef - The repository.
    * @param at - The instant day N is counted to.
+   * @param origin - The data origin of the analysis that produced each suggestion (#2022).
    * @returns The rows.
    */
-  async measurements(organizationId: string, repoRef: string, at: Date): Promise<MeasurementRow[]> {
+  async measurements(
+    organizationId: string,
+    repoRef: string,
+    at: Date,
+    origin: DataOrigin,
+  ): Promise<MeasurementRow[]> {
     const { rows } = await sql<MeasurementRow>`
       select m.id::text as id, m.suggestion_id::text as suggestion_id, s.title, m.repo_ref,
              m.applied_at, to_char(m.applied_on, 'YYYY-MM-DD') as applied_on, m.window_days,
@@ -249,7 +264,9 @@ export class MeasurementRepository {
              m.closed_at
         from ouroboros.suggestion_measurements m
         join ouroboros.analysis_suggestions s on s.id = m.suggestion_id
+        left join ouroboros.analysis_runs run on run.id = s.last_run_id
        where m.organization_id = ${organizationId} and m.repo_ref = ${repoRef}
+         and coalesce(run.origin, ${DEFAULT_ANALYSIS_ORIGIN}) = ${origin}
        order by m.applied_at desc, m.id`.execute(this.database.db);
 
     return rows;

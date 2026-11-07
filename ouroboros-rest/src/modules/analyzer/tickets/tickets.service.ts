@@ -17,7 +17,9 @@
 
 import { Injectable } from "@nestjs/common";
 
+import type { DataOrigin } from "../../db/schema";
 import { BatchesService } from "../../planning/batches.service";
+import { analysisOrigin } from "../analysis.origin";
 import { EvidenceRepository, type ResolvedEvidence } from "../evidence/evidence.repository";
 import { groupRefs } from "../evidence/evidence.resources";
 import { SuggestionsRepository } from "../suggestions/suggestions.repository";
@@ -56,17 +58,23 @@ export class TicketsService {
    *
    * @param organizationId - The workspace.
    * @param repoRef - The repository.
+   * @param requested - The data origin of the analyses read; `live` when omitted (#2022).
    * @returns The card; empty before an analysis has composed a ticket suggestion, and for a
    *   repository the workspace has none of.
    */
-  async list(organizationId: string, repoRef: string): Promise<TicketsResource> {
-    if ((await this.suggestions.composedRun(organizationId, repoRef)) === undefined) {
+  async list(
+    organizationId: string,
+    repoRef: string,
+    requested?: DataOrigin,
+  ): Promise<TicketsResource> {
+    const origin = analysisOrigin(requested);
+    if ((await this.suggestions.composedRun(organizationId, repoRef, origin)) === undefined) {
       return ticketsResource(repoRef, [], [], NOTHING_RESOLVED);
     }
 
     const [undrafted, batchIds] = await Promise.all([
-      this.reads.undrafted(organizationId, repoRef),
-      this.reads.batchIds(organizationId, repoRef),
+      this.reads.undrafted(organizationId, repoRef, origin),
+      this.reads.batchIds(organizationId, repoRef, origin),
     ]);
     const batches = await Promise.all(batchIds.map((id) => this.batches.read(organizationId, id)));
     const resolved = await this.evidence.resolve(

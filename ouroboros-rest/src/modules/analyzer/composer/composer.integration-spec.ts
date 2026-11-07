@@ -83,6 +83,7 @@ describe("the suggestion composer", () => {
       repoRef: REPO,
       trigger: "manual",
       scheduleId: null,
+      origin: "live",
       analyzerSet: ANALYZER_SET,
       progress: pendingProgress(ANALYZER_SET),
     });

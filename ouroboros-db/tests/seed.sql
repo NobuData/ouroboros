@@ -8279,8 +8279,9 @@ select pg_temp.must_hold(
   and not exists (select 1 from ouroboros.token_usage where origin <> 'seeded')
   and not exists (select 1 from ouroboros.build_jobs where origin <> 'seeded')
   and not exists (select 1 from ouroboros.pull_requests where origin <> 'seeded')
-  and not exists (select 1 from ouroboros.test_runs where origin <> 'seeded'),
-  'the development seed is all seeded — runs, usage, builds, pull requests and test results');
+  and not exists (select 1 from ouroboros.test_runs where origin <> 'seeded')
+  and not exists (select 1 from ouroboros.analysis_runs where origin <> 'seeded'),
+  'the development seed is all seeded — runs, usage, builds, pull requests, test results and analyses');
 
 \o
 \echo 'seed.sql: all assertions passed'
