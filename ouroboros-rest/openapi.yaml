@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.43.6"
+  version: "0.43.7"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -14383,6 +14383,7 @@ paths:
             minLength: 3
             maxLength: 255
           description: The repository, `owner/name`.
+        - $ref: "#/components/parameters/AnalyzerOrigin"
       responses:
         "200":
           description: The measurements and the calibration.
@@ -14504,6 +14505,7 @@ paths:
             minLength: 3
             maxLength: 255
           description: The repository, `owner/name`.
+        - $ref: "#/components/parameters/AnalyzerOrigin"
       responses:
         "200":
           description: The corpus as it stands and as it was last analysed.
@@ -14616,6 +14618,7 @@ paths:
             minLength: 3
             maxLength: 255
           description: The repository, `owner/name`.
+        - $ref: "#/components/parameters/AnalyzerOrigin"
       responses:
         "200":
           description: The series and the change-points detected on it.
@@ -14922,6 +14925,7 @@ paths:
             type: string
             minLength: 3
             maxLength: 255
+        - $ref: "#/components/parameters/AnalyzerOrigin"
         - $ref: "#/components/parameters/TenantHeader"
       responses:
         "200":
@@ -15302,6 +15306,7 @@ paths:
             minLength: 3
             maxLength: 255
           description: The repository, `owner/name`.
+        - $ref: "#/components/parameters/AnalyzerOrigin"
       responses:
         "200":
           description: The current suggestions and the repository's calibration.
@@ -15906,6 +15911,7 @@ paths:
             minLength: 3
             maxLength: 255
           description: The repository, `owner/name`.
+        - $ref: "#/components/parameters/AnalyzerOrigin"
       responses:
         "200":
           description: The un-drafted ticket suggestions and the batches the rest were drafted into.
@@ -44092,6 +44098,18 @@ components:
       schema:
         $ref: "#/components/schemas/OriginFilter"
       example: live
+    AnalyzerOrigin:
+      name: origin
+      in: query
+      required: false
+      description: |-
+        The one data origin the analysis read (#2022): `live` when absent, or `simulated` or
+        `seeded` — the demo corpus a development or e2e stack holds. Never `all`: an analysis does
+        not mix origins, so neither does what is read from one. The corpus is counted, and the run
+        chosen, for this origin alone.
+      schema:
+        $ref: "#/components/schemas/DataOrigin"
+      example: live
     InsightsRepo:
       name: repo
       in: query
@@ -52498,6 +52516,12 @@ components:
       required: [repo, window, builds, daysWithBuilds, sufficient, minimumDaysWithBuilds, analyzed]
       properties:
         repo: { type: string }
+        origin:
+          allOf:
+            - $ref: "#/components/schemas/DataOrigin"
+          description: |-
+            The one data origin counted (#2022) — and the origin of `analyzed`'s run. `live` unless
+            asked for another.
         window:
           type: object
           description: The window a run started now would read, in UTC days — today excluded.
@@ -52751,6 +52775,12 @@ components:
           minLength: 3
           maxLength: 255
           description: The repository to analyze, `owner/name`.
+        origin:
+          allOf:
+            - $ref: "#/components/schemas/DataOrigin"
+          description: |-
+            The one data origin to read (#2022): `live` when absent. Scheduled and every-N runs are
+            always `live`; only a person asks for another. Never `all`.
     AnalyzerSet:
       type: object
       title: AnalyzerSet
@@ -53111,6 +53141,10 @@ components:
           format: uuid
         repo:
           type: string
+        origin:
+          allOf:
+            - $ref: "#/components/schemas/DataOrigin"
+          description: The one data origin the run read (#2022); its findings are of it alone.
         trigger:
           type: string
           enum: [manual, weekly, every_n_builds]

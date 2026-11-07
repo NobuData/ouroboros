@@ -154,6 +154,60 @@ describe("starting a run", () => {
   });
 });
 
+describe("the origin a run reads (#2022)", () => {
+  it("is live when nothing is asked for — the scheduler and the every-N counter ask for none", async () => {
+    const { orchestrator, engine, corpus } = harness();
+    engine.script = completeScript();
+
+    const run = await orchestrator.start({ organizationId: ORG, repoRef: REPO, trigger: "weekly" });
+    await orchestrator.idle();
+
+    expect(run.origin).toBe("live");
+    expect(new Set(corpus.originsRead)).toEqual(new Set(["live"]));
+  });
+
+  it("is stored, and the whole corpus is read for it alone, when a person asks for another", async () => {
+    const { orchestrator, engine, corpus } = harness();
+    engine.script = completeScript();
+
+    const run = await orchestrator.start({
+      organizationId: ORG,
+      repoRef: REPO,
+      trigger: "manual",
+      origin: "seeded",
+    });
+    await orchestrator.idle();
+
+    expect(run.origin).toBe("seeded");
+    expect(corpus.originsRead.length).toBeGreaterThan(0);
+    expect(new Set(corpus.originsRead)).toEqual(new Set(["seeded"]));
+  });
+
+  it("guards one running run per origin: the demo corpus never blocks the live scheduler", async () => {
+    const { orchestrator, engine } = harness();
+    engine.script = completeScript();
+
+    const seeded = await orchestrator.start({
+      organizationId: ORG,
+      repoRef: REPO,
+      trigger: "manual",
+      origin: "seeded",
+    });
+    const live = await orchestrator.start({
+      organizationId: ORG,
+      repoRef: REPO,
+      trigger: "weekly",
+    });
+    const again = await orchestrator
+      .start({ organizationId: ORG, repoRef: REPO, trigger: "manual", origin: "seeded" })
+      .catch((error: unknown) => error);
+
+    expect([seeded.origin, live.origin]).toEqual(["seeded", "live"]);
+    expect(again).toBeInstanceOf(ConflictError);
+    await orchestrator.idle();
+  });
+});
+
 describe("a scheduled run", () => {
   it("records the schedule that triggered it", async () => {
     const { orchestrator, engine, store } = harness();

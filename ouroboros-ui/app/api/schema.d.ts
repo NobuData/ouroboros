@@ -18545,6 +18545,11 @@ export interface components {
          */
         AnalyzerCorpus: {
             repo: string;
+            /**
+             * @description The one data origin counted (#2022) — and the origin of `analyzed`'s run. `live` unless
+             *     asked for another.
+             */
+            origin?: components["schemas"]["DataOrigin"];
             /** @description The window a run started now would read, in UTC days — today excluded. */
             window: {
                 /** Format: date */
@@ -18745,6 +18750,11 @@ export interface components {
         StartAnalysisBody: {
             /** @description The repository to analyze, `owner/name`. */
             repo: string;
+            /**
+             * @description The one data origin to read (#2022): `live` when absent. Scheduled and every-N runs are
+             *     always `live`; only a person asks for another. Never `all`.
+             */
+            origin?: components["schemas"]["DataOrigin"];
         };
         /**
          * AnalyzerSet
@@ -18912,6 +18922,8 @@ export interface components {
             /** Format: uuid */
             id: string;
             repo: string;
+            /** @description The one data origin the run read (#2022); its findings are of it alone. */
+            origin?: components["schemas"]["DataOrigin"];
             /** @enum {string} */
             trigger: "manual" | "weekly" | "every_n_builds";
             /** @enum {string} */
@@ -33484,6 +33496,14 @@ export interface components {
          * @example live
          */
         InsightsOrigin: components["schemas"]["OriginFilter"];
+        /**
+         * @description The one data origin the analysis read (#2022): `live` when absent, or `simulated` or
+         *     `seeded` — the demo corpus a development or e2e stack holds. Never `all`: an analysis does
+         *     not mix origins, so neither does what is read from one. The corpus is counted, and the run
+         *     chosen, for this origin alone.
+         * @example live
+         */
+        AnalyzerOrigin: components["schemas"]["DataOrigin"];
         /**
          * @description One repository, as `owner/name` — `acme-robotics/helios-firmware`. The whole workspace when
          *     absent. Compared case-insensitively.
@@ -53376,6 +53396,14 @@ export interface operations {
             query: {
                 /** @description The repository, `owner/name`. */
                 repo: string;
+                /**
+                 * @description The one data origin the analysis read (#2022): `live` when absent, or `simulated` or
+                 *     `seeded` — the demo corpus a development or e2e stack holds. Never `all`: an analysis does
+                 *     not mix origins, so neither does what is read from one. The corpus is counted, and the run
+                 *     chosen, for this origin alone.
+                 * @example live
+                 */
+                origin?: components["parameters"]["AnalyzerOrigin"];
             };
             header?: {
                 /**
@@ -53569,6 +53597,14 @@ export interface operations {
             query: {
                 /** @description The repository, `owner/name`. */
                 repo: string;
+                /**
+                 * @description The one data origin the analysis read (#2022): `live` when absent, or `simulated` or
+                 *     `seeded` — the demo corpus a development or e2e stack holds. Never `all`: an analysis does
+                 *     not mix origins, so neither does what is read from one. The corpus is counted, and the run
+                 *     chosen, for this origin alone.
+                 * @example live
+                 */
+                origin?: components["parameters"]["AnalyzerOrigin"];
             };
             header?: {
                 /**
@@ -53685,6 +53721,14 @@ export interface operations {
             query: {
                 /** @description The repository, `owner/name`. */
                 repo: string;
+                /**
+                 * @description The one data origin the analysis read (#2022): `live` when absent, or `simulated` or
+                 *     `seeded` — the demo corpus a development or e2e stack holds. Never `all`: an analysis does
+                 *     not mix origins, so neither does what is read from one. The corpus is counted, and the run
+                 *     chosen, for this origin alone.
+                 * @example live
+                 */
+                origin?: components["parameters"]["AnalyzerOrigin"];
             };
             header?: {
                 /**
@@ -54135,6 +54179,14 @@ export interface operations {
             query: {
                 /** @description The repository, `owner/name`. */
                 repo: string;
+                /**
+                 * @description The one data origin the analysis read (#2022): `live` when absent, or `simulated` or
+                 *     `seeded` — the demo corpus a development or e2e stack holds. Never `all`: an analysis does
+                 *     not mix origins, so neither does what is read from one. The corpus is counted, and the run
+                 *     chosen, for this origin alone.
+                 * @example live
+                 */
+                origin?: components["parameters"]["AnalyzerOrigin"];
             };
             header?: {
                 /**
@@ -54759,6 +54811,14 @@ export interface operations {
             query: {
                 /** @description The repository, `owner/name`. */
                 repo: string;
+                /**
+                 * @description The one data origin the analysis read (#2022): `live` when absent, or `simulated` or
+                 *     `seeded` — the demo corpus a development or e2e stack holds. Never `all`: an analysis does
+                 *     not mix origins, so neither does what is read from one. The corpus is counted, and the run
+                 *     chosen, for this origin alone.
+                 * @example live
+                 */
+                origin?: components["parameters"]["AnalyzerOrigin"];
             };
             header?: {
                 /**
@@ -55654,6 +55714,14 @@ export interface operations {
             query: {
                 /** @description The repository, `owner/name`. */
                 repo: string;
+                /**
+                 * @description The one data origin the analysis read (#2022): `live` when absent, or `simulated` or
+                 *     `seeded` — the demo corpus a development or e2e stack holds. Never `all`: an analysis does
+                 *     not mix origins, so neither does what is read from one. The corpus is counted, and the run
+                 *     chosen, for this origin alone.
+                 * @example live
+                 */
+                origin?: components["parameters"]["AnalyzerOrigin"];
             };
             header?: {
                 /**

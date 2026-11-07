@@ -25,7 +25,7 @@ export class SuggestionsController {
    * The build-process and workflow suggestions still current, most confident first.
    *
    * @param tenant - The workspace.
-   * @param query - `{repo}`.
+   * @param query - `{repo, origin?}`.
    * @returns The cards' content.
    */
   @Get()
@@ -33,6 +33,6 @@ export class SuggestionsController {
     @CurrentTenant() tenant: Organization,
     @Query() query: SuggestionsQuery,
   ): Promise<SuggestionsResource> {
-    return this.suggestions.list(tenant.id, query.repo, new Date());
+    return this.suggestions.list(tenant.id, query.repo, new Date(), query.origin);
   }
 }

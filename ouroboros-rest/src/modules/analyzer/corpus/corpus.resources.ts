@@ -8,6 +8,7 @@
  * `analyzed: null` over a corpus that is sufficient.
  */
 
+import type { DataOrigin } from "../../db/schema";
 import type { AnalysisRunRow } from "../analysis.repository";
 import {
   corpusSufficient,
@@ -36,6 +37,8 @@ export interface AnalyzedCorpusResource extends CorpusHistoryResource {
 /** A repository's corpus, as it stands and as it was last analysed. */
 export interface CorpusStateResource extends CorpusHistoryResource {
   repo: string;
+  /** The one data origin counted, and the origin of {@link analyzed}'s run (#2022). */
+  origin: DataOrigin;
   /** The window a run started now would read. */
   window: CorpusWindow;
   /** The floor: the fewest days with a build before an analysis is shown. */
@@ -80,6 +83,7 @@ export function analyzedCorpusResource(
  * The whole answer.
  *
  * @param repo - The repository asked about.
+ * @param origin - The data origin counted (#2022).
  * @param window - The window a run started now would read.
  * @param counts - What lies inside it; zeros for a repository the workspace has none of.
  * @param run - The newest judged run, or undefined.
@@ -87,12 +91,14 @@ export function analyzedCorpusResource(
  */
 export function corpusStateResource(
   repo: string,
+  origin: DataOrigin,
   window: CorpusWindow,
   counts: { builds: number; daysWithBuilds: number },
   run: AnalysisRunRow | undefined,
 ): CorpusStateResource {
   return {
     repo,
+    origin,
     window: { ...window },
     ...history(counts.builds, counts.daysWithBuilds),
     minimumDaysWithBuilds: MINIMUM_DAYS_WITH_BUILDS,

@@ -11,6 +11,8 @@ import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
 
 import { DatabaseService } from "../../db/db.service";
+import type { DataOrigin } from "../../db/schema";
+import { DEFAULT_ANALYSIS_ORIGIN } from "../analysis.origin";
 import type { ActionBinding, Impact, SuggestionKind } from "../composer/composer.types";
 
 /** One suggestion, as the actions read it. */
@@ -26,6 +28,11 @@ export interface SuggestionRow {
   action_binding: ActionBinding;
   status: "open" | "applied" | "dismissed" | "drafted";
   last_run_id: string | null;
+  /**
+   * The data origin of the analysis that last produced it (#2022) — `live` for a suggestion no
+   * run has claimed — so its measurement reads the same origin's rollups.
+   */
+  origin: DataOrigin;
   /** Every evidence reference the cited findings carry, de-duplicated — `{kind, id}`. */
   evidence_refs: { kind: string; id: string }[];
 }
@@ -75,6 +82,8 @@ export class ActionsRepository {
     const { rows } = await sql<SuggestionRow>`
       select s.id::text as id, s.repo_ref, s.kind, s.title, s.evidence_line, s.confidence,
              s.impact, s.needs_spike, s.action_binding, s.status, s.last_run_id::text as last_run_id,
+             coalesce((select run.origin from ouroboros.analysis_runs run
+                        where run.id = s.last_run_id), ${DEFAULT_ANALYSIS_ORIGIN}) as origin,
              coalesce((select jsonb_agg(distinct r)
                          from ouroboros.analysis_suggestion_findings l
                          join ouroboros.analysis_findings f on f.id = l.finding_id

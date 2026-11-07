@@ -6,7 +6,7 @@
  * Not shipped: `*.fixture.ts` is excluded from the build.
  */
 
-import type { AnalysisPhase } from "../db/schema";
+import type { AnalysisPhase, DataOrigin } from "../db/schema";
 import type {
   AnalysisEvent,
   AnalyzerSet,
@@ -127,6 +127,7 @@ export class FakeRunStore {
       (row) =>
         row.organization_id === run.organizationId &&
         row.repo_ref === run.repoRef &&
+        row.origin === run.origin &&
         row.status === "running",
     );
     if (running !== undefined) {
@@ -141,6 +142,7 @@ export class FakeRunStore {
       repo_ref: run.repoRef,
       trigger: run.trigger,
       schedule_id: run.scheduleId,
+      origin: run.origin,
       status: "running",
       corpus_manifest: null,
       analyzer_set: run.analyzerSet,
@@ -160,12 +162,17 @@ export class FakeRunStore {
     return Promise.resolve({ started: true, run: { ...row } });
   }
 
-  running(organizationId: string, repoRef: string): Promise<AnalysisRunRow | undefined> {
+  running(
+    organizationId: string,
+    repoRef: string,
+    origin: DataOrigin,
+  ): Promise<AnalysisRunRow | undefined> {
     return Promise.resolve(
       [...this.rows.values()].find(
         (row) =>
           row.organization_id === organizationId &&
           row.repo_ref === repoRef &&
+          row.origin === origin &&
           row.status === "running",
       ),
     );
@@ -176,10 +183,19 @@ export class FakeRunStore {
     return Promise.resolve(row?.organization_id === organizationId ? row : undefined);
   }
 
-  latest(organizationId: string, repoRef: string): Promise<AnalysisRunRow | undefined> {
+  latest(
+    organizationId: string,
+    repoRef: string,
+    origin: DataOrigin,
+  ): Promise<AnalysisRunRow | undefined> {
     return Promise.resolve(
       [...this.rows.values()]
-        .filter((row) => row.organization_id === organizationId && row.repo_ref === repoRef)
+        .filter(
+          (row) =>
+            row.organization_id === organizationId &&
+            row.repo_ref === repoRef &&
+            row.origin === origin,
+        )
         .at(-1),
     );
   }

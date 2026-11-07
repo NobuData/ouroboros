@@ -28200,6 +28200,37 @@ select pg_temp.must_hold(
   (select count(*) = 1 from r),
   'once the running analysis ends, the next one may start');
 
+-- V155 (#2022): a run reads one origin, and the guard is per origin.
+select pg_temp.must_hold(
+  (select bool_and(origin = 'live') from ouroboros.analysis_runs
+    where organization_id = 'org-v080' and repo_ref = 'acme/helios-firmware'),
+  'a run that states no origin outside a seed file read live data');
+
+with r as (
+  insert into ouroboros.analysis_runs (organization_id, repo_ref, trigger, analyzer_set, origin)
+  values ('org-v080', 'acme/helios-firmware', 'manual',
+          '{"label": "v1", "analyzers": [{"id": "x", "version": 1, "kind": "deterministic"}]}',
+          'seeded')
+  returning 1
+)
+select pg_temp.must_hold(
+  (select count(*) = 1 from r),
+  'an analysis of the seeded corpus runs beside the live one — they never share a corpus');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_runs (organization_id, repo_ref, trigger, analyzer_set, origin)
+    values ('org-v080', 'acme/helios-firmware', 'manual',
+            '{"label": "v1", "analyzers": [{"id": "x", "version": 1, "kind": "deterministic"}]}',
+            'seeded')$$,
+  'but a second running analysis of the same origin is refused', 'analysis_runs_one_running');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_runs (organization_id, repo_ref, trigger, analyzer_set, origin)
+    values ('org-v080', 'acme/x', 'manual',
+            '{"label": "v1", "analyzers": [{"id": "x", "version": 1, "kind": "deterministic"}]}',
+            'all')$$,
+  'a run reads one named origin, never all of them', 'analysis_runs_origin_known');
+
 select pg_temp.must_hold(
   (select indisunique and pg_get_expr(indpred, indrelid) = '(status = ''running''::text)'
      from pg_index where indexrelid = 'ouroboros.analysis_runs_one_running'::regclass),

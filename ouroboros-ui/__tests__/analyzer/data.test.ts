@@ -61,7 +61,7 @@ describe("readAnalyzer", () => {
     [[], false, false],
     [["viewer", "member"], false, true],
   ] as const)("for %j: may administer %s, may dismiss %s", async (roles, mayAdminister, mayDismiss) => {
-    const readings = await readAnalyzer(access([...roles]), () => 42);
+    const readings = await readAnalyzer(access([...roles]), "live", () => 42);
 
     // Ticking a drafted ticket is the planning page's rule for the same checkbox: a member's too.
     expect(readings).toMatchObject({ mayAdminister, mayDismiss, mayContribute: mayDismiss, readAt: 42 });

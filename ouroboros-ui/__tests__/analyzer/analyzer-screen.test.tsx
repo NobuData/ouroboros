@@ -96,6 +96,22 @@ afterEach(() => {
   setNavOrigin(null);
 });
 
+describe("the origin it reads (#2022)", () => {
+  it("says nothing of origin when it reads live data", async () => {
+    focusHelios();
+    await draw();
+
+    expect(screen.queryByText(/demo data/i)).toBeNull();
+  });
+
+  it("says so when it reads the demo corpus, as the dashboard does", async () => {
+    focusHelios();
+    await draw(analyzerReadings({ origin: "seeded" }));
+
+    expect(screen.getByText(/This page is showing demo data\./)).toBeInTheDocument();
+  });
+});
+
 describe("the head", () => {
   it("names the chosen repository and slot-fills the headline from the corpus manifest", async () => {
     await draw();
@@ -250,7 +266,7 @@ describe("Run analysis now", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run analysis now" }));
 
     const panel = await screen.findByRole("region", { name: "Analysis progress" });
-    expect(startAnalysis).toHaveBeenCalledExactlyOnceWith(HELIOS);
+    expect(startAnalysis).toHaveBeenCalledExactlyOnceWith(HELIOS, "live");
     expect(within(panel).getByText("Analyzing")).toHaveAttribute("aria-current", "step");
     expect(within(panel).getByRole("list", { name: "Analyzers" })).toHaveTextContent("change_point completed · 3 findings");
     expect(within(panel).getByRole("list", { name: "Analyzers" })).toHaveTextContent("log_signature running");

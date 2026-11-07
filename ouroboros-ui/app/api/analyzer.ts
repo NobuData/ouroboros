@@ -19,6 +19,8 @@
 import { type ApiClient, unwrap } from "@/app/api/client";
 import type { components } from "@/app/api/schema";
 import { api } from "@/app/api/server";
+import { analyzerQuery } from "@/app/analyzer/analyzer-origin";
+import type { DataOrigin } from "@/app/origin/origin";
 
 /** One analysis run — status, phase, per-analyzer progress, manifest and provenance. */
 export type AnalysisRun = components["schemas"]["AnalysisRun"];
@@ -121,12 +123,13 @@ export const analyzer = {
    * @param repo The repository, `owner/name`.
    * @param client The client to call through. Defaults to the server-side one.
    * @param signal Abandons the request — the poll's deadline.
+   * @param origin The one data origin to read; `live` when omitted (#2022).
    * @returns The run, or `null` before the first analysis.
    * @throws {ApiError} What the service answered.
    */
-  async latest(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<AnalysisRun | null> {
+  async latest(repo: string, client: ApiClient = api(), signal?: AbortSignal, origin: DataOrigin = "live"): Promise<AnalysisRun | null> {
     const answer = unwrap(
-      await client.GET("/api/v1/analyzer/runs/latest", { params: { query: { repo } }, signal }),
+      await client.GET("/api/v1/analyzer/runs/latest", { params: { query: analyzerQuery(repo, origin) }, signal }),
     );
 
     return answer.run;
@@ -137,12 +140,13 @@ export const analyzer = {
    *
    * @param repo The repository, `owner/name`.
    * @param client The client to call through. Defaults to the server-side one.
+   * @param origin The one data origin to read; `live` when omitted (#2022).
    * @returns The new run, `running` in `assembling`.
    * @throws {ApiError} `analysis_already_running` (409, its details name the run that is going),
    *   `analysis_repository_not_found`, `forbidden`, `engine_unavailable`.
    */
-  async start(repo: string, client: ApiClient = api()): Promise<AnalysisRun> {
-    return unwrap(await client.POST("/api/v1/analyzer/runs", { body: { repo } }));
+  async start(repo: string, client: ApiClient = api(), origin: DataOrigin = "live"): Promise<AnalysisRun> {
+    return unwrap(await client.POST("/api/v1/analyzer/runs", { body: analyzerQuery(repo, origin) }));
   },
 
   /**
@@ -165,11 +169,12 @@ export const analyzer = {
    * @param repo The repository, `owner/name`.
    * @param client The client to call through. Defaults to the server-side one.
    * @param signal Abandons the request — the poll's deadline.
+   * @param origin The one data origin to read; `live` when omitted (#2022).
    * @returns The chart; `runId: null` and empty lists before any run has detected change-points.
    * @throws {ApiError} What the service answered.
    */
-  async duration(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<DurationChart> {
-    return unwrap(await client.GET("/api/v1/analyzer/duration", { params: { query: { repo } }, signal }));
+  async duration(repo: string, client: ApiClient = api(), signal?: AbortSignal, origin: DataOrigin = "live"): Promise<DurationChart> {
+    return unwrap(await client.GET("/api/v1/analyzer/duration", { params: { query: analyzerQuery(repo, origin) }, signal }));
   },
 
   /**
@@ -180,11 +185,12 @@ export const analyzer = {
    * @param repo The repository, `owner/name`.
    * @param client The client to call through. Defaults to the server-side one.
    * @param signal Abandons the request — the poll's deadline.
+   * @param origin The one data origin to read; `live` when omitted (#2022).
    * @returns The suggestions; `runId: null` and none before an analysis has composed one.
    * @throws {ApiError} What the service answered.
    */
-  async suggestions(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<AnalysisSuggestions> {
-    return unwrap(await client.GET("/api/v1/analyzer/suggestions", { params: { query: { repo } }, signal }));
+  async suggestions(repo: string, client: ApiClient = api(), signal?: AbortSignal, origin: DataOrigin = "live"): Promise<AnalysisSuggestions> {
+    return unwrap(await client.GET("/api/v1/analyzer/suggestions", { params: { query: analyzerQuery(repo, origin) }, signal }));
   },
 
   /**
@@ -277,11 +283,12 @@ export const analyzer = {
    * @param repo The repository, `owner/name`.
    * @param client The client to call through. Defaults to the server-side one.
    * @param signal Abandons the request — the poll's deadline.
+   * @param origin The one data origin to read; `live` when omitted (#2022).
    * @returns The measurements; none before a suggestion has been applied.
    * @throws {ApiError} What the service answered.
    */
-  async measurements(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<Measurements> {
-    return unwrap(await client.GET("/api/v1/analyzer/measurements", { params: { query: { repo } }, signal }));
+  async measurements(repo: string, client: ApiClient = api(), signal?: AbortSignal, origin: DataOrigin = "live"): Promise<Measurements> {
+    return unwrap(await client.GET("/api/v1/analyzer/measurements", { params: { query: analyzerQuery(repo, origin) }, signal }));
   },
 
   /**
@@ -291,11 +298,12 @@ export const analyzer = {
    * @param repo The repository, `owner/name`.
    * @param client The client to call through. Defaults to the server-side one.
    * @param signal Abandons the request — the poll's deadline.
+   * @param origin The one data origin to read; `live` when omitted (#2022).
    * @returns The corpus state; an empty corpus nothing analysed for a repository with no builds.
    * @throws {ApiError} What the service answered.
    */
-  async corpus(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<AnalyzerCorpus> {
-    return unwrap(await client.GET("/api/v1/analyzer/corpus", { params: { query: { repo } }, signal }));
+  async corpus(repo: string, client: ApiClient = api(), signal?: AbortSignal, origin: DataOrigin = "live"): Promise<AnalyzerCorpus> {
+    return unwrap(await client.GET("/api/v1/analyzer/corpus", { params: { query: analyzerQuery(repo, origin) }, signal }));
   },
 
   /**
@@ -306,11 +314,12 @@ export const analyzer = {
    * @param repo The repository, `owner/name`.
    * @param client The client to call through. Defaults to the server-side one.
    * @param signal Abandons the request — the poll's deadline.
+   * @param origin The one data origin to read; `live` when omitted (#2022).
    * @returns The card; both lists empty before an analysis has composed a ticket suggestion.
    * @throws {ApiError} What the service answered.
    */
-  async tickets(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<AnalysisTickets> {
-    return unwrap(await client.GET("/api/v1/analyzer/tickets", { params: { query: { repo } }, signal }));
+  async tickets(repo: string, client: ApiClient = api(), signal?: AbortSignal, origin: DataOrigin = "live"): Promise<AnalysisTickets> {
+    return unwrap(await client.GET("/api/v1/analyzer/tickets", { params: { query: analyzerQuery(repo, origin) }, signal }));
   },
 
   /**

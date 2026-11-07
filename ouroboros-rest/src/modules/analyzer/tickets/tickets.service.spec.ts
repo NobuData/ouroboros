@@ -110,7 +110,7 @@ describe("reading the drafted-tickets card", () => {
       undrafted: [],
       batches: [],
     });
-    expect(suggestions.composedRun).toHaveBeenCalledWith(ORG, HELIOS);
+    expect(suggestions.composedRun).toHaveBeenCalledWith(ORG, HELIOS, "live");
     expect(reads.undrafted).not.toHaveBeenCalled();
     expect(reads.batchIds).not.toHaveBeenCalled();
     expect(batches.read).not.toHaveBeenCalled();
@@ -121,8 +121,8 @@ describe("reading the drafted-tickets card", () => {
     const { service, reads, batches } = build({ batches: [seededBatch()] });
     const card = await service.list(ORG, HELIOS);
 
-    expect(reads.undrafted).toHaveBeenCalledWith(ORG, HELIOS);
-    expect(reads.batchIds).toHaveBeenCalledWith(ORG, HELIOS);
+    expect(reads.undrafted).toHaveBeenCalledWith(ORG, HELIOS, "live");
+    expect(reads.batchIds).toHaveBeenCalledWith(ORG, HELIOS, "live");
     expect(batches.read).toHaveBeenCalledTimes(1);
     expect(batches.read).toHaveBeenCalledWith(ORG, BATCH_ID);
     expect(card.batches[0].batch.planner).toBe("analyzer-v1");

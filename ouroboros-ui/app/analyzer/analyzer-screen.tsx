@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 
+import { OriginStrip } from "@/app/origin/origin-strip";
 import { setNavOrigin } from "@/app/shell/nav-registry";
 import { RetryBanner } from "@/app/ui";
 
@@ -58,6 +59,8 @@ export function AnalyzerScreen({
   return (
     <AnalyzerProvider poll={poll} readings={readings}>
       <main className="analyzer">
+        {/* The page reads one origin (#2022); a non-live one says so, as the dashboard does. */}
+        <OriginStrip present={[readings.origin]} filter={readings.origin} />
         <AnalyzerBanner />
         <AnalyzerHead />
         <div className="analyzer__grid">

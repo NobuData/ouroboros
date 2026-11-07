@@ -55,6 +55,7 @@ describe("the corpus-state read, against its documented schema", () => {
   it("documents an analysed corpus as sent", () => {
     const body = corpusStateResource(
       HELIOS,
+      "live",
       WINDOW,
       { builds: 1284, daysWithBuilds: 89 },
       judgedRun(1284, 89),
@@ -69,7 +70,7 @@ describe("the corpus-state read, against its documented schema", () => {
       { builds: 3, daysWithBuilds: 3 },
       { builds: 0, daysWithBuilds: 0 },
     ]) {
-      const body = corpusStateResource(HELIOS, WINDOW, counts, undefined);
+      const body = corpusStateResource(HELIOS, "live", WINDOW, counts, undefined);
 
       expect(validate(body) ? null : validate.errors).toBeNull();
       expect(body).toMatchObject({ sufficient: false, analyzed: null });
@@ -77,7 +78,13 @@ describe("the corpus-state read, against its documented schema", () => {
   });
 
   it("documents the floor the service applies", () => {
-    const body = corpusStateResource(HELIOS, WINDOW, { builds: 30, daysWithBuilds: 10 }, undefined);
+    const body = corpusStateResource(
+      HELIOS,
+      "live",
+      WINDOW,
+      { builds: 30, daysWithBuilds: 10 },
+      undefined,
+    );
 
     expect(body.minimumDaysWithBuilds).toBe(MINIMUM_DAYS_WITH_BUILDS);
     expect(body.sufficient).toBe(true);
@@ -100,7 +107,7 @@ describe("the corpus-state read, against its documented schema", () => {
     ["a field the schema does not name", { verdict: "thin" }],
   ])("refuses an answer with %s", (_label, change) => {
     const body = {
-      ...corpusStateResource(HELIOS, WINDOW, { builds: 3, daysWithBuilds: 3 }, undefined),
+      ...corpusStateResource(HELIOS, "live", WINDOW, { builds: 3, daysWithBuilds: 3 }, undefined),
       ...change,
     };
 

@@ -19,6 +19,7 @@ import { analyzer } from "@/app/api/analyzer";
 import { readForPoll } from "@/app/api/poll-read";
 import { anonymousApi } from "@/app/api/server";
 import { type AnalyzerPage, RUNNING_POLL_SECONDS, UNREACHABLE_ANALYZER } from "@/app/analyzer/analyzer-poll";
+import type { DataOrigin } from "@/app/origin/origin";
 import { isSettling } from "@/app/planning/batch-poll";
 import type { PollAnswer } from "@/app/poll";
 
@@ -29,22 +30,25 @@ export const ANALYZER_UNAVAILABLE_CODE = "analyzer_unavailable";
  * Read one repository's page.
  *
  * @param repo The repository, `owner/name`.
+ * @param origin The one data origin to read (#2022) — every read but the schedule's, which is
+ *   configuration rather than an analysis.
  * @param read How to read it. Defaults to the seven service reads; a suite passes a stub.
  * @returns The page — with a short interval while a run is in flight or a drafted batch is still
  *   being sized — or why it could not be read.
  */
 export async function readAnalyzerPage(
   repo: string,
+  origin: DataOrigin = "live",
   read: (repo: string, signal: AbortSignal) => Promise<AnalyzerPage> = async (asked, signal) => {
     const client = anonymousApi();
     const [run, schedule, duration, suggestions, tickets, measurements, corpus] = await Promise.all([
-      analyzer.latest(asked, client, signal),
+      analyzer.latest(asked, client, signal, origin),
       analyzer.schedule(asked, client, signal),
-      analyzer.duration(asked, client, signal),
-      analyzer.suggestions(asked, client, signal),
-      analyzer.tickets(asked, client, signal),
-      analyzer.measurements(asked, client, signal),
-      analyzer.corpus(asked, client, signal),
+      analyzer.duration(asked, client, signal, origin),
+      analyzer.suggestions(asked, client, signal, origin),
+      analyzer.tickets(asked, client, signal, origin),
+      analyzer.measurements(asked, client, signal, origin),
+      analyzer.corpus(asked, client, signal, origin),
     ]);
 
     return { repo: asked, run, schedule, duration, suggestions, tickets, measurements, corpus };

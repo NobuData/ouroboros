@@ -64,8 +64,15 @@ import { SESSION_COOKIE, sessionTokenOf } from "./session";
 import { REST_URL } from "./stack";
 import { STANDARD_FIX_ID } from "./studio";
 
-/** The page's route. */
-export const ANALYZER_PATH = "/analyzer";
+/**
+ * The seed's data origin. The seed is demo data and the analyzer reads live data by default
+ * (#2022, after DJ.3 #1316), so this leg asks for the seed's origin — on the page and of the
+ * service — to read mockup 18 from it.
+ */
+export const SEED_ORIGIN = "seeded";
+
+/** The page's route, over the seed's origin. */
+export const ANALYZER_PATH = `/analyzer?origin=${SEED_ORIGIN}`;
 
 /** The seeded repository mockup 18 is drawn for. */
 export const HELIOS = {
@@ -268,7 +275,7 @@ export async function suggestions(context: BrowserContext): Promise<readonly Sug
   const answer = await requestAs<{ suggestions: SuggestionRow[] }>(
     context,
     "GET",
-    `/api/v1/analyzer/suggestions?repo=${encodeURIComponent(HELIOS.ref)}`,
+    `/api/v1/analyzer/suggestions?repo=${encodeURIComponent(HELIOS.ref)}&origin=${SEED_ORIGIN}`,
     null,
     "reading the analyzer's suggestions",
   );
@@ -399,7 +406,7 @@ export async function latestRun(
   const answer = await requestAs<{ run: AnalysisRunRow | null }>(
     context,
     "GET",
-    `/api/v1/analyzer/runs/latest?repo=${encodeURIComponent(repo)}`,
+    `/api/v1/analyzer/runs/latest?repo=${encodeURIComponent(repo)}&origin=${SEED_ORIGIN}`,
     null,
     "reading the newest analysis run",
   );
@@ -520,7 +527,7 @@ export async function seededTicketBatch(context: BrowserContext): Promise<Ticket
   const answer = await requestAs<{ batches: { batch: TicketBatch }[] }>(
     context,
     "GET",
-    `/api/v1/analyzer/tickets?repo=${encodeURIComponent(HELIOS.ref)}`,
+    `/api/v1/analyzer/tickets?repo=${encodeURIComponent(HELIOS.ref)}&origin=${SEED_ORIGIN}`,
     null,
     "reading the analyzer's drafted tickets",
   );
@@ -674,7 +681,7 @@ export async function measurements(
   const answer = await requestAs<{ formula: string; measurements: MeasurementRow[] }>(
     context,
     "GET",
-    `/api/v1/analyzer/measurements?repo=${encodeURIComponent(HELIOS.ref)}`,
+    `/api/v1/analyzer/measurements?repo=${encodeURIComponent(HELIOS.ref)}&origin=${SEED_ORIGIN}`,
     null,
     "reading the analyzer's measurements",
   );
@@ -793,7 +800,7 @@ export async function corpus(
   const answer = await requestAs<CorpusState>(
     context,
     "GET",
-    `/api/v1/analyzer/corpus?repo=${encodeURIComponent(repo)}`,
+    `/api/v1/analyzer/corpus?repo=${encodeURIComponent(repo)}&origin=${SEED_ORIGIN}`,
     null,
     "reading the analyzer's corpus state",
   );
@@ -834,7 +841,7 @@ export async function durationChart(
   const answer = await requestAs<DurationRead>(
     context,
     "GET",
-    `/api/v1/analyzer/duration?repo=${encodeURIComponent(repo)}`,
+    `/api/v1/analyzer/duration?repo=${encodeURIComponent(repo)}&origin=${SEED_ORIGIN}`,
     null,
     "reading the analyzer's duration chart",
   );
@@ -886,7 +893,7 @@ export async function ticketTitles(
   }>(
     context,
     "GET",
-    `/api/v1/analyzer/tickets?repo=${encodeURIComponent(HELIOS.ref)}`,
+    `/api/v1/analyzer/tickets?repo=${encodeURIComponent(HELIOS.ref)}&origin=${SEED_ORIGIN}`,
     null,
     "reading the analyzer's drafted tickets",
   );

@@ -37,7 +37,7 @@ describe("readAnalyzerPage", () => {
   it("reads the repository it was asked for, with a deadline, at the family's interval when idle", async () => {
     const read = vi.fn().mockResolvedValue(analyzerPage());
 
-    const answer = await readAnalyzerPage(HELIOS, read);
+    const answer = await readAnalyzerPage(HELIOS, "live", read);
 
     expect(read.mock.calls[0]![0]).toBe(HELIOS);
     expect(read.mock.calls[0]![1]).toBeInstanceOf(AbortSignal);
@@ -45,7 +45,7 @@ describe("readAnalyzerPage", () => {
   });
 
   it("asks to be polled every few seconds while a run is in flight, so progress ticks", async () => {
-    const answer = await readAnalyzerPage(HELIOS, vi.fn().mockResolvedValue(analyzerPage({ run: runningRun() })));
+    const answer = await readAnalyzerPage(HELIOS, "live", vi.fn().mockResolvedValue(analyzerPage({ run: runningRun() })));
 
     expect(answer).toMatchObject({ state: "fresh", pollAfterSeconds: RUNNING_POLL_SECONDS });
   });
@@ -53,7 +53,7 @@ describe("readAnalyzerPage", () => {
   it("asks as often while a drafted batch is still being sized, so `sizing…` turns into chips (#519)", async () => {
     const sizing = ticketsWith(seededBatch((draft) => (draft.localKey === "BA-2" ? { estimate: null } : undefined)));
 
-    expect(await readAnalyzerPage(HELIOS, vi.fn().mockResolvedValue(analyzerPage({ tickets: sizing })))).toMatchObject({
+    expect(await readAnalyzerPage(HELIOS, "live", vi.fn().mockResolvedValue(analyzerPage({ tickets: sizing })))).toMatchObject({
       state: "fresh",
       pollAfterSeconds: RUNNING_POLL_SECONDS,
     });
@@ -64,7 +64,7 @@ describe("readAnalyzerPage", () => {
     const unsized = ticketsWith(seededBatch(() => ({ estimate: null }), { autoSize: false }));
 
     for (const tickets of [seededTickets(), unsized]) {
-      expect(await readAnalyzerPage(HELIOS, vi.fn().mockResolvedValue(analyzerPage({ tickets })))).toMatchObject({
+      expect(await readAnalyzerPage(HELIOS, "live", vi.fn().mockResolvedValue(analyzerPage({ tickets })))).toMatchObject({
         state: "fresh",
         pollAfterSeconds: null,
       });
@@ -72,16 +72,17 @@ describe("readAnalyzerPage", () => {
   });
 
   it("reads a 401 as gone, a refusal as the service's sentence, and a dropped read as unreachable", async () => {
-    expect(await readAnalyzerPage(HELIOS, vi.fn().mockRejectedValue(new ApiError(401, "unauthenticated", "Sign in.")))).toEqual({
+    expect(await readAnalyzerPage(HELIOS, "live", vi.fn().mockRejectedValue(new ApiError(401, "unauthenticated", "Sign in.")))).toEqual({
       state: "gone",
     });
     expect(
       await readAnalyzerPage(
         HELIOS,
+        "live",
         vi.fn().mockRejectedValue(new ApiError(404, "analysis_repository_not_found", "No such repository.")),
       ),
     ).toEqual({ state: "failed", reason: "No such repository.", pollAfterSeconds: null });
-    expect(await readAnalyzerPage(HELIOS, vi.fn().mockRejectedValue(new TypeError("fetch failed")))).toEqual({
+    expect(await readAnalyzerPage(HELIOS, "live", vi.fn().mockRejectedValue(new TypeError("fetch failed")))).toEqual({
       state: "failed",
       reason: UNREACHABLE_ANALYZER,
       pollAfterSeconds: null,
@@ -129,8 +130,20 @@ describe("the page's own read", () => {
     const answer = await page.readAnalyzerPage(HELIOS);
 
     expect(answer).toEqual(freshPage());
-    for (const read of [latest, schedule, duration, suggestions, tickets, measurements, corpus]) {
-      expect(read).toHaveBeenCalledExactlyOnceWith(HELIOS, CLIENT, expect.any(AbortSignal));
+    expect(schedule).toHaveBeenCalledExactlyOnceWith(HELIOS, CLIENT, expect.any(AbortSignal));
+    for (const read of [latest, duration, suggestions, tickets, measurements, corpus]) {
+      expect(read).toHaveBeenCalledExactlyOnceWith(HELIOS, CLIENT, expect.any(AbortSignal), "live");
+    }
+  });
+
+  it("asks every analysis read for the one origin the page reads — the schedule is configuration (#2022)", async () => {
+    const page = await import("@/app/api/analyzer-page");
+
+    await page.readAnalyzerPage(HELIOS, "seeded");
+
+    expect(schedule).toHaveBeenCalledExactlyOnceWith(HELIOS, CLIENT, expect.any(AbortSignal));
+    for (const read of [latest, duration, suggestions, tickets, measurements, corpus]) {
+      expect(read).toHaveBeenCalledExactlyOnceWith(HELIOS, CLIENT, expect.any(AbortSignal), "seeded");
     }
   });
 

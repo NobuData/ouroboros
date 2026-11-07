@@ -25,7 +25,7 @@ export class CorpusStateController {
    * The repository's corpus as it stands, against the floor, and as it was last analysed.
    *
    * @param tenant - The workspace.
-   * @param query - `{repo}`.
+   * @param query - `{repo, origin?}`.
    * @returns The state.
    */
   @Get()
@@ -33,6 +33,6 @@ export class CorpusStateController {
     @CurrentTenant() tenant: Organization,
     @Query() query: CorpusStateQuery,
   ): Promise<CorpusStateResource> {
-    return this.corpora.state(tenant.id, query.repo);
+    return this.corpora.state(tenant.id, query.repo, query.origin);
   }
 }

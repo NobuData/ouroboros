@@ -95,7 +95,7 @@ describe("the suggestion cards' read", () => {
       suggestions: [],
       calibration: [],
     });
-    expect(reads.composedRun).toHaveBeenCalledWith("org", HELIOS);
+    expect(reads.composedRun).toHaveBeenCalledWith("org", HELIOS, "live");
     expect(reads.suggestions).not.toHaveBeenCalled();
     expect(reads.findings).not.toHaveBeenCalled();
     expect(measurements.measurements).not.toHaveBeenCalled();
@@ -107,7 +107,7 @@ describe("the suggestion cards' read", () => {
 
     const read = await service.list("org", HELIOS, AT);
 
-    expect(reads.suggestions).toHaveBeenCalledWith("org", HELIOS);
+    expect(reads.suggestions).toHaveBeenCalledWith("org", HELIOS, "live");
     expect(reads.findings).toHaveBeenCalledWith("org", [RUNNER_MOVE_ID]);
     expect(read).toMatchObject({ runId: RUN_ID, analyzedAt: "2026-08-08T10:41:00.000Z" });
     expect(read.suggestions.map((entry) => entry.title)).toEqual([
@@ -165,7 +165,7 @@ describe("the suggestion cards' read", () => {
 
     const read = await service.list("org", HELIOS, AT);
 
-    expect(measurements.measurements).toHaveBeenCalledWith("org", HELIOS, AT);
+    expect(measurements.measurements).toHaveBeenCalledWith("org", HELIOS, AT, "live");
     expect(measurements.calibration).toHaveBeenCalledWith("org", HELIOS);
     expect(read.suggestions[0].measurement).toMatchObject({ day: 3, windowDays: 14 });
     expect(read.calibration).toHaveLength(1);

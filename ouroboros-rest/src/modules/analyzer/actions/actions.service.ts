@@ -438,7 +438,7 @@ export class SuggestionActionsService {
       target.metric === "queue_wait" && plan.kind === "pool_window" ? plan.change.pool : null;
     const points: MetricPoint[] = (
       await this.corpus.series(
-        { organizationId, repoRef: suggestion.repo_ref },
+        { organizationId, repoRef: suggestion.repo_ref, origin: suggestion.origin },
         window,
         target.metric,
       )

@@ -11,7 +11,7 @@ import { Injectable } from "@nestjs/common";
 import { sql, type Selectable } from "kysely";
 
 import { DatabaseService } from "../../db/db.service";
-import type { AnalysisFindingsTable } from "../../db/schema";
+import type { AnalysisFindingsTable, DataOrigin } from "../../db/schema";
 import type { AnalysisRunRow } from "../analysis.repository";
 
 /** The change-point analyzer's id, which is also its findings' type (engine `changepoint.py`). */
@@ -35,9 +35,14 @@ export class DurationRepository {
    *
    * @param organizationId - The workspace.
    * @param repoRef - The repository.
+   * @param origin - The data origin the run read (#2022).
    * @returns The run, or undefined before the first such run.
    */
-  async annotatedRun(organizationId: string, repoRef: string): Promise<AnalysisRunRow | undefined> {
+  async annotatedRun(
+    organizationId: string,
+    repoRef: string,
+    origin: DataOrigin,
+  ): Promise<AnalysisRunRow | undefined> {
     const completed = JSON.stringify([{ id: CHANGE_POINT, status: "completed" }]);
 
     return this.database.db
@@ -45,6 +50,7 @@ export class DurationRepository {
       .selectAll()
       .where("organization_id", "=", organizationId)
       .where("repo_ref", "=", repoRef)
+      .where("origin", "=", origin)
       .where("status", "in", ["complete", "budget_exceeded"])
       .where("corpus_manifest", "is not", null)
       .where(sql<boolean>`progress -> 'analyzers' @> ${completed}::jsonb`)

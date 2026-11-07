@@ -21,6 +21,7 @@ function suggestion(overrides: Partial<SuggestionRow> = {}): SuggestionRow {
     action_binding: { plane: "planning", change: { ticket: "fixture_timeout_ticket" } },
     status: "open",
     last_run_id: "5eed0065-0000-4000-8000-000000000002",
+    origin: "live",
     evidence_refs: [
       { kind: "test_run", id: "5eed0040-0000-4000-8000-000000000002" },
       { kind: "build", id: "5eed0028-0000-4000-8000-000000000479" },

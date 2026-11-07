@@ -151,7 +151,8 @@ export function AnalyzerProvider({ readings, children, poll }: AnalyzerProviderP
   const chosen = useMemo(() => chooseRepo(repos.ok ? repos.value : [], focus), [repos, focus]);
   const repo = chosen?.repo.ref ?? null;
 
-  const { snapshot, refresh } = useKeyedPoll(repo === null ? null : analyzerUrl(repo), (url) =>
+  const { origin } = readings;
+  const { snapshot, refresh } = useKeyedPoll(repo === null ? null : analyzerUrl(repo, origin), (url) =>
     createAnalyzerPoll(url, poll),
   );
 
@@ -169,12 +170,12 @@ export function AnalyzerProvider({ readings, children, poll }: AnalyzerProviderP
     if (starting || repo === null || !readings.mayAdminister) return;
 
     setStarting(true);
-    void startAnalysis(repo).then((answer) => {
+    void startAnalysis(repo, origin).then((answer) => {
       setStarting(false);
       setHeld({ repo, outcome: answer });
       if (answer.kind !== "refused") refresh();
     });
-  }, [starting, repo, readings.mayAdminister, refresh]);
+  }, [starting, repo, origin, readings.mayAdminister, refresh]);
 
   const [local, setLocal] = useState<ReadonlyMap<string, LocalResolution>>(() => new Map());
   const [refusals, setRefusals] = useState<ReadonlyMap<string, string>>(() => new Map());

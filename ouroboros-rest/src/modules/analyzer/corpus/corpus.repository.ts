@@ -14,10 +14,11 @@
  * Days are UTC days (`(timestamptz at time zone 'UTC')::date`), as everywhere in the analysis and
  * insights domains.
  *
- * **Live rows only** (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315)). Every
- * plane read here that carries a data origin — builds, runs, test runs, waivers through their
- * run, and the rollup series — is read for {@link CORPUS_ORIGIN} alone, so no finding is computed
- * over demo or simulated rows, and none mixes origins. Two reads carry no origin: a log is read
+ * **One origin per corpus** (DJ.2, [#1315](https://github.com/NobuData/ouroboros/issues/1315);
+ * [#2022](https://github.com/NobuData/ouroboros/issues/2022)). Every plane read here that carries
+ * a data origin — builds, runs, test runs, waivers through their run, and the rollup series — is
+ * read for the scope's {@link CorpusScope.origin} alone: `live` unless a person asked for the demo
+ * or simulated corpus (`analysis.origin.ts`), so no finding mixes origins. Two reads carry no origin: a log is read
  * by a job id a live page returned, and `flake_scores` is the flakes plane's own per-case score,
  * which that plane computes from every test run it is given.
  */
@@ -38,9 +39,6 @@ import type {
 } from "../../engine/engine.analysis";
 import type { CorpusWindow } from "./corpus.manifest";
 import type { LogChunk } from "./log.tail";
-
-/** The one data origin the corpus reads (DJ.2): the analyzer reasons about real runs only. */
-export const CORPUS_ORIGIN: DataOrigin = "live";
 
 /** Builds per page. */
 export const BUILD_PAGE = 500;
@@ -63,6 +61,8 @@ export interface CorpusScope {
   repoRef: string;
   /** `github_repos.id`. */
   repoId: string;
+  /** The one data origin read — `live` unless a person asked for another (#2022). */
+  origin: DataOrigin;
 }
 
 /** What lies inside the window — the strip's numbers, counted without reading a row of them. */
@@ -167,13 +167,13 @@ export class CorpusRepository {
              (select count(*) from ouroboros.runs r
                where r.organization_id = ${scope.organizationId}
                  and r.github_repo_id = ${scope.repoId}
-                 and r.origin = ${CORPUS_ORIGIN}
+                 and r.origin = ${scope.origin}
                  and r.started_at >= ${from} and r.started_at < ${to}) as loops
         from ouroboros.build_jobs b
         join ouroboros.runner_pools pool on pool.id = b.pool_id
        where b.organization_id = ${scope.organizationId}
          and b.github_repo_id = ${scope.repoId}
-         and b.origin = ${CORPUS_ORIGIN}
+         and b.origin = ${scope.origin}
          and b.status in ('succeeded', 'failed', 'retried')
          and b.finished_at >= ${from} and b.finished_at < ${to}`.execute(this.database.db);
 
@@ -207,7 +207,7 @@ export class CorpusRepository {
         from ouroboros.build_jobs b
        where b.organization_id = ${scope.organizationId}
          and b.github_repo_id = ${scope.repoId}
-         and b.origin = ${CORPUS_ORIGIN}
+         and b.origin = ${scope.origin}
          and b.status = 'succeeded'
          and b.finished_at >= ${from} and b.finished_at < ${to}
        group by b.label
@@ -258,7 +258,7 @@ export class CorpusRepository {
         join ouroboros.runner_pools pool on pool.id = b.pool_id
        where b.organization_id = ${scope.organizationId}
          and b.github_repo_id = ${scope.repoId}
-         and b.origin = ${CORPUS_ORIGIN}
+         and b.origin = ${scope.origin}
          and b.status in ('succeeded', 'failed', 'retried')
          and b.finished_at >= ${from} and b.finished_at < ${to}
          and ${resume}
@@ -332,7 +332,7 @@ export class CorpusRepository {
           from ouroboros.build_jobs job
          where job.organization_id = ${scope.organizationId}
            and job.github_repo_id = ${scope.repoId}
-           and job.origin = ${CORPUS_ORIGIN}
+           and job.origin = ${scope.origin}
       ),
       first_builds as (
         select distinct on (job.commit_sha) job.commit_sha, job.queued_day, job.title
@@ -347,6 +347,7 @@ export class CorpusRepository {
           from ouroboros.runner_pools pool
           join ouroboros.build_jobs job on job.pool_id = pool.id
          where pool.organization_id = ${scope.organizationId}
+           and job.origin = ${scope.origin}
       ),
       events as (
         select 'merge' as kind, f.queued_day as day, f.title as label,
@@ -412,7 +413,7 @@ export class CorpusRepository {
         left join ouroboros.runs r on r.id = tr.run_id
         left join ouroboros.build_jobs b on b.id = tr.build_job_id
        where tr.organization_id = ${scope.organizationId}
-         and tr.origin = ${CORPUS_ORIGIN}
+         and tr.origin = ${scope.origin}
          and (r.github_repo_id = ${scope.repoId} or b.github_repo_id = ${scope.repoId})
          and tr.started_at >= ${from} and tr.started_at < ${to}
          and ${resume}
@@ -524,7 +525,7 @@ export class CorpusRepository {
         from ouroboros.runs r
        where r.organization_id = ${scope.organizationId}
          and r.github_repo_id = ${scope.repoId}
-         and r.origin = ${CORPUS_ORIGIN}
+         and r.origin = ${scope.origin}
          and r.started_at >= ${from} and r.started_at < ${to}
          and ${resume}
        order by r.id
@@ -562,7 +563,7 @@ export class CorpusRepository {
         join ouroboros.runs r on r.id = w.run_id
        where w.organization_id = ${scope.organizationId}
          and r.github_repo_id = ${scope.repoId}
-         and r.origin = ${CORPUS_ORIGIN}
+         and r.origin = ${scope.origin}
          and w.created_at >= ${from} and w.created_at < ${to}
        order by w.created_at, w.id`.execute(this.database.db);
 
@@ -578,13 +579,14 @@ export class CorpusRepository {
   /**
    * A rolled-up metric's daily rows for the repository — BI's grain, every dimension.
    *
-   * @param scope - The repository (its id is not needed: the grain is keyed by `repo_ref`).
+   * @param scope - The repository and origin (its id is not needed: the grain is keyed by
+   *   `repo_ref`).
    * @param window - The window.
    * @param metricId - The metric, e.g. `build_duration`.
-   * @returns One point per (day, dimension), ordered.
+   * @returns One point per (day, dimension) of the scope's origin, ordered.
    */
   async series(
-    scope: Pick<CorpusScope, "organizationId" | "repoRef">,
+    scope: Pick<CorpusScope, "organizationId" | "repoRef" | "origin">,
     window: Pick<CorpusWindow, "from" | "to">,
     metricId: string,
   ): Promise<EngineSeriesPoint[]> {
@@ -594,7 +596,7 @@ export class CorpusRepository {
         from ouroboros.metric_daily d
        where d.organization_id = ${scope.organizationId}
          and d.repo_ref = ${scope.repoRef}
-         and d.origin = ${CORPUS_ORIGIN}
+         and d.origin = ${scope.origin}
          and d.metric_id = ${metricId}
          and d.day between ${window.from}::date and ${window.to}::date
        order by d.day, d.dimension`.execute(this.database.db);

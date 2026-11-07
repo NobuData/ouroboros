@@ -29,6 +29,7 @@ import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
 
 import { DatabaseService } from "../../db/db.service";
+import type { DataOrigin } from "../../db/schema";
 import type { ActionBinding } from "../composer/composer.types";
 
 /** The kinds the two suggestion cards draw — ticket drafts are the drafted-tickets card's (BW.4). */
@@ -48,6 +49,9 @@ export type CardKind = (typeof CARD_KINDS)[number];
  * superseded only when every one did (and it cites any at all). Every analysis that composed a
  * suggestion cited the same analyzers — its identity is derived from them — so counting its
  * findings across those analyses asks the same question as counting its last one's.
+ *
+ * Only a later analysis **of the same origin** supersedes (#2022): an analysis of the demo corpus
+ * says nothing about whether a live suggestion still stands, nor the other way round.
  */
 export const STILL_CURRENT = sql<boolean>`
   not exists (
@@ -64,6 +68,7 @@ export const STILL_CURRENT = sql<boolean>`
                 where l.suggestion_id = s.id) coverage
          where later.organization_id = s.organization_id
            and later.repo_ref = s.repo_ref
+           and later.origin = r.origin
            and later.status in ('complete', 'budget_exceeded')
            and later.started_at > r.started_at
            and coverage.cited > 0
@@ -125,13 +130,19 @@ export class SuggestionsRepository {
    *
    * @param organizationId - The workspace.
    * @param repoRef - The repository.
-   * @returns The run, or undefined before any analysis has composed a suggestion.
+   * @param origin - The data origin the analysis read (#2022).
+   * @returns The run, or undefined before any analysis of that origin has composed a suggestion.
    */
-  async composedRun(organizationId: string, repoRef: string): Promise<ComposedRun | undefined> {
+  async composedRun(
+    organizationId: string,
+    repoRef: string,
+    origin: DataOrigin,
+  ): Promise<ComposedRun | undefined> {
     const { rows } = await sql<ComposedRun>`
       select r.id::text as id, r.finished_at
         from ouroboros.analysis_runs r
        where r.organization_id = ${organizationId} and r.repo_ref = ${repoRef}
+         and r.origin = ${origin}
          and r.status in ('complete', 'budget_exceeded')
          and exists (select 1
                        from ouroboros.analysis_suggestions s
@@ -150,9 +161,14 @@ export class SuggestionsRepository {
    *
    * @param organizationId - The workspace.
    * @param repoRef - The repository.
+   * @param origin - The data origin of the analysis that last composed each (#2022).
    * @returns The suggestions.
    */
-  async suggestions(organizationId: string, repoRef: string): Promise<SuggestionListRow[]> {
+  async suggestions(
+    organizationId: string,
+    repoRef: string,
+    origin: DataOrigin,
+  ): Promise<SuggestionListRow[]> {
     const { rows } = await sql<SuggestionListRow>`
       select s.id::text as id, s.kind, s.title, s.evidence_line, s.confidence, s.confidence_basis,
              s.impact, s.needs_spike, s.action_binding, s.status, s.resolved_at,
@@ -168,6 +184,7 @@ export class SuggestionsRepository {
          and w.slug = s.action_binding #>> '{change,workflow}'
        where s.organization_id = ${organizationId} and s.repo_ref = ${repoRef}
          and s.kind = any(${[...CARD_KINDS]}::text[])
+         and r.origin = ${origin}
          and ${STILL_CURRENT}
        order by s.confidence desc, s.title, s.id`.execute(this.database.db);
 

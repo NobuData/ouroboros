@@ -73,6 +73,7 @@ describe("the run's confidence basis contract", () => {
       repo_ref: REPO,
       trigger: "every_n_builds",
       schedule_id: null,
+      origin: "live",
       status: "complete",
       corpus_manifest: {
         window,

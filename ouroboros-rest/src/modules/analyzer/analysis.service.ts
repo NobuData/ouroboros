@@ -11,8 +11,10 @@ import { Injectable } from "@nestjs/common";
 
 import { ANALYZER_RUN_REQUESTED_EVENT } from "../audit/audit.events";
 import { AuditService } from "../audit/audit.service";
+import type { DataOrigin } from "../db/schema";
 import { analysisRunNotFound } from "./analysis.errors";
 import { AnalysisOrchestrator } from "./analysis.orchestrator";
+import { analysisOrigin } from "./analysis.origin";
 import { AnalysisRepository } from "./analysis.repository";
 import {
   analysisRunResource,
@@ -39,6 +41,7 @@ export class AnalysisService {
    * @param organizationId - The workspace.
    * @param actorId - The administrator who asked.
    * @param repoRef - The repository.
+   * @param origin - The one data origin to read; `live` when omitted (#2022).
    * @returns The new run, `running` in `assembling`.
    * @throws {ConflictError} `analysis_already_running`, naming the run that is.
    * @throws {NotFoundError} `analysis_repository_not_found`.
@@ -48,8 +51,14 @@ export class AnalysisService {
     organizationId: string,
     actorId: string,
     repoRef: string,
+    origin?: DataOrigin,
   ): Promise<AnalysisRunResource> {
-    const run = await this.orchestrator.start({ organizationId, repoRef, trigger: "manual" });
+    const run = await this.orchestrator.start({
+      organizationId,
+      repoRef,
+      trigger: "manual",
+      origin,
+    });
 
     await this.audit.record({
       organizationId,
@@ -58,7 +67,7 @@ export class AnalysisService {
       subjectType: "analysis_run",
       subjectId: run.id,
       at: run.started_at,
-      detail: { repo: repoRef, trigger: "manual" },
+      detail: { repo: repoRef, trigger: "manual", origin: run.origin },
     });
 
     return analysisRunResource(run);
@@ -82,14 +91,19 @@ export class AnalysisService {
   }
 
   /**
-   * A repository's newest run.
+   * A repository's newest run of one origin.
    *
    * @param organizationId - The workspace.
    * @param repoRef - The repository.
-   * @returns It, or `run: null` before the first analysis.
+   * @param origin - The data origin the run read; `live` when omitted (#2022).
+   * @returns It, or `run: null` before the first analysis of that origin.
    */
-  async latest(organizationId: string, repoRef: string): Promise<LatestAnalysisResource> {
-    const row = await this.runs.latest(organizationId, repoRef);
+  async latest(
+    organizationId: string,
+    repoRef: string,
+    origin?: DataOrigin,
+  ): Promise<LatestAnalysisResource> {
+    const row = await this.runs.latest(organizationId, repoRef, analysisOrigin(origin));
 
     return { run: row === undefined ? null : analysisRunResource(row) };
   }

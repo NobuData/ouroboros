@@ -24,7 +24,7 @@ export class DurationChartController {
    * The newest annotated run's daily medians and its ranked, evidenced change-points.
    *
    * @param tenant - The workspace.
-   * @param query - `{repo}`.
+   * @param query - `{repo, origin?}`.
    * @returns The chart's content.
    */
   @Get()
@@ -32,6 +32,6 @@ export class DurationChartController {
     @CurrentTenant() tenant: Organization,
     @Query() query: DurationChartQuery,
   ): Promise<DurationChartResource> {
-    return this.charts.chart(tenant.id, query.repo);
+    return this.charts.chart(tenant.id, query.repo, query.origin);
   }
 }

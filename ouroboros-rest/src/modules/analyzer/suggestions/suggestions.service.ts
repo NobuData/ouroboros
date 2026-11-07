@@ -13,6 +13,8 @@
 
 import { Injectable } from "@nestjs/common";
 
+import type { DataOrigin } from "../../db/schema";
+import { analysisOrigin } from "../analysis.origin";
 import { EvidenceRepository } from "../evidence/evidence.repository";
 import { groupRefs } from "../evidence/evidence.resources";
 import { MeasurementRepository } from "../measurement/measurement.repository";
@@ -43,22 +45,29 @@ export class SuggestionsService {
    * @param organizationId - The workspace.
    * @param repoRef - The repository.
    * @param at - The instant each measurement's day N is counted to.
+   * @param requested - The data origin of the analyses read; `live` when omitted (#2022).
    * @returns The suggestions still current, and the newest analysis that composed any; none
    *   before one, or for a repository the workspace has none of.
    */
-  async list(organizationId: string, repoRef: string, at: Date): Promise<SuggestionsResource> {
-    const run = await this.reads.composedRun(organizationId, repoRef);
+  async list(
+    organizationId: string,
+    repoRef: string,
+    at: Date,
+    requested?: DataOrigin,
+  ): Promise<SuggestionsResource> {
+    const origin = analysisOrigin(requested);
+    const run = await this.reads.composedRun(organizationId, repoRef, origin);
     if (run === undefined) {
       return emptySuggestions(repoRef);
     }
 
-    const rows = await this.reads.suggestions(organizationId, repoRef);
+    const rows = await this.reads.suggestions(organizationId, repoRef, origin);
     const [findings, measurements, calibration] = await Promise.all([
       this.reads.findings(
         organizationId,
         rows.map((row) => row.id),
       ),
-      this.measurements.measurements(organizationId, repoRef, at),
+      this.measurements.measurements(organizationId, repoRef, at, origin),
       this.measurements.calibration(organizationId, repoRef),
     ]);
     // Only the references the read answers are resolved — a finding's first few, not its hundreds.

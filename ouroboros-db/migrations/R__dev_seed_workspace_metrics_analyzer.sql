@@ -11,6 +11,8 @@
 -- **Origin (DJ.2, #1315).** Every `metric_daily` row here is `seeded`: it states no origin and
 -- `ouroboros.data_origin_default()` reads this file's `ouroboros.seed_origin`. V154 deleted the
 -- rollup history and its bookkeeping to rebuild them per origin; this file writes its rows again.
+-- The two `analysis_runs` below are `seeded` the same way (V155, #2022): they read the seeded
+-- corpus, so the analyzer shows them — and their chart — only when asked for `?origin=seeded`.
 --
 --   * **Rediscovered.** The three change-points. tests/verify-analyzer-rediscovery.sh reads the
 --     corpus back out (tests/lib/analyzer-corpus.sql), runs BV.2's own `ChangePointAnalyzer`

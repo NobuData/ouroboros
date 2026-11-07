@@ -6,8 +6,9 @@
  * parameter is; one this workspace does not have is a `404`, not a run.
  */
 
-import { IsString, IsUUID, Length, Matches } from "class-validator";
+import { IsIn, IsOptional, IsString, IsUUID, Length, Matches } from "class-validator";
 
+import { DATA_ORIGINS, type DataOrigin } from "../db/schema";
 import { REPO_REF_MAX_LENGTH, REPO_REF_PATTERN } from "../onboarding/onboarding.dto";
 
 /** The repository rule, written once. */
@@ -20,6 +21,14 @@ export class StartAnalysisBody {
   @Length(3, REPO_REF_MAX_LENGTH)
   @Matches(REPO_REF_PATTERN, { message: REPO_MESSAGE })
   repo!: string;
+
+  /**
+   * The one data origin to read: `live` when omitted, or `simulated` or `seeded` (#2022). Never
+   * `all` — an analysis does not mix origins (`analysis.origin.ts`).
+   */
+  @IsOptional()
+  @IsIn(DATA_ORIGINS)
+  origin?: DataOrigin;
 }
 
 /** `GET /api/v1/analyzer/runs/latest?repo=`. */
@@ -29,6 +38,14 @@ export class LatestAnalysisQuery {
   @Length(3, REPO_REF_MAX_LENGTH)
   @Matches(REPO_REF_PATTERN, { message: REPO_MESSAGE })
   repo!: string;
+
+  /**
+   * The one data origin to read: `live` when omitted, or `simulated` or `seeded` (#2022). Never
+   * `all` — an analysis does not mix origins (`analysis.origin.ts`).
+   */
+  @IsOptional()
+  @IsIn(DATA_ORIGINS)
+  origin?: DataOrigin;
 }
 
 /** `:id` — an analysis run. */

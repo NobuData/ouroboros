@@ -36,7 +36,7 @@ export class AnalysisController {
    *
    * @param tenant - The workspace.
    * @param principal - The administrator asking.
-   * @param body - `{repo}`.
+   * @param body - `{repo, origin?}`.
    * @returns `202` with the run, `running` in `assembling`; poll it for progress.
    */
   @Post()
@@ -47,22 +47,22 @@ export class AnalysisController {
     @Session() principal: Principal,
     @Body() body: StartAnalysisBody,
   ): Promise<AnalysisRunResource> {
-    return this.analysis.runNow(tenant.id, principal.user.id, body.repo);
+    return this.analysis.runNow(tenant.id, principal.user.id, body.repo, body.origin);
   }
 
   /**
    * `GET /api/v1/analyzer/runs/latest?repo=` — a repository's newest run.
    *
    * @param tenant - The workspace.
-   * @param query - `{repo}`.
-   * @returns `{run}`, null before the first analysis.
+   * @param query - `{repo, origin?}`.
+   * @returns `{run}`, null before the first analysis of that origin.
    */
   @Get("latest")
   latest(
     @CurrentTenant() tenant: Organization,
     @Query() query: LatestAnalysisQuery,
   ): Promise<LatestAnalysisResource> {
-    return this.analysis.latest(tenant.id, query.repo);
+    return this.analysis.latest(tenant.id, query.repo, query.origin);
   }
 
   /**
