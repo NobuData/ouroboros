@@ -18,6 +18,28 @@
 > adjusted would also be ideal, as some monitors are very high resolution, and
 > the text can be hard to read.
 
+**Addendum 2026-11-12 — professional polish (epics FM–FP).** A second request
+extends this roadmap:
+
+> Review the UI/UX of the application, and suggest an update to the UI/UX that
+> makes it look more professional and user-friendly for building applications
+> using AI and LLMs. It already looks good, but it is missing that professional
+> polish.
+
+Carried out as: add a UI polish epic set from the approved dashboard
+before/after design — (1) tokens and primitives: typography roles, elevation
+and motion tokens, flat primary button, glow only for live indicators, flat
+active nav; (2) a shared page header pattern, a stat card with a fixed label
+row, tables with one-line truncated titles, data origin shown once per page,
+a visible "Soon" state for unshipped actions; (3) dashboard adoption of the
+approved design; (4) Copilot two-pane layout with a docked composer, the
+inspector prompt editor, the canvas toolbar.
+
+The review's one-line finding: **the chrome is louder than the work.** The
+approved direction is "quiet the chrome, raise the work" — the brand stays in
+the wordmark, the page title and the live indicators, and everything else
+steps back so loops, models and prompts are what the eye lands on.
+
 ## Context & Existing Work (duplicate-avoidance survey)
 
 Surveyed 2026-08-09.
@@ -46,6 +68,49 @@ their topbar chrome is superseded by the spec.
 Epic letters continue the sequence (…CK–CO): this roadmap uses
 **CP, CQ, CR**.
 
+### Polish addendum survey (2026-11-12)
+
+Reviewed from the committed docs screenshots
+(`ouroboros-docs/static/img/screenshots/`, both themes) and the token and
+primitive sheets — not from a running stack. The approved design is the
+dashboard before/after board
+(<https://claude.ai/artifact/FTRY56cbz5nZierCsaiDP8>, dark theme, private to
+its owner until shared); FM.5 commits a capture of it under `docs/design/`.
+
+**What the review measured:**
+
+| Finding | Evidence |
+|---|---|
+| The display face carries every heading | `h1`–`h6` all take `--f-disp` ([`globals.css`](../ouroboros-ui/app/globals.css) heading reset); uppercase tracked Chakra Petch renders uneven gaps in card titles ("VERIFICAT ION GAT ES") |
+| Labels shout | 82 `text-transform: uppercase` rules and 516 `--f-mono` declarations across 64 sheets; `<Eyebrow>` in 57 components |
+| Glow stands in for elevation | `--accent-glow` used 43 times, on the primary button ([`ui.css`](../ouroboros-ui/app/ui/ui.css) `.ou-btn--primary`) and the active nav item as well as live things; `tokens.css` has no shadow or motion tokens; 24 `transition` rules in 64 sheets |
+| Tables wrap at 1440px | Dashboard issue titles wrap to four lines; routing-matrix model ids wrap to three or four |
+| Stat cards misalign | Origin badges sit in the label row, wrap, and push values to different baselines |
+| Origin is said many times | One dashboard view carries the strip, the origin switch and seven "Demo data" badges |
+| Page heads vary | Slogan titles, eyebrows, actions above or beside the title, alerts inside the head (Copilot) |
+| Unshipped actions look broken | "Pull next issue" is `aria-disabled` with its why-line in a tooltip only |
+| AI-builder surfaces are the most cramped | Copilot conversation ≈ 330px in a three-column layout; prompt template is a small textarea; the canvas toolbar spends two lines on a help sentence |
+
+**Overlapping work and dispositions:**
+
+| Existing work | Disposition under the addendum |
+|---|---|
+| #16 design tokens, [`DESIGN_TOKENS.md`](DESIGN_TOKENS.md), `scripts/verify-tokens.sh` | **Extended** — FM.1/FM.2 add role and elevation/motion tokens to both sheets; the two dark blocks stay identical and the verifier is taught the new names. |
+| #46 primitives, #48 workshop | **Extended** — FM.3 restyles Button/Chip; FN.1–FN.5 add PageHeader and revise StatCard, Table, Card; each gets a workshop story. |
+| [`DESIGN_SYSTEM_APP_SHELL.md`](DESIGN_SYSTEM_APP_SHELL.md) § 2 (page head = eyebrow, h1, subline, actions) and § 3 | **Amended by FM.5** — the page head loses its eyebrow; § 3 gains typography roles, elevation and the origin rule. § 3.5 Honesty and § 3.6 Density are unchanged and are what the Soon tag and the denser tables implement. |
+| CP.2 (#644) sidebar active state | **Amended** — the active item becomes a flat fill (FM.4/FO.2); registry, rail and drawer are untouched. |
+| CQ.3 (#650) readability matrix and its twelve baselines | **Baselines refreshed** by every FM/FN/FO issue that changes a photographed page; the 150% audit is the gate for FO.7. |
+| CR.1 (#651) density modes | **Unaffected** — the polish tightens the default rhythm once; comfortable/compact remains v2. |
+| Live Loop DJ.3 (#1316) origin strip and badges ([`app/origin/`](../ouroboros-ui/app/origin/)) | **Amended by FN.4** — badges render only where a view mixes origins; a page whose strip already names its one origin carries no per-card badges. |
+| Mockup 02 roadmap (dashboard), I.1 (#80) | **Amended by FO.1** — page head, stat row, active-loops table and pulse card take the approved design. |
+| Mockup 20 roadmap (Workflow Copilot), mockup 04 (builder), mockup 05 (code) | **Amended by FP.2–FP.6** after FP.1's boards are approved. |
+| `docs/mockups/*.html` and `assets/ouroboros.css` | **Not restyled** (decision P8) — they remain the truth for page content, not for chrome or type. |
+| Search hint `⌘K` / `Ctrl K` | **Already platform-aware** ([`search-pill.tsx`](../ouroboros-ui/app/shell/search-pill.tsx)); the docs screenshots show `Ctrl K` because they are captured on Linux. No work. |
+| Blank "Elapsed" column in docs screenshots | **A capture mask over live timers**, not a layout fault. No work. |
+
+Epic letters continue the repository's sequence (…FE–FL, the RC1 and RC2
+roadmaps): the addendum uses **FM, FN, FO, FP**.
+
 ## Decisions proposed by this roadmap (validate before issue creation)
 
 | # | Decision | Rationale |
@@ -57,6 +122,22 @@ Epic letters continue the sequence (…CK–CO): this roadmap uses
 | S5 | **Subnavs stay in the content pane** — the sidebar is one level deep; Models/Workflows tab sets keep their in-page tabs (sticky in-scroll) | Matches the mockups' page anatomy; a nested sidebar tree would fork every existing subnav design. |
 | S6 | **Compliance is documented per roadmap**: every roadmap in `docs/` carries a UI/UX Shell Compliance section naming its amended issues — filing reads those sections and posts the amendments | "Make sure to follow this design with all roadmaps," auditable at a glance. |
 | S7 | **Labels**: new `shell`; **Milestones**: `App Shell MVP` / `App Shell v2` created at filing | House rule for the filing pass. |
+
+**Polish addendum (2026-11-12) — validated at filing, 2026-11-12:**
+
+| # | Decision | Rationale |
+|---|----------|-----------|
+| P1 | **The display face has two jobs**: the wordmark and the page title. Card, section and dialog headings are IBM Plex Sans 600, sentence case | Chakra Petch is the brand's voice; used on every heading it stops being a voice and becomes noise, and its uppercase tracking renders unevenly. |
+| P2 | **Mono is for identifiers, code and data numerals.** Labels — stat labels, table heads, card titles, nav — are sentence-case Plex Sans with no tracking | 516 mono declarations make everything look like an identifier, so real identifiers stop standing out. |
+| P3 | **Glow means live, and nothing else.** Depth comes from two shadow tokens; the primary button is a flat accent fill; the active nav item is a flat raised fill | `DESIGN_TOKENS.md` already reserves the glow for live things; the button and the nav were the exceptions that diluted it. |
+| P4 | **One page head**: plain title (the module's name or the entity's name), a one-line status subline, actions on the right with at most one primary, alerts full-width beneath. No eyebrow, no slogan title | Amends `DESIGN_SYSTEM_APP_SHELL.md` § 2. The sidebar already says where the reader is; a status line is worth more than a strapline. |
+| P5 | **Origin is stated once.** Where a page holds a single non-live origin, the strip says so and no card or row repeats it; badges appear only in views that mix origins | Amends DJ.3 (#1316). The honesty rule is kept — nothing non-live is ever unlabelled — without seven labels for one fact. |
+| P6 | **An unshipped action wears a visible "Soon" tag** and keeps its why-line; the page's primary is always an action that works today | § 3.5 Honesty asks that "soon" surfaces be labelled; a grey button with a tooltip reads as broken. |
+| P7 | **Every polish PR recaptures the screenshots it changes and refreshes the e2e baselines it changes, in the same PR** — for a token or primitive change that is every id | `CONVENTIONS.md` § 11 as written; the capture is scripted (`yarn screenshots`), so the cost is machine time, and a stale site is the alternative. |
+| P8 | **The mockups are not restyled.** `docs/mockups/` stays the truth for page *content*; its README gains a note that chrome and type follow the design-system spec | Twenty-three static pages restyled by hand buys nothing the running product does not show better. |
+| P9 | **AI-builder surfaces are design-first**: FP.1's boards are approved before FP.2–FP.6 start | Only the dashboard has an approved design; Copilot, inspector and canvas are layout changes, not restyles. |
+| P10 | **The light palette is derived, not separately designed**: the same rules applied to the light tokens, gated by FO.7 | The approved board is dark only; both themes are a house rule. |
+| P11 | **Labels**: new `polish`; **Milestones**: `UI Polish MVP` / `UI Polish v2` created at filing | House rule for the filing pass. |
 
 ## Architecture Overview
 
@@ -104,6 +185,32 @@ when, against the compose stack:
 **Explicitly v2 (milestone `App Shell v2`):** density modes (CR.1), nav
 customization (CR.2), display-aware scale suggestion (CR.3).
 
+### UI Polish MVP (addendum, milestone `UI Polish MVP`)
+
+The polish MVP is **the approved dashboard live, and every other page
+speaking the same visual language**. It is done when, against the compose
+stack:
+
+1. `/dashboard` matches the approved board in the dark theme and its derived
+   equivalent in the light theme: plain page head, origin stated once, four
+   stat cards on one baseline, one-line loop rows, a pulse card sized to its
+   content.
+2. The display face appears only in the wordmark and page titles; no card
+   title, table head, stat label or nav label is uppercase, tracked or mono.
+3. `--accent-glow` paints only live indicators; the primary button and the
+   active nav item are flat; cards and overlays take their depth from the
+   shadow tokens; hover, focus and open/close transitions use the motion
+   tokens and honour `prefers-reduced-motion`.
+4. Every module page uses the shared PageHeader, StatCard, Table and Card
+   patterns — no page carries its own head markup, and no unshipped action
+   looks merely disabled.
+5. Both themes pass AA contrast; the 150% readability audit (leg 8) is green;
+   the docs site's screenshots and pages describe what ships.
+
+**Explicitly v2 (milestone `UI Polish v2`):** the AI-builder surfaces —
+Copilot layout and composer, proposed-change review, the inspector prompt
+editor, the canvas toolbar (epic FP), each behind FP.1's design approval.
+
 ## Epics, Labels & Milestones
 
 Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
@@ -119,6 +226,22 @@ Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set
 (`mvp`, `v2`, `ui`, `design`, `rest`, `ci`) **plus new `shell`** (decision
 S7). Milestones **`App Shell MVP`** / **`App Shell v2`** created at filing.
 Complexity chips: **XS · S · M · L**.
+
+**Polish addendum — filed 2026-11-12:**
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| FM | #2029 | 🟡 Open | Visual Foundations | Typography roles, elevation and motion tokens, flat controls, glow for live only, spec amendments | ouroboros-ui, docs, ouroboros-docs | UI Polish MVP |
+| FN | #2030 | 🟡 Open | Page Patterns | PageHeader, StatCard, Table and Card patterns; origin stated once | ouroboros-ui, ouroboros-docs | UI Polish MVP |
+| FO | #2031 | 🟡 Open | Adoption | The approved dashboard, the shell, every module page, and the QA gate | ouroboros-ui, ouroboros-docs, tests | UI Polish MVP |
+| FP | #2032 | 🟡 Open | AI-Builder Surfaces (v2) | Copilot layout and composer, change review, prompt editor, canvas toolbar | ouroboros-ui, ouroboros-docs | UI Polish v2 |
+
+Labels for FM–FP: the existing set (`mvp`, `v2`, `ui`, `design`, `shell`,
+`dashboard`, `copilot`, `studio`, `workflow`, `ci`) **plus new `polish`**
+(decision P11, defined in `.github/labels.yml`). Milestones **`UI Polish MVP`** /
+**`UI Polish v2`** were created at filing. Each epic also carries a
+`[<epic>.V]` validation ticket, the repository's standing gate for closing
+an epic.
 
 ---
 
@@ -817,6 +940,923 @@ matrix: 3 scales × 2 themes × 5 pages ─▶ diffs ✓ · overflow probe ✓ �
 
 ---
 
+## Epic FM (#2029) — Visual Foundations (`ouroboros-ui` + `docs`)
+
+Tokens and primitives: small diffs that change every screen. Nothing here
+moves layout.
+
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| FM.1 | #2033 | 🟡 Open | ouroboros-ui: [FM.1] Typography roles — display, UI and mono | Display face only on wordmark + page title; sentence-case Plex labels; mono for identifiers and numerals; guard test | mvp, polish, ui, design | N (after FM.5) | Y | M | ouroboros-ui, docs, ouroboros-docs |
+| FM.2 | #2034 | 🟡 Open | ouroboros-ui: [FM.2] Elevation & motion tokens | `--shadow-1/2`, `--dur-*`, `--ease-*` in both sheets and both themes; reduced-motion; verifier and preview updated | mvp, polish, ui, design | Y (with FM.1) | Y | S | ouroboros-ui, docs |
+| FM.3 | #2035 | 🟡 Open | ouroboros-ui: [FM.3] Flat controls — button, chip, segmented control, Soon state | Flat primary; token-driven hover/focus transitions; one SegmentedControl; visible Soon tag on unshipped actions | mvp, polish, ui, design | N (after FM.2) | Y | M | ouroboros-ui, ouroboros-docs |
+| FM.4 | #2036 | 🟡 Open | ouroboros-ui: [FM.4] Glow audit — live indicators only | 43 `--accent-glow` uses reduced to the live set; flat active nav; allowlist guard | mvp, polish, ui, shell | N (after FM.3) | Y | S | ouroboros-ui, ouroboros-docs |
+| FM.5 | #2037 | 🟡 Open | docs: [FM.5] Design-system spec amendments & approved board | Spec § 2/§ 3 and token doc amended for P1–P6; approved board captured into `docs/design/`; mockups README note | mvp, polish, design | N (first) | Y | S | docs |
+| FM.V | #2056 | 🟡 Open | ouroboros: [FM.V] Validate Epic FM — Visual Foundations | Validation gate: the epic's criteria, suites and docs hold together on one `main` commit | mvp, polish, validation | N (after every work ticket) | Y | S | ouroboros-ui |
+
+### Issue FM.5 — docs: [FM.5] Design-system spec amendments & approved board
+
+> **GitHub issue:** #2037 · **Status:** 🟡 Open · **Parent epic:** #2029
+
+- **Problem Statement:** The spec is the source of truth and it currently
+  says the opposite of the approved design in two places: § 2 defines the
+  page head as "eyebrow, h1, subline, actions", and nothing limits the
+  display face or the glow. Work that follows the design would violate the
+  spec, and work that follows the spec would undo the design.
+- **Solution/Scope:** Amend
+  [`DESIGN_SYSTEM_APP_SHELL.md`](DESIGN_SYSTEM_APP_SHELL.md): § 2 page frame
+  per P4 (title, status subline, actions with at most one primary, alerts
+  beneath; no eyebrow); § 3 gains items for typography roles (P1, P2),
+  elevation and glow (P3), origin stated once (P5) and the Soon tag (P6).
+  Amend [`DESIGN_TOKENS.md`](DESIGN_TOKENS.md) § Type with a role table
+  (which family for which job) and a placeholder section for FM.2's tokens.
+  Commit the approved board as `docs/design/polish/dashboard-before.png` and
+  `dashboard-after.png` with a short `README.md` naming what changed and
+  why. Add the P8 note to `docs/mockups/README.md`. Source: the approved
+  board and this roadmap's survey table.
+- **Acceptance Criteria:**
+  - § 2 and § 3 state P1–P6 with no sentence left that contradicts them.
+  - The board's two captures are committed and linked from the spec.
+  - `docs/mockups/README.md` says chrome and type follow the spec.
+  - No application code changes.
+- **Parallelism/Dependencies:** First. Blocks FM.1–FM.4 and FN.1.
+- **Technical Stack:** Markdown.
+- **Documentation:** none — internal-only change (design specification;
+  nothing a person meets changes until FM.1).
+- **Epic:** FM
+
+```
+spec § 2:  eyebrow · h1 · subline · actions
+       ─▶  title · status subline · actions(≤1 primary) / alerts beneath
+```
+
+### Issue FM.1 — ouroboros-ui: [FM.1] Typography roles — display, UI and mono
+
+> **GitHub issue:** #2033 · **Status:** 🟡 Open · **Parent epic:** #2029
+
+- **Problem Statement:** Every heading level takes Chakra Petch, labels are
+  uppercase tracked mono, and the result reads as a console skin rather than
+  a working tool. Uppercase tracked Chakra Petch also renders uneven gaps
+  ("CONVERSAT ION"). Identifiers — the one thing mono is for — no longer
+  stand out, because everything is mono.
+- **Solution/Scope:** In [`globals.css`](../ouroboros-ui/app/globals.css),
+  the heading reset gives `h2`–`h6` `--f-ui`; `--f-disp` stays on `h1` and
+  the wordmark. Sweep the 64 sheets: card titles, section heads, table
+  heads, stat labels, tab labels and nav labels become sentence-case
+  `--f-ui` with no `text-transform` and no `--tr-*` tracking; mono stays on
+  identifiers (issue numbers, workflow names, model aliases, paths, hashes),
+  code and data numerals. Label strings that were authored in capitals are
+  re-cased at the source. `Eyebrow` stays in the primitive set for the few
+  in-card uses that survive review, but leaves every page head (FN.1 removes
+  those call sites). Add a guard: a test that fails when `--f-disp` or
+  `text-transform: uppercase` appears outside a short named allowlist, in
+  the manner of `__tests__/styles.test.ts`. Token sheet unchanged except
+  comments; `DESIGN_TOKENS.md` § Type role table filled in.
+- **Acceptance Criteria:**
+  - `--f-disp` is referenced only by the wordmark and page-title rules; the
+    guard test is red on a planted `h3 { font-family: var(--f-disp) }`.
+  - Uppercase rules drop from 82 to the allowlist (target ≤ 5, each named
+    with its reason).
+  - No visible label is uppercase or tracked on the dashboard, routing
+    matrix, Copilot and PR verification pages, in both themes.
+  - Readability leg 8 green at 150%; AA contrast unchanged.
+- **Parallelism/Dependencies:** After FM.5. Parallel with FM.2. Blocks FN.*.
+- **Technical Stack:** CSS custom properties, vitest style guard, stylelint.
+- **Documentation:** User Guide — every page that quotes a label in
+  capitals is re-cased to match (search `ouroboros-docs/docs` for the
+  re-cased strings); recapture **all** screenshot ids (P7) and refresh the
+  readability baselines.
+- **Epic:** FM
+
+```
+h1 .............. Chakra Petch 600      (page title, wordmark)
+h2–h6, labels ... IBM Plex Sans 600/500 sentence case, no tracking
+#482 · coder-max · boot/** ... IBM Plex Mono (identifiers, numerals)
+```
+
+### Issue FM.2 — ouroboros-ui: [FM.2] Elevation & motion tokens
+
+> **GitHub issue:** #2034 · **Status:** 🟡 Open · **Parent epic:** #2029
+
+- **Problem Statement:** [`tokens.css`](../ouroboros-ui/app/tokens.css) has
+  no shadow and no motion tokens. Cards sit flat on the ground colour,
+  overlays borrow the glow for depth, and there are 24 `transition` rules in
+  64 sheets, so hover, focus and open/close states snap.
+- **Solution/Scope:** Add to all three palette blocks (shadows are colour
+  literals, so they belong there): `--shadow-1` (cards, raised controls) and
+  `--shadow-2` (menus, dialogs, toasts), tuned per theme. Add to `:root`
+  (theme-independent): `--dur-fast` (≈120ms), `--dur-base` (≈200ms),
+  `--ease-standard`. Apply `--shadow-1` to `Card` and `--shadow-2` to the
+  overlay, menu and toast surfaces. One global
+  `@media (prefers-reduced-motion: reduce)` rule zeroes the durations.
+  Mirror in `docs/design/tokens.css`; teach `scripts/verify-tokens.sh` the
+  new names (dark blocks still asserted identical); add both to
+  `docs/design/tokens-preview.html`; document in `DESIGN_TOKENS.md`.
+- **Acceptance Criteria:**
+  - `verify-tokens.sh` green; the two sheets byte-identical; the two dark
+    blocks identical.
+  - No `box-shadow` or `transition` in application CSS carries a literal
+    colour or duration (guard test, same pattern as the colour-literal rule).
+  - With reduced motion requested, no transition runs (computed duration 0).
+  - Cards and menus visibly separate from the ground in both themes.
+- **Parallelism/Dependencies:** After FM.5. Parallel with FM.1. Blocks FM.3.
+- **Technical Stack:** CSS custom properties, shell script verifier.
+- **Documentation:** none — internal-only change in behaviour, but cards
+  gain a shadow on every page: recapture **all** screenshot ids (P7).
+- **Epic:** FM
+
+```
+ground ── card (--shadow-1) ── menu/dialog (--shadow-2)
+hover/focus: --dur-fast · open/close: --dur-base · reduced-motion ⇒ 0ms
+```
+
+### Issue FM.3 — ouroboros-ui: [FM.3] Flat controls — button, chip, segmented control, Soon state
+
+> **GitHub issue:** #2035 · **Status:** 🟡 Open · **Parent epic:** #2029
+
+- **Problem Statement:** The primary button is a gradient with a glow, so
+  the loudest thing on any page is a button. Unshipped actions are
+  `aria-disabled` with their reason in a tooltip, which reads as broken. The
+  origin switch, range switch and mode toggles are each styled in their own
+  sheet.
+- **Solution/Scope:** In [`ui.css`](../ouroboros-ui/app/ui/ui.css):
+  `.ou-btn--primary` becomes a solid `--accent` fill with `--accent-ink`,
+  `--shadow-1`, hover to `--accent-lift`, no gradient and no glow; all
+  button and chip state changes transition on `--dur-fast`. `Button` gains a
+  `soon` presentation driven by the existing why-line prop: dashed border,
+  a visible "Soon" tag inside the button, the why-line still exposed to
+  assistive tech and on hover/focus. Add a `SegmentedControl` primitive
+  (group semantics, `aria-pressed`, arrow keys) and move the origin segment
+  ([`origin-segment.tsx`](../ouroboros-ui/app/origin/origin-segment.tsx)),
+  the Insights range control and the inspector mode toggle onto it. Status
+  chips gain a dot-plus-label variant for table cells. Workshop stories for
+  each.
+- **Acceptance Criteria:**
+  - No gradient and no `--accent-glow` on any button, in any state.
+  - A `soon` button shows its tag without hover, stays in the tab order, and
+    announces its reason; it is never the page's primary.
+  - The three switches render from one primitive and share keyboard
+    behaviour.
+  - AA contrast for the flat primary's label in both themes, recorded in
+    `DESIGN_TOKENS.md` § Contrast.
+- **Parallelism/Dependencies:** After FM.2. Blocks FM.4, FN.1.
+- **Technical Stack:** React primitives, CSS tokens, vitest + Testing
+  Library.
+- **Documentation:** User Guide — `finding-your-way.mdx` (what a "Soon" tag
+  means); recapture **all** screenshot ids (P7).
+- **Epic:** FM
+
+```
+[ Edit workflows ]  solid accent, shadow-1        (works today → primary)
+┆ Pull next issue  Soon ┆  dashed, tagged, explains itself   (unshipped)
+( Live | Demo | Simulated | All )  one SegmentedControl
+```
+
+### Issue FM.4 — ouroboros-ui: [FM.4] Glow audit — live indicators only
+
+> **GitHub issue:** #2036 · **Status:** 🟡 Open · **Parent epic:** #2029
+
+- **Problem Statement:** The token sheet calls `--accent-glow` "the glow
+  reserved for live things", and it is used 43 times — on the active nav
+  item, panels, selected cards and the pulse glyph. When everything glows,
+  the glow no longer says "this is running".
+- **Solution/Scope:** Audit every use. Keep: live dots, the live-loops pill,
+  a running stage, a streaming indicator. Replace the rest with a flat
+  `--raised` or `--accent-tint` fill, an `--accent-line` border, or a shadow
+  token. The active sidebar item
+  ([`shell.css`](../ouroboros-ui/app/shell/shell.css)) becomes a flat
+  `--raised` fill with an accent icon and `--ink` label. Add an allowlist
+  guard test naming each permitted selector.
+- **Acceptance Criteria:**
+  - Every remaining `--accent-glow` use is in the allowlist and marks a live
+    thing; a planted glow on a static card turns the guard red.
+  - Active nav item: no glow, 3:1 non-text contrast for its state against
+    idle items, `aria-current` unchanged.
+  - Selected-card states (workflow list, routing row) remain distinguishable
+    without colour alone.
+- **Parallelism/Dependencies:** After FM.3. Amends CP.2 (#644).
+- **Technical Stack:** CSS, vitest style guard.
+- **Documentation:** User Guide — `finding-your-way.mdx` § The sidebar (if
+  it describes the active state); recapture **all** screenshot ids (P7).
+- **Epic:** FM
+
+```
+glow: ● live dot · "3 loops live" · running stage · streaming   ─ keep
+glow: active nav · primary button · panels · pulse glyph        ─ remove
+```
+
+---
+
+## Epic FN (#2030) — Page Patterns (`ouroboros-ui`)
+
+Shared primitives that replace per-page markup. Each lands with a workshop
+story and is consumed by epic FO.
+
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| FN.1 | #2038 | 🟡 Open | ouroboros-ui: [FN.1] PageHeader primitive | Title, status subline, actions slot (≤1 primary), alerts slot beneath; breadcrumb variant for entity pages | mvp, polish, ui, design | N (after FM.1, FM.3) | Y | M | ouroboros-ui |
+| FN.2 | #2039 | 🟡 Open | ouroboros-ui: [FN.2] StatCard — fixed label row, shared baseline | Fixed-height label row, tabular value, delta line, optional live dot; no badge in the label row | mvp, polish, ui, design | Y (with FN.3, FN.5) | Y | S | ouroboros-ui |
+| FN.3 | #2040 | 🟡 Open | ouroboros-ui: [FN.3] Table — one-line rows, numeric alignment | Truncating title cell with full text on hover/focus, right-aligned numerals, nowrap identifiers, compact stage cell | mvp, polish, ui, design | Y (with FN.2, FN.5) | Y | M | ouroboros-ui |
+| FN.4 | #2041 | 🟡 Open | ouroboros-ui: [FN.4] Data origin stated once per page | Strip names the single origin; badges only in mixed-origin views; origin switch moves into the page head | mvp, polish, ui | N (after FN.1) | Y | M | ouroboros-ui, ouroboros-docs |
+| FN.5 | #2042 | 🟡 Open | ouroboros-ui: [FN.5] Card header pattern | Sentence-case title, meta text, link-style action, optional divider; one header for every card | mvp, polish, ui, design | Y (with FN.2, FN.3) | Y | S | ouroboros-ui |
+| FN.V | #2057 | 🟡 Open | ouroboros: [FN.V] Validate Epic FN — Page Patterns | Validation gate: the epic's criteria, suites and docs hold together on one `main` commit | mvp, polish, validation | N (after every work ticket) | Y | S | ouroboros-ui |
+
+### Issue FN.1 — ouroboros-ui: [FN.1] PageHeader primitive
+
+> **GitHub issue:** #2038 · **Status:** 🟡 Open · **Parent epic:** #2030
+
+- **Problem Statement:** Thirty-four components render their own `h1`, each
+  with its own head markup. Titles range from a module name to a slogan,
+  actions sit beside or above the title, and the Copilot page puts a warning
+  card inside its head. There is no single place that says what a page head
+  is.
+- **Solution/Scope:** A `PageHeader` primitive in
+  [`app/ui/`](../ouroboros-ui/app/ui/): `title` (the one `h1`), `status`
+  (one line, muted), `actions` (right-aligned; a dev-time assertion rejects
+  two primaries), `controls` (segmented controls such as origin or range,
+  left of the actions), `alerts` (full-width beneath the row), and an
+  optional `breadcrumb` for entity pages (PR, run, registry detail). Wraps
+  at narrow widths: title row, then controls and actions. Composes with
+  `PageSubnav` and `StickyBar` (CP.4) without changing their sticky maths.
+  Workshop story covering: plain, with status, with controls, with a Soon
+  action, with an alert, breadcrumb variant, 150% scale.
+- **Acceptance Criteria:**
+  - One `h1` per page, rendered by the primitive; no eyebrow slot exists.
+  - Actions never wrap under the title at ≥ 1280px with the dashboard's
+    control set; below that they wrap as a group.
+  - Alerts render beneath the head at full pane width.
+  - Sticky subnav offsets (CP.4) unchanged — the chrome story still passes.
+- **Parallelism/Dependencies:** After FM.1, FM.3, FM.5. Blocks FN.4 and all
+  of FO.
+- **Technical Stack:** React, CSS, vitest + Testing Library.
+- **Documentation:** none — internal-only change (primitive and workshop
+  story; pages change in FO).
+- **Epic:** FN
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ Dashboard                          (Live|Demo|…)  ┆Pull next Soon┆ [Edit workflows] │
+│ 3 loops in flight · 12 queued · nothing merged since midnight UTC     │
+├──────────────────────────────────────────────────────────────────────┤
+│ ⓘ Demo data. No real loop has run yet…              Check readiness → │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### Issue FN.2 — ouroboros-ui: [FN.2] StatCard — fixed label row, shared baseline
+
+> **GitHub issue:** #2039 · **Status:** 🟡 Open · **Parent epic:** #2030
+
+- **Problem Statement:** Stat labels are uppercase tracked mono and share
+  their row with an origin badge. The row wraps differently per card, so the
+  four values in one strip sit on different baselines; on Insights the
+  labels are centred and wrap to two lines.
+- **Solution/Scope:** Revise
+  [`stat-card.tsx`](../ouroboros-ui/app/ui/stat-card.tsx): a fixed-height,
+  single-line label row (sentence case, truncating with a title), a value in
+  `--f-ui` 600 with tabular numerals, one optional delta/context line, an
+  optional live dot before the label. No badge slot in the label row; the
+  help affordance moves to an info button at the row's end. Update the five
+  consumers' props (`dashboard`, `insights/kpi-row`, `farm/farm-stat-row`,
+  `inbox/stats-card`, `test-results/summary-strip`) without changing their
+  layout — that is FO.
+- **Acceptance Criteria:**
+  - In a row of cards with labels of different lengths, every value shares
+    one baseline at 100% and 150%.
+  - A label too long for its card truncates and exposes its full text.
+  - Value colour is `--ink`; colour is reserved for the delta line.
+- **Parallelism/Dependencies:** After FM.1. Parallel with FN.3, FN.5.
+- **Technical Stack:** React, CSS.
+- **Documentation:** none — internal-only change (pages adopt it in FO.1 and
+  FO.3–FO.5, which recapture).
+- **Epic:** FN
+
+```
+┌ ● Loops live ─────┐ ┌ Queued issues ───┐ ┌ PRs merged · 7 days ┐
+│ 3                 │ │ 12               │ │ 21                  │  ← one baseline
+│ 1 coding · 1 bu…  │ │ est. 9h 40m …    │ │ ↓ 4 vs last week    │
+└───────────────────┘ └──────────────────┘ └─────────────────────┘
+```
+
+### Issue FN.3 — ouroboros-ui: [FN.3] Table — one-line rows, numeric alignment
+
+> **GitHub issue:** #2040 · **Status:** 🟡 Open · **Parent epic:** #2030
+
+- **Problem Statement:** At 1440px the dashboard's issue titles wrap to four
+  lines and the routing matrix's model ids to three or four, because every
+  column sizes to content and mono metadata is allowed to break. A
+  three-row table is 380px tall.
+- **Solution/Scope:** Revise [`table.tsx`](../ouroboros-ui/app/ui/table.tsx)
+  and its rules: a `primary` column that takes the free width and truncates
+  to one line (full text on hover and on keyboard focus, never only in a
+  `title`); identifier cells `white-space: nowrap`; a `numeric` column type
+  that right-aligns with tabular numerals; a compact stage cell (label and
+  `n/m` on one line over a 4px meter); a status cell using FM.3's
+  dot-plus-label chip; sentence-case head row with a subtle fill; row height
+  from the spacing scale. The sticky-head recipe (CP.4) and the per-widget
+  horizontal scroll wrapper are kept.
+- **Acceptance Criteria:**
+  - Dashboard active-loops rows are one line each at 1280–1920px; the
+    three-row table is ≤ 200px tall at 100%.
+  - A truncated title's full text is reachable by pointer and keyboard.
+  - At 150% the table scrolls inside its own wrapper, never the pane (leg 8).
+  - Numeric columns align on the right edge across rows.
+- **Parallelism/Dependencies:** After FM.1, FM.3. Parallel with FN.2, FN.5.
+- **Technical Stack:** React, CSS table layout.
+- **Documentation:** none — internal-only change (pages adopt it in FO).
+- **Epic:** FN
+
+```
+Issue                                   Workflow      Stage            Model            Elapsed  Status
+#482 Fix flaky CAN-bus telemetry test   standard-fix  Implementing 4/6 claude-fable-5   12m 40s  ● Coding
+                                                      ━━━━━━──
+```
+
+### Issue FN.4 — ouroboros-ui: [FN.4] Data origin stated once per page
+
+> **GitHub issue:** #2041 · **Status:** 🟡 Open · **Parent epic:** #2030
+
+- **Problem Statement:** DJ.3 (#1316) made every non-live figure wear its
+  origin, which is right, and on a page that is entirely demo data it means
+  the strip, the switch and a badge on every card and row all say the same
+  thing — seven badges on one dashboard view.
+- **Solution/Scope:** In [`app/origin/`](../ouroboros-ui/app/origin/): when
+  `originStrip` returns a strip (the page's content is a single non-live
+  origin), suppress `OriginBadge` on that page via context; badges render
+  only when the visible rows mix origins ("All origins", or live with some
+  non-live rows). The strip's copy leads with the origin ("Demo data. …") so
+  it survives a glance. The origin segment renders in `PageHeader`'s
+  `controls` slot (FM.3's SegmentedControl). The ten `OriginBadge` call
+  sites are reviewed, not removed. Amends DJ.3 with a comment at filing.
+- **Acceptance Criteria:**
+  - Single-origin page: one strip, zero badges. Mixed view: no strip, a
+    badge on every non-live row and figure.
+  - No non-live figure is ever shown without either the strip or a badge
+    (unit test over the origin × filter matrix).
+  - Screen-reader output names the origin once per page region.
+- **Parallelism/Dependencies:** After FN.1. Amends DJ.3 (#1316).
+- **Technical Stack:** React context, existing origin model.
+- **Documentation:** User Guide — `concepts.mdx` § data origins (when badges
+  appear, what the strip means), `dashboard.mdx`; recapture
+  `user-guide.concepts.origin-badges`, `user-guide.dashboard-banner`.
+- **Epic:** FN
+
+```
+filter = Demo  (one origin)   ─▶ strip ✓   badges ✗
+filter = All   (mixed)        ─▶ strip ✗   badge on each non-live row ✓
+```
+
+### Issue FN.5 — ouroboros-ui: [FN.5] Card header pattern
+
+> **GitHub issue:** #2042 · **Status:** 🟡 Open · **Parent epic:** #2030
+
+- **Problem Statement:** Card heads are uppercase display-face titles with a
+  mix of tags, pills, buttons and links beside them, laid out per card.
+- **Solution/Scope:** [`card.tsx`](../ouroboros-ui/app/ui/card.tsx) gains a
+  header: sentence-case `h2` in `--f-ui` 600, optional live indicator,
+  optional muted meta text ("Last 7 days"), one optional action rendered as
+  a link, optional divider. Card takes `--shadow-1` (FM.2). Cards size to
+  their content by default; stretching to a sibling's height is opt-in.
+- **Acceptance Criteria:**
+  - Every card title is an `h2` (or the correct level in a nested region)
+    with one visual style.
+  - A short card beside a tall one does not stretch unless asked — the
+    dashboard's pulse card has no empty band.
+  - Workshop story in both themes.
+- **Parallelism/Dependencies:** After FM.1, FM.2. Parallel with FN.2, FN.3.
+- **Technical Stack:** React, CSS.
+- **Documentation:** none — internal-only change (pages adopt it in FO).
+- **Epic:** FN
+
+```
+┌ Active loops  ● Live                      Open run console → ┐
+├──────────────────────────────────────────────────────────────┤
+```
+
+---
+
+## Epic FO (#2031) — Adoption (`ouroboros-ui` + `ouroboros-docs`)
+
+The patterns applied page by page. FO.1 is the approved design; the rest
+bring every other surface to the same language. Each issue re-cases copy,
+replaces head markup with `PageHeader`, picks the page's one primary, and
+recaptures its own screenshots.
+
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| FO.1 | #2043 | 🟡 Open | ouroboros-ui: [FO.1] Dashboard — the approved design | Page head, single origin strip, stat row, one-line loops table, content-sized pulse card | mvp, polish, ui, dashboard | N (after FN.1–FN.5) | Y | M | ouroboros-ui, ouroboros-docs |
+| FO.2 | #2044 | 🟡 Open | ouroboros-ui: [FO.2] Shell chrome — header & sidebar | Flat active item, sentence-case nav labels, quiet header controls | mvp, polish, ui, shell | Y (with FO.1) | Y | S | ouroboros-ui, ouroboros-docs |
+| FO.3 | #2045 | 🟡 Open | ouroboros-ui: [FO.3] Work surfaces — Issues, Planning, Needs You, PRs, Runs, Test results | PageHeader, tables and cards on the six loop-facing modules | mvp, polish, ui | Y (with FO.4, FO.5) | Y | L | ouroboros-ui, ouroboros-docs |
+| FO.4 | #2046 | 🟡 Open | ouroboros-ui: [FO.4] Configuration surfaces — Models, Providers, Registry, Build Farm, Knowledge, Workflows list | PageHeader and tables; routing matrix cells stop wrapping | mvp, polish, ui, routing | Y (with FO.3, FO.5) | Y | L | ouroboros-ui, ouroboros-docs |
+| FO.5 | #2047 | 🟡 Open | ouroboros-ui: [FO.5] Analysis & admin surfaces — Insights, Analyzer, Research, ChatOps, Settings, Accounts | PageHeader, KPI rows on one baseline, admin tables | mvp, polish, ui | Y (with FO.3, FO.4) | Y | L | ouroboros-ui, ouroboros-docs |
+| FO.6 | #2048 | 🟡 Open | ouroboros-ui: [FO.6] Standalone screens — sign-in, wizard, get started | Typography roles and flat controls on the screens outside the shell | mvp, polish, ui, auth, onboarding | Y | Y | S | ouroboros-ui, ouroboros-docs |
+| FO.7 | #2049 | 🟡 Open | ouroboros-ui: [FO.7] Polish QA gate — light theme, 150% scale, contrast | Derived light palette reviewed; leg 8 green; guard tests on; no page-local head markup left | mvp, polish, ui, ci | N (after FO.1–FO.6) | Y | M | ouroboros-ui, tests, ouroboros-docs |
+| FO.V | #2058 | 🟡 Open | ouroboros: [FO.V] Validate Epic FO — Adoption | Validation gate: the epic's criteria, suites and docs hold together on one `main` commit | mvp, polish, validation | N (after every work ticket) | Y | S | ouroboros-ui |
+
+### Issue FO.1 — ouroboros-ui: [FO.1] Dashboard — the approved design
+
+> **GitHub issue:** #2043 · **Status:** 🟡 Open · **Parent epic:** #2031
+
+- **Problem Statement:** The dashboard is the first screen and the one with
+  an approved design. Today it opens on an eyebrow and a slogan title, says
+  "demo data" nine ways, misaligns its four figures, wraps every loop title
+  to four lines and leaves an empty band under the pulse meters.
+- **Solution/Scope:** In
+  [`app/dashboard/`](../ouroboros-ui/app/dashboard/): `PageHeader` with
+  title "Dashboard", the existing greeting sentence's facts as the status
+  line ("3 loops in flight · 12 queued · nothing merged since midnight
+  UTC"), the origin segment in `controls`, "Edit workflows" as primary and
+  "Pull next issue" as a Soon action; the origin strip beneath (FN.4); four
+  `StatCard`s (FN.2) — "Loops live" with a live dot, "Queued issues", "PRs
+  merged · 7 days", "Token spend · today"; the active-loops card on FN.3
+  (issue as the primary column, elapsed numeric, status as dot-plus-label);
+  the pulse card sized to its three meters with "Last 7 days" as header meta
+  and **no glyph**. System, recently-closed and queue cards take FN.5's
+  header and FN.3's rows with no content change. The greeting component is
+  retired; the time-of-day copy does not survive. Source: the approved board.
+- **Acceptance Criteria:**
+  - Side by side with `docs/design/polish/dashboard-after.png` at 1440px
+    dark, the page matches in structure, type and spacing.
+  - Demo view: one strip, no badges. All-origins view: badges on non-live
+    rows.
+  - Stat values share a baseline at 100% and 150%; loop rows are one line at
+    1280–1920px.
+  - Light theme reviewed against P10; e2e `dashboard.spec.ts` and the
+    readability leg green with refreshed baselines.
+  - Empty, loading, error and stale states (existing) render inside the new
+    frame.
+- **Parallelism/Dependencies:** After FN.1–FN.5. Amends mockup-02 I.1 (#80).
+  Parallel with FO.2.
+- **Technical Stack:** Next.js, React, the FN primitives.
+- **Documentation:** User Guide — `dashboard.mdx` (page head, stat labels,
+  origin strip wording, pulse card), `index.mdx` if it quotes the greeting;
+  recapture `home.dashboard`, `user-guide.dashboard`,
+  `user-guide.dashboard-banner`, `user-guide.dashboard.loops`,
+  `.pulse`, `.queue`, `.system`, `.closed`, `.empty`.
+- **Epic:** FO
+
+```
+Dashboard                                   (Live|Demo|Sim|All) ┆Pull next Soon┆ [Edit workflows]
+3 loops in flight · 12 queued · nothing merged since midnight UTC
+ⓘ Demo data. …                                                   Check readiness →
+[● Loops live 3] [Queued 12] [PRs merged·7d 21] [Token spend 4.2M]
+┌ Active loops ● Live      Open run console → ┐ ┌ Loop pulse   Last 7 days ┐
+│ one-line rows × n                            │ │ three meters             │
+└──────────────────────────────────────────────┘ └──────────────────────────┘
+```
+
+### Issue FO.2 — ouroboros-ui: [FO.2] Shell chrome — header & sidebar
+
+> **GitHub issue:** #2044 · **Status:** 🟡 Open · **Parent epic:** #2031
+
+- **Problem Statement:** The sidebar's active item is a glowing bordered
+  pill, nav labels are tracked, and the header's help and notification
+  buttons are outlined circles that compete with the search field.
+- **Solution/Scope:** In [`shell.css`](../ouroboros-ui/app/shell/shell.css)
+  and the shell components: active item per FM.4; nav labels `--f-ui` at
+  `--t-md`, sentence case in
+  [`nav-modules.ts`](../ouroboros-ui/app/shell/nav-modules.ts) ("Build
+  farm", "Needs you"); header icon buttons borderless with a hover fill;
+  the tenant chip in `--f-ui` with the workspace muted and the repository in
+  `--ink`; menus and the command palette take `--shadow-2`. Rail, drawer,
+  registry, shortcuts and scroll containment untouched.
+- **Acceptance Criteria:**
+  - The eleven nav states of `shell-nav.spec.ts` still pass; rail-mode
+    tooltips show the re-cased names.
+  - No glow in the shell except the live-loops pill's dot.
+  - Header fits at 1280px with both pills present, at 150%.
+- **Parallelism/Dependencies:** After FM.4. Parallel with FO.1. Amends CP.2
+  (#644), CP.1 (#643).
+- **Technical Stack:** CSS, shell components.
+- **Documentation:** User Guide — `finding-your-way.mdx` (nav label casing,
+  active state); recapture `user-guide.shell`, `user-guide.appearance`, the
+  command-palette id.
+- **Epic:** FO
+
+```
+▌Dashboard   (flat raised fill, accent icon)      ⌕ Search ⌘K   ?  bell  (KS)
+  Issues
+  Workflows
+```
+
+### Issue FO.3 — ouroboros-ui: [FO.3] Work surfaces — Issues, Planning, Needs You, PRs, Runs, Test results
+
+> **GitHub issue:** #2045 · **Status:** 🟡 Open · **Parent epic:** #2031
+
+- **Problem Statement:** The six modules a person works a loop through each
+  carry their own head and table styling; PR verification and the run
+  console put four or five uppercase display-face card titles on one screen.
+- **Solution/Scope:** For `issues`, `planning`, `inbox`, `prs`, `runs`,
+  `test-results`: adopt `PageHeader` (entity pages use the breadcrumb
+  variant and the entity's own title — the PR title, the run's issue);
+  choose one primary per page and record it in the PR ("Approve & merge" on
+  an inbox card stays that card's primary; the page head carries none);
+  tables to FN.3; cards to FN.5; KPI strips to FN.2; status banners into the
+  `alerts` slot. Slogan titles become module names with the slogan's facts
+  moved to the status line ("2 decisions · about 50 seconds"). No
+  information is removed.
+- **Acceptance Criteria:**
+  - No page-local `h1` or head markup remains in the six modules.
+  - Each page has at most one primary in its head; the list is in the PR.
+  - The modules' e2e specs pass with refreshed baselines; leg 8 green.
+- **Parallelism/Dependencies:** After FN.1–FN.5. Parallel with FO.4, FO.5;
+  may be split per module at filing if reviewers prefer smaller PRs.
+- **Technical Stack:** React, the FN primitives.
+- **Documentation:** User Guide — `issues.mdx`, `planning.mdx`,
+  `inbox.mdx`, `pull-requests.mdx`, `runs/*`, and the test-results page:
+  titles and labels re-cased; recapture every `user-guide.issues*`,
+  `.planning*`, `.inbox*`, `.pr*`, `.run*`, `.tests*`, `.first-loop*` id.
+- **Epic:** FO
+
+```
+Dashboard / Loop #1847 / PR #514
+can: fix flaky telemetry frame order under ISR load      [Merge when all gates green]
+verifying · 5 of 7 gates green · loop/482-canbus-flake → main · +68 −15
+```
+
+### Issue FO.4 — ouroboros-ui: [FO.4] Configuration surfaces — Models, Providers, Registry, Build Farm, Knowledge, Workflows list
+
+> **GitHub issue:** #2046 · **Status:** 🟡 Open · **Parent epic:** #2031
+
+- **Problem Statement:** The routing matrix is where the product's claim
+  about models lives, and at 1440px its cells wrap model ids across four
+  lines and cut the last column off. "Save routes" looks disabled with no
+  visible reason.
+- **Solution/Scope:** For `models` (routing, spend tab), `registry`,
+  `providers`, `farm`, `knowledge`, and the Workflows list/studio frame
+  (not the canvas, inspector or Copilot — epic FP): `PageHeader` with a
+  module-name title and the long explanatory paragraph reduced to a status
+  line plus a "How routing works" link; routing matrix on FN.3 with the
+  alias chip and one muted line of "model · provider" (nowrap, truncating),
+  the escalation column as a count chip that opens the rule; a dirty-state
+  save in `StickyBar` (CP.4) so "Save routes" is enabled only when there is
+  something to save and says so otherwise; provider health chips in one
+  wrapping row with equal heights.
+- **Acceptance Criteria:**
+  - Routing rows are at most two lines at 1440px; no column is clipped.
+  - A clean matrix shows no inert save button; a dirty one shows the sticky
+    bar.
+  - `routing.spec.ts`, `registry.spec.ts`, `providers.spec.ts`,
+    `farm.spec.ts`, `knowledge.spec.ts` pass with refreshed baselines.
+- **Parallelism/Dependencies:** After FN.1–FN.5. Parallel with FO.3, FO.5.
+- **Technical Stack:** React, the FN primitives, StickyBar.
+- **Documentation:** User Guide — `models.mdx`, `knowledge.mdx`,
+  `workflows/studio.mdx`; Administration — `providers.mdx`,
+  `build-farm.mdx`: titles, labels and the save behaviour; recapture every
+  `user-guide.models*`, `.knowledge*`, `.workflows` id and the
+  administration ids for providers and build farm.
+- **Epic:** FO
+
+```
+Task       Primary                         Fallback                      Escalation
+analyze    coder-std                       local-docs                    —
+           claude-sonnet-5 · Anthropic     qwen3-coder:32b · Ollama
+implement  coder-max                       coder-fallback                1 rule ▸
+```
+
+### Issue FO.5 — ouroboros-ui: [FO.5] Analysis & admin surfaces — Insights, Analyzer, Research, ChatOps, Settings, Accounts
+
+> **GitHub issue:** #2047 · **Status:** 🟡 Open · **Parent epic:** #2031
+
+- **Problem Statement:** Insights centres and wraps its KPI labels with a
+  dotted underline and repeats "Demo data" on every card; the admin pages
+  (settings, members, policies, audit log, integrations, webhooks, sources,
+  repositories, accounts) each style their heads and tables alone.
+- **Solution/Scope:** For `insights`, `analyzer`, `research`, `chatops`,
+  `settings` and the admin routes: `PageHeader` (Insights keeps its data
+  headline as the status line — "21 PRs merged this week · 15 needed a
+  human" — under the title "Insights"; range and origin as `controls`);
+  KPI rows on FN.2; chart cards on FN.5 with the range in header meta;
+  origin per FN.4; admin tables on FN.3; destructive actions keep
+  `ou-btn--danger` and are never a page's primary. Chart marks are not
+  restyled here.
+- **Acceptance Criteria:**
+  - Insights' five KPIs share a baseline; labels are left-aligned, one line.
+  - No page-local head markup in these modules.
+  - The modules' e2e specs pass with refreshed baselines; leg 8 green.
+- **Parallelism/Dependencies:** After FN.1–FN.5. Parallel with FO.3, FO.4.
+- **Technical Stack:** React, the FN primitives.
+- **Documentation:** User Guide — `insights.mdx`, `analyzer.mdx`,
+  `research.mdx`, `chatops.mdx`; Administration — `members-and-tokens.mdx`,
+  `policies.mdx`, `sources.mdx`, `notifications-and-webhooks.mdx`,
+  `retention-audit-lifecycle.mdx`: titles and labels re-cased; recapture
+  every `user-guide.insights*`, `.analyzer*`, `.research*`, `.chatops*` id
+  and the administration ids.
+- **Epic:** FO
+
+```
+Insights                                   (7d|30d|90d|custom) (Live|Demo|…)
+21 PRs merged this week · 15 needed a human
+[Autonomous merge rate 92%] [Merged w/o edits 78%] [Median cycle 14m 20s] …
+```
+
+### Issue FO.6 — ouroboros-ui: [FO.6] Standalone screens — sign-in, wizard, get started
+
+> **GitHub issue:** #2048 · **Status:** 🟡 Open · **Parent epic:** #2031
+
+- **Problem Statement:** Sign-in, the first-run wizard and the get-started
+  flow render outside the shell and have no `PageHeader`, but they carry the
+  same display-face headings, tracked labels and glowing primary.
+- **Solution/Scope:** Apply P1–P3 and P6 to `(auth)`, `(wizard)` and
+  `get-started`: one display-face title per screen, sentence-case step
+  labels, flat primary, shadow tokens on the card, readiness rows using the
+  dot-plus-label status. The brand lockup on sign-in keeps its glow — it is
+  the brand moment, and it is in the FM.4 allowlist by name.
+- **Acceptance Criteria:**
+  - Each screen has one display-face element besides the lockup.
+  - Wizard steps are reachable and legible at 150%; `sign-in.spec.ts` and
+    the wizard baselines pass refreshed.
+- **Parallelism/Dependencies:** After FM.1–FM.4. Parallel with FO.1–FO.5.
+- **Technical Stack:** React, CSS.
+- **Documentation:** User Guide — `getting-started/*`; Administration —
+  `sign-in-and-workspace.mdx`; recapture `user-guide.sign-in*`,
+  `user-guide.wizard.*`.
+- **Epic:** FO
+
+### Issue FO.7 — ouroboros-ui: [FO.7] Polish QA gate — light theme, 150% scale, contrast
+
+> **GitHub issue:** #2049 · **Status:** 🟡 Open · **Parent epic:** #2031
+
+- **Problem Statement:** The approved board is dark and 100%. The light
+  palette, the five font scales and AA contrast are house rules, and a sweep
+  across twenty modules is where one page keeps its old head unnoticed.
+- **Solution/Scope:** A review pass and its guards: light-theme walk of
+  every recaptured screenshot against P10, fixing token-level misses (shadow
+  strength, flat-primary hover, strip tint); leg 8's matrix and 150% audit
+  green on the refreshed baselines; the contrast table in `DESIGN_TOKENS.md`
+  extended with the new pairs (flat primary label, Soon tag, dot-plus-label
+  statuses, table head fill); a structural test that fails when a component
+  outside `app/ui/` renders an `h1`, or when `<Eyebrow>` appears in a page
+  head; `yarn check:screenshots` and `check:coverage` green in `ci/docs`.
+- **Acceptance Criteria:**
+  - Every new text pair ≥ 4.5:1 and every control boundary ≥ 3:1, measured
+    in both themes and recorded.
+  - Leg 8 within its three-minute budget, green.
+  - The structural test is red on a planted page-local `h1`.
+  - No docs page shows a pre-polish screenshot.
+- **Parallelism/Dependencies:** After FO.1–FO.6. **MVP gate.**
+- **Technical Stack:** Playwright, vitest, the contrast helper
+  (`tests/e2e/support/contrast.ts`).
+- **Documentation:** none — internal-only change (verifies the pages and
+  captures the earlier issues updated; fixes any it finds stale).
+- **Epic:** FO
+
+```
+themes {light, dark} × scales {100, 125, 150} × roster ─▶ baselines ✓ · AA ✓
+planted <h1> outside app/ui ─▶ ✗        planted glow on a card ─▶ ✗
+```
+
+---
+
+## Epic FP (#2032) — AI-Builder Surfaces (v2 · milestone `UI Polish v2`)
+
+Where a person builds with models: the Copilot, the stage inspector, the
+canvas. These are layout changes with no approved design yet — FP.1 gates
+the rest (decision P9).
+
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| FP.1 | #2050 | 🟡 Open | docs: [FP.1] Design boards — Copilot, inspector, canvas | Before/after boards for the three surfaces, both themes; approval gate | v2, polish, design, copilot, studio | Y (any time) | N | M | docs |
+| FP.2 | #2051 | 🟡 Open | ouroboros-ui: [FP.2] Copilot two-pane layout & workflow switcher | Conversation and draft side by side; workflow list becomes a switcher | v2, polish, ui, copilot | N (after FP.1, FO.4) | N | M | ouroboros-ui, ouroboros-docs |
+| FP.3 | #2052 | 🟡 Open | ouroboros-ui: [FP.3] Copilot docked composer | Docked input with model chip, conversation cost, dry-run action, submit shortcut, visible unavailable-reason | v2, polish, ui, copilot | N (after FP.2) | N | M | ouroboros-ui, ouroboros-docs |
+| FP.4 | #2053 | 🟡 Open | ouroboros-ui: [FP.4] Copilot proposed-change review on the draft | Added/changed/removed markers on the stage list with accept and reject per change | v2, polish, ui, copilot | N (after FP.2) | N | L | ouroboros-ui, ouroboros-docs |
+| FP.5 | #2054 | 🟡 Open | ouroboros-ui: [FP.5] Inspector prompt editor | Taller editor with template-variable completion and unresolved-variable diagnostics | v2, polish, ui, studio, workflow | Y (after FP.1) | N | M | ouroboros-ui, ouroboros-docs |
+| FP.6 | #2055 | 🟡 Open | ouroboros-ui: [FP.6] Canvas toolbar & node model badges | Floating toolbar, help behind `?`, model alias on LLM nodes | v2, polish, ui, studio, workflow | Y (after FP.1) | N | M | ouroboros-ui, ouroboros-docs |
+| FP.V | #2059 | 🟡 Open | ouroboros: [FP.V] Validate Epic FP — AI-Builder Surfaces (v2) | Validation gate: the epic's criteria, suites and docs hold together on one `main` commit | v2, polish, validation | N (after every work ticket) | N | S | ouroboros-ui |
+
+### Issue FP.1 — docs: [FP.1] Design boards — Copilot, inspector, canvas
+
+> **GitHub issue:** #2050 · **Status:** 🟡 Open · **Parent epic:** #2032
+
+- **Problem Statement:** The dashboard was approved from a before/after
+  board. The three AI-builder surfaces are larger changes — panes move —
+  and have only a paragraph of intent each.
+- **Solution/Scope:** One board per surface in the manner of the dashboard
+  board, built on the FM/FN language: Copilot (two-pane, composer, change
+  review), inspector (prompt editor), canvas (toolbar, node badges); the
+  current screen beside the proposal, dark and light. Open questions each
+  board must answer are listed in FP.2–FP.6. Approved captures committed
+  under `docs/design/polish/`; FP.2–FP.6 amended to match what was approved
+  before any is started.
+- **Acceptance Criteria:** Three boards approved by the product owner;
+  captures committed; downstream issue bodies updated.
+- **Parallelism/Dependencies:** None to start. Blocks FP.2–FP.6.
+- **Technical Stack:** Design canvas, PNG captures.
+- **Documentation:** none — internal-only change (design artefacts).
+- **Epic:** FP
+
+### Issue FP.2 — ouroboros-ui: [FP.2] Copilot two-pane layout & workflow switcher
+
+> **GitHub issue:** #2051 · **Status:** 🟡 Open · **Parent epic:** #2032
+
+- **Problem Statement:** The Copilot page is three columns — workflow list,
+  conversation, draft — so the conversation, which is the point of the
+  page, gets about 330px and sits inside a nested bordered box. The page
+  head holds the action buttons and a warning card.
+- **Solution/Scope:** In
+  [`app/workflows/copilot/`](../ouroboros-ui/app/workflows/copilot/): two
+  panes — conversation (≈ 45%) and draft (≈ 55%) — each scrolling in its own
+  region inside the pane; the workflow list collapses into a switcher in
+  `PageHeader` (current workflow name, status, menu of the others, "New
+  workflow"); "Discard draft" and "Promote draft" in the head's actions,
+  promote as primary; the unresolved-references notice moves to the
+  `alerts` slot; the gateway-unavailable notice becomes an inline state of
+  the conversation pane rather than a card over the transcript. Below
+  1024px the panes become tabs. Open question for FP.1: whether Visual and
+  Code tabs adopt the same switcher.
+- **Acceptance Criteria:**
+  - Conversation pane ≥ 480px at 1440px; no nested bordered scroll box.
+  - Switching workflow with unsent text asks before discarding (existing
+    leave guard).
+  - `copilot.spec.ts` passes with refreshed baselines; leg 8 green.
+- **Parallelism/Dependencies:** After FP.1 and FO.4 (studio frame). Blocks
+  FP.3, FP.4. Amends the mockup-20 roadmap's frame issue.
+- **Technical Stack:** React, CSS grid, existing copilot state.
+- **Documentation:** User Guide — `workflows/copilot.mdx` (layout,
+  switching workflows, where the notices appear); recapture
+  `user-guide.workflows.copilot`, `.conversation`, `.stages`, `.safety`,
+  `.dry-run`.
+- **Epic:** FP
+
+```
+security-patch ▾  not published            [Discard draft] [Promote draft → v1]
+⚠ 2 unresolved references …
+┌ Conversation ────────────────┐ ┌ Draft · 9 stages ──────────────────────┐
+│ transcript                   │ │ 01 trigger   label:security            │
+│                              │ │ 02 analyze   skill:advisory-db ⚠       │
+├──────────────────────────────┤ │ …                                      │
+│ composer (FP.3)              │ │                                        │
+└──────────────────────────────┘ └────────────────────────────────────────┘
+```
+
+### Issue FP.3 — ouroboros-ui: [FP.3] Copilot docked composer
+
+> **GitHub issue:** #2052 · **Status:** 🟡 Open · **Parent epic:** #2032
+
+- **Problem Statement:** The composer is a resizable textarea with a "Send"
+  button that looks disabled; the model in use and the draft name float
+  above the transcript as chips; cost appears per message only.
+- **Solution/Scope:** A composer docked to the bottom of the conversation
+  pane: auto-growing input (no resize handle, capped height), submit on
+  ⌘/Ctrl+Enter with the hint shown, a flat primary send button enabled when
+  there is text; a footer row with the model alias chip (links to its
+  registry entry), the conversation's running cost (the sum of the
+  per-message costs already shown — never an estimate), and a "Dry run"
+  action that asks for a dry run through the existing path. When the
+  Copilot cannot reply (no invocation gateway), the composer is replaced by
+  a one-line reason with its link, not left inert. Suggested replies stay
+  as chips above the input.
+- **Acceptance Criteria:**
+  - Send is visibly enabled when there is text and visibly disabled when
+    there is none; keyboard submit works and is announced.
+  - Running cost equals the sum of message costs, or an em dash when none
+    is known.
+  - The unavailable state names its reason without hover.
+- **Parallelism/Dependencies:** After FP.2. Parallel with FP.4.
+- **Technical Stack:** React, existing copilot conversation store.
+- **Documentation:** User Guide — `workflows/copilot.mdx` § the
+  conversation (composer, shortcut, running cost, dry run from the
+  composer); recapture `user-guide.workflows.copilot.conversation`.
+- **Epic:** FP
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ Refine the workflow — or ask for a dry run…               │
+├──────────────────────────────────────────────────────────┤
+│ claude-fable-5 · $0.16 this conversation   Dry run  ⌘↵ [Send] │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Issue FP.4 — ouroboros-ui: [FP.4] Copilot proposed-change review on the draft
+
+> **GitHub issue:** #2053 · **Status:** 🟡 Open · **Parent epic:** #2032
+
+- **Problem Statement:** The Copilot reports "applied 6 operations · 1
+  proposed" as a line of text in the transcript, and the draft list shows
+  the result with an "added by copilot" chip on some stages. A person
+  cannot see, on the draft itself, what the last turn changed or decide on
+  a proposal where it lands.
+- **Solution/Scope:** On the draft stage list: per-stage change markers for
+  the latest turn (added, changed with the fields named, removed shown
+  struck until the next turn); proposed operations rendered in place with
+  Accept and Reject, resolving through the Copilot's existing operation
+  path; a "Changes in this turn" summary row with accept-all for proposals;
+  markers carry text and shape, not colour alone. Open questions for FP.1,
+  to be answered from the code before design: whether "proposed" operations
+  are individually resolvable today, and whether a rejected proposal is
+  recorded in the transcript. If the answer to the first is no, the REST
+  work is filed as its own issue against the mockup-20 roadmap and this one
+  is blocked on it.
+- **Acceptance Criteria:**
+  - After a turn, every stage it touched is marked and every other is not.
+  - Accepting or rejecting a proposal updates the draft and the transcript
+    consistently; a reload shows the same state.
+  - Markers are distinguishable in greyscale.
+- **Parallelism/Dependencies:** After FP.2. May depend on a REST issue (see
+  scope). Amends the mockup-20 roadmap.
+- **Technical Stack:** React, existing copilot operations model.
+- **Documentation:** User Guide — `workflows/copilot.mdx` § reviewing what
+  the Copilot changed; new `user-guide.workflows.copilot.review`, recapture
+  `user-guide.workflows.copilot.stages`.
+- **Epic:** FP
+
+```
+05 build         pool-a
+06 test          pool-a · twister full
+07 exploit-verify  + added     task:exploit-verify ⚠
+08 review ×2     ~ changed: models
+   ┆ proposed: require human approval before PR   [Accept] [Reject] ┆
+```
+
+### Issue FP.5 — ouroboros-ui: [FP.5] Inspector prompt editor
+
+> **GitHub issue:** #2054 · **Status:** 🟡 Open · **Parent epic:** #2032
+
+- **Problem Statement:** The prompt template — the text a model actually
+  receives — is edited in an eight-line textarea in a 300px inspector, with
+  the available variables listed as chips below it.
+- **Solution/Scope:** In
+  [`app/workflows/inspector/`](../ouroboros-ui/app/workflows/inspector/):
+  replace the textarea with a CodeMirror editor (already a dependency of
+  the code view) using a small template mode: `{{variable}}` highlighting,
+  completion of the variables in scope for the stage (issue fields and
+  earlier stages' outputs, the same set the chips list today), a diagnostic
+  on an unknown variable; an "Expand" control opens the editor in a
+  `--shadow-2` sheet at pane width with the variable reference beside it;
+  line and character counts in the footer. A token count and a "test this
+  prompt" run are deliberately **out of scope**: a count needs a tokenizer
+  per model and a test run needs a stage-scoped dry run — FP.1 decides
+  whether either is filed as a follow-up.
+- **Acceptance Criteria:**
+  - Typing `{{` offers the in-scope variables; an unknown variable is
+    underlined with a message naming it.
+  - The expanded editor round-trips to the inline one without losing undo.
+  - The visual ⇄ code lossless round-trip (workflow DSL) is unaffected —
+    `code-editor.spec.ts` passes.
+- **Parallelism/Dependencies:** After FP.1. Parallel with FP.6.
+- **Technical Stack:** CodeMirror 6 (`@codemirror/*`, `@lezer/highlight`),
+  React.
+- **Documentation:** User Guide — `workflows/studio.mdx` § the inspector
+  (editing a prompt, variable completion, expanding the editor); recapture
+  `user-guide.workflow.inspector`; new `user-guide.workflow.prompt-editor`.
+- **Epic:** FP
+
+```
+Prompt template                                        ⤢ Expand
+┌────────────────────────────────────────────┐
+│ Implement the approved plan.               │
+│ Issue: {{issue.title}}                     │
+│ Plan:  {{pla|                              │
+│         ┌ plan ─────────── stage 04 ┐      │
+└─────────┴───────────────────────────┴──────┘
+5 lines · 112 characters
+```
+
+### Issue FP.6 — ouroboros-ui: [FP.6] Canvas toolbar & node model badges
+
+> **GitHub issue:** #2055 · **Status:** 🟡 Open · **Parent epic:** #2032
+
+- **Problem Statement:** The canvas toolbar sits under the canvas with a
+  two-line mono sentence of keyboard help permanently beneath it, and an
+  LLM node shows its model as one unlabelled chip among others, so "which
+  model runs this stage" takes reading.
+- **Solution/Scope:** In
+  [`app/workflows/canvas/`](../ouroboros-ui/app/workflows/canvas/): a
+  floating toolbar inside the canvas (zoom, fit, auto-layout, add stage,
+  undo/redo) on `--shadow-1`; the help sentence moves behind a `?` control
+  and into the shortcuts sheet
+  ([`shortcuts-sheet.tsx`](../ouroboros-ui/app/shell/shortcuts-sheet.tsx));
+  LLM nodes carry their resolved model alias as a `--model` chip in a fixed
+  position ("routed by task" when inherited); node kind labels follow FM.1
+  (sentence case, kind icon kept). The React Flow attribution stays unless
+  the project holds a licence that permits removing it — confirm at
+  implementation. Cost or latency badges on nodes are **out of scope**:
+  there is no per-stage figure to show honestly on an unrun draft.
+- **Acceptance Criteria:**
+  - No permanent help text under the canvas; every shortcut it listed is in
+    the shortcuts sheet.
+  - Every LLM node shows exactly one model chip in the same place.
+  - Canvas keyboard operation (Tab to a stage, arrows, Delete, undo) is
+    unchanged — existing canvas tests pass.
+- **Parallelism/Dependencies:** After FP.1. Parallel with FP.5. Amends the
+  mockup-04 roadmap.
+- **Technical Stack:** `@xyflow/react`, React, CSS.
+- **Documentation:** User Guide — `workflows/studio.mdx` § the canvas
+  (toolbar, where the shortcuts live, reading a node's model); recapture
+  `user-guide.workflow.canvas`, `user-guide.workflows`.
+- **Epic:** FP
+
+```
+┌ canvas ───────────────────────────────────────────────┐
+│  ◆ Implement                                          │
+│  Code the change                                      │
+│  [coder-max]  skill:zephyr-conventions                │
+│                                                       │
+│        ( − 50% + │ Fit │ Auto-layout │ Add stage ▾ │ ↶ ↷ │ ? ) │
+└───────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Work Order (dependency-ordered execution plan)
 
 ```mermaid
@@ -856,6 +1896,48 @@ Ordered checklist (⊕ = parallelizable within its phase):
    compliance table)*
 5. **v2:** CR.1 (#651) ⊕ CR.2 (#652) ⊕ CR.3 (#653).
 
+### Polish addendum (FM–FP)
+
+```mermaid
+flowchart TB
+    subgraph Q0["Phase 0 — Spec"]
+        FM5["FM.5 spec amendments + approved board"]
+    end
+    subgraph Q1["Phase 1 — Foundations"]
+        FM5 --> FM1["FM.1 typography roles"] & FM2["FM.2 elevation + motion tokens"]
+        FM2 --> FM3["FM.3 flat controls + Soon"]
+        FM3 --> FM4["FM.4 glow audit"]
+    end
+    subgraph Q2["Phase 2 — Patterns"]
+        FM1 & FM3 --> FN1["FN.1 PageHeader"]
+        FM1 --> FN2["FN.2 StatCard"] & FN3["FN.3 Table"] & FN5["FN.5 Card header"]
+        FN1 --> FN4["FN.4 origin once"]
+    end
+    subgraph Q3["Phase 3 — Adoption"]
+        FN1 & FN2 & FN3 & FN4 & FN5 --> FO1["FO.1 dashboard (approved design)"]
+        FM4 --> FO2["FO.2 shell chrome"]
+        FO1 --> FO3["FO.3 work surfaces"] & FO4["FO.4 configuration surfaces"] & FO5["FO.5 analysis + admin"]
+        FM4 --> FO6["FO.6 standalone screens"]
+        FO2 & FO3 & FO4 & FO5 & FO6 --> FO7["FO.7 QA gate"]
+    end
+    subgraph QV2["v2 — AI-builder surfaces"]
+        FP1["FP.1 design boards"] --> FP2["FP.2 Copilot two-pane"] & FP5["FP.5 prompt editor"] & FP6["FP.6 canvas toolbar"]
+        FP2 --> FP3["FP.3 composer"] & FP4["FP.4 change review"]
+    end
+    FO4 --> FP2
+    FO7 -.->|MVP gate| QV2
+```
+
+Ordered checklist (⊕ = parallelizable within its phase):
+
+1. **Phase 0:** FM.5 (#2037).
+2. **Phase 1:** { FM.1 (#2033) ⊕ FM.2 (#2034) } → FM.3 (#2035) → FM.4 (#2036).
+3. **Phase 2:** FN.1 (#2038) ⊕ FN.2 (#2039) ⊕ FN.3 (#2040) ⊕ FN.5 (#2042) → FN.4 (#2041).
+4. **Phase 3:** { FO.1 (#2043) ⊕ FO.2 (#2044) ⊕ FO.6 (#2048) } → { FO.3 (#2045) ⊕ FO.4 (#2046) ⊕ FO.5 (#2047) } → **FO.7 (#2049)**
+   *(MVP gate)*. FO.1 (#2043) lands first among the page work so the approved design
+   is the reference the sweep is reviewed against.
+5. **v2:** FP.1 (#2050) (may start any time) → { FP.2 (#2051) → FP.3 (#2052) ⊕ FP.4 (#2053) } ⊕ FP.5 (#2054) ⊕ FP.6 (#2055).
+
 ## Totals
 
 | | Epic | Issues | MVP | v2 |
@@ -864,6 +1946,24 @@ Ordered checklist (⊕ = parallelizable within its phase):
 | Epic CQ — Readability & Type Scale | #641 | 3 | 3 | 0 |
 | Epic CR — Shell Enhancements | #642 | 3 | 0 | 3 |
 | **Total** | **3 epics** | **11** | **8** | **3** |
+
+Polish addendum, **filed 2026-11-12** as #2029–#2059 (four epics, 23 work
+tickets, four validation tickets):
+
+| | Epic | Issues | MVP | v2 |
+|---|:---:|:---:|:---:|:---:|
+| Epic FM — Visual Foundations | #2029 | 5 | 5 | 0 |
+| Epic FN — Page Patterns | #2030 | 5 | 5 | 0 |
+| Epic FO — Adoption | #2031 | 7 | 7 | 0 |
+| Epic FP — AI-Builder Surfaces | #2032 | 6 | 0 | 6 |
+| **Addendum total** | **4 epics** | **23** | **17** | **6** |
+
+Amendments **still to post** (the comments were not posted at filing): CP.1 (#643) and CP.2 (#644)
+— header controls and the flat active item (FM.4, FO.2); #16 and #46 — new
+tokens and primitives (FM.2, FM.3, FN.1–FN.5); CQ.3 (#650) — baselines
+refreshed by the sweep, gate reused by FO.7; DJ.3 (#1316) — badges only in
+mixed-origin views (FN.4); mockup-02 I.1 (#80) — dashboard (FO.1); the
+mockup-04 and mockup-20 frame issues — canvas and Copilot (FP.2–FP.6).
 
 Issues **#643–#653**, filed 2026-08-09 as sub-issues of their epics
 (#640–#642), with the new `shell` label and the `App Shell MVP` /
@@ -901,8 +2001,32 @@ in the same pass. The rest follow as their screens land.
 - Scaffolding roadmap issues #16/#17/#31/#33/#39–#41/#46/#48/#49/#56
 - Icon set: lucide (ISC) — recorded in CP.2, and seeded there
   ([`app/shell/nav-modules.ts`](../ouroboros-ui/app/shell/nav-modules.ts))
+- Polish addendum: the approved dashboard before/after board
+  (<https://claude.ai/artifact/FTRY56cbz5nZierCsaiDP8>; committed under
+  `docs/design/polish/` by FM.5); tokens
+  [`docs/DESIGN_TOKENS.md`](DESIGN_TOKENS.md); the docs screenshots under
+  `ouroboros-docs/static/img/screenshots/` that the review read
 
 ## Next Step
+
+**Polish addendum (FM–FP): filed 2026-11-12.** The `polish` label and the
+`UI Polish MVP` / `UI Polish v2` milestones were created; the four epics
+(#2029–#2032), twenty-three work tickets (#2033–#2055) and four validation
+tickets (#2056–#2059) are on GitHub with parent relationships, milestones,
+labels and types set. The amendment comments listed under Totals are **not
+yet posted**. The addendum's letters moved from the drafted FE–FH to
+**FM–FP** at filing, because FE–FL were already taken by the RC1 and RC2
+roadmaps.
+
+Execution starts with **FM.5 (#2037)** — the spec amendments every other
+issue cites — then { FM.1 (#2033) ⊕ FM.2 (#2034) }. The critical path to the
+MVP gate is #2037 → #2034 → #2035 → #2038 → #2043 → **#2049**. Three
+decisions carry the risk. **P5** changes a shipped honesty rule (DJ.3), so
+#2041's test over the origin × filter matrix is the part not to cut. **P7**
+means #2033–#2036 each recapture every docs screenshot; if that churn is
+unwelcome, the four can share one integration branch and recapture once.
+**P10** derives the light theme by rule rather than by design, and #2049 is
+where that either holds or needs a light board.
 
 **Filed 2026-08-09.** The `shell` label and the `App Shell MVP` /
 `App Shell v2` milestones were created; the three epics (#640–#642) and
