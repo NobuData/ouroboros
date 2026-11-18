@@ -3966,7 +3966,7 @@ export interface paths {
          *     | `provider_connection` | `no_invocable_connection`; `connection_unhealthy` (every one failed its last test); `connection_untested` (unknown — none tested yet) |
          *     | `routes` | `route_unresolved` (a task kind has no route, or none to a kept hop); `route_unpriced` (the first kept hop's model has no price); `workflow_unreadable` (unknown) |
          *     | `stage_executors` | `engine_unavailable`, `no_executor` (only when the workflow has a model stage); `workflow_unreadable` |
-         *     | `runner` | `build_pool_required`, `pool_not_found`, `pool_disabled`, `no_runner`, `no_source_checkout` (per build stage's pool); `workflow_unreadable` |
+         *     | `runner` | `build_pool_required` (a build stage names no pool, or names `$default` and the workspace has no pool), `pool_not_found`, `pool_disabled`, `no_runner`, `no_source_checkout` (per build stage's pool — a `$default` stage's is the workspace default pool, named in the reason); `workflow_unreadable` |
          *     | `repository` | `repository_disabled` |
          *     | `push_credential` | the workspace GitHub token: `github_not_configured`, `repository_unreadable`, `push_denied`; `permission_unconfirmed` (unknown) |
          *     | `pull_request_credential` | the issue's GitHub source: `no_issue_chosen` (unknown), `no_pr_source`, `pr_source_other_repository`, `repository_unreadable`, `push_denied`; `permission_unconfirmed` (unknown) |
@@ -10728,6 +10728,12 @@ export interface paths {
          *     delete whatever this service believes. The refusal offers the thing the caller usually
          *     meant — `PATCH` with `enabled: false`, which stops new work and keeps the history.
          *
+         *     **Deleting the default pool moves the default**
+         *     ([#1834](https://github.com/NobuData/ouroboros/issues/1834)) to the workspace's oldest
+         *     remaining pool, and the `runner.pool_deleted` audit row names it (`defaultMovedTo`). With
+         *     no pool left the workspace has no default, and the loop readiness `runner` check answers
+         *     `build_pool_required` for a `$default` stage.
+         *
          *     `owner` or `admin`.
          */
         delete: operations["deleteRunnerPool"];
@@ -10745,6 +10751,12 @@ export interface paths {
          *
          *     `enabled: false` is the card's switch: the pool accepts no new work and keeps everything
          *     it is already running. It is operator intent, not a health signal, and not a delete.
+         *
+         *     `isDefault: true` makes this pool the **workspace default pool**
+         *     ([#1834](https://github.com/NobuData/ouroboros/issues/1834)) — where a workflow stage
+         *     naming `runner_pool: "$default"` builds. The previous default stops being it in the same
+         *     transaction; asking it of the pool that already is the default changes nothing. There is
+         *     no `isDefault: false`: make another pool the default instead.
          *
          *     `owner` or `admin`.
          */
@@ -33113,6 +33125,15 @@ export interface components {
              *     already running. Operator intent, not a health signal and not a delete.
              */
             enabled: boolean;
+            /**
+             * @description Whether this is the workspace default pool
+             *     ([#1834](https://github.com/NobuData/ouroboros/issues/1834)) — where a workflow
+             *     stage naming `runner_pool: "$default"` builds, as the shipped templates' build and
+             *     test stages do. Exactly one pool of a workspace that has any: the first pool
+             *     created, until `PATCH` with `isDefault: true` picks another; deleting it moves the
+             *     default to the oldest remaining pool.
+             */
+            isDefault: boolean;
             /** @description How many builds one runner of this pool may run at once — per runner, not per pool. */
             maxConcurrency: number;
             /**
@@ -33204,6 +33225,13 @@ export interface components {
          *     }
          */
         UpdateRunnerPoolRequest: {
+            /**
+             * @description Make this pool the workspace default pool
+             *     ([#1834](https://github.com/NobuData/ouroboros/issues/1834)). Only `true`; to stop a
+             *     pool being the default, make another pool the default.
+             * @enum {boolean}
+             */
+            isDefault?: true;
             name?: string;
             description?: string | null;
             /**

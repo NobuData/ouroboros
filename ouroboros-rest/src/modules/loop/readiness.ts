@@ -26,6 +26,7 @@ import type {
   ProviderConnectionStatus,
   WorkspaceLifecycleState,
 } from "../db/schema";
+import { namesDefaultPool } from "../farm/fleet/default-pool";
 import { admitsNewWork } from "../lifecycle/lifecycle.states";
 import { InfraConfigSchema, NodeShapeSchema, WorkflowRootSchema } from "../workflows/dsl.schema";
 import { pinnedTaskKinds } from "../admission/admission.pin";
@@ -207,7 +208,10 @@ export function workflowHref(slug: string, node?: string): string {
 export interface BuildStage {
   /** The node id. */
   readonly node: string;
-  /** The runner pool it names, or `null` when it names none. */
+  /**
+   * The runner pool it names, or `null` when it names none. `$default` names the workspace
+   * default pool (FE.1, #1834), which {@link ReadinessFacts.defaultPool} resolves.
+   */
   readonly pool: string | null;
 }
 
@@ -327,8 +331,15 @@ export interface ReadinessFacts {
   /** One per task kind of the workflow; empty when it has none or cannot be read. */
   readonly routes: readonly RouteFact[];
   readonly engine: { readonly reachable: boolean; readonly executors: readonly string[] };
-  /** One per distinct pool the build stages name. */
+  /**
+   * One per distinct pool the build stages name, a `$default` stage's as the pool it resolved to.
+   */
   readonly pools: readonly PoolFact[];
+  /**
+   * The workspace default pool's name (FE.1, #1834) when a build stage names `$default`;
+   * `null` when none does, or when the workspace has no pool to be its default.
+   */
+  readonly defaultPool: string | null;
   readonly push: CredentialFact;
   readonly pullRequest: CredentialFact;
   /** Whether the repository is in dry-run now. */
@@ -546,40 +557,57 @@ function runnerCheck(facts: ReadinessFacts): ReadinessCheck {
     );
   }
 
+  const onDefault = stages.buildStages.find((stage) => namesDefaultPool(stage.pool));
+  if (onDefault !== undefined && facts.defaultPool === null) {
+    return block(
+      "runner",
+      "fail",
+      "build_pool_required",
+      `The build stage ${onDefault.node} runs on the workspace default pool, and the workspace ` +
+        "has no pool.",
+      READINESS_FIXES.buildFarm,
+    );
+  }
+
+  // Readiness names the pool `$default` resolved to, so nobody has to guess where it builds.
+  const label = (name: string): string =>
+    onDefault !== undefined && name === facts.defaultPool
+      ? `${name} (the workspace default)`
+      : name;
+
   for (const pool of facts.pools) {
-    const blocked = poolBlock(pool);
+    const blocked = poolBlock(pool, label(pool.name));
 
     if (blocked !== null) {
       return blocked;
     }
   }
 
-  return pass("runner", `A runner is online in ${listed(facts.pools.map((pool) => pool.name))}.`);
+  return pass(
+    "runner",
+    `A runner is online in ${listed(facts.pools.map((pool) => label(pool.name)))}.`,
+  );
 }
 
 /**
  * Why one pool cannot take the build, or `null` when it can.
  *
  * @param pool - The pool's facts.
+ * @param name - The pool as the reason names it — `pool-a (the workspace default)` for the pool a
+ *   `$default` stage resolved to.
  * @returns The failing check, or `null`.
  */
-function poolBlock(pool: PoolFact): ReadinessCheck | null {
+function poolBlock(pool: PoolFact, name: string): ReadinessCheck | null {
   const fix = READINESS_FIXES.buildFarm;
 
   if (!pool.exists) {
-    return block("runner", "fail", "pool_not_found", `No runner pool is named ${pool.name}.`, fix);
+    return block("runner", "fail", "pool_not_found", `No runner pool is named ${name}.`, fix);
   }
   if (!pool.enabled) {
-    return block(
-      "runner",
-      "fail",
-      "pool_disabled",
-      `The runner pool ${pool.name} is disabled.`,
-      fix,
-    );
+    return block("runner", "fail", "pool_disabled", `The runner pool ${name} is disabled.`, fix);
   }
   if (pool.online === 0) {
-    return block("runner", "fail", "no_runner", `No runner is online in ${pool.name}.`, fix);
+    return block("runner", "fail", "no_runner", `No runner is online in ${name}.`, fix);
   }
 
   return pool.eligible === 0
@@ -587,7 +615,7 @@ function poolBlock(pool: PoolFact): ReadinessCheck | null {
         "runner",
         "fail",
         "no_source_checkout",
-        `No online runner in ${pool.name} can check out the repository (git).`,
+        `No online runner in ${name} can check out the repository (git).`,
         fix,
       )
     : null;

@@ -17,7 +17,12 @@
  * workspace set up like it resolves every stage.
  */
 
-import { TEMPLATE_DOCUMENT_TAGS, seededTaskKinds, templateDocuments } from "./dsl.seed.fixture";
+import {
+  TEMPLATE_DOCUMENT_TAGS,
+  defaultPoolTemplateDocument,
+  seededTaskKinds,
+  templateDocuments,
+} from "./dsl.seed.fixture";
 import { validateWorkflowDocument } from "./dsl.validator";
 
 /** The slice of a DSL node these assertions read. */
@@ -48,6 +53,17 @@ describe("the shipped workflow templates", () => {
       expect(verdict.errors).toStrictEqual([]);
       expect(verdict.warnings).toStrictEqual([]);
       expect(verdict.valid).toBe(true);
+    });
+
+    it("is still accepted as V156's v2, with its build and test stages on $default", () => {
+      const document = defaultPoolTemplateDocument(tag);
+      const infra = (document.nodes as { type: string; config: { runner_pool?: string } }[]).filter(
+        (node) => node.type === "infra",
+      );
+
+      expect(infra.length).toBeGreaterThan(0);
+      for (const node of infra) expect(node.config.runner_pool).toBe("$default");
+      expect(validateWorkflowDocument(document).errors).toStrictEqual([]);
     });
 
     it("routes only through task kinds the routing matrix defines", () => {

@@ -113,6 +113,7 @@ function rig() {
     pools: jest
       .fn()
       .mockResolvedValue([{ name: "pool-a", exists: true, enabled: true, online: 1, eligible: 1 }]),
+    defaultPool: jest.fn().mockResolvedValue({ id: "pool-a-id", name: "pool-a" }),
     pickedIssueNumber: jest.fn().mockResolvedValue(1),
     issue: jest
       .fn()
@@ -305,6 +306,56 @@ describe("ReadinessService (DK.1, #1318)", () => {
 
     await expect(service.read(WORKSPACE, REQUEST, NOW)).rejects.toMatchObject({
       code: "repository_not_found",
+    });
+  });
+
+  describe("the workspace default pool (FE.1, #1834)", () => {
+    /** The default definition with its build stage on `$default`. */
+    const ON_DEFAULT = {
+      ...DEFINITION,
+      nodes: DEFINITION.nodes.map((node) =>
+        node.id === "build" ? { ...node, config: { runner_pool: "$default" } } : node,
+      ),
+    };
+
+    it("resolves a `$default` stage to the default pool and names it", async () => {
+      const stubs = rig();
+      stubs.readiness.workflow.mockResolvedValue({
+        slug: "live-slice",
+        version: 1,
+        definition: ON_DEFAULT,
+      });
+
+      const readiness = await stubs.service.read(WORKSPACE, REQUEST, NOW);
+
+      expect(stubs.readiness.defaultPool).toHaveBeenCalledWith(WORKSPACE);
+      expect(stubs.readiness.pools).toHaveBeenCalledWith(WORKSPACE, ["pool-a"], NOW);
+      expect(readiness.ready).toBe(true);
+      expect(readiness.checks.find((c) => c.id === "runner")?.reason).toBe(
+        "A runner is online in pool-a (the workspace default).",
+      );
+    });
+
+    it("is build_pool_required when the workspace has no pool", async () => {
+      const stubs = rig();
+      stubs.readiness.workflow.mockResolvedValue({
+        slug: "live-slice",
+        version: 1,
+        definition: ON_DEFAULT,
+      });
+      stubs.readiness.defaultPool.mockResolvedValue(undefined);
+      stubs.readiness.pools.mockResolvedValue([]);
+
+      expect(await check(stubs.service, "runner")).toEqual(["fail", "build_pool_required"]);
+      expect(stubs.readiness.pools).toHaveBeenCalledWith(WORKSPACE, [], NOW);
+    });
+
+    it("does not look up the default for a workflow that names its pools", async () => {
+      const stubs = rig();
+
+      await stubs.service.read(WORKSPACE, REQUEST, NOW);
+
+      expect(stubs.readiness.defaultPool).not.toHaveBeenCalled();
     });
   });
 

@@ -15,6 +15,7 @@ import { bodyOf } from "../../testing/integration.fixture";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { ProviderStub } from "../provider-health/provider.stub.fixture";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
+import { defaultPoolTemplateDocument } from "../workflows/dsl.seed.fixture";
 import { READINESS_CHECK_IDS, type LoopReadinessResource } from "./readiness";
 
 /** The GitHub login both workspaces mirror. */
@@ -149,6 +150,82 @@ describe("GET /api/v1/loop/readiness (DK.1, #1318)", () => {
 
     expect(refusal.code).toBe("repository_not_found");
     await ask(other, `${LOGIN}/private-thing`).expect(200);
+  });
+
+  describe("an unedited template on the workspace default pool (FE.1, #1834)", () => {
+    /**
+     * Publish the shipped `quick-fixes` template, as V156 republishes it, as the workspace's
+     * `live-slice` workflow — untouched.
+     *
+     * @param at - The workspace.
+     */
+    async function publishTemplate(at: Bench): Promise<void> {
+      const { rows } = await api.sql.query<{ id: string }>(
+        `insert into ouroboros.workflows (organization_id, slug, name, status)
+         values ($1, 'live-slice', 'Quick fixes', 'active') returning id`,
+        [at.id],
+      );
+      // The harness truncates workflow_templates between tests, so the document comes from the
+      // migration text, transformed exactly as V156 stores v2 (constraints.sql asserts that).
+      await api.sql.query(
+        `insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at)
+         values ($1, 1, $2::jsonb, now())`,
+        [rows[0].id, JSON.stringify(defaultPoolTemplateDocument("quick_fixes_v1"))],
+      );
+      await api.sql.query(`update ouroboros.workflows set current_version = 1 where id = $1`, [
+        rows[0].id,
+      ]);
+    }
+
+    /**
+     * Create the workspace's first pool and enrol one online runner that can check out source.
+     *
+     * @param at - The workspace.
+     */
+    async function enrolOneRunner(at: Bench): Promise<void> {
+      await api.sql.query(
+        `insert into ouroboros.runner_pools (organization_id, name, executor)
+         values ($1, 'linux', 'shell')`,
+        [at.id],
+      );
+      await api.sql.query(
+        `insert into ouroboros.runners
+           (organization_id, pool_id, name, arch, status, desired_state, last_seen_at,
+            capabilities, security_mode, cert_serial, enrolled_at, telemetry)
+         select $1, pool.id, 'forge-01', 'linux/x86_64', 'online', 'active', now(),
+                '{"git": true, "executors": ["shell"]}'::jsonb, 'mtls', '4a110e97', now(),
+                '{}'::jsonb
+           from ouroboros.runner_pools pool
+          where pool.organization_id = $1 and pool.name = 'linux'`,
+        [at.id],
+      );
+    }
+
+    /** The runner check of the preflight. */
+    async function runnerCheck(at: Bench) {
+      const readiness = bodyOf<LoopReadinessResource>(await ask(at).expect(200));
+
+      return readiness.checks.find((check) => check.id === "runner");
+    }
+
+    it("passes the runner check with one enrolled runner, naming the pool it resolved", async () => {
+      const at = await bench();
+      await publishTemplate(at);
+      await enrolOneRunner(at);
+
+      expect(await runnerCheck(at)).toMatchObject({
+        state: "pass",
+        code: null,
+        reason: "A runner is online in linux (the workspace default).",
+      });
+    });
+
+    it("is red with build_pool_required when the workspace has no pool", async () => {
+      const at = await bench();
+      await publishTemplate(at);
+
+      expect(await runnerCheck(at)).toMatchObject({ state: "fail", code: "build_pool_required" });
+    });
   });
 
   it("refuses a malformed query", async () => {

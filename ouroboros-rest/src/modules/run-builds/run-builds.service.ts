@@ -20,6 +20,14 @@
  * pool, the command and the commit; it cannot name a repository or a workspace. The workspace is
  * the run's, and V040's composite key refuses a run of any other.
  *
+ * **`$default` is resolved here, once per run** (FE.1, #1834). A stage naming
+ * `runner_pool: "$default"` builds on the workspace default pool as it was when the run's first
+ * such stage was submitted: that pool is pinned on the run (`runs.default_pool_id`) under the
+ * run's lock, and every later `$default` stage of the run reuses it — a change of default in
+ * Settings does not move a run mid-way. A workspace with no pool is refused
+ * `404 farm_pool_not_found`, the farm's own code, with a sentence that says so. A stage that
+ * names a pool explicitly (a published version that never said `$default`) is untouched.
+ *
  * **One job per stage attempt.** `(run, stage, attempt)` is unique over first submissions (V153),
  * so a resent submission answers the job it already created instead of building twice.
  *
@@ -45,13 +53,19 @@ import type { Run } from "../db/schema";
 import { DomainError } from "../errors/error.envelope";
 import { FARM_ERRORS } from "../farm/farm.errors";
 import { FarmJobsService } from "../farm/dispatch/jobs.service";
+import { namesDefaultPool } from "../farm/fleet/default-pool";
 import { isTerminal, phaseOf } from "../farm/dispatch/job.states";
 import { repositoryNotFound, runNotFound } from "../ingest/ingest.errors";
 import { assertEpoch } from "../ingest/ingest.fence";
 import { assertExecutable } from "../ingest/run-push.service";
 import { violatesConstraint } from "../tenancy/constraints";
 import type { CancelRunBuildDto, SubmitRunBuildDto } from "./run-builds.dto";
-import { noEligibleRunner, runBranchMissing, runBuildNotFound } from "./run-builds.errors";
+import {
+  defaultPoolMissing,
+  noEligibleRunner,
+  runBranchMissing,
+  runBuildNotFound,
+} from "./run-builds.errors";
 import { RunBuildsRepository } from "./run-builds.repository";
 import { runBuildResource, type RunBuildResource, type RunBuildView } from "./run-builds.resources";
 
@@ -66,7 +80,13 @@ export interface RunBuildAnswer {
 /** What a submission is decided from, under the run's lock. */
 type Prepared =
   | { readonly kind: "replay"; readonly run: Run; readonly jobId: string }
-  | { readonly kind: "submit"; readonly run: Run; readonly repository: string };
+  | {
+      readonly kind: "submit";
+      readonly run: Run;
+      readonly repository: string;
+      /** The pool by name — `$default` already resolved to the run's pinned pool. */
+      readonly pool: string;
+    };
 
 @Injectable()
 export class RunBuildsService {
@@ -109,14 +129,19 @@ export class RunBuildsService {
       const repository = await this.builds.repositorySlug(trx, run);
       if (repository === undefined) throw repositoryNotFound(run.github_repo_id);
 
-      return { kind: "submit", run, repository };
+      const pool = namesDefaultPool(request.pool)
+        ? await this.builds.pinDefaultPool(trx, run)
+        : request.pool;
+      if (pool === undefined) throw defaultPoolMissing();
+
+      return { kind: "submit", run, repository, pool };
     });
 
     const { run } = prepared;
     const jobId =
       prepared.kind === "replay"
         ? prepared.jobId
-        : await this.enqueue(run, prepared.repository, request);
+        : await this.enqueue(run, prepared.repository, prepared.pool, request);
 
     let view = await this.latest(run, jobId);
 
@@ -200,16 +225,22 @@ export class RunBuildsService {
    *
    * @param run - The run, as it was locked.
    * @param repository - Its `owner/name`.
+   * @param pool - The pool by name, `$default` already resolved.
    * @param request - The submission.
    * @returns The job's id.
    */
-  private async enqueue(run: Run, repository: string, request: SubmitRunBuildDto): Promise<string> {
+  private async enqueue(
+    run: Run,
+    repository: string,
+    pool: string,
+    request: SubmitRunBuildDto,
+  ): Promise<string> {
     try {
       const job = await this.jobs.submitForRun(
         run.organization_id,
         run.id,
         {
-          pool: request.pool,
+          pool,
           repository,
           ref: `refs/heads/${run.branch_name ?? ""}`,
           commit: request.commit,

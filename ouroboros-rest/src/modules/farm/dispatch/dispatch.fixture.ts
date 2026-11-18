@@ -94,6 +94,7 @@ export function runnerPool(overrides: Partial<RunnerPool> = {}): RunnerPool {
     created_at: new Date("2026-09-19T12:00:00.000Z"),
     updated_at: new Date("2026-09-19T12:00:00.000Z"),
     artifact_globs: [],
+    is_default: true,
     ...overrides,
   };
 }

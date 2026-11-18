@@ -27,6 +27,7 @@
 
 import { Type } from "class-transformer";
 import {
+  Equals,
   IsArray,
   IsBoolean,
   IsIn,
@@ -294,6 +295,15 @@ export class UpdatePoolDto extends PoolFieldsDto {
   @IsOptional()
   @IsIn([...POOL_EXECUTORS])
   executor?: (typeof POOL_EXECUTORS)[number];
+
+  /**
+   * Make this pool the workspace default (FE.1, #1834) — where a stage naming
+   * `runner_pool: "$default"` builds. Only `true`: a workspace with pools always has a default,
+   * so the way to stop one being it is to make another the default.
+   */
+  @IsOptional()
+  @Equals(true, { message: "isDefault can only be true; make another pool the default instead" })
+  isDefault?: true;
 }
 
 /** The query of `GET /api/v1/farm/enroll-command`. */

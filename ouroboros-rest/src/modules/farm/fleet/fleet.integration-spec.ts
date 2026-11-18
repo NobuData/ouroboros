@@ -1296,6 +1296,104 @@ describe("the build farm page", () => {
     });
   });
 
+  describe("the workspace default pool (FE.1, #1834)", () => {
+    /** Create a shell pool through the route. */
+    async function create(context: Farm, name: string): Promise<PoolResource> {
+      return bodyOf<PoolResource>(
+        await api
+          .as(context.owner)("post", `${FARM}/pools`)
+          .set(TENANT_HEADER, context.workspace.id)
+          .send({ name, executor: "shell" })
+          .expect(201),
+      );
+    }
+
+    /** The audit rows of one action in this workspace, oldest first. */
+    async function audited(context: Farm, action: string): Promise<Record<string, unknown>[]> {
+      const { rows } = await api.sql.query<{ detail: Record<string, unknown> }>(
+        `select detail from ouroboros.audit_events
+          where organization_id = $1 and action = $2 order by occurred_at, id`,
+        [context.workspace.id, action],
+      );
+
+      return rows.map((row) => row.detail);
+    }
+
+    it("makes the first pool a workspace creates its default, and only the first", async () => {
+      const context = await workspace();
+
+      expect((await create(context, "pool-c")).isDefault).toBe(true);
+      expect((await create(context, "pool-d")).isDefault).toBe(false);
+
+      const listed = (await page(context)).pools;
+      expect(listed.filter((candidate) => candidate.isDefault).map((p) => p.name)).toEqual([
+        "pool-c",
+      ]);
+    });
+
+    it("moves the default when Settings picks another pool, leaving exactly one", async () => {
+      const context = await workspace();
+      await create(context, "pool-c");
+      const next = await create(context, "pool-d");
+
+      const patched = bodyOf<PoolResource>(
+        await api
+          .as(context.owner)("patch", `${FARM}/pools/${next.id}`)
+          .set(TENANT_HEADER, context.workspace.id)
+          .send({ isDefault: true })
+          .expect(200),
+      );
+
+      expect(patched.isDefault).toBe(true);
+      expect(pool(await page(context), "pool-c").isDefault).toBe(false);
+      expect(await audited(context, "runner.pool_updated")).toEqual([
+        expect.objectContaining({ name: "pool-d", fields: "is_default" }),
+      ]);
+    });
+
+    it("refuses isDefault: false", async () => {
+      const context = await workspace();
+      const only = await create(context, "pool-c");
+
+      await api
+        .as(context.owner)("patch", `${FARM}/pools/${only.id}`)
+        .set(TENANT_HEADER, context.workspace.id)
+        .send({ isDefault: false })
+        .expect(422);
+    });
+
+    it("moves the default to the oldest remaining pool when the default is deleted", async () => {
+      const context = await workspace();
+      const first = await create(context, "pool-c");
+      await create(context, "pool-d");
+      await create(context, "pool-e");
+
+      await api
+        .as(context.owner)("delete", `${FARM}/pools/${first.id}`)
+        .set(TENANT_HEADER, context.workspace.id)
+        .expect(204);
+
+      expect(pool(await page(context), "pool-d").isDefault).toBe(true);
+      expect(await audited(context, "runner.pool_deleted")).toEqual([
+        expect.objectContaining({ name: "pool-c", defaultMovedTo: "pool-d" }),
+      ]);
+    });
+
+    it("records that no default is left when the last pool is deleted", async () => {
+      const context = await workspace();
+      const only = await create(context, "pool-c");
+
+      await api
+        .as(context.owner)("delete", `${FARM}/pools/${only.id}`)
+        .set(TENANT_HEADER, context.workspace.id)
+        .expect(204);
+
+      expect(await audited(context, "runner.pool_deleted")).toEqual([
+        expect.objectContaining({ name: "pool-c", defaultMovedTo: null }),
+      ]);
+    });
+  });
+
   describe("the enroll command", () => {
     it("returns a command that actually enrols a runner", async () => {
       // The acceptance criterion, proved the only way it can be: the token in the rendered

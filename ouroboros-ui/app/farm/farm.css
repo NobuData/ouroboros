@@ -709,10 +709,21 @@
   min-width: 14rem;
 }
 
-/* A pool row's own door to the dialog, under its line and its sub-toggle. */
+/* A pool row's own door to the dialog, under its line and its sub-toggle — and, beside it,
+   **Make default** (#1834). */
 .farm-pool__submit {
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
   margin-top: var(--sp-3);
+}
+
+/* The name, and the workspace default pool's tag after it (#1834). */
+.farm-pool__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
 }
 
 /* ---------- the enroll card (#258) ---------- */

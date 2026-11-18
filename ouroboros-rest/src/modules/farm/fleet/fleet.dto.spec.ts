@@ -201,3 +201,17 @@ describe("the enroll-command query", () => {
     expect(errorsOn(plainToInstance(EnrollCommandQuery, { pool: "Pool A" }))).toContain("pool");
   });
 });
+
+describe("making a pool the workspace default (FE.1, #1834)", () => {
+  it("accepts isDefault: true", () => {
+    expect(errorsOn(update({ isDefault: true }))).toEqual([]);
+  });
+
+  it("refuses isDefault: false — another pool is made the default instead", () => {
+    expect(errorsOn(update({ isDefault: false }))).toEqual(["isDefault"]);
+  });
+
+  it("refuses a create that names isDefault — the first pool becomes the default itself", () => {
+    expect(errorsOn(create({ isDefault: true }))).toEqual(["isDefault"]);
+  });
+});

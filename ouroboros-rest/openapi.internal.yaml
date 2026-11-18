@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.43.7"
+  version: "0.43.8"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -5581,7 +5581,12 @@ components:
           maximum: 11
         pool:
           type: string
-          pattern: "^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$"
+          description: >-
+            The stage's `runner_pool`: a pool name, or `$default` — the workspace default pool,
+            resolved when the run's first `$default` stage is submitted and pinned on the run
+            (#1834), so a later change of default does not move the run. A workspace with no
+            pool answers `404 farm_pool_not_found`.
+          pattern: "^(?:[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?|\\$default)$"
         commit:
           type: string
           pattern: "^[0-9a-f]{40}$"

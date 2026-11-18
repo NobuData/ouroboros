@@ -84,6 +84,7 @@ export function runRow(over: Partial<Run> = {}): Run {
     exec_checkpoint: null,
     exec_checkpoint_at: null,
     started_by: null,
+    default_pool_id: null,
     ...over,
   };
 }

@@ -84,6 +84,7 @@ function readyFacts(): ReadinessFacts {
     ],
     engine: { reachable: true, executors: ["harness"] },
     pools: [{ name: "pool-a", exists: true, enabled: true, online: 1, eligible: 1 }],
+    defaultPool: null,
     push: { outcome: "can_push" },
     pullRequest: { outcome: "can_push" },
     dryRun: true,
@@ -508,6 +509,59 @@ describe("the live-loop readiness preflight (DK.1, #1318)", () => {
   });
 });
 
+describe("the workspace default pool (FE.1, #1834)", () => {
+  /** The ready fixture with its one build stage on `$default`, resolved to `pool-a`. */
+  function onDefault(defaultPool: string | null): ReadinessFacts {
+    return {
+      ...withBuildStages(readyFacts(), [{ node: "build", pool: "$default" }]),
+      defaultPool,
+    };
+  }
+
+  /** The runner check of these facts. */
+  function runner(facts: ReadinessFacts) {
+    return loopReadiness(facts).checks.find((check) => check.id === "runner");
+  }
+
+  it("passes an unedited template and names the pool `$default` resolved to", () => {
+    const readiness = loopReadiness(onDefault("pool-a"));
+
+    expect(readiness.ready).toBe(true);
+    expect(runner(onDefault("pool-a"))).toMatchObject({
+      state: "pass",
+      reason: "A runner is online in pool-a (the workspace default).",
+    });
+  });
+
+  it("turns red with build_pool_required when the workspace has no pool to be its default", () => {
+    expect(runner({ ...onDefault(null), pools: [] })).toMatchObject({
+      state: "fail",
+      code: "build_pool_required",
+      reason:
+        "The build stage build runs on the workspace default pool, and the workspace has no pool.",
+      fix: READINESS_FIXES.buildFarm,
+    });
+  });
+
+  it("names the default pool when it is what blocks", () => {
+    const facts = {
+      ...onDefault("pool-a"),
+      pools: [{ name: "pool-a", exists: true, enabled: true, online: 0, eligible: 0 }],
+    };
+
+    expect(runner(facts)).toMatchObject({
+      code: "no_runner",
+      reason: "No runner is online in pool-a (the workspace default).",
+    });
+  });
+
+  it("does not call an explicitly named pool the default, even when it is", () => {
+    expect(runner({ ...readyFacts(), defaultPool: "pool-a" })?.reason).toBe(
+      "A runner is online in pool-a.",
+    );
+  });
+});
+
 describe("workflowStages", () => {
   it("reads model stages, their task kinds and the build stages' pools", () => {
     expect(workflowStages(DEFINITION)).toEqual({
@@ -521,6 +575,12 @@ describe("workflowStages", () => {
     const definition = document([node("build", "infra", {})]);
 
     expect(workflowStages(definition)?.buildStages).toEqual([{ node: "build", pool: null }]);
+  });
+
+  it("reads a build stage on the workspace default as pool $default", () => {
+    const definition = document([node("build", "infra", { runner_pool: "$default" })]);
+
+    expect(workflowStages(definition)?.buildStages).toEqual([{ node: "build", pool: "$default" }]);
   });
 
   it("cannot read a document admission could not read", () => {

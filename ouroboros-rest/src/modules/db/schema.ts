@@ -1070,6 +1070,11 @@ export interface RunsTable {
    * of its commits and the actor of its push audit rows. Null for a run no person started.
    */
   started_by: ColumnType<string | null, string | null | undefined, string | null>;
+  /**
+   * The pool this run's `$default` build stages resolved to (V156, #1834) — pinned at the first
+   * such submission so a later change of the workspace default does not move the run.
+   */
+  default_pool_id: ColumnType<string | null, string | null | undefined, string | null>;
 }
 
 /**
@@ -1296,6 +1301,8 @@ export interface RunsWithStageView {
   exec_checkpoint_at: Date | null;
   /** `runs.started_by` (V151). */
   started_by: string | null;
+  /** `runs.default_pool_id` (V156). */
+  default_pool_id: string | null;
 }
 
 /**
@@ -5393,6 +5400,11 @@ export interface RunnerPoolsTable {
    * [#330](https://github.com/NobuData/ouroboros/issues/330)) — a JSON array of relative globs.
    */
   artifact_globs: Generated<unknown>;
+  /**
+   * Whether this is the workspace default pool (V156, #1834) — where a stage naming
+   * `runner_pool: "$default"` builds. At most one per workspace; the first pool becomes it.
+   */
+  is_default: Generated<boolean>;
 }
 
 /** `runners.status` — what the fleet last **observed** (V040). */
@@ -8677,6 +8689,7 @@ export const TABLE_COLUMNS = {
     "exec_checkpoint",
     "exec_checkpoint_at",
     "started_by",
+    "default_pool_id",
   ],
   run_stages: [
     "id",
@@ -9568,6 +9581,7 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
     "artifact_globs",
+    "is_default",
   ],
   runners: [
     "id",
@@ -10824,6 +10838,7 @@ export const TABLE_COLUMNS = {
     "exec_checkpoint",
     "exec_checkpoint_at",
     "started_by",
+    "default_pool_id",
   ],
   run_events_jsonl: ["run_id", "seq", "line"],
   v_run_guardrails_latest: [

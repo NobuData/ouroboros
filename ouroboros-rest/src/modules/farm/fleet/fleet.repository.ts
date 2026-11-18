@@ -42,6 +42,7 @@ import type {
   RunnerStatus,
 } from "../../db/schema";
 import type { CacheAggregate, DurationAggregate } from "./fleet.stats";
+import { selectDefaultPool, type DefaultPool } from "./default-pool";
 import type { FarmWindows } from "./fleet.policy";
 
 /**
@@ -495,6 +496,57 @@ export class FleetRepository {
       .where("id", "=", id)
       .returningAll()
       .executeTakeFirst();
+  }
+
+  /**
+   * Make a pool the workspace default (FE.1, #1834).
+   *
+   * Two statements in one transaction, clearing before setting: V156's
+   * `runner_pools_one_default_idx` is checked row by row, so a single statement that flipped both
+   * rows could trip it half-way. The index is still the line that holds if two of these race —
+   * the second waits on the first's row lock and then clears what the first set.
+   *
+   * @param organizationId - The workspace.
+   * @param id - The pool to make the default.
+   * @returns The stored row, or `undefined` when there is no such pool here (nothing changes).
+   */
+  async makeDefaultPool(organizationId: string, id: string): Promise<RunnerPool | undefined> {
+    return this.database.transaction(async (trx) => {
+      const target = await trx
+        .selectFrom("runner_pools")
+        .select("id")
+        .where("organization_id", "=", organizationId)
+        .where("id", "=", id)
+        .forUpdate()
+        .executeTakeFirst();
+      if (target === undefined) return undefined;
+
+      await trx
+        .updateTable("runner_pools")
+        .set({ is_default: false })
+        .where("organization_id", "=", organizationId)
+        .where("is_default", "=", true)
+        .where("id", "!=", id)
+        .execute();
+
+      return trx
+        .updateTable("runner_pools")
+        .set({ is_default: true })
+        .where("organization_id", "=", organizationId)
+        .where("id", "=", id)
+        .returningAll()
+        .executeTakeFirst();
+    });
+  }
+
+  /**
+   * The workspace's default pool — after a delete, where V156's trigger moved it.
+   *
+   * @param organizationId - The workspace.
+   * @returns Its id and name, or `undefined` when the workspace has no pool left.
+   */
+  defaultPool(organizationId: string): Promise<DefaultPool | undefined> {
+    return selectDefaultPool(this.database.db, organizationId);
   }
 
   /**

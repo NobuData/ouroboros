@@ -11,6 +11,7 @@ import { Injectable } from "@nestjs/common";
 import type { Kysely, Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
+import { selectDefaultPool } from "../farm/fleet/default-pool";
 import type { BuildJobStatus, Database, Run } from "../db/schema";
 import type { RunBuildView } from "./run-builds.resources";
 
@@ -153,6 +154,39 @@ export class RunBuildsRepository {
     }
 
     return current === undefined ? undefined : { ...current, retries };
+  }
+
+  /**
+   * The pool a run's `$default` stages build on (FE.1, #1834): the pool already pinned on the run,
+   * else the workspace default now — which is then pinned (`runs.default_pool_id`), so a later
+   * change of the default does not move the run to another pool mid-way.
+   *
+   * @param trx - The transaction holding the run's lock.
+   * @param run - The run, as it was locked.
+   * @returns The pool's name, or `undefined` when nothing is pinned and the workspace has no
+   *   default pool.
+   */
+  async pinDefaultPool(trx: Transaction<Database>, run: Run): Promise<string | undefined> {
+    if (run.default_pool_id !== null) {
+      const pinned = await trx
+        .selectFrom("runner_pools")
+        .select("name")
+        .where("organization_id", "=", run.organization_id)
+        .where("id", "=", run.default_pool_id)
+        .executeTakeFirst();
+      if (pinned !== undefined) return pinned.name;
+    }
+
+    const resolved = await selectDefaultPool(trx, run.organization_id);
+    if (resolved === undefined) return undefined;
+
+    await trx
+      .updateTable("runs")
+      .set({ default_pool_id: resolved.id })
+      .where("id", "=", run.id)
+      .execute();
+
+    return resolved.name;
   }
 
   /**

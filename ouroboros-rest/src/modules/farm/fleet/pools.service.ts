@@ -108,11 +108,15 @@ export class PoolsService {
   }
 
   /**
-   * Change a pool — including its enabled switch.
+   * Change a pool — including its enabled switch, and whether it is the workspace default.
    *
    * **`PATCH`, so an absent field is untouched** rather than cleared. The difference matters
    * for `image` and `defaultCommand`, where `null` is a meaningful value: absent means *leave
    * it*, and `null` means *there is none*.
+   *
+   * **`isDefault: true` moves the default here** (FE.1, #1834): the previous default stops being
+   * it in the same transaction. Asking it of the pool that already is the default changes
+   * nothing and records nothing.
    *
    * @param tenant - The workspace.
    * @param actorId - Who changed it.
@@ -134,7 +138,8 @@ export class PoolsService {
     if (!existing) throw poolNotFound(id);
 
     const write = { ...columns(request), ...named(request) };
-    if (Object.keys(write).length === 0) {
+    const becomesDefault = request.isDefault === true && !existing.is_default;
+    if (Object.keys(write).length === 0 && !becomesDefault) {
       // Nothing to do, and nothing to record. An empty `PATCH` is not an event: writing one
       // would put a row in the trail saying somebody changed a pool in no way at all.
       const [unchanged] = (await this.fleet.pools(tenant.id)).filter((row) => row.pool.id === id);
@@ -150,15 +155,19 @@ export class PoolsService {
     if (executor === "container" && image === null) throw imageRequired();
     if (executor === "shell" && image !== null) throw imageNotAllowed();
 
-    const pool = await this.applyUpdate(tenant.id, id, write);
+    let pool: RunnerPool | undefined = existing;
+    if (Object.keys(write).length > 0) pool = await this.applyUpdate(tenant.id, id, write);
+    if (pool && becomesDefault) pool = await this.fleet.makeDefaultPool(tenant.id, id);
     if (!pool) throw poolNotFound(id);
+
+    // The **columns** that moved, not the DTO's declared fields: under define semantics
+    // `Object.keys(request)` would list every field the class declares, so a trail built
+    // from it would say a rename changed the environment allow-list.
+    const fields = becomesDefault ? [...Object.keys(write), "is_default"] : Object.keys(write);
 
     await this.audit.poolUpdated(
       { organizationId: tenant.id, actorId, at: this.now() },
-      // The **columns** that moved, not the DTO's declared fields: under define semantics
-      // `Object.keys(request)` would list every field the class declares, so a trail built
-      // from it would say a rename changed the environment allow-list.
-      { id: pool.id, name: pool.name, fields: Object.keys(write), enabled: request.enabled },
+      { id: pool.id, name: pool.name, fields, enabled: request.enabled },
     );
 
     const rows = await this.fleet.pools(tenant.id);
@@ -179,6 +188,10 @@ export class PoolsService {
    * @param actorId - Who deleted it.
    * @param id - The pool.
    * @returns When it is gone.
+   * **Deleting the default moves it** (FE.1, #1834): V156's trigger hands it to the workspace's
+   * oldest remaining pool, and the audit row names that pool — or `null` when none is left, which
+   * readiness then reports as `build_pool_required`. Never silent.
+   *
    * @throws {NotFoundError} `farm_pool_not_found`.
    * @throws {ConflictError} `farm_pool_in_use` when runners or builds still name it.
    */
@@ -192,9 +205,13 @@ export class PoolsService {
     const deleted = await this.fleet.deletePool(tenant.id, id);
     if (!deleted) throw poolNotFound(id);
 
+    const defaultMovedTo = pool.is_default
+      ? ((await this.fleet.defaultPool(tenant.id))?.name ?? null)
+      : undefined;
+
     await this.audit.poolDeleted(
       { organizationId: tenant.id, actorId, at: this.now() },
-      { id: pool.id, name: pool.name },
+      { id: pool.id, name: pool.name, defaultMovedTo },
     );
   }
 

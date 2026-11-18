@@ -1,10 +1,25 @@
 "use client";
 
-import { useEffect, useId, useOptimistic, useRef, useState, useTransition } from "react";
+import {
+  useEffect,
+  useId,
+  useOptimistic,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 
 import type { RunnerPool, RunnerPoolChange } from "@/app/api/farm";
 import { FARM_POOLS_HASH } from "@/app/paths";
-import { Button, Card, CardHead, EmptyState, Eyebrow, Toggle } from "@/app/ui";
+import {
+  Button,
+  Card,
+  CardHead,
+  EmptyState,
+  Eyebrow,
+  Tag,
+  Toggle,
+} from "@/app/ui";
 
 import { updatePool } from "./pool-actions";
 import { PoolSheet } from "./pool-sheet";
@@ -13,6 +28,9 @@ import {
   AUTOSCALE_AFFIX,
   AUTOSCALE_KEEP,
   CONFIGURE,
+  DEFAULT_POOL_TAG,
+  DEFAULT_POOL_TITLE,
+  MAKE_DEFAULT,
   NO_POOLS_MEMBER_NOTE,
   NO_POOLS_NOTE,
   NO_POOLS_TITLE,
@@ -22,11 +40,16 @@ import {
   autoscaleLabel,
   autoscaleView,
   enableLabel,
+  makeDefaultLabel,
   nextAutoscalePref,
   poolMeta,
 } from "./pools";
 import { CREATE_POOL, STEP_ONE, isPromoted, stepEyebrow } from "./states";
-import { SUBMIT_BUILD, SUBMIT_POOL_DISABLED, submitToPoolLabel } from "./submit";
+import {
+  SUBMIT_BUILD,
+  SUBMIT_POOL_DISABLED,
+  submitToPoolLabel,
+} from "./submit";
 import { useSubmit } from "./submit-store";
 import { useFirstRun } from "./use-first-run";
 
@@ -69,7 +92,9 @@ import { useFirstRun } from "./use-first-run";
  *   route.
  * @returns The card, for the farm's right-hand column.
  */
-export function PoolsCard({ mayAdminister }: Readonly<{ mayAdminister: boolean }>) {
+export function PoolsCard({
+  mayAdminister,
+}: Readonly<{ mayAdminister: boolean }>) {
   const { pools, openSheet, sheetOpen } = usePools();
   const firstRun = useFirstRun();
   const step = mayAdminister ? stepEyebrow(firstRun, "pools") : null;
@@ -95,9 +120,15 @@ export function PoolsCard({ mayAdminister }: Readonly<{ mayAdminister: boolean }
     <Card
       aria-labelledby={TITLE_ID}
       as="section"
-      className={mayAdminister && isPromoted(firstRun, "pools") ? "farm-promoted" : undefined}
+      className={
+        mayAdminister && isPromoted(firstRun, "pools")
+          ? "farm-promoted"
+          : undefined
+      }
     >
-      {step !== null && <Eyebrow tone={step === STEP_ONE ? "accent" : "quiet"}>{step}</Eyebrow>}
+      {step !== null && (
+        <Eyebrow tone={step === STEP_ONE ? "accent" : "quiet"}>{step}</Eyebrow>
+      )}
       <CardHead
         title={POOLS_TITLE}
         titleId={TITLE_ID}
@@ -119,7 +150,10 @@ export function PoolsCard({ mayAdminister }: Readonly<{ mayAdminister: boolean }
       {pools === null ? (
         <EmptyState title={POOLS_UNREAD} />
       ) : pools.length === 0 ? (
-        <EmptyState note={mayAdminister ? NO_POOLS_NOTE : NO_POOLS_MEMBER_NOTE} title={NO_POOLS_TITLE}>
+        <EmptyState
+          note={mayAdminister ? NO_POOLS_NOTE : NO_POOLS_MEMBER_NOTE}
+          title={NO_POOLS_TITLE}
+        >
           {mayAdminister && (
             <Button onClick={openSheet} size="sm" tone="primary">
               {CREATE_POOL}
@@ -157,15 +191,24 @@ const TITLE_ID = FARM_POOLS_HASH;
  * refuse a build for. It follows the switch as drawn, so flipping a pool off disables its door
  * in the same moment.
  *
+ * **The workspace default pool** (FE.1, [#1834](https://github.com/NobuData/ouroboros/issues/1834))
+ * carries a **Default** tag beside its name — where a workflow stage set to `$default` builds. Every
+ * other row offers an administrator **Make default**, which moves the tag at once and is reconciled
+ * like the switches; a member sees the tag and no control.
+ *
  * @param props.pool The pool.
  * @param props.mayAdminister Whether this reader may change it.
  * @returns The row.
  */
-function PoolRow({ pool, mayAdminister }: Readonly<{ pool: RunnerPool; mayAdminister: boolean }>) {
+function PoolRow({
+  pool,
+  mayAdminister,
+}: Readonly<{ pool: RunnerPool; mayAdminister: boolean }>) {
   const { recordWrite } = usePools();
   const { open: openSubmit } = useSubmit();
   const [pending, startWrite] = useTransition();
   const [enabled, setEnabled] = useOptimistic(pool.enabled);
+  const [isDefault, setIsDefault] = useOptimistic(pool.isDefault);
   const autoscale = autoscaleView(pool);
   const [scaling, setScaling] = useOptimistic(autoscale?.on ?? false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -196,7 +239,12 @@ function PoolRow({ pool, mayAdminister }: Readonly<{ pool: RunnerPool; mayAdmini
   return (
     <li className="farm-pool">
       <div className="farm-pool__info">
-        <div className="farm-pool__name">{pool.name}</div>
+        <div className="farm-pool__heading">
+          <div className="farm-pool__name">{pool.name}</div>
+          {isDefault && (
+            <Tag title={DEFAULT_POOL_TITLE}>{DEFAULT_POOL_TAG}</Tag>
+          )}
+        </div>
         <div className="farm-pool__meta">{poolMeta(pool)}</div>
 
         {autoscale !== null && (
@@ -206,7 +254,10 @@ function PoolRow({ pool, mayAdminister }: Readonly<{ pool: RunnerPool; mayAdmini
               describedBy={affixId}
               label={autoscaleLabel(pool.name, scaling)}
               onClick={() =>
-                write({ autoscalePref: nextAutoscalePref(pool, !scaling) }, () => setScaling(!scaling))
+                write(
+                  { autoscalePref: nextAutoscalePref(pool, !scaling) },
+                  () => setScaling(!scaling),
+                )
               }
               reason={reason}
             />
@@ -231,6 +282,18 @@ function PoolRow({ pool, mayAdminister }: Readonly<{ pool: RunnerPool; mayAdmini
             >
               {SUBMIT_BUILD}
             </Button>
+            {!isDefault && (
+              <Button
+                aria-label={makeDefaultLabel(pool.name)}
+                onClick={() =>
+                  write({ isDefault: true }, () => setIsDefault(true))
+                }
+                size="sm"
+                tone="ghost"
+              >
+                {MAKE_DEFAULT}
+              </Button>
+            )}
           </div>
         )}
 
