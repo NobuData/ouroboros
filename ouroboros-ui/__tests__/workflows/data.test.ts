@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Workspace } from "@/app/api/access";
 import { ApiError } from "@/app/api/errors";
 
+import { seededFarm } from "../helpers/farm";
 import { TENANT_ID, membership, sessionUser } from "../helpers/login";
 import { seededAliases, seededMatrix } from "../helpers/models";
 import { READ_AT, inspectorReadings, seededRail, stageCatalog, workflowDetail } from "../helpers/workflows";
@@ -42,6 +43,11 @@ vi.mock("@/app/api/routing", () => ({
   routing: { matrix: () => matrix(), aliases: () => aliases() },
 }));
 
+/** What the farm page answers — the inspector's runner pool picker (FE.2, #1835). */
+const farmPage = vi.fn();
+
+vi.mock("@/app/api/farm", () => ({ farm: { page: () => farmPage() } }));
+
 const { readStudio } = await import("@/app/workflows/data");
 
 /**
@@ -71,6 +77,7 @@ beforeEach(() => {
   catalog.mockReset().mockResolvedValue(stageCatalog());
   matrix.mockReset().mockResolvedValue(seededMatrix());
   aliases.mockReset().mockResolvedValue(seededAliases());
+  farmPage.mockReset().mockResolvedValue(seededFarm());
 });
 
 describe("the inspector's reads (#150)", () => {
@@ -113,6 +120,22 @@ describe("the inspector's reads (#150)", () => {
     expect(readings.inspector?.catalog.ok).toBe(true);
     expect(readings.inspector?.aliases.ok).toBe(true);
     expect(readings.selected?.detail.ok).toBe(true);
+  });
+
+  it("reads the pools with their online runner counts, and degrades only the picker when the farm is away", async () => {
+    const readings = await readStudio(ACCESS, null, NOW);
+    expect(readings.inspector?.pools).toEqual({
+      ok: true,
+      value: [
+        { name: "pool-a", isDefault: true, enabled: true, online: 2 },
+        { name: "pool-b", isDefault: false, enabled: true, online: 2 },
+      ],
+    });
+
+    farmPage.mockRejectedValue(new ApiError(503, "unavailable", "The farm is unavailable.", {}));
+    const degraded = await readStudio(ACCESS, null, NOW);
+    expect(degraded.inspector?.pools).toEqual({ ok: false, reason: "The farm is unavailable." });
+    expect(degraded.inspector?.catalog.ok).toBe(true);
   });
 
   it("lets anything that is not a refusal keep travelling", async () => {

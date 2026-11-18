@@ -25,6 +25,8 @@
  */
 
 import { backlog } from "@/app/api/backlog";
+import type { ErrorEnvelope } from "@/app/api/errors";
+import { farm } from "@/app/api/farm";
 import {
   type WorkflowDefinition,
   type WorkflowDraft,
@@ -35,6 +37,8 @@ import {
 
 import { type ActionOutcome, attempt } from "./action-outcome";
 import { TICKET_LIMIT, type TicketOption, ticketOptions } from "./dry-run";
+import { UNKNOWN_POOL_REFUSAL, poolChoices, unknownPoolFindings } from "./pools";
+import { WORKFLOW_DEFINITION_INVALID } from "./publish";
 
 export type { ActionOutcome };
 
@@ -68,7 +72,34 @@ export async function publishWorkflow(
   id: string,
   changeNote: string | undefined,
 ): Promise<ActionOutcome<WorkflowVersion>> {
+  const unknownPools = await unknownPoolRefusal(id);
+  if (unknownPools !== null) return { ok: false, refusal: unknownPools };
+
   return attempt(() => workflows.publish(id, changeNote));
+}
+
+/**
+ * The Studio's own check before a publish — FE.2 ([#1835](https://github.com/NobuData/ouroboros/issues/1835)):
+ * a stage naming a runner pool the workspace does not have. The service has no list of pools to check
+ * against (`pools.ts` says why), so without this a typo is found only when a run builds.
+ *
+ * It reads the **stored** draft, the one the publish is about to version, so the canvas, the code view
+ * and the copilot all meet the same gate after their own flush.
+ *
+ * @param id The workflow's id.
+ * @returns A `workflow_definition_invalid` refusal with one finding per stage — the shape the publish
+ *   dialog and the code view already draw — or `null` to go on: every pool is known, the draft is
+ *   empty, or the draft or the farm could not be read (nothing to check against; the service answers).
+ * @throws Whatever is not an `ApiError`.
+ */
+async function unknownPoolRefusal(id: string): Promise<ErrorEnvelope | null> {
+  const [detail, page] = await Promise.all([attempt(() => workflows.read(id)), attempt(() => farm.page())]);
+  if (!detail.ok || !page.ok || detail.value.draft.definition === null) return null;
+
+  const findings = unknownPoolFindings(detail.value.draft.definition, poolChoices(page.value));
+  if (findings.length === 0) return null;
+
+  return { code: WORKFLOW_DEFINITION_INVALID, message: UNKNOWN_POOL_REFUSAL, details: { findings } };
 }
 
 /**

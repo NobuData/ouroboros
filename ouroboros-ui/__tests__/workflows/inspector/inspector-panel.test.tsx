@@ -27,6 +27,12 @@ import {
   unknownSkill,
 } from "@/app/workflows/inspector/inspector";
 import { InspectorPanel, type InspectorPanelProps } from "@/app/workflows/inspector/inspector-panel";
+import {
+  DEFAULT_POOL_REFERENCE,
+  NO_POOL_LABEL,
+  WORKSPACE_DEFAULT_LABEL,
+  unknownPoolMessage,
+} from "@/app/workflows/pools";
 import type { InspectorReadings } from "@/app/workflows/view";
 
 import { maskIds, renderInBothPalettes } from "../../helpers/palettes";
@@ -434,7 +440,7 @@ describe("every node type has a working form", () => {
   it("generates an infra stage's form, and removes an optional field left empty", () => {
     const { onApply } = open("test");
 
-    expect(screen.getByRole("textbox", { name: "Runner pool" })).toHaveValue("pool-a");
+    expect(screen.getByRole("combobox", { name: "Runner pool" })).toHaveValue("pool-a");
     fireEvent.change(screen.getByRole("textbox", { name: "Command" }), { target: { value: "" } });
     fireEvent.click(applyButton());
 
@@ -478,6 +484,91 @@ describe("every node type has a working form", () => {
     fireEvent.click(applyButton());
 
     expect(onApply).toHaveBeenCalledWith("probe", { depth: 2, flavour: "b", dry: true });
+  });
+});
+
+/** A definition whose `test` stage names a pool. */
+function testStageOn(pool: string | undefined): WorkflowDefinition {
+  const definition = standardFixDefinition();
+  const nodes = (definition.nodes as Record<string, unknown>[]).map((node) =>
+    node.id === "test"
+      ? { ...node, config: pool === undefined ? { command: "make test" } : { runner_pool: pool, command: "make test" } }
+      : node,
+  );
+  return { ...definition, nodes };
+}
+
+describe("a build or test stage's runner pool (FE.2, #1835)", () => {
+  /** The picker. */
+  const picker = () => screen.getByRole("combobox", { name: "Runner pool" });
+
+  it("lists no pool, Workspace default, then each pool with its online runner count", () => {
+    open("test");
+
+    const options = within(picker()).getAllByRole("option");
+    expect(options.map((option) => [option.getAttribute("value"), option.textContent])).toEqual([
+      ["", NO_POOL_LABEL],
+      [DEFAULT_POOL_REFERENCE, `${WORKSPACE_DEFAULT_LABEL} (pool-a · 2 online)`],
+      ["pool-a", "pool-a · 2 online"],
+      ["pool-b", "pool-b · 2 online"],
+    ]);
+  });
+
+  it("applies a picked pool, and Workspace default as $default", () => {
+    const { onApply } = open("test");
+
+    fireEvent.change(picker(), { target: { value: "pool-b" } });
+    fireEvent.click(applyButton());
+    expect(onApply).toHaveBeenLastCalledWith("test", expect.objectContaining({ runner_pool: "pool-b" }));
+
+    fireEvent.change(picker(), { target: { value: DEFAULT_POOL_REFERENCE } });
+    fireEvent.click(applyButton());
+    expect(onApply).toHaveBeenLastCalledWith("test", expect.objectContaining({ runner_pool: DEFAULT_POOL_REFERENCE }));
+  });
+
+  it("offers no pool for a stage that names none, and removes the key when it is picked", () => {
+    const { onApply } = open("test", { definition: testStageOn("pool-a") });
+
+    fireEvent.change(picker(), { target: { value: "" } });
+    fireEvent.click(applyButton());
+
+    expect(onApply).toHaveBeenCalledWith("test", { command: "make test" });
+  });
+
+  it("keeps an unknown pool visible, says so, and will not apply it", () => {
+    const { onApply } = open("test", { definition: testStageOn("pool-typo") });
+
+    expect(picker()).toHaveValue("pool-typo");
+    expect(within(picker()).getByRole("option", { name: "pool-typo (unknown)" })).toBeInTheDocument();
+    expect(screen.getByText(unknownPoolMessage("pool-typo"))).toBeInTheDocument();
+    expect(applyButton()).toHaveAttribute("title", INVALID_REASON);
+    fireEvent.click(applyButton());
+    expect(onApply).not.toHaveBeenCalled();
+
+    fireEvent.change(picker(), { target: { value: "pool-a" } });
+    expect(screen.queryByText(unknownPoolMessage("pool-typo"))).not.toBeInTheDocument();
+    expect(within(picker()).queryByRole("option", { name: "pool-typo (unknown)" })).not.toBeInTheDocument();
+  });
+
+  it("labels a disabled pool and a pool with nothing online", () => {
+    const readings = inspectorReadings({
+      pools: { ok: true, value: [{ name: "macos", isDefault: false, enabled: false, online: 0 }] },
+    });
+    open("test", { definition: testStageOn(DEFAULT_POOL_REFERENCE), readings });
+
+    expect(picker()).toHaveValue(DEFAULT_POOL_REFERENCE);
+    expect(within(picker()).getByRole("option", { name: WORKSPACE_DEFAULT_LABEL })).toBeInTheDocument();
+    expect(within(picker()).getByRole("option", { name: "macos · none online · disabled" })).toBeInTheDocument();
+  });
+
+  it("falls back to free text, and checks nothing, when the pools could not be read", () => {
+    const readings = inspectorReadings({ pools: { ok: false, reason: "The farm is unavailable." } });
+    const { onApply } = open("test", { definition: testStageOn("pool-typo"), readings });
+
+    expect(screen.getByRole("textbox", { name: "Runner pool" })).toHaveValue("pool-typo");
+    fireEvent.change(screen.getByRole("textbox", { name: "Command" }), { target: { value: "make check" } });
+    fireEvent.click(applyButton());
+    expect(onApply).toHaveBeenCalledWith("test", { runner_pool: "pool-typo", command: "make check" });
   });
 });
 

@@ -9,8 +9,10 @@ import type {
   WorkflowStageType,
 } from "@/app/api/workflows";
 import type { EdgeRef } from "@/app/workflows/canvas/graph";
+import { poolChoices } from "@/app/workflows/pools";
 import type { InspectorReadings, SelectedWorkflow, StudioReadings } from "@/app/workflows/view";
 
+import { seededFarm } from "./farm";
 import { seededAliases, seededTaskKinds } from "./models";
 
 /**
@@ -410,7 +412,7 @@ export function stageCatalog(overrides: Partial<WorkflowStageCatalog> = {}): Wor
 }
 
 /**
- * The inspector's three reads, all clean, for the seeded workspace.
+ * The inspector's four reads, all clean, for the seeded workspace.
  *
  * @param overrides What this case is about.
  * @returns The readings.
@@ -420,6 +422,7 @@ export function inspectorReadings(overrides: Partial<InspectorReadings> = {}): I
     catalog: { ok: true, value: stageCatalog() },
     routes: { ok: true, value: seededTaskKinds() },
     aliases: { ok: true, value: seededAliases() },
+    pools: { ok: true, value: poolChoices(seededFarm()) },
     ...overrides,
   };
 }

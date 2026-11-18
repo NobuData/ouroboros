@@ -95,11 +95,13 @@ describe("the Workflow Studio page (#1179)", () => {
     for (const message of quoted) expect(shipped, message).toContain(message);
   });
 
-  it("shows the five screenshots the issue lists", () => {
+  it("shows the six screenshots the issues list", () => {
     for (const id of [
       "user-guide.workflows",
       "user-guide.workflow.canvas",
       "user-guide.workflow.inspector",
+      // The build or test stage's Runner pool picker (FE.2).
+      "user-guide.workflow.pool-picker",
       "user-guide.workflow.validation-error",
       "user-guide.workflow.publish",
     ]) {

@@ -16,6 +16,7 @@ import {
 } from "@/app/workflows/canvas/graph";
 import { stageRole } from "@/app/workflows/canvas/treatment";
 import { STAGE_GLYPHS } from "@/app/workflows/canvas/view";
+import { poolErrors } from "@/app/workflows/pools";
 import type { InspectorReadings } from "@/app/workflows/view";
 
 import { ConnectRow } from "./connect-row";
@@ -163,7 +164,10 @@ function StageInspector({
   const schema = type === null ? null : (type.configSchema as JsonSchema);
   const known = knownNames(catalog, readings?.aliases ?? null);
 
-  const errors = draftErrors(entry.type, config, schema, budget);
+  // `null` when the farm could not be read: the pool field falls back to free text and checks nothing.
+  const pools = readings?.pools.ok === true ? readings.pools.value : null;
+
+  const errors = { ...draftErrors(entry.type, config, schema, budget), ...poolErrors(config, pools) };
   const warnings = referenceWarnings(entry.type, config, known);
   const dirty = isConfigDirty(config, entry.config);
   const readOnlyReason = mayAdminister ? undefined : MEMBER_REASON;
@@ -218,7 +222,7 @@ function StageInspector({
         form = <TermForm {...common} />;
         break;
       default:
-        form = <GeneratedForm {...common} />;
+        form = <GeneratedForm {...common} pools={pools} />;
     }
   }
 

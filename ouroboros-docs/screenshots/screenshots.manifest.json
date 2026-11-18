@@ -528,6 +528,23 @@
       ]
     },
     {
+      "id": "user-guide.workflow.pool-picker",
+      "route": "/workflows/standard-fix",
+      "workspace": "acme-robotics",
+      "ready": "aside.studio-inspector h2:has-text('Run test suite')",
+      "clip": "aside.studio-inspector",
+      "actions": [
+        {
+          "click": ".react-flow__node[data-id='test']"
+        }
+      ],
+      "caption": "A build or test stage's Runner pool is picked from the workspace's pools, each with its online runner count — or Workspace default.",
+      "alt": "The inspector for the Run test suite stage: its kind, Test, its title and description, the Runner pool select set to pool-a · none online, the Command field holding twister -p native_sim, and the Apply footer.",
+      "capturedAt": "2026-11-18T22:18:01.252Z",
+      "uiVersion": "0.173.0",
+      "seedRef": "e4dfbcf31d5e791e037835a90da609f71a957272"
+    },
+    {
       "id": "user-guide.workflow.validation-error",
       "route": "/workflows/standard-fix",
       "workspace": "acme-robotics",

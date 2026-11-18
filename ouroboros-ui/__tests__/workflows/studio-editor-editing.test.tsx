@@ -155,9 +155,9 @@ describe("building docs-loop from a blank canvas, with the canvas and the inspec
     fireEvent.click(screen.getByRole("switch", { name: "May touch CI config" }));
     await apply();
 
-    // The infra stage: docs-loop's runner pool and prose-lint command.
+    // The infra stage: docs-loop's runner pool, picked from the workspace's pools (FE.2), and prose-lint command.
     await select(container, "build");
-    fireEvent.change(screen.getByRole("textbox", { name: "Runner pool" }), { target: { value: "pool-b" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Runner pool" }), { target: { value: "pool-b" } });
     fireEvent.change(screen.getByRole("textbox", { name: "Command" }), { target: { value: "vale docs/" } });
     await apply();
 
