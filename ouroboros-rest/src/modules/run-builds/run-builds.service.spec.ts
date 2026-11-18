@@ -71,6 +71,7 @@ describe("a run's build stage on the farm", () => {
       repositorySlug: jest.fn().mockResolvedValue("acme-robotics/helios-firmware"),
       latest: jest.fn().mockResolvedValue(view({ status: "offered", runner_id: RUNNER })),
       reserve: jest.fn().mockResolvedValue(undefined),
+      pinDefaultPool: jest.fn().mockResolvedValue("pool-d"),
     } as unknown as jest.Mocked<RunBuildsRepository>;
     jobs = {
       submitForRun: jest.fn().mockResolvedValue({ id: JOB }),
@@ -79,6 +80,40 @@ describe("a run's build stage on the farm", () => {
       cancelWaiting: jest.fn().mockResolvedValue(true),
     } as unknown as jest.Mocked<FarmJobsService>;
     service = new RunBuildsService(builds, jobs);
+  });
+
+  describe("the workspace default pool (FE.1, #1834)", () => {
+    it("resolves `$default` through the run's pin, under the run's lock, and builds there", async () => {
+      await service.submit(RUN, { ...REQUEST, pool: "$default" });
+
+      expect(builds.pinDefaultPool).toHaveBeenCalledWith(TRX, expect.objectContaining({ id: RUN }));
+      expect(jobs.submitForRun.mock.calls[0][2]).toMatchObject({ pool: "pool-d" });
+    });
+
+    it("refuses farm_pool_not_found, saying why, when the workspace has no pool", async () => {
+      builds.pinDefaultPool.mockResolvedValue(undefined);
+
+      const error = await refusal(service.submit(RUN, { ...REQUEST, pool: "$default" }));
+
+      expect(error.code).toBe("farm_pool_not_found");
+      expect(error.message).toContain("workspace default pool, and the workspace has no pool");
+      expect(jobs.submitForRun).not.toHaveBeenCalled();
+    });
+
+    it("leaves a stage that names its pool alone — no pin, no lookup", async () => {
+      await service.submit(RUN, REQUEST);
+
+      expect(builds.pinDefaultPool).not.toHaveBeenCalled();
+      expect(jobs.submitForRun.mock.calls[0][2]).toMatchObject({ pool: "pool-a" });
+    });
+
+    it("pins nothing when the stage attempt is a replay", async () => {
+      builds.stageJob.mockResolvedValue(JOB);
+
+      await service.submit(RUN, { ...REQUEST, pool: "$default" });
+
+      expect(builds.pinDefaultPool).not.toHaveBeenCalled();
+    });
   });
 
   describe("submitting", () => {

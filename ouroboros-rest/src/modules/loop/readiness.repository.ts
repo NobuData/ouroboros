@@ -15,6 +15,7 @@ import { DatabaseService } from "../db/db.service";
 import { SCHEMA_NAME, type EstimateEffort } from "../db/schema";
 import { supportsSourceCheckout } from "../farm/gateway/capabilities";
 import type { SyncSource } from "../ticket-sources/ticket-sources.repository";
+import { selectDefaultPool, type DefaultPool } from "../farm/fleet/default-pool";
 import type { PoolFact } from "./readiness";
 
 /** Runner statuses dispatch would offer a job to — `farm/dispatch/dispatch.repository.ts`. */
@@ -121,6 +122,16 @@ export class ReadinessRepository {
     return row === undefined
       ? undefined
       : { slug: row.slug, version: row.version, definition: row.definition ?? undefined };
+  }
+
+  /**
+   * The workspace default pool (FE.1, #1834) — what a stage naming `$default` resolves to.
+   *
+   * @param organizationId - The workspace.
+   * @returns Its id and name, or `undefined` when the workspace has no pool.
+   */
+  defaultPool(organizationId: string): Promise<DefaultPool | undefined> {
+    return selectDefaultPool(this.database.db, organizationId);
   }
 
   /**

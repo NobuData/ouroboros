@@ -156,6 +156,30 @@ export function templateDocuments(tag: string): unknown[] {
 }
 
 /**
+ * A shipped template as V156 republishes it (FE.1, #1834): V068's v1 document with every build
+ * and test (`infra`) stage that names no pool bound to `runner_pool: "$default"` — the workspace
+ * default pool. V156 writes v2 with `jsonb_set` rather than as a literal, so no parse of a
+ * migration sees it; `tests/constraints.sql` asserts the stored v2 is exactly this transform.
+ *
+ * @param tag - V068's dollar-quoted tag, without its dollar signs — `quick_fixes_v1`.
+ * @returns The v2 document.
+ */
+export function defaultPoolTemplateDocument(tag: string): Record<string, unknown> {
+  const document = templateDocuments(tag)[0] as { nodes: Record<string, unknown>[] };
+
+  return {
+    ...document,
+    nodes: document.nodes.map((node) => {
+      const config = (node.config ?? {}) as Record<string, unknown>;
+
+      return node.type === "infra" && config.runner_pool === undefined
+        ? { ...node, config: { ...config, runner_pool: "$default" } }
+        : node;
+    }),
+  };
+}
+
+/**
  * Every document written under one dollar-quoted tag in some SQL text, parsed. A tag opens and
  * closes each block, so the odd-indexed pieces of a split on it are the bodies.
  *

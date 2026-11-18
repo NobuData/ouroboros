@@ -51,6 +51,7 @@ const LIVE: Run = {
   exec_checkpoint: null,
   exec_checkpoint_at: null,
   started_by: null,
+  default_pool_id: null,
 };
 
 /** Its counterpart on the completions card — the same table, the other half of decision F2. */

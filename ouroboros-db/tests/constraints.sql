@@ -12400,6 +12400,57 @@ select pg_temp.must_reject(
   'a shell pool carrying a pinned image promises what it does not do',
   'runner_pools_image_for_container');
 
+-- --- one default pool per workspace (V156, #1834) -------------------------------
+--
+-- A workspace's first pool becomes its default (runner_pools_default_first), the partial unique
+-- index refuses a second, and deleting the default hands it to the oldest remaining pool
+-- (runner_pools_default_moves) — or, with none left, leaves no default for readiness to report.
+select pg_temp.must_hold(
+  (select array_agg(name || '@' || organization_id order by organization_id, name)
+            = array['pool-a@org-farm', 'pool-a@org-farm2']
+     from ouroboros.runner_pools
+    where is_default and organization_id in ('org-farm', 'org-farm2')),
+  'a workspace''s first pool is its default, and only the first — each workspace has its own');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runner_pools set is_default = true
+     where id = '7f000001-0000-4000-8000-000000000002'$$,
+  'a workspace has at most one default pool', 'runner_pools_one_default_idx');
+
+select pg_temp.must_hold(
+  (select bool_and(defaults = 1)
+     from (select count(*) filter (where is_default) as defaults
+             from ouroboros.runner_pools
+            group by organization_id) per_workspace),
+  'every workspace that has pools has exactly one default');
+
+savepoint v156_default_moves;
+
+insert into ouroboros.runner_pools (id, organization_id, name, executor) values
+  ('7f000001-0000-4000-8000-0000000000f1', 'org-farm2', 'pool-y', 'shell');
+update ouroboros.runner_pools set is_default = false
+ where id = '7f000001-0000-4000-8000-000000000003';
+update ouroboros.runner_pools set is_default = true
+ where id = '7f000001-0000-4000-8000-0000000000f1';
+delete from ouroboros.runner_pools where id = '7f000001-0000-4000-8000-0000000000f1';
+
+select pg_temp.must_hold(
+  (select is_default from ouroboros.runner_pools
+    where id = '7f000001-0000-4000-8000-000000000003'),
+  'deleting the default pool moves the default to the oldest remaining pool, never silently');
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-farm-lone', 'Farm Lone', 'farm-lone', now());
+insert into ouroboros.runner_pools (id, organization_id, name, executor) values
+  ('7f000001-0000-4000-8000-0000000000f2', 'org-farm-lone', 'only', 'shell');
+delete from ouroboros.runner_pools where id = '7f000001-0000-4000-8000-0000000000f2';
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.runner_pools where organization_id = 'org-farm-lone'),
+  'deleting a workspace''s last pool leaves it no default — readiness reports build_pool_required');
+
+rollback to savepoint v156_default_moves;
+
 -- --- a pool's default command is bounded and not blank (V043, #252) ---------------
 --
 -- Dispatch copies it onto a submission that names no command, so a blank one would send a
@@ -15036,6 +15087,18 @@ select pg_temp.must_reject(
        set reserved_build_job_id = 'a7400000-0000-0000-0000-0000000000ff'
      where id = 'a7100000-0000-0000-0000-000000000482'$$,
   'and it cannot reserve a build job that does not exist', 'runs_reserved_build_job_fk');
+
+-- The `$default` pin (V156, #1834) is a pool of the run's own workspace, and null until pinned.
+select pg_temp.must_hold(
+  (select default_pool_id is null from ouroboros.runs_with_stage
+    where id = 'a7100000-0000-0000-0000-000000000482'),
+  'a run pins no default pool until a "$default" build stage is submitted');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set default_pool_id = '7f000001-0000-4000-8000-000000000003'
+    where id = 'a7100000-0000-0000-0000-000000000482'$$,
+  'a run cannot pin another workspace''s pool — the reference carries organization_id',
+  'runs_default_pool_fk');
 
 -- Deleting the job **releases** the reservation rather than deleting the run, which is what
 -- `on delete set null (reserved_build_job_id)` buys and what an unqualified SET NULL could not
@@ -23524,7 +23587,8 @@ select pg_temp.must_hold(
 
 select pg_temp.must_hold(
   (select unlock_rule = '{"merged_loops_gte": 10}'::jsonb
-     from ouroboros.workflow_templates where organization_id is null and slug = 'deep-refactor')
+     from ouroboros.workflow_templates
+    where organization_id is null and slug = 'deep-refactor' and version = 1)
   and (select bool_and(unlock_rule is null)
          from ouroboros.workflow_templates where organization_id is null and tier = 'starter'),
   'deep-refactor unlocks after ten merged loops, and the starter tiles carry no rule');
@@ -23540,15 +23604,36 @@ select pg_temp.must_hold(
             '$.nodes[*] ? (@.type == "term" && @.config.action == "needs_review")')
           and not jsonb_path_exists(definition,
             '$.nodes[*] ? (@.config.action == "open_pr_automerge")')
-     from ouroboros.workflow_templates where organization_id is null and slug = 'feature-builder'),
+     from ouroboros.workflow_templates
+    where organization_id is null and slug = 'feature-builder' and version = 1),
   'feature-builder ends at the needs_review human gate and never auto-merges');
 
 select pg_temp.must_hold(
   (select jsonb_path_exists(definition, '$.nodes[*] ? (@.type == "llm")')
           and not jsonb_path_exists(definition,
             '$.nodes[*] ? (@.type == "llm" && @.config.routing.inherit_task != "docs")')
-     from ouroboros.workflow_templates where organization_id is null and slug = 'docs-chores'),
+     from ouroboros.workflow_templates
+    where organization_id is null and slug = 'docs-chores' and version = 1),
   'docs-chores routes every model stage through the docs task kind — the cheap lane');
+
+-- --- V156 (#1834): v2 binds every build and test stage to the workspace default pool --------------
+select pg_temp.must_hold(
+  (select count(*) = 4
+          and bool_and(not jsonb_path_exists(definition,
+                '$.nodes[*] ? (@.type == "infra" && !(@.config.runner_pool == "$default"))'))
+     from ouroboros.workflow_templates where organization_id is null and version = 2),
+  'each shipped template has a v2 whose build and test stages run on the "$default" pool');
+
+select pg_temp.must_hold(
+  (select bool_and(
+            (select jsonb_agg(node - 'config') from jsonb_array_elements(v2.definition->'nodes') node)
+            = (select jsonb_agg(node - 'config') from jsonb_array_elements(v1.definition->'nodes') node)
+            and v2.definition - 'nodes' = v1.definition - 'nodes')
+     from ouroboros.workflow_templates v1
+     join ouroboros.workflow_templates v2
+       on v2.slug = v1.slug and v2.organization_id is null and v2.version = 2
+    where v1.organization_id is null and v1.version = 1),
+  'and v2 changes nothing but the stage configs — the graph, copy and trigger are v1''s');
 
 -- --- the table refuses what it must ---------------------------------------------------------------
 select pg_temp.must_reject(
@@ -23643,7 +23728,7 @@ select pg_temp.must_reject(
 select pg_temp.must_reject(
   $$insert into ouroboros.workflow_templates
       (slug, version, name, description, stage_dots, effort_range, definition, tier, sort_order)
-    values ('quick-fixes', 3, 'Quick fixes', 'd', '["a"]', array['s'], '{}', 'starter', 1)$$,
+    values ('quick-fixes', 4, 'Quick fixes', 'd', '["a"]', array['s'], '{}', 'starter', 1)$$,
   'the next version is exactly one above the highest', 'workflow_templates_next_version');
 
 select pg_temp.must_raise(
@@ -23679,7 +23764,7 @@ select pg_temp.must_hold(
 insert into ouroboros.workflow_templates
     (slug, version, name, description, stage_dots, effort_range, caption, definition, tier,
      sort_order)
-  select slug, 2, name, description, stage_dots, effort_range, caption,
+  select slug, 3, name, description, stage_dots, effort_range, caption,
          jsonb_set(definition, '{trigger,conditions,effort_lte}', '"s"'), tier, sort_order
     from ouroboros.workflow_templates
    where organization_id is null and slug = 'quick-fixes' and version = 1;
@@ -23693,7 +23778,7 @@ select pg_temp.must_hold(
      from ouroboros.workflows wf
      join ouroboros.workflow_versions v on v.workflow_id = wf.id and v.version = 1
     where wf.id = 'a6800000-0000-0000-0000-000000000001'),
-  'publishing quick-fixes@v2 leaves the workflow instantiated from v1 unchanged');
+  'publishing quick-fixes@v3 leaves the workflow instantiated from v1 unchanged');
 
 select pg_temp.must_reject(
   $$insert into ouroboros.workflows (organization_id, slug, name, template_slug)
@@ -23727,15 +23812,15 @@ insert into ouroboros.workflow_templates
 select pg_temp.must_hold(
   (select array_agg(slug || '@' || version || ':' || coalesce(organization_id, 'global'))
      from ouroboros.workflow_templates_for('org-v068'))
-  = array['quick-fixes@1:org-v068', 'feature-builder@1:global', 'docs-chores@1:global',
-          'deep-refactor@1:global'],
+  = array['quick-fixes@1:org-v068', 'feature-builder@2:global', 'docs-chores@2:global',
+          'deep-refactor@2:global'],
   'an organization''s row shadows the global of the same slug, in tile order');
 
 select pg_temp.must_hold(
   (select array_agg(slug || '@' || version || ':' || coalesce(organization_id, 'global'))
      from ouroboros.workflow_templates_for('org-v068-other'))
-  = array['quick-fixes@2:global', 'feature-builder@1:global', 'docs-chores@1:global',
-          'deep-refactor@1:global'],
+  = array['quick-fixes@3:global', 'feature-builder@2:global', 'docs-chores@2:global',
+          'deep-refactor@2:global'],
   'another organization sees the latest global versions, not the override');
 
 select pg_temp.must_reject(
@@ -23803,7 +23888,7 @@ delete from ouroboros.organization where "id" in ('org-v068', 'org-v068-other');
 
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.workflow_templates where organization_id like 'org-v068%')
-  and (select count(*) = 5 from ouroboros.workflow_templates where organization_id is null),
+  and (select count(*) = 9 from ouroboros.workflow_templates where organization_id is null),
   'a deleted workspace takes its template overrides, and the global rows stay');
 
 -- ===========================================================================

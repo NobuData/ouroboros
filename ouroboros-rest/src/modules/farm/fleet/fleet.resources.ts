@@ -229,6 +229,11 @@ export interface PoolResource {
   readonly image: string | null;
   /** The card's right-hand switch: operator intent, not a health signal. */
   readonly enabled: boolean;
+  /**
+   * Whether this is the workspace default pool (FE.1, #1834) — where a workflow stage naming
+   * `runner_pool: "$default"` builds. Exactly one pool of a workspace that has any.
+   */
+  readonly isDefault: boolean;
   /** How many jobs one runner of this pool may run at once. Per runner, not per pool. */
   readonly maxConcurrency: number;
   /** Environment variable names a submission may carry into the build. */
@@ -419,6 +424,7 @@ export function poolResource(view: PoolView): PoolResource {
     executor: pool.executor,
     image: pool.image,
     enabled: pool.enabled,
+    isDefault: pool.is_default,
     maxConcurrency: pool.max_concurrency,
     envAllowlist: pool.env_allowlist,
     tags: pool.tags,

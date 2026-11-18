@@ -8,7 +8,8 @@
  * connections                         LoopRepository — kind, name, last health test (DH.4)
  * routes                              ResolutionService per task kind, PricingService per kept hop
  * executors                           the engine's GET /v0/status (unreachable is a fact, not an error)
- * pools                               ReadinessRepository — dispatch's eligibility, without room
+ * pools                               ReadinessRepository — dispatch's eligibility, without room;
+ *                                     a `$default` stage's pool is the workspace default (#1834)
  * push credential                     the workspace GitHub token: GET /repos/{owner}/{repo}
  * pull-request credential             the issue's GitHub source: repositoryAccess (same read)
  * dry-run                             repositoryDryRun — what the run would be judged by
@@ -27,6 +28,7 @@ import { AdmissionService, DEFAULT_MODEL_TASK_KIND } from "../admission/admissio
 import { firstModelStage } from "../admission/admission.pin";
 import { DatabaseService } from "../db/db.service";
 import { EngineClient } from "../engine/engine.client";
+import { namesDefaultPool } from "../farm/fleet/default-pool";
 import { NotFoundError } from "../errors/error.envelope";
 import { GithubClientFactory } from "../github/github.client.factory";
 import { GithubCredentialsService } from "../github/github.credentials.service";
@@ -138,13 +140,17 @@ export class ReadinessService {
     const stages =
       workflowRow?.definition === undefined ? undefined : workflowStages(workflowRow.definition);
 
+    const defaultPool = stages?.buildStages.some((stage) => namesDefaultPool(stage.pool))
+      ? ((await this.readiness.defaultPool(organizationId))?.name ?? null)
+      : null;
+
     const resolutions = new Map<string, Promise<Resolution | undefined>>();
     const [engine, connections, routes, pools, push, pullRequest, dryRun, costCap] =
       await Promise.all([
         this.engineFacts(),
         this.loop.invocableConnections(organizationId, INVOCABLE_KINDS),
         this.routes(organizationId, stages, resolutions),
-        this.readiness.pools(organizationId, poolNames(stages), now),
+        this.readiness.pools(organizationId, poolNames(stages, defaultPool), now),
         this.pushCredential(organizationId, repository),
         this.pullRequestCredential(organizationId, repository, issue?.number),
         repositoryDryRun(this.policy, this.resolver, organizationId, repository.id),
@@ -170,6 +176,7 @@ export class ReadinessService {
       routes,
       engine,
       pools,
+      defaultPool,
       push,
       pullRequest,
       dryRun,
@@ -425,14 +432,19 @@ function fromPush(push: boolean | null): CredentialFact {
 }
 
 /**
- * The distinct pools the build stages name.
+ * The distinct pools the build stages name, `$default` as the pool it resolves to.
  *
  * @param stages - The workflow's stages, or `undefined`.
+ * @param defaultPool - The workspace default pool's name, or `null` when it has none — a
+ *   `$default` stage then names no pool here, and the runner check says why.
  * @returns The names, in first-use order.
  */
-function poolNames(stages: WorkflowStages | undefined): string[] {
+export function poolNames(
+  stages: WorkflowStages | undefined,
+  defaultPool: string | null,
+): string[] {
   const names = (stages?.buildStages ?? [])
-    .map((stage) => stage.pool)
+    .map((stage) => (namesDefaultPool(stage.pool) ? defaultPool : stage.pool))
     .filter((pool): pool is string => pool !== null);
 
   return [...new Set(names)];

@@ -373,9 +373,15 @@ export class FarmAudit {
    * @param actor - Who, where and when.
    * @param pool - The pool. Its id is recorded even though the row is gone, which is V022's
    *   whole position on a non-referential subject: an event about a thing must outlive it.
+   *   `defaultMovedTo` is set only when the deleted pool was the workspace default (FE.1,
+   *   #1834): the pool the default moved to, or `null` when no pool is left to take it — so the
+   *   move is on the trail rather than silent.
    * @returns When the event is written.
    */
-  async poolDeleted(actor: FarmActor, pool: { id: string; name: string }): Promise<void> {
+  async poolDeleted(
+    actor: FarmActor,
+    pool: { id: string; name: string; defaultMovedTo?: string | null },
+  ): Promise<void> {
     await this.audit.record({
       organizationId: actor.organizationId,
       actorId: actor.actorId,
@@ -383,7 +389,10 @@ export class FarmAudit {
       subjectType: "runner_pool",
       subjectId: pool.id,
       at: actor.at,
-      detail: { name: pool.name },
+      detail:
+        pool.defaultMovedTo === undefined
+          ? { name: pool.name }
+          : { name: pool.name, defaultMovedTo: pool.defaultMovedTo },
     });
   }
 

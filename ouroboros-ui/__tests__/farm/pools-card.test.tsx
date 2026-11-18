@@ -9,6 +9,8 @@ import {
   AUTOSCALE_AFFIX,
   AUTOSCALE_KEEP,
   CONFIGURE,
+  DEFAULT_POOL_TAG,
+  MAKE_DEFAULT,
   NO_POOLS_MEMBER_NOTE,
   NO_POOLS_NOTE,
   NO_POOLS_TITLE,
@@ -35,13 +37,17 @@ import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 import { settle } from "../helpers/settle";
 
 const actions = vi.hoisted(() => ({
-  updatePool: vi.fn<(id: string, change: RunnerPoolChange) => Promise<PoolWriteOutcome>>(),
+  updatePool:
+    vi.fn<
+      (id: string, change: RunnerPoolChange) => Promise<PoolWriteOutcome>
+    >(),
 }));
 
 vi.mock("@/app/farm/pool-actions", () => ({
   createPool: vi.fn(),
   deletePool: vi.fn(),
-  updatePool: (id: string, change: RunnerPoolChange) => actions.updatePool(id, change),
+  updatePool: (id: string, change: RunnerPoolChange) =>
+    actions.updatePool(id, change),
 }));
 
 // The enroll card (#258) shares the column; this suite presses none of its actions.
@@ -69,7 +75,10 @@ vi.mock("@/app/farm/submit-actions", () => ({ submitBuild: vi.fn() }));
  */
 
 /** A poll that never answers, so a case draws exactly what the server read. */
-const QUIET: FarmPollOptions = { read: () => new Promise(() => {}), visible: () => true };
+const QUIET: FarmPollOptions = {
+  read: () => new Promise(() => {}),
+  visible: () => true,
+};
 
 /** The seeded pools. */
 const [POOL_A, POOL_B] = seededFarm().pools as [RunnerPool, RunnerPool];
@@ -92,7 +101,9 @@ function card(): HTMLElement {
 function row(name: string): HTMLElement {
   const found = within(card())
     .getAllByRole("listitem")
-    .find((item) => item.querySelector(".farm-pool__name")?.textContent === name);
+    .find(
+      (item) => item.querySelector(".farm-pool__name")?.textContent === name,
+    );
 
   if (!found) throw new Error(`no row for ${name}`);
   return found;
@@ -125,12 +136,21 @@ async function press(control: HTMLElement): Promise<void> {
 function written(id: string, change: RunnerPoolChange): PoolWriteOutcome {
   const pool = seededFarm().pools.find((held) => held.id === id) as RunnerPool;
 
-  return { ok: true, pool: { ...pool, ...change, defaultCommand: pool.defaultCommand } as RunnerPool };
+  return {
+    ok: true,
+    pool: {
+      ...pool,
+      ...change,
+      defaultCommand: pool.defaultCommand,
+    } as RunnerPool,
+  };
 }
 
 beforeEach(() => {
   actions.updatePool.mockReset();
-  actions.updatePool.mockImplementation((id, change) => Promise.resolve(written(id, change)));
+  actions.updatePool.mockImplementation((id, change) =>
+    Promise.resolve(written(id, change)),
+  );
 });
 
 afterEach(() => {
@@ -139,28 +159,43 @@ afterEach(() => {
 
 describe("the seeded card", () => {
   beforeEach(() => {
-    render(<FarmScreen poll={QUIET} reader={ADMIN_READER} readings={farmReadings()} />);
+    render(
+      <FarmScreen
+        poll={QUIET}
+        reader={ADMIN_READER}
+        readings={farmReadings()}
+      />,
+    );
   });
 
   it("draws the mockup's rows: a mono name over a line composed from executor, image and live count", () => {
-    expect(within(card()).getByRole("heading", { name: POOLS_TITLE })).toBeInTheDocument();
+    expect(
+      within(card()).getByRole("heading", { name: POOLS_TITLE }),
+    ).toBeInTheDocument();
     expect(within(card()).getAllByRole("listitem")).toHaveLength(2);
     expect(row("pool-a").querySelector(".farm-pool__meta")).toHaveTextContent(
       "firmware builds · zephyr-sdk 0.17 image · 3 runners",
     );
-    expect(row("pool-b").querySelector(".farm-pool__meta")).toHaveTextContent("HIL & macOS jobs · 2 runners");
+    expect(row("pool-b").querySelector(".farm-pool__meta")).toHaveTextContent(
+      "HIL & macOS jobs · 2 runners",
+    );
   });
 
   it("sits under the enroll card, in the mockup's right-hand column", () => {
     const column = card().parentElement;
 
     expect(column).toHaveClass("farm-col--4", "farm__side");
-    expect(Array.from(column?.children ?? [])).toEqual([screen.getByRole("region", { name: ENROLL_TITLE }), card()]);
+    expect(Array.from(column?.children ?? [])).toEqual([
+      screen.getByRole("region", { name: ENROLL_TITLE }),
+      card(),
+    ]);
   });
 
   it("draws each pool's switch in its stored position, named for what a press would do", () => {
     for (const name of ["pool-a", "pool-b"]) {
-      const control = within(row(name)).getByRole("switch", { name: `Disable ${name}` });
+      const control = within(row(name)).getByRole("switch", {
+        name: `Disable ${name}`,
+      });
 
       expect(control).toHaveAttribute("aria-checked", "true");
       expect(control).not.toHaveAttribute("aria-disabled");
@@ -174,14 +209,24 @@ describe("the seeded card", () => {
 
 describe("the auto-scale sub-toggle", () => {
   beforeEach(() => {
-    render(<FarmScreen poll={QUIET} reader={ADMIN_READER} readings={farmReadings()} />);
+    render(
+      <FarmScreen
+        poll={QUIET}
+        reader={ADMIN_READER}
+        readings={farmReadings()}
+      />,
+    );
   });
 
   it("is drawn under the pool that stores a threshold, off, with the mockup's two lines", () => {
-    const control = within(row("pool-a")).getByRole("switch", { name: "Turn on auto-scale to cloud for pool-a" });
+    const control = within(row("pool-a")).getByRole("switch", {
+      name: "Turn on auto-scale to cloud for pool-a",
+    });
 
     expect(control).toHaveAttribute("aria-checked", "false");
-    expect(row("pool-a")).toHaveTextContent("Auto-scale to cloud when queue > 5");
+    expect(row("pool-a")).toHaveTextContent(
+      "Auto-scale to cloud when queue > 5",
+    );
     expect(row("pool-a")).toHaveTextContent(AUTOSCALE_KEEP);
   });
 
@@ -191,26 +236,33 @@ describe("the auto-scale sub-toggle", () => {
   });
 
   it("carries the v2 affix as text on the card — not a tooltip that has to be hovered to find", () => {
-    const affix = within(row("pool-a")).getByText(new RegExp(AUTOSCALE_AFFIX.replace(/[()]/g, "\\$&")));
+    const affix = within(row("pool-a")).getByText(
+      new RegExp(AUTOSCALE_AFFIX.replace(/[()]/g, "\\$&")),
+    );
 
     expect(affix).toBeVisible();
     // Nowhere in the card is the affix an attribute: it is only ever text.
-    expect(card().querySelectorAll(`[title*="${AUTOSCALE_AFFIX}"]`)).toHaveLength(0);
+    expect(
+      card().querySelectorAll(`[title*="${AUTOSCALE_AFFIX}"]`),
+    ).toHaveLength(0);
     // And a screen reader hears it with the switch it qualifies.
-    expect(within(row("pool-a")).getByRole("switch", { name: /auto-scale/ })).toHaveAttribute(
-      "aria-describedby",
-      affix.id,
-    );
+    expect(
+      within(row("pool-a")).getByRole("switch", { name: /auto-scale/ }),
+    ).toHaveAttribute("aria-describedby", affix.id);
   });
 
   it("persists a press — the whole stored preference with the switch flipped, and nothing else", async () => {
-    await press(within(row("pool-a")).getByRole("switch", { name: /Turn on auto-scale/ }));
+    await press(
+      within(row("pool-a")).getByRole("switch", { name: /Turn on auto-scale/ }),
+    );
 
     expect(actions.updatePool).toHaveBeenCalledExactlyOnceWith(POOL_A.id, {
       autoscalePref: { enabled: true, queue_threshold: 5 },
     });
 
-    const control = within(row("pool-a")).getByRole("switch", { name: "Turn off auto-scale to cloud for pool-a" });
+    const control = within(row("pool-a")).getByRole("switch", {
+      name: "Turn off auto-scale to cloud for pool-a",
+    });
 
     expect(control).toHaveAttribute("aria-checked", "true");
     // Stored is still not active: the affix stays whichever way the switch stands.
@@ -220,10 +272,13 @@ describe("the auto-scale sub-toggle", () => {
   it("acts on nothing: the pool's own switch, its line and the rest of the page are as they were", async () => {
     const before = screen.getByRole("main").cloneNode(true) as HTMLElement;
 
-    await press(within(row("pool-a")).getByRole("switch", { name: /Turn on auto-scale/ }));
+    await press(
+      within(row("pool-a")).getByRole("switch", { name: /Turn on auto-scale/ }),
+    );
 
     const after = screen.getByRole("main").cloneNode(true) as HTMLElement;
-    for (const tree of [before, after]) tree.querySelector(".farm-pool__subtoggle")?.remove();
+    for (const tree of [before, after])
+      tree.querySelector(".farm-pool__subtoggle")?.remove();
 
     expect(after.innerHTML).toBe(before.innerHTML);
   });
@@ -232,17 +287,28 @@ describe("the auto-scale sub-toggle", () => {
 describe("the enable switch", () => {
   it("persists a press through the one field it is about, and moves at once", async () => {
     let answerWrite: (outcome: PoolWriteOutcome) => void = () => {};
-    actions.updatePool.mockReturnValue(new Promise((resolve) => (answerWrite = resolve)));
-    render(<FarmScreen poll={QUIET} reader={ADMIN_READER} readings={farmReadings()} />);
-
-    await press(within(row("pool-b")).getByRole("switch", { name: "Disable pool-b" }));
-
-    expect(actions.updatePool).toHaveBeenCalledExactlyOnceWith(POOL_B.id, { enabled: false });
-    // Before the service has answered.
-    expect(within(row("pool-b")).getByRole("switch", { name: "Enable pool-b" })).toHaveAttribute(
-      "aria-checked",
-      "false",
+    actions.updatePool.mockReturnValue(
+      new Promise((resolve) => (answerWrite = resolve)),
     );
+    render(
+      <FarmScreen
+        poll={QUIET}
+        reader={ADMIN_READER}
+        readings={farmReadings()}
+      />,
+    );
+
+    await press(
+      within(row("pool-b")).getByRole("switch", { name: "Disable pool-b" }),
+    );
+
+    expect(actions.updatePool).toHaveBeenCalledExactlyOnceWith(POOL_B.id, {
+      enabled: false,
+    });
+    // Before the service has answered.
+    expect(
+      within(row("pool-b")).getByRole("switch", { name: "Enable pool-b" }),
+    ).toHaveAttribute("aria-checked", "false");
 
     await act(async () => {
       answerWrite(written(POOL_B.id, { enabled: false }));
@@ -250,24 +316,36 @@ describe("the enable switch", () => {
     });
     await settle();
 
-    expect(within(row("pool-b")).getByRole("switch", { name: "Enable pool-b" })).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
-    expect(within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
+    expect(
+      within(row("pool-b")).getByRole("switch", { name: "Enable pool-b" }),
+    ).toHaveAttribute("aria-checked", "false");
+    expect(
+      within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" }),
+    ).toHaveAttribute("aria-checked", "true");
   });
 
   it("ignores a second press while the first is in flight", async () => {
     let answerWrite: (outcome: PoolWriteOutcome) => void = () => {};
-    actions.updatePool.mockReturnValue(new Promise((resolve) => (answerWrite = resolve)));
-    render(<FarmScreen poll={QUIET} reader={ADMIN_READER} readings={farmReadings()} />);
+    actions.updatePool.mockReturnValue(
+      new Promise((resolve) => (answerWrite = resolve)),
+    );
+    render(
+      <FarmScreen
+        poll={QUIET}
+        reader={ADMIN_READER}
+        readings={farmReadings()}
+      />,
+    );
 
-    await press(within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" }));
-    await press(within(row("pool-a")).getByRole("switch", { name: "Enable pool-a" }));
-    await press(within(row("pool-a")).getByRole("switch", { name: /auto-scale/ }));
+    await press(
+      within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" }),
+    );
+    await press(
+      within(row("pool-a")).getByRole("switch", { name: "Enable pool-a" }),
+    );
+    await press(
+      within(row("pool-a")).getByRole("switch", { name: /auto-scale/ }),
+    );
 
     expect(actions.updatePool).toHaveBeenCalledTimes(1);
 
@@ -280,28 +358,57 @@ describe("the enable switch", () => {
   });
 
   it("goes back on its own when the service refuses, and says why under the row", async () => {
-    actions.updatePool.mockResolvedValue({ ok: false, reason: WRITE_FAILED, fields: {} });
-    render(<FarmScreen poll={QUIET} reader={ADMIN_READER} readings={farmReadings()} />);
-
-    await press(within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" }));
-
-    expect(within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" })).toHaveAttribute(
-      "aria-checked",
-      "true",
+    actions.updatePool.mockResolvedValue({
+      ok: false,
+      reason: WRITE_FAILED,
+      fields: {},
+    });
+    render(
+      <FarmScreen
+        poll={QUIET}
+        reader={ADMIN_READER}
+        readings={farmReadings()}
+      />,
     );
-    expect(within(row("pool-a")).getByRole("alert")).toHaveTextContent(WRITE_FAILED);
+
+    await press(
+      within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" }),
+    );
+
+    expect(
+      within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" }),
+    ).toHaveAttribute("aria-checked", "true");
+    expect(within(row("pool-a")).getByRole("alert")).toHaveTextContent(
+      WRITE_FAILED,
+    );
     expect(within(row("pool-b")).queryByRole("alert")).toBeNull();
   });
 
   it("clears the last refusal on the next press", async () => {
-    actions.updatePool.mockResolvedValueOnce({ ok: false, reason: WRITE_FAILED, fields: {} });
-    render(<FarmScreen poll={QUIET} reader={ADMIN_READER} readings={farmReadings()} />);
+    actions.updatePool.mockResolvedValueOnce({
+      ok: false,
+      reason: WRITE_FAILED,
+      fields: {},
+    });
+    render(
+      <FarmScreen
+        poll={QUIET}
+        reader={ADMIN_READER}
+        readings={farmReadings()}
+      />,
+    );
 
-    await press(within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" }));
-    await press(within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" }));
+    await press(
+      within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" }),
+    );
+    await press(
+      within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" }),
+    );
 
     expect(within(row("pool-a")).queryByRole("alert")).toBeNull();
-    expect(within(row("pool-a")).getByRole("switch", { name: "Enable pool-a" })).toBeInTheDocument();
+    expect(
+      within(row("pool-a")).getByRole("switch", { name: "Enable pool-a" }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -326,7 +433,12 @@ describe("the page beneath a write", () => {
   beforeEach(() => {
     reads = 0;
     pollNow = FARM_READ_AT + 1_000;
-    answer = { state: "fresh", payload: seededFarm(), etag: null, pollAfterSeconds: 10 };
+    answer = {
+      state: "fresh",
+      payload: seededFarm(),
+      etag: null,
+      pollAfterSeconds: 10,
+    };
   });
 
   it("moves the meta line with the live count, like the table beside it", async () => {
@@ -338,51 +450,169 @@ describe("the page beneath a write", () => {
       pollAfterSeconds: 10,
     };
 
-    render(<FarmScreen poll={LIVE} reader={ADMIN_READER} readings={farmReadings()} />);
+    render(
+      <FarmScreen
+        poll={LIVE}
+        reader={ADMIN_READER}
+        readings={farmReadings()}
+      />,
+    );
     await act(async () => {});
 
-    expect(row("pool-a")).toHaveTextContent("firmware builds · zephyr-sdk 0.17 image · 4 runners");
+    expect(row("pool-a")).toHaveTextContent(
+      "firmware builds · zephyr-sdk 0.17 image · 4 runners",
+    );
   });
 
   it("asks for a fresh page as soon as a write is answered", async () => {
-    render(<FarmScreen poll={LIVE} reader={ADMIN_READER} readings={farmReadings()} />);
+    render(
+      <FarmScreen
+        poll={LIVE}
+        reader={ADMIN_READER}
+        readings={farmReadings()}
+      />,
+    );
     await act(async () => {});
     const before = reads;
 
-    await press(within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" }));
+    await press(
+      within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" }),
+    );
 
     expect(reads).toBe(before + 1);
   });
 
   it("holds the write's answer over a page read before it, and yields to one read after", async () => {
     // The page the poll keeps answering still says *enabled*: it is the old truth.
-    render(<FarmScreen poll={LIVE} reader={ADMIN_READER} readings={farmReadings()} />);
+    render(
+      <FarmScreen
+        poll={LIVE}
+        reader={ADMIN_READER}
+        readings={farmReadings()}
+      />,
+    );
     await act(async () => {});
 
     // The write is answered *after* every page this poll will confirm…
     vi.spyOn(Date, "now").mockReturnValue(pollNow + 5_000);
-    await press(within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" }));
+    await press(
+      within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" }),
+    );
 
-    expect(within(row("pool-a")).getByRole("switch", { name: "Enable pool-a" })).toBeInTheDocument();
+    expect(
+      within(row("pool-a")).getByRole("switch", { name: "Enable pool-a" }),
+    ).toBeInTheDocument();
 
     // …until one is confirmed later than the write: that page was read after it, and wins.
     pollNow += 10_000;
     const [first, second] = seededFarm().pools as [RunnerPool, RunnerPool];
     answer = {
       state: "fresh",
-      payload: seededFarm({ pools: [{ ...first, enabled: false, runners: 7 }, second] }),
+      payload: seededFarm({
+        pools: [{ ...first, enabled: false, runners: 7 }, second],
+      }),
       etag: null,
       pollAfterSeconds: 10,
     };
-    await press(within(row("pool-b")).getByRole("switch", { name: "Disable pool-b" }));
+    await press(
+      within(row("pool-b")).getByRole("switch", { name: "Disable pool-b" }),
+    );
 
     expect(row("pool-a")).toHaveTextContent("7 runners");
   });
 });
 
+describe("the workspace default pool (FE.1, #1834)", () => {
+  it("tags the default pool, and only it", () => {
+    render(
+      <FarmScreen
+        poll={QUIET}
+        reader={ADMIN_READER}
+        readings={farmReadings()}
+      />,
+    );
+
+    expect(
+      within(row("pool-a")).getByText(DEFAULT_POOL_TAG),
+    ).toBeInTheDocument();
+    expect(within(row("pool-b")).queryByText(DEFAULT_POOL_TAG)).toBeNull();
+  });
+
+  it("offers Make default on every other pool, and none on the default", () => {
+    render(
+      <FarmScreen
+        poll={QUIET}
+        reader={ADMIN_READER}
+        readings={farmReadings()}
+      />,
+    );
+
+    expect(
+      within(row("pool-a")).queryByRole("button", { name: /default pool/ }),
+    ).toBeNull();
+    expect(
+      within(row("pool-b")).getByRole("button", {
+        name: "Make pool-b the default pool",
+      }),
+    ).toHaveTextContent(MAKE_DEFAULT);
+  });
+
+  it("persists Make default and moves the tag at once, off the old default", async () => {
+    render(
+      <FarmScreen
+        poll={QUIET}
+        reader={ADMIN_READER}
+        readings={farmReadings()}
+      />,
+    );
+
+    await press(
+      within(row("pool-b")).getByRole("button", {
+        name: "Make pool-b the default pool",
+      }),
+    );
+
+    expect(actions.updatePool).toHaveBeenCalledExactlyOnceWith(POOL_B.id, {
+      isDefault: true,
+    });
+    expect(
+      within(row("pool-b")).getByText(DEFAULT_POOL_TAG),
+    ).toBeInTheDocument();
+    expect(within(row("pool-a")).queryByText(DEFAULT_POOL_TAG)).toBeNull();
+    expect(
+      within(row("pool-a")).getByRole("button", {
+        name: "Make pool-a the default pool",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a member the tag and no control", () => {
+    render(
+      <FarmScreen
+        poll={QUIET}
+        reader={MEMBER_READER}
+        readings={farmReadings()}
+      />,
+    );
+
+    expect(
+      within(row("pool-a")).getByText(DEFAULT_POOL_TAG),
+    ).toBeInTheDocument();
+    expect(
+      within(card()).queryByRole("button", { name: /the default pool/ }),
+    ).toBeNull();
+  });
+});
+
 describe("a reader who may not write", () => {
   beforeEach(() => {
-    render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings()} />);
+    render(
+      <FarmScreen
+        poll={QUIET}
+        reader={MEMBER_READER}
+        readings={farmReadings()}
+      />,
+    );
   });
 
   it("sees every switch in its real position, inert, with the reason", async () => {
@@ -396,10 +626,9 @@ describe("a reader who may not write", () => {
     }
 
     expect(actions.updatePool).not.toHaveBeenCalled();
-    expect(within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
+    expect(
+      within(row("pool-a")).getByRole("switch", { name: "Disable pool-a" }),
+    ).toHaveAttribute("aria-checked", "true");
   });
 
   it("still reads the affix, and may still open the sheet to read a pool's configuration", () => {
@@ -407,13 +636,21 @@ describe("a reader who may not write", () => {
 
     fireEvent.click(within(card()).getByRole("button", { name: CONFIGURE }));
 
-    expect(screen.getByRole("dialog", { name: SHEET_TITLE })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: SHEET_TITLE }),
+    ).toBeInTheDocument();
   });
 });
 
 describe("a workspace with no pools, and a page that could not be read", () => {
   it("says so, and tells an administrator why the first one comes first", () => {
-    render(<FarmScreen poll={QUIET} reader={ADMIN_READER} readings={farmReadings(emptyFarm())} />);
+    render(
+      <FarmScreen
+        poll={QUIET}
+        reader={ADMIN_READER}
+        readings={farmReadings(emptyFarm())}
+      />,
+    );
 
     expect(card()).toHaveTextContent(NO_POOLS_TITLE);
     expect(card()).toHaveTextContent(NO_POOLS_NOTE);
@@ -421,35 +658,67 @@ describe("a workspace with no pools, and a page that could not be read", () => {
   });
 
   it("gives an administrator the way to make it — Create a pool opens the sheet's blank form (#262)", () => {
-    render(<FarmScreen poll={QUIET} reader={ADMIN_READER} readings={farmReadings(emptyFarm())} />);
+    render(
+      <FarmScreen
+        poll={QUIET}
+        reader={ADMIN_READER}
+        readings={farmReadings(emptyFarm())}
+      />,
+    );
 
     const create = within(card()).getByRole("button", { name: CREATE_POOL });
 
     expect(create).not.toHaveAttribute("aria-disabled");
     fireEvent.click(create);
 
-    expect(screen.getByRole("dialog", { name: SHEET_TITLE })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: SHEET_TITLE }),
+    ).toBeInTheDocument();
   });
 
   it("tells a member who creates one, and offers them no control that would", () => {
-    render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings(emptyFarm())} />);
+    render(
+      <FarmScreen
+        poll={QUIET}
+        reader={MEMBER_READER}
+        readings={farmReadings(emptyFarm())}
+      />,
+    );
 
     expect(card()).toHaveTextContent(NO_POOLS_MEMBER_NOTE);
-    expect(within(card()).queryByRole("button", { name: CREATE_POOL })).toBeNull();
+    expect(
+      within(card()).queryByRole("button", { name: CREATE_POOL }),
+    ).toBeNull();
   });
 
   it("offers no Create a pool once there is one — the sheet's + New pool is the way to the next", () => {
-    render(<FarmScreen poll={QUIET} reader={ADMIN_READER} readings={farmReadings()} />);
+    render(
+      <FarmScreen
+        poll={QUIET}
+        reader={ADMIN_READER}
+        readings={farmReadings()}
+      />,
+    );
 
-    expect(within(card()).queryByRole("button", { name: CREATE_POOL })).toBeNull();
+    expect(
+      within(card()).queryByRole("button", { name: CREATE_POOL }),
+    ).toBeNull();
   });
 
   it("claims no pools over a page that could not be read, and opens nothing", () => {
-    render(<FarmScreen poll={QUIET} reader={ADMIN_READER} readings={failedFarmReadings()} />);
+    render(
+      <FarmScreen
+        poll={QUIET}
+        reader={ADMIN_READER}
+        readings={failedFarmReadings()}
+      />,
+    );
 
     expect(card()).toHaveTextContent(POOLS_UNREAD);
     expect(card()).not.toHaveTextContent(NO_POOLS_TITLE);
-    expect(within(card()).queryByRole("button", { name: CREATE_POOL })).toBeNull();
+    expect(
+      within(card()).queryByRole("button", { name: CREATE_POOL }),
+    ).toBeNull();
 
     const configure = within(card()).getByRole("button", { name: CONFIGURE });
 

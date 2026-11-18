@@ -31,7 +31,11 @@
  * no default.
  */
 
-import type { RunnerPool, RunnerPoolChange, RunnerPoolCreate } from "@/app/api/farm";
+import type {
+  RunnerPool,
+  RunnerPoolChange,
+  RunnerPoolCreate,
+} from "@/app/api/farm";
 import { listEntries } from "@/app/ui/schema-form";
 
 /* ------------------------------------------------------------------ the card's words */
@@ -54,7 +58,8 @@ export const NO_POOLS_NOTE =
   "A runner always enrols into a pool, so the first pool comes before the first runner.";
 
 /** The same, for a reader who may not. */
-export const NO_POOLS_MEMBER_NOTE = "An owner or an admin creates the first one.";
+export const NO_POOLS_MEMBER_NOTE =
+  "An owner or an admin creates the first one.";
 
 /** What stands in the card when the page could not be read. The *why* is the banner's, once. */
 export const POOLS_UNREAD = "The pools could not be read.";
@@ -68,8 +73,35 @@ export const POOL_MEMBER_REASON = "Changing a pool needs an owner or an admin.";
  * @param pool The pool.
  * @returns `Disable pool-a`, or `Enable pool-a`.
  */
-export function enableLabel(pool: Pick<RunnerPool, "name" | "enabled">): string {
+export function enableLabel(
+  pool: Pick<RunnerPool, "name" | "enabled">,
+): string {
   return `${pool.enabled ? "Disable" : "Enable"} ${pool.name}`;
+}
+
+/* ------------------------------------------------------------------ the default pool */
+
+/**
+ * The tag beside the workspace default pool's name (FE.1,
+ * [#1834](https://github.com/NobuData/ouroboros/issues/1834)).
+ */
+export const DEFAULT_POOL_TAG = "Default";
+
+/** What the tag means, as its title: where a `$default` workflow stage builds. */
+export const DEFAULT_POOL_TITLE =
+  "Workflow build and test stages set to $default run on this pool.";
+
+/** The row's control that makes a pool the workspace default. */
+export const MAKE_DEFAULT = "Make default";
+
+/**
+ * The control's accessible name — what pressing it would do.
+ *
+ * @param name The pool's name.
+ * @returns `Make pool-b the default pool`.
+ */
+export function makeDefaultLabel(name: string): string {
+  return `Make ${name} the default pool`;
 }
 
 /* ------------------------------------------------------------------ the meta line */
@@ -132,7 +164,10 @@ export function poolMeta(
   pool: Pick<RunnerPool, "description" | "executor" | "image" | "runners">,
 ): string {
   const description = pool.description?.trim() ?? "";
-  const image = pool.executor === "container" && pool.image !== null ? pool.image.trim() : "";
+  const image =
+    pool.executor === "container" && pool.image !== null
+      ? pool.image.trim()
+      : "";
 
   return [
     description,
@@ -183,7 +218,9 @@ export function autoscaleLabel(name: string, on: boolean): string {
  * @param pool The pool.
  * @returns What to draw, or `null`.
  */
-export function autoscaleView(pool: Pick<RunnerPool, "autoscalePref">): AutoscaleView | null {
+export function autoscaleView(
+  pool: Pick<RunnerPool, "autoscalePref">,
+): AutoscaleView | null {
   const threshold = pool.autoscalePref.queue_threshold;
   if (typeof threshold !== "number" || !Number.isFinite(threshold)) return null;
 
@@ -226,13 +263,18 @@ export function nextAutoscalePref(
  */
 export interface PoolEdits {
   /** Pools as a create or a change answered them, by id, with when. */
-  readonly written: Readonly<Record<string, { readonly pool: RunnerPool; readonly at: number }>>;
+  readonly written: Readonly<
+    Record<string, { readonly pool: RunnerPool; readonly at: number }>
+  >;
   /** When each deleted pool was deleted, by id. */
   readonly removed: Readonly<Record<string, number>>;
 }
 
 /** No writes yet. */
-export const NO_POOL_EDITS: PoolEdits = Object.freeze({ written: {}, removed: {} });
+export const NO_POOL_EDITS: PoolEdits = Object.freeze({
+  written: {},
+  removed: {},
+});
 
 /**
  * Record a pool as a create or a change answered it.
@@ -242,7 +284,11 @@ export const NO_POOL_EDITS: PoolEdits = Object.freeze({ written: {}, removed: {}
  * @param at When it answered, in epoch milliseconds.
  * @returns The writes, with this one.
  */
-export function withWrittenPool(edits: PoolEdits, pool: RunnerPool, at: number): PoolEdits {
+export function withWrittenPool(
+  edits: PoolEdits,
+  pool: RunnerPool,
+  at: number,
+): PoolEdits {
   return { ...edits, written: { ...edits.written, [pool.id]: { pool, at } } };
 }
 
@@ -254,7 +300,11 @@ export function withWrittenPool(edits: PoolEdits, pool: RunnerPool, at: number):
  * @param at When the service said so, in epoch milliseconds.
  * @returns The writes, with this one.
  */
-export function withRemovedPool(edits: PoolEdits, id: string, at: number): PoolEdits {
+export function withRemovedPool(
+  edits: PoolEdits,
+  id: string,
+  at: number,
+): PoolEdits {
   return { ...edits, removed: { ...edits.removed, [id]: at } };
 }
 
@@ -269,26 +319,44 @@ export function withRemovedPool(edits: PoolEdits, id: string, at: number): PoolE
  * @param edits The reader's writes.
  * @param dataAt When the page was last confirmed current, in epoch milliseconds.
  * @returns The pools, by name — the order the service lists them in, so a created pool lands
- *   where the next read will put it.
+ *   where the next read will put it. A pool the reader just made the workspace default is the
+ *   only one drawn as the default: the service moved the default off the others in the same
+ *   write (#1834), and the page does not know yet.
  */
 export function mergedPools(
   pools: readonly RunnerPool[],
   edits: PoolEdits,
   dataAt: number,
 ): readonly RunnerPool[] {
-  const written = Object.values(edits.written).filter((entry) => dataAt <= entry.at);
-  const removed = Object.entries(edits.removed).filter(([, at]) => dataAt <= at);
+  const written = Object.values(edits.written).filter(
+    (entry) => dataAt <= entry.at,
+  );
+  const removed = Object.entries(edits.removed).filter(
+    ([, at]) => dataAt <= at,
+  );
   if (written.length === 0 && removed.length === 0) return pools;
 
   const answered = new Map(written.map((entry) => [entry.pool.id, entry.pool]));
   const gone = new Set(removed.map(([id]) => id));
   const held = new Set(pools.map((pool) => pool.id));
 
+  // The latest outstanding write that made a pool the default, if any.
+  const madeDefault =
+    written
+      .filter((entry) => entry.pool.isDefault)
+      .sort((a, b) => a.at - b.at)
+      .at(-1)?.pool ?? null;
+
   return [
     ...pools.map((pool) => answered.get(pool.id) ?? pool),
     ...[...answered.values()].filter((pool) => !held.has(pool.id)),
   ]
     .filter((pool) => !gone.has(pool.id))
+    .map((pool) =>
+      madeDefault !== null && pool.isDefault && pool.id !== madeDefault.id
+        ? { ...pool, isDefault: false }
+        : pool,
+    )
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -337,11 +405,15 @@ export const FIELD_HINTS = {
   envAllowlist:
     "One variable name per line. A build's environment is only these — the runner drops every " +
     "other name.",
-  maxConcurrency: "Builds one runner of this pool may run at once — per runner, not per pool.",
+  maxConcurrency:
+    "Builds one runner of this pool may run at once — per runner, not per pool.",
 } as const;
 
 /** The two executors, in the diagram's order, as the select draws them. */
-export const EXECUTOR_CHOICES: readonly { readonly value: PoolExecutor; readonly label: string }[] = [
+export const EXECUTOR_CHOICES: readonly {
+  readonly value: PoolExecutor;
+  readonly label: string;
+}[] = [
   { value: "container", label: "container — builds run in a pinned image" },
   { value: "shell", label: "shell — builds run on the machine itself" },
 ];
@@ -455,7 +527,8 @@ export const NAME_REQUIRED = "Name the pool.";
 export const NAME_SHAPE_ERROR =
   "Lower-case letters, digits and dashes, up to 64 — it travels on a command line as --pool.";
 export const DESCRIPTION_TOO_LONG = `Keep it to ${DESCRIPTION_MAX} characters — the card prints it on one line.`;
-export const IMAGE_REQUIRED = "A container pool pins the image its builds run in.";
+export const IMAGE_REQUIRED =
+  "A container pool pins the image its builds run in.";
 export const IMAGE_SHAPE_ERROR = `An image reference has no spaces and at most ${IMAGE_MAX} characters.`;
 export const ENV_TOO_MANY = `At most ${ENV_ALLOWLIST_MAX} names.`;
 export const CONCURRENCY_ERROR = `A whole number from ${MAX_CONCURRENCY_MIN} to ${MAX_CONCURRENCY_MAX}.`;
@@ -472,8 +545,10 @@ export const CONCURRENCY_ERROR = `A whole number from ${MAX_CONCURRENCY_MIN} to 
  * @returns The sentence, or `null`.
  */
 function envEntryError(entry: string): string | null {
-  if (/[\s=]/.test(entry)) return `${entry} is not a variable name — names only, no values.`;
-  if (entry.length > ENV_NAME_MAX) return `A variable name is at most ${ENV_NAME_MAX} characters.`;
+  if (/[\s=]/.test(entry))
+    return `${entry} is not a variable name — names only, no values.`;
+  if (entry.length > ENV_NAME_MAX)
+    return `A variable name is at most ${ENV_NAME_MAX} characters.`;
 
   return null;
 }
@@ -495,23 +570,28 @@ export function validatePoolDraft(draft: PoolDraft): PoolFieldErrors {
   if (name.length === 0) errors.name = NAME_REQUIRED;
   else if (!NAME_SHAPE.test(name)) errors.name = NAME_SHAPE_ERROR;
 
-  if (draft.description.trim().length > DESCRIPTION_MAX) errors.description = DESCRIPTION_TOO_LONG;
+  if (draft.description.trim().length > DESCRIPTION_MAX)
+    errors.description = DESCRIPTION_TOO_LONG;
 
   // A shell pool's image is not on the form and is not sent, so it is not judged.
   if (draft.executor === "container") {
     const image = draft.image.trim();
 
     if (image.length === 0) errors.image = IMAGE_REQUIRED;
-    else if (/\s/.test(image) || image.length > IMAGE_MAX) errors.image = IMAGE_SHAPE_ERROR;
+    else if (/\s/.test(image) || image.length > IMAGE_MAX)
+      errors.image = IMAGE_SHAPE_ERROR;
   }
 
   const entries = listEntries(draft.envAllowlist);
-  const repeated = entries.find((entry, index) => entries.indexOf(entry) !== index);
+  const repeated = entries.find(
+    (entry, index) => entries.indexOf(entry) !== index,
+  );
   const malformed = entries.map(envEntryError).find((error) => error !== null);
 
   if (entries.length > ENV_ALLOWLIST_MAX) errors.envAllowlist = ENV_TOO_MANY;
   else if (malformed) errors.envAllowlist = malformed;
-  else if (repeated !== undefined) errors.envAllowlist = `${repeated} is listed twice.`;
+  else if (repeated !== undefined)
+    errors.envAllowlist = `${repeated} is listed twice.`;
 
   if (concurrencyOf(draft) === null) errors.maxConcurrency = CONCURRENCY_ERROR;
 
@@ -530,7 +610,9 @@ function concurrencyOf(draft: PoolDraft): number | null {
 
   const value = Number(typed);
 
-  return value >= MAX_CONCURRENCY_MIN && value <= MAX_CONCURRENCY_MAX ? value : null;
+  return value >= MAX_CONCURRENCY_MIN && value <= MAX_CONCURRENCY_MAX
+    ? value
+    : null;
 }
 
 /**
@@ -542,8 +624,18 @@ function concurrencyOf(draft: PoolDraft): number | null {
  * @param draft A form {@link validatePoolDraft} found nothing wrong with.
  * @returns The six fields the sheet edits.
  */
-function fieldsOf(draft: PoolDraft): Required<
-  Pick<RunnerPoolCreate, "name" | "description" | "executor" | "image" | "envAllowlist" | "maxConcurrency">
+function fieldsOf(
+  draft: PoolDraft,
+): Required<
+  Pick<
+    RunnerPoolCreate,
+    | "name"
+    | "description"
+    | "executor"
+    | "image"
+    | "envAllowlist"
+    | "maxConcurrency"
+  >
 > {
   const description = draft.description.trim();
 
@@ -582,15 +674,22 @@ export function poolCreate(draft: PoolDraft): RunnerPoolCreate {
  * @param draft A valid form.
  * @returns The change — empty when the form matches the pool.
  */
-export function poolChanges(pool: RunnerPool, draft: PoolDraft): RunnerPoolChange {
+export function poolChanges(
+  pool: RunnerPool,
+  draft: PoolDraft,
+): RunnerPoolChange {
   const next = fieldsOf(draft);
-  const change: { -readonly [Field in keyof RunnerPoolChange]: RunnerPoolChange[Field] } = {};
+  const change: {
+    -readonly [Field in keyof RunnerPoolChange]: RunnerPoolChange[Field];
+  } = {};
 
   if (next.name !== pool.name) change.name = next.name;
-  if (next.description !== pool.description) change.description = next.description;
+  if (next.description !== pool.description)
+    change.description = next.description;
   if (next.executor !== pool.executor) change.executor = next.executor;
   if (next.image !== pool.image) change.image = next.image;
-  if (next.maxConcurrency !== pool.maxConcurrency) change.maxConcurrency = next.maxConcurrency;
+  if (next.maxConcurrency !== pool.maxConcurrency)
+    change.maxConcurrency = next.maxConcurrency;
 
   if (
     next.envAllowlist.length !== pool.envAllowlist.length ||
@@ -643,7 +742,9 @@ export interface DeleteGuard {
  * @param pool The pool.
  * @returns The guard.
  */
-export function deleteGuard(pool: Pick<RunnerPool, "name" | "runners">): DeleteGuard {
+export function deleteGuard(
+  pool: Pick<RunnerPool, "name" | "runners">,
+): DeleteGuard {
   if (pool.runners <= 0) return { label: DELETE, reason: null };
 
   const count = runnerCount(pool.runners);
@@ -682,12 +783,15 @@ export function deleteConfirmLabel(name: string): string {
 /** What a create, a save or a switch answers. */
 export type PoolWriteOutcome =
   | { readonly ok: true; readonly pool: RunnerPool }
-  | { readonly ok: false; readonly reason: string; readonly fields: PoolFieldErrors };
+  | {
+      readonly ok: false;
+      readonly reason: string;
+      readonly fields: PoolFieldErrors;
+    };
 
 /** What a delete answers. */
 export type PoolDeleteOutcome =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly reason: string };
+  { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
 /** The parts of a refusal the mappers read — `ApiError`'s, without importing the class. */
 export interface PoolRefusal {
@@ -710,7 +814,8 @@ export const WRITE_FORBIDDEN = `${POOL_MEMBER_REASON} ${NOTHING_CHANGED}`;
 export const POOL_GONE = "That pool no longer exists.";
 export const NAME_TAKEN = "This workspace already has a pool of that name.";
 export const FIELDS_REFUSED = `Some fields need attention — see above. ${NOTHING_CHANGED}`;
-export const IMAGE_MISMATCH = "A container pool pins an image, and a shell pool pins none.";
+export const IMAGE_MISMATCH =
+  "A container pool pins an image, and a shell pool pins none.";
 export const DELETE_FAILED = "The pool could not be deleted. Try again.";
 export const DELETE_FORBIDDEN = "Deleting a pool needs an owner or an admin.";
 
@@ -743,7 +848,10 @@ function firstSentence(value: unknown): string | null {
  * @param refusal The service's refusal.
  * @returns The sentence and the field errors. **A refusal means nothing was written.**
  */
-export function writeRefusal(refusal: PoolRefusal): { reason: string; fields: PoolFieldErrors } {
+export function writeRefusal(refusal: PoolRefusal): {
+  reason: string;
+  fields: PoolFieldErrors;
+} {
   switch (refusal.code) {
     case FORBIDDEN_CODE:
       return { reason: WRITE_FORBIDDEN, fields: {} };
@@ -778,7 +886,9 @@ export function writeRefusal(refusal: PoolRefusal): { reason: string; fields: Po
  * @returns The count, or `0` for anything that is not one.
  */
 function countOf(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : 0;
 }
 
 /**
@@ -799,7 +909,9 @@ export function deleteRefusal(refusal: PoolRefusal): string {
   const runners = countOf(refusal.details.runners);
   const builds = countOf(refusal.details.jobs);
   const held = [
-    runners === 0 ? "" : `${runners} runner${runners === 1 ? "" : "s"} (retired ones included)`,
+    runners === 0
+      ? ""
+      : `${runners} runner${runners === 1 ? "" : "s"} (retired ones included)`,
     builds === 0 ? "" : `${builds} build${builds === 1 ? "" : "s"}`,
   ].filter((part) => part.length > 0);
 

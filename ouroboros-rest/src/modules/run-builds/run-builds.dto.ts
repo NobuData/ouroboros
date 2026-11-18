@@ -24,6 +24,7 @@ import {
 } from "class-validator";
 
 import { IsArgv, POOL_SHAPE } from "../farm/dispatch/jobs.dto";
+import { DEFAULT_POOL_REFERENCE } from "../farm/fleet/default-pool";
 import { FencedRequestDto, STAGE_KEY_PATTERN } from "../ingest/ingest.dto";
 import { BASE_COMMIT_PATTERN } from "../ingest/run-execution.dto";
 
@@ -32,6 +33,11 @@ export const MAX_STAGE_ATTEMPT = 11;
 
 /** The longest reason a cancellation may carry. */
 export const MAX_CANCEL_REASON_LENGTH = 500;
+
+/** A pool name, or the reserved `$default` — the workspace default pool (FE.1, #1834). */
+const STAGE_POOL_SHAPE = new RegExp(
+  `^(?:${POOL_SHAPE.source.slice(1, -1)}|\\${DEFAULT_POOL_REFERENCE})$`,
+);
 
 /** `POST /internal/runs/:id/builds` — a build stage's job. */
 export class SubmitRunBuildDto extends FencedRequestDto {
@@ -50,8 +56,11 @@ export class SubmitRunBuildDto extends FencedRequestDto {
   @IsInt()
   attempt!: number;
 
-  /** The pool to build in, by name — the stage's `runner_pool`. */
-  @Matches(POOL_SHAPE, { message: "pool must be a pool name" })
+  /**
+   * The pool to build in, by name — the stage's `runner_pool`. `$default` is the workspace
+   * default pool, resolved and pinned on the run by `run-builds.service.ts`.
+   */
+  @Matches(STAGE_POOL_SHAPE, { message: "pool must be a pool name or $default" })
   @IsString()
   pool!: string;
 

@@ -104,6 +104,8 @@ export function runnerPool(over: Partial<RunnerPool> = {}): RunnerPool {
     executor: "container",
     image: "ghcr.io/acme-robotics/zephyr-sdk:0.17",
     enabled: true,
+    // The workspace's first pool, so its default (V156, #1834).
+    isDefault: true,
     maxConcurrency: 2,
     envAllowlist: ["CCACHE_DIR", "WEST_TOPDIR", "ZEPHYR_BASE"],
     tags: ["firmware", "zephyr"],
@@ -265,6 +267,7 @@ export function seededFarm(over: Partial<FarmPage> = {}): FarmPage {
       runnerPool({
         id: "5eed0400-0000-4000-8000-0000000000b2",
         name: "pool-b",
+        isDefault: false,
         description: "HIL & macOS jobs",
         executor: "shell",
         image: null,

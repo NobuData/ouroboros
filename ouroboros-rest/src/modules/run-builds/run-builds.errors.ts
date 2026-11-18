@@ -16,6 +16,8 @@
  */
 
 import { ConflictError, NotFoundError } from "../errors/error.envelope";
+import { FARM_ERRORS } from "../farm/farm.errors";
+import { DEFAULT_POOL_REFERENCE } from "../farm/fleet/default-pool";
 
 /** The codes, as the envelope spells them. */
 export const RUN_BUILD_ERRORS = {
@@ -58,6 +60,22 @@ export function runBranchMissing(run: string): ConflictError {
     "This run has no branch, so a runner has nothing to check out. A build stage builds the " +
       "run's pushed branch.",
     { run },
+  );
+}
+
+/**
+ * `404 farm_pool_not_found` — the stage names `runner_pool: "$default"` and the workspace has no
+ * pool to be its default (FE.1, #1834). The farm's own code, so the engine ends the stage with
+ * this sentence as it would for any pool that does not exist.
+ *
+ * @returns The error to throw.
+ */
+export function defaultPoolMissing(): NotFoundError {
+  return new NotFoundError(
+    FARM_ERRORS.poolNotFound,
+    "This build stage runs on the workspace default pool, and the workspace has no pool. " +
+      "Create one on the Build farm page — the first pool becomes the default.",
+    { pool: DEFAULT_POOL_REFERENCE },
   );
 }
 

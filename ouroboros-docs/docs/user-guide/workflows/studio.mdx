@@ -133,7 +133,11 @@ For a **model stage**:
 A **build or test** stage takes a **Runner pool** and a **Command**. A live run (one that needs
 [live execution](../../administration/live-execution.mdx) switched on — it is off by default)
 builds on the named pool and fails the stage if none is set; with no **Command**, the pool's default command
-runs. The command is split into arguments the way a shell would, with nothing expanded. A
+runs. A **Runner pool** of `$default` means the workspace's
+[default pool](../../administration/build-farm.mdx#the-default-pool) — every build and test stage of
+the shipped templates says `$default`, so a workflow made from a template needs no pool picked. A
+run builds every `$default` stage on the pool that was the default when its first such stage
+started. The command is split into arguments the way a shell would, with nothing expanded. A
 **decision or gate**
 takes its **Kind** and the condition it tests; a **terminal** takes its **Action** and, for
 merging, the merge method. An **edge** takes its **Kind**, a **Label** printed beside it (never

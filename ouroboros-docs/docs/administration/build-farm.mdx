@@ -28,7 +28,8 @@ The page shows:
   four figures. Under **Runners online**, the runners that are offline and for how long.
 - **Runners** — the fleet table, described under [Runner health](#runner-health).
 - **Enroll a runner** — the command that adds a machine.
-- **Pools** — each pool, its switch, and **Configure →**.
+- **Pools** — each pool, its switch, the **Default** tag on the workspace default pool, and
+  **Configure →**.
 
 ## Pools
 
@@ -53,6 +54,25 @@ Choose **Create pool**. Changing a pool's executor affects only builds submitted
   be switched off.
 - **Auto-scale to cloud** is shown on each pool, switched off — *arrives with cloud runners
   (v2)*. Builds stay on your machines.
+
+### The default pool
+
+Every workspace that has a pool has exactly one **default pool**, tagged **Default** on the
+**Pools** card. A workflow's build or test stage whose **Runner pool** is `$default` builds there —
+and the shipped workflow templates set every build and test stage to `$default`, so a workflow
+made from a template builds as soon as the workspace has a pool and one runner in it.
+
+- **The first pool you create becomes the default.**
+- **Make default** on another pool's row moves the tag to that pool. The previous default stops
+  being the default at the same moment.
+- **Deleting the default pool moves the default** to the workspace's oldest remaining pool, and
+  the audit log records where it went. Deleting the last pool leaves no default: the
+  **Ready to run?** check then reports `build_pool_required` for any `$default` stage.
+- **A run keeps the pool it started building on.** The first `$default` stage of a run uses the
+  default pool at that moment, and every later `$default` stage of the same run uses that pool
+  too — changing the default does not move a run that is already building.
+
+<Screenshot id="administration.build-farm.pools-default" />
 
 ### A hosted runner pool
 
@@ -232,6 +252,9 @@ those machines to a certificate — **Remove** them and enroll them again withou
   machine; it reconnects on its own once it can reach the deployment.
 - **Remove is not offered.** The runner is connected and not draining. **Drain** it first.
 - **A pool cannot be deleted.** Runners or builds still name it. Switch it off instead.
+- **Ready to run? reports *runs on the workspace default pool, and the workspace has no pool*.**
+  A build or test stage names `$default` and there is no pool yet. Create one — the first pool
+  becomes the [default pool](#the-default-pool).
 - **Builds wait in the queue.** No runner in the build's pool is online, or every one is busy or
   draining — or no online runner has `git`. Every build checks its repository out first, so a
   runner whose [`hello`](../cli/runner/hello.mdx) says `"git": false` is offered no build.

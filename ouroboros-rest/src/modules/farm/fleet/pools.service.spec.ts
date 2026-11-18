@@ -35,6 +35,8 @@ interface Harness {
   readonly inserted: PoolWrite[];
   readonly updated: PoolWrite[];
   readonly deleted: string[];
+  /** The pools made the default, by id. */
+  readonly madeDefault: string[];
 }
 
 /** How a case shapes the workspace it acts on. */
@@ -45,6 +47,8 @@ interface Shape {
   readonly references?: { runners: number; jobs: number };
   /** Whether the write should collide on the name. */
   readonly collides?: boolean;
+  /** The default pool after a delete — where V156's trigger moved it — or none left. */
+  readonly defaultAfter?: { id: string; name: string };
 }
 
 /**
@@ -58,6 +62,7 @@ function harness(shape: Shape = {}): Harness {
   const inserted: PoolWrite[] = [];
   const updated: PoolWrite[] = [];
   const deleted: string[] = [];
+  const madeDefault: string[] = [];
 
   const fleet = {
     poolById: jest.fn(() => Promise.resolve(shape.pool)),
@@ -80,6 +85,12 @@ function harness(shape: Shape = {}): Harness {
       return Promise.resolve(true);
     }),
     poolReferences: jest.fn(() => Promise.resolve(shape.references ?? { runners: 0, jobs: 0 })),
+    makeDefaultPool: jest.fn((_organizationId: string, id: string) => {
+      madeDefault.push(id);
+
+      return Promise.resolve(runnerPool({ ...shape.pool, is_default: true }));
+    }),
+    defaultPool: jest.fn(() => Promise.resolve(shape.defaultAfter)),
   } as unknown as FleetRepository;
 
   const audit = new FarmAudit({
@@ -96,6 +107,7 @@ function harness(shape: Shape = {}): Harness {
     inserted,
     updated,
     deleted,
+    madeDefault,
   };
 }
 
@@ -360,5 +372,81 @@ describe("deleting a pool", () => {
     await expect(context.service.remove(TENANT, ACTOR, runnerPool().id)).rejects.toMatchObject({
       code: "farm_pool_not_found",
     });
+  });
+});
+
+describe("the workspace default pool (FE.1, #1834)", () => {
+  /** A pool that is not the default. */
+  const other = runnerPool({
+    id: "5eed0001-0000-4000-8000-0000000000b0",
+    name: "pool-b",
+    is_default: false,
+  });
+
+  it("makes a pool the default and records it as a field that moved", async () => {
+    const context = harness({ pool: other });
+
+    await context.service.update(TENANT, ACTOR, other.id, update({ isDefault: true }));
+
+    expect(context.madeDefault).toEqual([other.id]);
+    expect(context.updated).toEqual([]);
+    expect(context.written[0]).toMatchObject({
+      action: "runner.pool_updated",
+      detail: { name: "pool-b", fields: "is_default" },
+    });
+  });
+
+  it("applies the other fields first, then the default, in one request", async () => {
+    const context = harness({ pool: other });
+
+    await context.service.update(
+      TENANT,
+      ACTOR,
+      other.id,
+      update({ isDefault: true, description: "linux builds" }),
+    );
+
+    expect(context.updated).toEqual([{ description: "linux builds" }]);
+    expect(context.madeDefault).toEqual([other.id]);
+    expect(context.written[0]?.detail).toMatchObject({ fields: "description,is_default" });
+  });
+
+  it("changes and records nothing when the pool already is the default", async () => {
+    const context = harness({ pool: runnerPool({ is_default: true }) });
+
+    await context.service.update(TENANT, ACTOR, runnerPool().id, update({ isDefault: true }));
+
+    expect(context.madeDefault).toEqual([]);
+    expect(context.written).toEqual([]);
+  });
+
+  it("records where the default moved when the default pool is deleted", async () => {
+    const context = harness({
+      pool: runnerPool({ is_default: true }),
+      defaultAfter: { id: other.id, name: "pool-b" },
+    });
+
+    await context.service.remove(TENANT, ACTOR, runnerPool().id);
+
+    expect(context.written[0]).toMatchObject({
+      action: "runner.pool_deleted",
+      detail: { name: "pool-a", defaultMovedTo: "pool-b" },
+    });
+  });
+
+  it("records that no default is left when the last pool goes — never silently", async () => {
+    const context = harness({ pool: runnerPool({ is_default: true }) });
+
+    await context.service.remove(TENANT, ACTOR, runnerPool().id);
+
+    expect(context.written[0]).toMatchObject({ detail: { name: "pool-a", defaultMovedTo: null } });
+  });
+
+  it("says nothing about the default when another pool is deleted", async () => {
+    const context = harness({ pool: other });
+
+    await context.service.remove(TENANT, ACTOR, other.id);
+
+    expect(context.written[0]?.detail).toEqual({ name: "pool-b" });
   });
 });

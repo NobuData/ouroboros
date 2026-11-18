@@ -28,6 +28,7 @@ const POOL: RunnerPool = {
   tags: [],
   default_command: null,
   artifact_globs: [],
+  is_default: true,
   created_at: FIXTURE_NOW,
   updated_at: FIXTURE_NOW,
 };

@@ -1705,6 +1705,18 @@
       "seedRef": "234018288c3d12c5a11ae8c561e34af11a259b01"
     },
     {
+      "id": "administration.build-farm.pools-default",
+      "route": "/build-farm",
+      "workspace": "acme-robotics",
+      "ready": "text=Make default",
+      "clip": "section:has(.farm-pools__list)",
+      "caption": "The Pools card: the workspace default pool carries the Default tag, and every other pool offers Make default.",
+      "alt": "The Pools card of the Build Farm page with two pools. pool-a, firmware builds on the zephyr-sdk 0.17 image with three runners, carries a Default tag beside its name; pool-b, HIL & macOS jobs, offers Make default beside Submit build. Each pool has its enable switch on the right.",
+      "capturedAt": "2026-11-18T21:39:27.219Z",
+      "uiVersion": "0.173.0",
+      "seedRef": "771041ccc93cef6306d0480dcc3d34927bb9901c"
+    },
+    {
       "id": "administration.build-farm.runner-detail",
       "route": "/build-farm",
       "workspace": "acme-robotics",

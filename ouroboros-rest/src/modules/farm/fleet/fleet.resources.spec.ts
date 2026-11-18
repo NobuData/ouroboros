@@ -304,6 +304,7 @@ describe("a pool", () => {
       executor: "container",
       image: "ghcr.io/acme-robotics/zephyr-sdk:0.17",
       enabled: true,
+      isDefault: true,
       maxConcurrency: 2,
       envAllowlist: ["CCACHE_DIR"],
       tags: ["firmware"],
