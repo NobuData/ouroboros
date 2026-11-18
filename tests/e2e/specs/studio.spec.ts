@@ -104,6 +104,7 @@ import {
   MOCKUP_ACTIVE_EDGES,
   NEW_WORKFLOW_LABEL,
   NOT_TAKEN_EDGE,
+  POOL_PICKER,
   PUBLISH_LABEL,
   RAIL_LABEL,
   REPAIR_NOTE,
@@ -531,6 +532,34 @@ test.describe("S.8: an edit in the inspector reaches the canvas, and the stored 
     await expect(canvas.locator(".studio-canvas__unsaved")).toHaveText(SAVED_NOTE);
     await page.reload();
     await expect(stageChips(await drawnCanvas(page), SELECTED_STAGE)).toHaveText([...EDITED_CHIPS]);
+  });
+
+  test("a build or test stage's pool is picked from the workspace's pools, applied, and survives a reload", async ({
+    context,
+    page,
+  }) => {
+    const canvas = await enterStudio(context, page);
+    const chips = stageChips(canvas, POOL_PICKER.stage);
+
+    await expect(chips).toHaveText([...POOL_PICKER.before]);
+    await select(page, canvas, POOL_PICKER.stage);
+
+    // A select of the seeded pools with their online counts, Workspace default first — not free text.
+    const picker = inspector(page).getByRole("combobox", { name: POOL_PICKER.label, exact: true });
+    await expect(picker.getByRole("option", { name: POOL_PICKER.defaultOption })).toHaveCount(1);
+    await expect(
+      picker.getByRole("option", { name: new RegExp(`^${POOL_PICKER.picked} · `) }),
+    ).toHaveCount(1);
+
+    await picker.selectOption(POOL_PICKER.picked);
+    await inspector(page).getByRole("button", { name: APPLY_LABEL, exact: true }).click();
+    await expect(chips).toHaveText([...POOL_PICKER.after]);
+
+    await expect(canvas.locator(".studio-canvas__unsaved")).toHaveText(SAVED_NOTE);
+    await page.reload();
+    await expect(stageChips(await drawnCanvas(page), POOL_PICKER.stage)).toHaveText([
+      ...POOL_PICKER.after,
+    ]);
   });
 });
 

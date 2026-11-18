@@ -1,6 +1,7 @@
 "use client";
 
 import { SelectField, TextField } from "@/app/ui";
+import { POOL_FIELD, type PoolChoice } from "@/app/workflows/pools";
 
 import { ErrorLine, ToggleRow, describedBy } from "./controls";
 import {
@@ -30,6 +31,7 @@ import {
   splitList,
   withValue,
 } from "./inspector";
+import { PoolPicker } from "./pool-picker";
 
 /**
  * The inspector's forms for every node type but the model stage (S.4,
@@ -60,7 +62,8 @@ export interface ConfigFormProps {
  * Optional text left empty is removed from the config rather than stored as `""`, because the DSL
  * reads an absent optional field as *the default*, and an empty string as a value.
  *
- * @param props See {@link ConfigFormProps}, plus `path`, where in the config the object lives.
+ * @param props See {@link ConfigFormProps}, plus `path`, where in the config the object lives, and
+ *   `pools`, the workspace's runner pools — a top-level `runner_pool` is then drawn as their picker.
  * @returns The fields.
  */
 export function GeneratedForm({
@@ -72,23 +75,39 @@ export function GeneratedForm({
   readOnlyReason,
   path = [],
   root = schema,
-}: ConfigFormProps & Readonly<{ path?: readonly string[]; root?: JsonSchema }>) {
+  pools = null,
+}: ConfigFormProps & Readonly<{ path?: readonly string[]; root?: JsonSchema; pools?: readonly PoolChoice[] | null }>) {
   const fields = genericFields(schema, root);
   const value = path.length === 0 ? config : (readNested(config, path) ?? {});
 
   return (
     <>
-      {fields.map((field) => (
-        <GeneratedControl
-          error={errors[[...path, field.name].join(".")]}
-          field={field}
-          id={`${idPrefix}-${[...path, field.name].join("-")}`}
-          key={field.name}
-          onChange={(next) => onChange(withValue(config, [...path, field.name], next))}
-          readOnlyReason={readOnlyReason}
-          value={value[field.name]}
-        />
-      ))}
+      {fields.map((field) =>
+        // A stage's pool is a pick from the workspace's pools (FE.2, #1835) — free text only when they
+        // could not be read.
+        path.length === 0 && field.name === POOL_FIELD && pools !== null ? (
+          <PoolPicker
+            error={errors[field.name]}
+            id={`${idPrefix}-${field.name}`}
+            key={field.name}
+            label={field.label}
+            onChange={(next) => onChange(withValue(config, [field.name], next))}
+            pools={pools}
+            required={field.required}
+            value={value[field.name]}
+          />
+        ) : (
+          <GeneratedControl
+            error={errors[[...path, field.name].join(".")]}
+            field={field}
+            id={`${idPrefix}-${[...path, field.name].join("-")}`}
+            key={field.name}
+            onChange={(next) => onChange(withValue(config, [...path, field.name], next))}
+            readOnlyReason={readOnlyReason}
+            value={value[field.name]}
+          />
+        ),
+      )}
     </>
   );
 }

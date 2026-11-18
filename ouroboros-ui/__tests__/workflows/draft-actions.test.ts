@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/app/api/errors";
 
+import { UNKNOWN_POOL_CODE, unknownPoolMessage } from "@/app/workflows/pools";
+import { WORKFLOW_DEFINITION_INVALID, publishFailure } from "@/app/workflows/publish";
+
+import { seededFarm } from "../helpers/farm";
 import { standardFixDefinition, workflowDetail } from "../helpers/workflows";
 
 /**
@@ -16,15 +20,19 @@ const saveDraftCall = vi.fn();
 const publishCall = vi.fn();
 const dryRunCall = vi.fn();
 const listCall = vi.fn();
+const readCall = vi.fn();
+const farmPageCall = vi.fn();
 
 vi.mock("@/app/api/workflows", () => ({
   workflows: {
+    read: (...args: unknown[]) => readCall(...args),
     saveDraft: (...args: unknown[]) => saveDraftCall(...args),
     publish: (...args: unknown[]) => publishCall(...args),
     dryRun: (...args: unknown[]) => dryRunCall(...args),
   },
 }));
 vi.mock("@/app/api/backlog", () => ({ backlog: { list: (...args: unknown[]) => listCall(...args) } }));
+vi.mock("@/app/api/farm", () => ({ farm: { page: () => farmPageCall() } }));
 
 const { dryRunWorkflow, publishWorkflow, saveDraft, sizedTickets } = await import("@/app/workflows/draft-actions");
 
@@ -42,6 +50,8 @@ beforeEach(() => {
   publishCall.mockReset();
   dryRunCall.mockReset();
   listCall.mockReset();
+  readCall.mockReset().mockResolvedValue(workflowDetail());
+  farmPageCall.mockReset().mockResolvedValue(seededFarm());
 });
 
 describe("saving the draft", () => {
@@ -89,6 +99,68 @@ describe("publishing", () => {
     const outcome = await publishWorkflow(ID, undefined);
 
     expect(outcome).toMatchObject({ ok: false, refusal: { code: "workflow_definition_invalid", details: { findings } } });
+  });
+});
+
+describe("the runner pool gate (FE.2, #1835)", () => {
+  /** The stored draft, with its `test` stage on a pool. */
+  function draftOn(pool: string) {
+    const detail = workflowDetail();
+    const definition = detail.draft.definition ?? standardFixDefinition();
+    const nodes = (definition.nodes as Record<string, unknown>[]).map((node) =>
+      node.id === "test" ? { ...node, config: { runner_pool: pool } } : node,
+    );
+    return { ...detail, draft: { ...detail.draft, definition: { ...definition, nodes } } };
+  }
+
+  it("refuses a stored draft naming a pool the workspace does not have, without asking the service", async () => {
+    readCall.mockResolvedValue(draftOn("pool-typo"));
+
+    const outcome = await publishWorkflow(ID, undefined);
+
+    expect(readCall).toHaveBeenCalledExactlyOnceWith(ID);
+    expect(publishCall).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({
+      ok: false,
+      refusal: {
+        code: WORKFLOW_DEFINITION_INVALID,
+        details: {
+          findings: [
+            { source: "dsl", code: UNKNOWN_POOL_CODE, node: "test", message: unknownPoolMessage("pool-typo") },
+          ],
+        },
+      },
+    });
+    // The dialog and the code view read it as any validator's findings.
+    if (!outcome.ok) expect(publishFailure(outcome.refusal).findings).toHaveLength(1);
+  });
+
+  it.each([["pool-b"], ["$default"]])("publishes a draft on %s", async (pool) => {
+    readCall.mockResolvedValue(draftOn(pool));
+    publishCall.mockResolvedValue(workflowDetail().version);
+
+    await expect(publishWorkflow(ID, undefined)).resolves.toMatchObject({ ok: true });
+    expect(publishCall).toHaveBeenCalledOnce();
+  });
+
+  it("leaves the answer to the service when the farm or the draft could not be read", async () => {
+    readCall.mockResolvedValue(draftOn("pool-typo"));
+    farmPageCall.mockRejectedValue(new ApiError(503, "unavailable", "The farm is unavailable."));
+    publishCall.mockResolvedValue(workflowDetail().version);
+
+    await expect(publishWorkflow(ID, undefined)).resolves.toMatchObject({ ok: true });
+
+    farmPageCall.mockResolvedValue(seededFarm());
+    readCall.mockRejectedValue(new ApiError(404, "not_found", "No such workflow."));
+    await expect(publishWorkflow(ID, undefined)).resolves.toMatchObject({ ok: true });
+    expect(publishCall).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets anything that is not a refusal keep travelling", async () => {
+    farmPageCall.mockRejectedValue(new Error("NEXT_REDIRECT"));
+
+    await expect(publishWorkflow(ID, undefined)).rejects.toThrow("NEXT_REDIRECT");
+    expect(publishCall).not.toHaveBeenCalled();
   });
 });
 

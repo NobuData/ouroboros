@@ -27,10 +27,12 @@ import "server-only";
  */
 
 import type { Workspace } from "@/app/api/access";
+import { farm } from "@/app/api/farm";
 import { attempt } from "@/app/api/reading";
 import { routing } from "@/app/api/routing";
 import { workflows } from "@/app/api/workflows";
 
+import { poolChoices } from "./pools";
 import type { InspectorReadings, StudioReadings } from "./view";
 
 /**
@@ -78,22 +80,24 @@ export async function readStudio(
 }
 
 /**
- * The inspector's three reads (S.4, [#150](https://github.com/NobuData/ouroboros/issues/150)),
+ * The inspector's four reads (S.4, [#150](https://github.com/NobuData/ouroboros/issues/150)),
  * issued together — none depends on another — and each allowed to fail on its own, so a refused
  * routing read costs the panel its model pill and nothing else.
  *
  * Made only once there is a workflow to inspect: a page with no canvas has no inspector, and a
  * reader who cannot open a workflow should not pay for its catalog.
  *
- * @returns The catalog, the task kinds and the registry aliases, each read or explained.
+ * @returns The catalog, the task kinds, the registry aliases and the runner pools, each read or
+ *   explained.
  * @throws Whatever is not an `ApiError`, for the reason {@link readStudio} lets it travel.
  */
 async function readInspector(): Promise<InspectorReadings> {
-  const [catalog, routes, aliases] = await Promise.all([
+  const [catalog, routes, aliases, pools] = await Promise.all([
     attempt(async () => workflows.catalog()),
     attempt(async () => (await routing.matrix()).taskKinds),
     attempt(async () => routing.aliases()),
+    attempt(async () => poolChoices(await farm.page())),
   ]);
 
-  return { catalog, routes, aliases };
+  return { catalog, routes, aliases, pools };
 }

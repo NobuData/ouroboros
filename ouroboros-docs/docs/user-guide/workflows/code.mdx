@@ -137,6 +137,10 @@ shows **Not readable as code yet**, with **Finish it in Visual**.
 - **Publish vN** opens the same publish dialog as the canvas; see
   [Publishing a version](./studio.mdx#publishing-a-version). Choosing a finding in it moves
   your cursor to that stage.
+- A stage's runner pool — the `farm:` option, `farm: "pool-b"` or `farm: "$default"` — is
+  checked against your workspace's pools when you publish, not when you validate: a pool your
+  workspace does not have stops the publish with a finding on that stage. The canvas inspector's
+  [Runner pool](./studio.mdx#the-inspector) list shows the pools you can name.
 
 **Loop Checks** also lists warnings that do not stop a publish, such as
 **1 reference does not resolve** — a skill, task route or model alias the file names that

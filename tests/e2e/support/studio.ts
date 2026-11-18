@@ -253,6 +253,20 @@ export const EDITED_CHIPS = [`skill:${EDITED_SKILL}`, "routed by task"] as const
 
 /** The inspector's footer, and the canvas toolbar's save line (`inspector.ts`, `autosave.ts`). */
 export const APPLY_LABEL = "Apply";
+
+/**
+ * A build or test stage's pool picker (FE.2, #1835): the stage it is exercised on, its label, the
+ * seeded pool it is moved to, and the chips the stage prints before and after.
+ */
+export const POOL_PICKER = {
+  stage: "test",
+  label: "Runner pool",
+  picked: "pool-b",
+  /** `pool-a` is the seeded workspace default (V156), so Workspace default names it. */
+  defaultOption: /^Workspace default \(pool-a · (\d+|none) online\)$/,
+  before: ["twister -p native_sim", "runner pool-a"],
+  after: ["twister -p native_sim", "runner pool-b"],
+} as const;
 export const DELETE_STAGE_LABEL = "Delete stage";
 export const CLEAN_REASON = "Nothing to apply yet.";
 export const DIRTY_NOTE = "Unapplied changes";

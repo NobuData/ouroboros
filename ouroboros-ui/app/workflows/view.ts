@@ -38,6 +38,7 @@ import { relativeAgo } from "@/app/format";
 import { WORKFLOWS_PATH, workflowCodePath, workflowCopilotPath, workflowPath } from "@/app/paths";
 
 import { DRAFT_EDITS, draftDiverges } from "./autosave";
+import type { PoolChoice } from "./pools";
 
 /* ------------------------------------------------------------------ what the page reads */
 
@@ -86,18 +87,22 @@ export interface StudioReadings {
 }
 
 /**
- * The inspector's three reads, each degrading only the part of the panel that needs it.
+ * The inspector's four reads, each degrading only the part of the panel that needs it.
  *
  * - **catalog** — the node types' config schemas and the skill / task-route suggestions. Without
  *   it the panel still shows the stage's header and says why it has no form.
  * - **routes** — the routing matrix's task kinds, for the model an inherited route resolves to
  *   (the mockup's `claude-fable-5` pill) and nothing else.
  * - **aliases** — the model registry's names, for **Pin model** and the unknown-alias warning.
+ * - **pools** — the workspace's runner pools with their online counts, for a build or test stage's
+ *   **Runner pool** picker (FE.2, [#1835](https://github.com/NobuData/ouroboros/issues/1835)). Without
+ *   it the field falls back to free text and checks nothing.
  */
 export interface InspectorReadings {
   readonly catalog: Reading<WorkflowStageCatalog>;
   readonly routes: Reading<readonly RoutingTaskKind[]>;
   readonly aliases: Reading<readonly RoutingAlias[]>;
+  readonly pools: Reading<readonly PoolChoice[]>;
 }
 
 /** The workflow the studio is open on. */

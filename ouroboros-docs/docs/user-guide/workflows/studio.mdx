@@ -133,11 +133,27 @@ For a **model stage**:
 A **build or test** stage takes a **Runner pool** and a **Command**. A live run (one that needs
 [live execution](../../administration/live-execution.mdx) switched on — it is off by default)
 builds on the named pool and fails the stage if none is set; with no **Command**, the pool's default command
-runs. A **Runner pool** of `$default` means the workspace's
+runs. The command is split into arguments the way a shell would, with nothing expanded.
+
+**Runner pool** is a list of your workspace's [pools](../../administration/build-farm.mdx), each
+with how many of its runners are online right now — for example **pool-b · 2 online**, or
+**macos · none online · disabled** for a pool that is switched off. The first entry,
+**Workspace default**, stores `$default` and names the pool it resolves to today:
+**Workspace default (pool-a · 2 online)**. `$default` means the workspace's
 [default pool](../../administration/build-farm.mdx#the-default-pool) — every build and test stage of
 the shipped templates says `$default`, so a workflow made from a template needs no pool picked. A
 run builds every `$default` stage on the pool that was the default when its first such stage
-started. The command is split into arguments the way a shell would, with nothing expanded. A
+started. Choose **—** to name no pool.
+
+<Screenshot id="user-guide.workflow.pool-picker" />
+
+A stage that already names a pool your workspace does not have — a typo, or a pool that was
+deleted — shows it as **pool-typo (unknown)** with **This workspace has no runner pool named
+"pool-typo". Pick a pool or Workspace default.** under the field, and **Apply** stays off until you
+pick another. If the Build Farm could not be read, **Runner pool** is a plain text field instead,
+and nothing is checked.
+
+A
 **decision or gate**
 takes its **Kind** and the condition it tests; a **terminal** takes its **Action** and, for
 merging, the merge method. An **edge** takes its **Kind**, a **Label** printed beside it (never
@@ -179,7 +195,10 @@ rules are:
 | No duplicates | **An earlier edge already joins these two stages.** |
 
 A model stage that pins an alias the [model registry](../models.mdx) does not have is
-refused too — with a suggestion when the name is close to one that exists. A stage that names
+refused too — with a suggestion when the name is close to one that exists. So is a build or
+test stage whose **Runner pool** names a pool your workspace does not have: a **DSL** finding
+names the pool and asks you to pick one, as the [inspector](#the-inspector) does, whether the
+draft was edited on the canvas or in the [code view](./code.mdx). A stage that names
 a skill or a task route that does not exist yet gets a warning in the inspector, which does
 not stop a publish.
 
