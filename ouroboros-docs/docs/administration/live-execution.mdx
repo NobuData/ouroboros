@@ -26,12 +26,15 @@ A loop is ready only when every check passes; an `unknown` blocks like a failure
 | `routes` | Every task kind the workflow uses resolves to a model, and that model has a price, so the run's spend can be capped. |
 | `stage_executors` | The engine has a stage executor registered for the workflow's model stages — see [Stage executors](#stage-executors). |
 | `runner` | Each build stage names a runner pool, and that pool has a runner online that can check out the repository — see [Build farm](./build-farm.mdx). |
+| `build_command` | Each build stage has a command to run: its own **Command**, or else its pool's default command — the same rule a build follows when it is submitted. With neither, the check fails `build_command_required`, and its link opens the stage in the [Studio](../user-guide/workflows/studio.mdx#the-inspector) to set one. |
 | `repository` | The repository is enabled for the loop. |
 | `push_credential` | The workspace's GitHub token may push to the repository. |
 | `pull_request_credential` | The GitHub source that mirrors the issue may open a pull request in the repository. |
 | `dry_run` | The repository is in dry-run — see [Policies § Dry-run](./policies.mdx#dry-run). |
 | `workflow_published` | The workflow has a published version that reads. |
 | `concurrency` | A live-run slot is free under the workspace's ceiling — see [Limits](#limits). |
+
+<Screenshot id="administration.live-execution.readiness-build-command" />
 
 GitHub answers the two permission checks with what the token's **account** may do, not the
 token's own scopes: a passing check confirms what GitHub can say and no more.

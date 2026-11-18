@@ -151,7 +151,7 @@ export class ReadinessRepository {
 
     const pools = await this.database.db
       .selectFrom("runner_pools")
-      .select(["id", "name", "executor", "enabled"])
+      .select(["id", "name", "executor", "enabled", "default_command"])
       .where("organization_id", "=", organizationId)
       .where("name", "in", names)
       .execute();
@@ -188,7 +188,14 @@ export class ReadinessRepository {
       const pool = pools.find((candidate) => candidate.name === name);
 
       if (pool === undefined) {
-        return { name, exists: false, enabled: false, online: 0, eligible: 0 };
+        return {
+          name,
+          exists: false,
+          enabled: false,
+          online: 0,
+          eligible: 0,
+          defaultCommand: null,
+        };
       }
 
       const online = runners.filter((runner) => runner.pool_id === pool.id);
@@ -203,6 +210,7 @@ export class ReadinessRepository {
             supportsSourceCheckout(runner.capabilities) &&
             runsExecutor(runner.capabilities, pool.executor),
         ).length,
+        defaultCommand: pool.default_command,
       };
     });
   }

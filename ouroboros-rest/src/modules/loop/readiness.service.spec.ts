@@ -110,9 +110,16 @@ function rig() {
     workflow: jest
       .fn()
       .mockResolvedValue({ slug: "live-slice", version: 1, definition: DEFINITION }),
-    pools: jest
-      .fn()
-      .mockResolvedValue([{ name: "pool-a", exists: true, enabled: true, online: 1, eligible: 1 }]),
+    pools: jest.fn().mockResolvedValue([
+      {
+        name: "pool-a",
+        exists: true,
+        enabled: true,
+        online: 1,
+        eligible: 1,
+        defaultCommand: "make",
+      },
+    ]),
     defaultPool: jest.fn().mockResolvedValue({ id: "pool-a-id", name: "pool-a" }),
     pickedIssueNumber: jest.fn().mockResolvedValue(1),
     issue: jest

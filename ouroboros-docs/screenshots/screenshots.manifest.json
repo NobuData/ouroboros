@@ -167,10 +167,10 @@
       "ready": ".readiness-card .readiness-card__disabled",
       "clip": "section.readiness-card",
       "caption": "Step 4 with live execution off: the configuration is saved, the switch is an administrator's, and Finish setup queues the issue.",
-      "alt": "The Ready to run? card on step 4 for acme-robotics/helios-firmware, issue #488 sized XS: a notice reading Your configuration is saved, naming OURO_LIVE_EXECUTION_ENABLED as an administrator's switch with How live execution is turned on; 6 checks passed with a show toggle; five failed checks each with a fix link — no provider connection, no route for analyze, plan and implement, the build stage names no runner pool, no GitHub token, the token cannot read the repository; the dry-run line and the labelled Estimate.",
-      "capturedAt": "2026-10-23T22:05:07.160Z",
-      "uiVersion": "0.171.0",
-      "seedRef": "ca14130edf68266a070812b781c7f9ba5d395248"
+      "alt": "The Ready to run? card on step 4 for acme-robotics/helios-firmware, issue #488 sized XS: a notice reading Your configuration is saved, naming OURO_LIVE_EXECUTION_ENABLED as an administrator's switch with How live execution is turned on; 5 checks passed with a show toggle; seven failed checks each with a fix link — no provider connection, no route for analyze, plan and implement, no stage executor, the build stage's workspace default pool does not exist, the build stage sets no command and names no pool to default from, no GitHub token, the token cannot read the repository; the dry-run line and the labelled Estimate.",
+      "capturedAt": "2026-11-18T22:46:49.242Z",
+      "uiVersion": "0.174.1",
+      "seedRef": "bb57d8d49e7e5d8c7febbde2b8f4702fb8f62c0c"
     },
     {
       "id": "user-guide.wizard.readiness-blocked",
@@ -187,10 +187,30 @@
       "ready": ".readiness-card .readiness-row--fail",
       "clip": "section.readiness-card",
       "caption": "Ready to run? with live execution on: passing checks folded, each failing check open with its fix.",
-      "alt": "The Ready to run? card with live execution on for acme-robotics/helios-firmware, issue #488 sized XS: 7 checks passed folded behind show, and five failed checks open, each with its fix link — Providers, Models, Workflow, Sources and Sources — then the dry-run line and the labelled Estimate.",
-      "capturedAt": "2026-10-23T22:05:51.303Z",
-      "uiVersion": "0.171.0",
-      "seedRef": "ca14130edf68266a070812b781c7f9ba5d395248"
+      "alt": "The Ready to run? card with live execution on for acme-robotics/helios-firmware, issue #488 sized XS: 6 checks passed folded behind show, and seven failed checks open, each with its fix link — Providers, Models, Live execution, Build Farm, Workflow, Sources and Sources — then the dry-run line and the labelled Estimate.",
+      "capturedAt": "2026-11-18T22:44:06.539Z",
+      "uiVersion": "0.174.1",
+      "seedRef": "bb57d8d49e7e5d8c7febbde2b8f4702fb8f62c0c"
+    },
+    {
+      "id": "administration.live-execution.readiness-build-command",
+      "route": "/get-started?repo=acme-robotics/helios-firmware",
+      "workspace": "acme-onboarding",
+      "actions": [
+        {
+          "click": ".tile__select:has-text('Quick fixes')"
+        },
+        {
+          "click": "nav[aria-label='Get Started steps'] li:nth-child(4) button"
+        }
+      ],
+      "ready": ".readiness-card .readiness-row--fail:has-text('sets no command')",
+      "clip": ".readiness-card .readiness-row--fail:has-text('sets no command')",
+      "caption": "The build_command check failing: the build stage sets no command and has no pool default to fall back on, with its fix link to the stage.",
+      "alt": "One failed row of the Ready to run? card: ✗ The build stage build sets no command, and names no pool to default from., with the link Workflow · set the stage's build command →.",
+      "capturedAt": "2026-11-18T22:43:53.789Z",
+      "uiVersion": "0.174.1",
+      "seedRef": "bb57d8d49e7e5d8c7febbde2b8f4702fb8f62c0c"
     },
     {
       "id": "user-guide.first-loop.timeline",

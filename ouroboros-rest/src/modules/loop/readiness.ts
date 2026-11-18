@@ -10,7 +10,7 @@
  *
  * ```
  * deployment → workspace → provider_connection → routes → stage_executors → runner
- *   → repository → push_credential → pull_request_credential → dry_run → workflow_published
+ *   → build_command → repository → push_credential → pull_request_credential → dry_run → workflow_published
  *   → concurrency
  * ```
  *
@@ -30,6 +30,7 @@ import { namesDefaultPool } from "../farm/fleet/default-pool";
 import { admitsNewWork } from "../lifecycle/lifecycle.states";
 import { InfraConfigSchema, NodeShapeSchema, WorkflowRootSchema } from "../workflows/dsl.schema";
 import { pinnedTaskKinds } from "../admission/admission.pin";
+import { resolveBuildCommand } from "../farm/dispatch/command";
 
 /** The checks, in the order they are listed. Stable: add, never rename. */
 export const READINESS_CHECK_IDS = [
@@ -39,6 +40,7 @@ export const READINESS_CHECK_IDS = [
   "routes",
   "stage_executors",
   "runner",
+  "build_command",
   "repository",
   "push_credential",
   "pull_request_credential",
@@ -106,6 +108,9 @@ export const READINESS_CODES = [
   "workflow_unpublished",
   // concurrency: the workspace already runs as many live runs as its ceiling allows.
   "concurrency_ceiling",
+  // build_command: a build stage names no command and its pool has no default (FE.3, #1836) —
+  // the build dispatch would refuse `farm_command_required`.
+  "build_command_required",
 ] as const;
 
 /** One reason code. */
@@ -213,6 +218,8 @@ export interface BuildStage {
    * default pool (FE.1, #1834), which {@link ReadinessFacts.defaultPool} resolves.
    */
   readonly pool: string | null;
+  /** The command it names (`config.command`), or `null` when it leaves it to the pool's default. */
+  readonly command: string | null;
 }
 
 /** What the readiness checks need of a workflow definition. */
@@ -254,7 +261,11 @@ export function workflowStages(definition: unknown): WorkflowStages | undefined 
       if (!config.success) {
         return undefined;
       }
-      buildStages.push({ node: node.id, pool: config.data.runner_pool ?? null });
+      buildStages.push({
+        node: node.id,
+        pool: config.data.runner_pool ?? null,
+        command: config.data.command ?? null,
+      });
     }
   }
 
@@ -290,6 +301,8 @@ export interface PoolFact {
   readonly online: number;
   /** Of those, how many can check out source under the pool's executor. */
   readonly eligible: number;
+  /** The pool's `default_command`, or `null` when it has none (or does not exist). */
+  readonly defaultCommand: string | null;
 }
 
 /** What GitHub said about one token and the repository. */
@@ -621,6 +634,56 @@ function poolBlock(pool: PoolFact, name: string): ReadinessCheck | null {
     : null;
 }
 
+/**
+ * `build_command` — every build stage resolves a command the way dispatch will
+ * ({@link resolveBuildCommand}): its own `command`, else its pool's default (FE.3, #1836).
+ * Without one, the first build would fail `farm_command_required`.
+ */
+function buildCommandCheck(facts: ReadinessFacts): ReadinessCheck {
+  const stages = facts.workflow?.stages;
+
+  if (stages === undefined) {
+    return unreadable("build_command", facts);
+  }
+
+  if (stages.buildStages.length === 0) {
+    return pass("build_command", "The workflow has no build stage.");
+  }
+
+  const sources: string[] = [];
+
+  for (const stage of stages.buildStages) {
+    // The pool the stage builds on: `$default` is the pool it resolved to, as the runner check reads it.
+    const poolName = namesDefaultPool(stage.pool) ? facts.defaultPool : stage.pool;
+    const pool = facts.pools.find((candidate) => candidate.name === poolName);
+    const resolved = resolveBuildCommand(stage.command, pool?.defaultCommand ?? null);
+
+    if (resolved === undefined) {
+      return block(
+        "build_command",
+        "fail",
+        "build_command_required",
+        poolName === null
+          ? `The build stage ${stage.node} sets no command, and names no pool to default from.`
+          : `The build stage ${stage.node} sets no command, and the pool ${poolName} has no ` +
+              "default command.",
+        {
+          label: "Workflow · set the stage's build command",
+          href: workflowHref(facts.workflowSlug, stage.node),
+        },
+      );
+    }
+
+    sources.push(
+      resolved.source === "stage"
+        ? `${stage.node} (its own)`
+        : `${stage.node} (${poolName ?? "?"}'s default)`,
+    );
+  }
+
+  return pass("build_command", `Every build stage has a command: ${listed(sources)}.`);
+}
+
 /** `repository`. */
 function repositoryCheck(facts: ReadinessFacts): ReadinessCheck {
   return facts.repository.enabled
@@ -777,6 +840,7 @@ export function loopReadiness(facts: ReadinessFacts): LoopReadinessResource {
     routesCheck(facts),
     executorsCheck(facts),
     runnerCheck(facts),
+    buildCommandCheck(facts),
     repositoryCheck(facts),
     credentialCheck("push_credential", facts.push, "push a branch", repository),
     credentialCheck(

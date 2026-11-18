@@ -22,6 +22,7 @@ prerequisite for your repository and workflow. Each item passes, fails, or is **
 | Routes | Every task kind the workflow uses has a route to a model, and that model has a price, so the run's spend can be capped. |
 | Stage executors | The engine has a stage executor registered for the workflow's model stages. |
 | Runner | Each build stage names a runner pool, and that pool has a runner online that can check out the repository. |
+| Build command | Each build stage has a command to run — its own **Command** in the [Studio](../workflows/studio.mdx#the-inspector), or else its pool's default command. With neither, the first build would fail, so the item fails first and links to the stage. |
 | Repository | The repository is enabled for the loop. |
 | Push permission | The workspace's GitHub token can push a branch to the repository. |
 | Pull-request permission | The GitHub source that mirrors the issue can open a pull request in the repository. Until a first issue is picked, this is unknown. |

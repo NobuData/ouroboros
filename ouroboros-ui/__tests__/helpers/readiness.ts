@@ -4,7 +4,7 @@ import type { ReadinessGate } from "@/app/get-started/view";
 /** The repository every readiness fixture is about. */
 export const READINESS_REPO = "acme-robotics/helios-firmware";
 
-/** The twelve checks, every one passing, in REST's order. */
+/** The thirteen checks, every one passing, in REST's order. */
 const PASSING: readonly LoopReadinessCheck[] = [
   pass("deployment", "Live execution is enabled for this deployment."),
   pass("workspace", "The workspace is active."),
@@ -12,6 +12,7 @@ const PASSING: readonly LoopReadinessCheck[] = [
   pass("routes", "Routes resolve: plan, implement."),
   pass("stage_executors", "A stage executor is registered for model stages: harness."),
   pass("runner", "A runner is online in pool-a."),
+  pass("build_command", "Every build stage has a command: build (pool-a's default)."),
   pass("repository", "acme-robotics/helios-firmware is enabled for the loop."),
   pass("push_credential", "The token can push a branch in acme-robotics/helios-firmware."),
   pass("pull_request_credential", "The token can open a pull request in acme-robotics/helios-firmware."),
@@ -60,6 +61,15 @@ export const NO_RUNNER: LoopReadinessCheck = {
   code: "no_runner",
   reason: "No runner is online in pool-a.",
   fix: { label: "Build Farm · enrol a runner", href: "/build-farm" },
+};
+
+/** A build stage with no command and a pool with no default (FE.3, #1836). */
+export const NO_BUILD_COMMAND: LoopReadinessCheck = {
+  id: "build_command",
+  state: "fail",
+  code: "build_command_required",
+  reason: "The build stage build sets no command, and the pool pool-b has no default command.",
+  fix: { label: "Workflow · set the stage's build command", href: "/workflows/quick-fixes?node=build" },
 };
 
 /** Push permission GitHub would not confirm — an `unknown` row. */

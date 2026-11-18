@@ -3967,6 +3967,7 @@ export interface paths {
          *     | `routes` | `route_unresolved` (a task kind has no route, or none to a kept hop); `route_unpriced` (the first kept hop's model has no price); `workflow_unreadable` (unknown) |
          *     | `stage_executors` | `engine_unavailable`, `no_executor` (only when the workflow has a model stage); `workflow_unreadable` |
          *     | `runner` | `build_pool_required` (a build stage names no pool, or names `$default` and the workspace has no pool), `pool_not_found`, `pool_disabled`, `no_runner`, `no_source_checkout` (per build stage's pool — a `$default` stage's is the workspace default pool, named in the reason); `workflow_unreadable` |
+         *     | `build_command` | `build_command_required` (a build stage sets no `command` and its pool — a `$default` stage's, the workspace default pool — has no default command, so dispatch would refuse `farm_command_required`; resolved by the rule dispatch uses: the stage's command, else the pool's); `workflow_unreadable` |
          *     | `repository` | `repository_disabled` |
          *     | `push_credential` | the workspace GitHub token: `github_not_configured`, `repository_unreadable`, `push_denied`; `permission_unconfirmed` (unknown) |
          *     | `pull_request_credential` | the issue's GitHub source: `no_issue_chosen` (unknown), `no_pr_source`, `pr_source_other_repository`, `repository_unreadable`, `push_denied`; `permission_unconfirmed` (unknown) |
@@ -19786,11 +19787,11 @@ export interface components {
         /** @description One readiness check. */
         LoopReadinessCheck: {
             /** @enum {string} */
-            id: "deployment" | "workspace" | "provider_connection" | "routes" | "stage_executors" | "runner" | "repository" | "push_credential" | "pull_request_credential" | "dry_run" | "workflow_published" | "concurrency";
+            id: "deployment" | "workspace" | "provider_connection" | "routes" | "stage_executors" | "runner" | "build_command" | "repository" | "push_credential" | "pull_request_credential" | "dry_run" | "workflow_published" | "concurrency";
             /** @enum {string} */
             state: "pass" | "fail" | "unknown";
             /** @description Why not, or `null` when it passes. Stable codes — add, never rename. */
-            code: ("deployment_disabled" | "workspace_paused" | "workspace_pending_delete" | "no_invocable_connection" | "connection_unhealthy" | "connection_untested" | "workflow_unreadable" | "route_unresolved" | "route_unpriced" | "engine_unavailable" | "no_executor" | "build_pool_required" | "pool_not_found" | "pool_disabled" | "no_runner" | "no_source_checkout" | "repository_disabled" | "github_not_configured" | "no_issue_chosen" | "no_pr_source" | "pr_source_other_repository" | "repository_unreadable" | "push_denied" | "permission_unconfirmed" | "policy_not_dry_run" | "workflow_not_found" | "workflow_unpublished" | "concurrency_ceiling") | null;
+            code: ("deployment_disabled" | "workspace_paused" | "workspace_pending_delete" | "no_invocable_connection" | "connection_unhealthy" | "connection_untested" | "workflow_unreadable" | "route_unresolved" | "route_unpriced" | "engine_unavailable" | "no_executor" | "build_pool_required" | "pool_not_found" | "pool_disabled" | "no_runner" | "no_source_checkout" | "repository_disabled" | "github_not_configured" | "no_issue_chosen" | "no_pr_source" | "pr_source_other_repository" | "repository_unreadable" | "push_denied" | "permission_unconfirmed" | "policy_not_dry_run" | "workflow_not_found" | "workflow_unpublished" | "concurrency_ceiling" | "build_command_required") | null;
             /** @description A sentence — what passed, or what is missing, in the workspace's own names. */
             reason: string;
             /** @description Where to clear it, or `null` when it passes. */
