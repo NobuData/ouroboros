@@ -72,7 +72,7 @@ function readyFacts(): ReadinessFacts {
       stages: {
         modelStages: 2,
         tasks: ["plan", "implement"],
-        buildStages: [{ node: "build", pool: "pool-a" }],
+        buildStages: [{ node: "build", pool: "pool-a", command: null }],
       },
     },
     deploymentEnabled: true,
@@ -83,7 +83,16 @@ function readyFacts(): ReadinessFacts {
       { task: "implement", resolves: true, alias: "coder-std", priced: true },
     ],
     engine: { reachable: true, executors: ["harness"] },
-    pools: [{ name: "pool-a", exists: true, enabled: true, online: 1, eligible: 1 }],
+    pools: [
+      {
+        name: "pool-a",
+        exists: true,
+        enabled: true,
+        online: 1,
+        eligible: 1,
+        defaultCommand: "make",
+      },
+    ],
     defaultPool: null,
     push: { outcome: "can_push" },
     pullRequest: { outcome: "can_push" },
@@ -210,7 +219,7 @@ const FAILING: readonly Failing[] = [
   },
   {
     name: "a build stage names no pool",
-    change: (f) => withBuildStages(f, [{ node: "build", pool: null }]),
+    change: (f) => withBuildStages(f, [{ node: "build", pool: null, command: "make" }]),
     id: "runner",
     state: "fail",
     code: "build_pool_required",
@@ -220,7 +229,16 @@ const FAILING: readonly Failing[] = [
     name: "the build stage's pool does not exist",
     change: (f) => ({
       ...f,
-      pools: [{ name: "pool-a", exists: false, enabled: false, online: 0, eligible: 0 }],
+      pools: [
+        {
+          name: "pool-a",
+          exists: false,
+          enabled: false,
+          online: 0,
+          eligible: 0,
+          defaultCommand: "make",
+        },
+      ],
     }),
     id: "runner",
     state: "fail",
@@ -231,7 +249,16 @@ const FAILING: readonly Failing[] = [
     name: "the build stage's pool is disabled",
     change: (f) => ({
       ...f,
-      pools: [{ name: "pool-a", exists: true, enabled: false, online: 1, eligible: 1 }],
+      pools: [
+        {
+          name: "pool-a",
+          exists: true,
+          enabled: false,
+          online: 1,
+          eligible: 1,
+          defaultCommand: "make",
+        },
+      ],
     }),
     id: "runner",
     state: "fail",
@@ -242,7 +269,16 @@ const FAILING: readonly Failing[] = [
     name: "no runner is online in the pool",
     change: (f) => ({
       ...f,
-      pools: [{ name: "pool-a", exists: true, enabled: true, online: 0, eligible: 0 }],
+      pools: [
+        {
+          name: "pool-a",
+          exists: true,
+          enabled: true,
+          online: 0,
+          eligible: 0,
+          defaultCommand: "make",
+        },
+      ],
     }),
     id: "runner",
     state: "fail",
@@ -253,12 +289,41 @@ const FAILING: readonly Failing[] = [
     name: "no online runner can check out source",
     change: (f) => ({
       ...f,
-      pools: [{ name: "pool-a", exists: true, enabled: true, online: 2, eligible: 0 }],
+      pools: [
+        {
+          name: "pool-a",
+          exists: true,
+          enabled: true,
+          online: 2,
+          eligible: 0,
+          defaultCommand: "make",
+        },
+      ],
     }),
     id: "runner",
     state: "fail",
     code: "no_source_checkout",
     href: "/build-farm",
+  },
+  {
+    name: "a build stage sets no command and its pool has no default",
+    change: (f) => ({
+      ...f,
+      pools: [
+        {
+          name: "pool-a",
+          exists: true,
+          enabled: true,
+          online: 1,
+          eligible: 1,
+          defaultCommand: null,
+        },
+      ],
+    }),
+    id: "build_command",
+    state: "fail",
+    code: "build_command_required",
+    href: "/workflows/live-slice?node=build",
   },
   {
     name: "the repository is not enabled",
@@ -410,6 +475,9 @@ describe("the live-loop readiness preflight (DK.1, #1318)", () => {
     );
     expect(reasons.routes).toBe("Routes resolve: plan, implement.");
     expect(reasons.runner).toBe("A runner is online in pool-a.");
+    expect(reasons.build_command).toBe(
+      "Every build stage has a command: build (pool-a's default).",
+    );
     expect(reasons.workflow_published).toBe("live-slice@v1 is published.");
     expect(reasons.concurrency).toBe("A live-run slot is free (0 of 1 in use).");
   });
@@ -452,6 +520,7 @@ describe("the live-loop readiness preflight (DK.1, #1318)", () => {
     expect(states.routes).toEqual(["unknown", "workflow_unreadable"]);
     expect(states.stage_executors).toEqual(["unknown", "workflow_unreadable"]);
     expect(states.runner).toEqual(["unknown", "workflow_unreadable"]);
+    expect(states.build_command).toEqual(["unknown", "workflow_unreadable"]);
     expect(states.workflow_published).toEqual(["fail", "workflow_unpublished"]);
     expect(readiness.checks.find((check) => check.id === "workflow_published")?.reason).toBe(
       "live-slice@v3 cannot be read.",
@@ -491,6 +560,9 @@ describe("the live-loop readiness preflight (DK.1, #1318)", () => {
     expect(readiness.checks.find((check) => check.id === "runner")?.reason).toBe(
       "The workflow has no build stage.",
     );
+    expect(readiness.checks.find((check) => check.id === "build_command")?.reason).toBe(
+      "The workflow has no build stage.",
+    );
   });
 
   it("labels the estimate as one and keeps it out of `ready`", () => {
@@ -513,7 +585,7 @@ describe("the workspace default pool (FE.1, #1834)", () => {
   /** The ready fixture with its one build stage on `$default`, resolved to `pool-a`. */
   function onDefault(defaultPool: string | null): ReadinessFacts {
     return {
-      ...withBuildStages(readyFacts(), [{ node: "build", pool: "$default" }]),
+      ...withBuildStages(readyFacts(), [{ node: "build", pool: "$default", command: null }]),
       defaultPool,
     };
   }
@@ -546,7 +618,16 @@ describe("the workspace default pool (FE.1, #1834)", () => {
   it("names the default pool when it is what blocks", () => {
     const facts = {
       ...onDefault("pool-a"),
-      pools: [{ name: "pool-a", exists: true, enabled: true, online: 0, eligible: 0 }],
+      pools: [
+        {
+          name: "pool-a",
+          exists: true,
+          enabled: true,
+          online: 0,
+          eligible: 0,
+          defaultCommand: "make",
+        },
+      ],
     };
 
     expect(runner(facts)).toMatchObject({
@@ -562,25 +643,147 @@ describe("the workspace default pool (FE.1, #1834)", () => {
   });
 });
 
+describe("the build command (FE.3, #1836)", () => {
+  /**
+   * The ready fixture with these build stages, and pool-a's default command.
+   *
+   * @param stages - The build stages.
+   * @param defaultCommand - pool-a's `default_command`.
+   * @returns The facts.
+   */
+  function facts(
+    stages: Parameters<typeof withBuildStages>[1],
+    defaultCommand: string | null,
+  ): ReadinessFacts {
+    return {
+      ...withBuildStages(readyFacts(), stages),
+      pools: [
+        { name: "pool-a", exists: true, enabled: true, online: 1, eligible: 1, defaultCommand },
+      ],
+    };
+  }
+
+  /** The build_command check of these facts. */
+  function check(f: ReadinessFacts) {
+    return loopReadiness(f).checks.find((candidate) => candidate.id === "build_command");
+  }
+
+  it("passes on the stage's own command, with no pool default", () => {
+    expect(check(facts([{ node: "build", pool: "pool-a", command: "make all" }], null))).toEqual({
+      id: "build_command",
+      state: "pass",
+      code: null,
+      reason: "Every build stage has a command: build (its own).",
+      fix: null,
+    });
+  });
+
+  it("passes on the pool's default command when the stage sets none", () => {
+    expect(check(facts([{ node: "build", pool: "pool-a", command: null }], "make"))?.reason).toBe(
+      "Every build stage has a command: build (pool-a's default).",
+    );
+  });
+
+  it("turns red with the fix link when neither the stage nor the pool supplies one", () => {
+    const readiness = loopReadiness(
+      facts([{ node: "build", pool: "pool-a", command: null }], null),
+    );
+
+    expect(readiness.ready).toBe(false);
+    expect(readiness.checks.find((candidate) => candidate.id === "build_command")).toEqual({
+      id: "build_command",
+      state: "fail",
+      code: "build_command_required",
+      reason: "The build stage build sets no command, and the pool pool-a has no default command.",
+      fix: {
+        label: "Workflow · set the stage's build command",
+        href: "/workflows/live-slice?node=build",
+      },
+    });
+  });
+
+  it("does not count a pool default dispatch cannot read back into argv", () => {
+    expect(
+      check(facts([{ node: "build", pool: "pool-a", command: null }], 'make "all"'))?.code,
+    ).toBe("build_command_required");
+  });
+
+  it("names the first stage that has none when there are several", () => {
+    const f = {
+      ...facts(
+        [
+          { node: "build", pool: "pool-a", command: null },
+          { node: "test", pool: "pool-b", command: null },
+        ],
+        "make",
+      ),
+    };
+    const pools = [
+      ...f.pools,
+      { name: "pool-b", exists: true, enabled: true, online: 1, eligible: 1, defaultCommand: null },
+    ];
+
+    expect(check({ ...f, pools })).toMatchObject({
+      code: "build_command_required",
+      fix: { href: "/workflows/live-slice?node=test" },
+    });
+  });
+
+  it("resolves a `$default` stage through the workspace default pool's command", () => {
+    const onDefault = {
+      ...facts([{ node: "build", pool: "$default", command: null }], "make"),
+      defaultPool: "pool-a",
+    };
+
+    expect(check(onDefault)?.reason).toBe(
+      "Every build stage has a command: build (pool-a's default).",
+    );
+    expect(check({ ...onDefault, defaultPool: null, pools: [] })?.reason).toBe(
+      "The build stage build sets no command, and names no pool to default from.",
+    );
+  });
+
+  it("says a stage with no pool and no command has nothing to default from", () => {
+    expect(check(facts([{ node: "build", pool: null, command: null }], "make"))).toMatchObject({
+      code: "build_command_required",
+      reason: "The build stage build sets no command, and names no pool to default from.",
+    });
+  });
+});
+
 describe("workflowStages", () => {
   it("reads model stages, their task kinds and the build stages' pools", () => {
     expect(workflowStages(DEFINITION)).toEqual({
       modelStages: 2,
       tasks: ["plan", "implement"],
-      buildStages: [{ node: "build", pool: "pool-a" }],
+      buildStages: [{ node: "build", pool: "pool-a", command: null }],
     });
+  });
+
+  it("reads a build stage's command", () => {
+    const definition = document([
+      node("build", "infra", { runner_pool: "pool-a", command: "make" }),
+    ]);
+
+    expect(workflowStages(definition)?.buildStages).toEqual([
+      { node: "build", pool: "pool-a", command: "make" },
+    ]);
   });
 
   it("reads a build stage that names no pool as pool null", () => {
     const definition = document([node("build", "infra", {})]);
 
-    expect(workflowStages(definition)?.buildStages).toEqual([{ node: "build", pool: null }]);
+    expect(workflowStages(definition)?.buildStages).toEqual([
+      { node: "build", pool: null, command: null },
+    ]);
   });
 
   it("reads a build stage on the workspace default as pool $default", () => {
     const definition = document([node("build", "infra", { runner_pool: "$default" })]);
 
-    expect(workflowStages(definition)?.buildStages).toEqual([{ node: "build", pool: "$default" }]);
+    expect(workflowStages(definition)?.buildStages).toEqual([
+      { node: "build", pool: "$default", command: null },
+    ]);
   });
 
   it("cannot read a document admission could not read", () => {

@@ -32,7 +32,7 @@ describe("the groups", () => {
   it("collapses the passes and keeps the rest expanded, each in REST's order", () => {
     const groups = readinessGroups(readiness(PUSH_UNCONFIRMED, NO_RUNNER));
 
-    expect(groups.passed).toHaveLength(10);
+    expect(groups.passed).toHaveLength(11);
     expect(groups.blocking.map((check) => check.id)).toEqual(["runner", "push_credential"]);
   });
 

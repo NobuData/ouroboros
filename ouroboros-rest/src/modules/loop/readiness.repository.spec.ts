@@ -88,8 +88,20 @@ describe("the readiness repository (DK.1, #1318)", () => {
       database.answers(
         {
           rows: [
-            { id: "pool-1", name: "pool-a", executor: "container", enabled: true },
-            { id: "pool-2", name: "pool-b", executor: "shell", enabled: false },
+            {
+              id: "pool-1",
+              name: "pool-a",
+              executor: "container",
+              enabled: true,
+              default_command: "make",
+            },
+            {
+              id: "pool-2",
+              name: "pool-b",
+              executor: "shell",
+              enabled: false,
+              default_command: null,
+            },
           ],
         },
         {
@@ -105,14 +117,36 @@ describe("the readiness repository (DK.1, #1318)", () => {
       await expect(
         repository.pools(WORKSPACE, ["pool-a", "pool-b", "pool-z"], NOW),
       ).resolves.toEqual([
-        { name: "pool-a", exists: true, enabled: true, online: 3, eligible: 1 },
-        { name: "pool-b", exists: true, enabled: false, online: 1, eligible: 1 },
-        { name: "pool-z", exists: false, enabled: false, online: 0, eligible: 0 },
+        {
+          name: "pool-a",
+          exists: true,
+          enabled: true,
+          online: 3,
+          eligible: 1,
+          defaultCommand: "make",
+        },
+        {
+          name: "pool-b",
+          exists: true,
+          enabled: false,
+          online: 1,
+          eligible: 1,
+          defaultCommand: null,
+        },
+        {
+          name: "pool-z",
+          exists: false,
+          enabled: false,
+          online: 0,
+          eligible: 0,
+          defaultCommand: null,
+        },
       ]);
 
       const [pools, runners] = database.statements;
 
       expect(pools.sql).toMatch(/from "ouroboros"\."runner_pools"/);
+      expect(pools.sql).toMatch(/"default_command"/);
       expect(pools.sql).toMatch(/"organization_id" = \$1/);
       expect(pools.parameters[0]).toBe(WORKSPACE);
       expect(runners.sql).toMatch(/r\.organization_id = p\.organization_id/);
@@ -129,7 +163,14 @@ describe("the readiness repository (DK.1, #1318)", () => {
       database.answers({ rows: [] });
 
       await expect(repository.pools(WORKSPACE, ["pool-z"], NOW)).resolves.toEqual([
-        { name: "pool-z", exists: false, enabled: false, online: 0, eligible: 0 },
+        {
+          name: "pool-z",
+          exists: false,
+          enabled: false,
+          online: 0,
+          eligible: 0,
+          defaultCommand: null,
+        },
       ]);
       expect(database.statements).toHaveLength(1);
     });

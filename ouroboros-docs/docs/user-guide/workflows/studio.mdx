@@ -134,6 +134,9 @@ A **build or test** stage takes a **Runner pool** and a **Command**. A live run 
 [live execution](../../administration/live-execution.mdx) switched on — it is off by default)
 builds on the named pool and fails the stage if none is set; with no **Command**, the pool's default command
 runs. The command is split into arguments the way a shell would, with nothing expanded.
+If neither the stage nor its pool has a command, the **Ready to run?** check `build_command`
+fails before the run starts — see
+[Live execution § Prerequisites](../../administration/live-execution.mdx#prerequisites).
 
 **Runner pool** is a list of your workspace's [pools](../../administration/build-farm.mdx), each
 with how many of its runners are online right now — for example **pool-b · 2 online**, or

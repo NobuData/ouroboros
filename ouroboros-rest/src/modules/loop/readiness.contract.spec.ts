@@ -42,14 +42,20 @@ const READY: ReadinessFacts = {
   workflow: {
     slug: "live-slice",
     version: 1,
-    stages: { modelStages: 1, tasks: ["implement"], buildStages: [{ node: "build", pool: "a" }] },
+    stages: {
+      modelStages: 1,
+      tasks: ["implement"],
+      buildStages: [{ node: "build", pool: "a", command: null }],
+    },
   },
   deploymentEnabled: true,
   workspaceState: "active",
   connections: [{ kind: "anthropic", displayName: "Anthropic", status: "active" }],
   routes: [{ task: "implement", resolves: true, alias: "coder-std", priced: true }],
   engine: { reachable: true, executors: ["harness"] },
-  pools: [{ name: "a", exists: true, enabled: true, online: 1, eligible: 1 }],
+  pools: [
+    { name: "a", exists: true, enabled: true, online: 1, eligible: 1, defaultCommand: "make" },
+  ],
   defaultPool: null,
   push: { outcome: "can_push" },
   pullRequest: { outcome: "can_push" },

@@ -102,3 +102,43 @@ export function parseCommand(text: string): string[] | undefined {
   // The inverse, held to its definition: only a text this renderer would have written is read.
   return renderCommand(words) === text ? words : undefined;
 }
+
+/** Where a build's command came from, and its text. */
+export interface ResolvedBuildCommand {
+  /** `stage` — the request named one; `pool` — the pool's `default_command` stood in. */
+  readonly source: "stage" | "pool";
+  /** The command: the request's own text, or the pool's stored rendering. */
+  readonly text: string;
+}
+
+/**
+ * Resolve the command a build runs — **the one rule dispatch and the loop readiness check share**
+ * (FE.3, [#1836](https://github.com/NobuData/ouroboros/issues/1836)).
+ *
+ * ```
+ * the stage's (or request's) command → the pool's default_command → none (farm_command_required)
+ * ```
+ *
+ * A pool default stands in only when {@link parseCommand} can read it back into argv: a stored
+ * text this file did not write is one dispatch cannot send, so it counts as no default at all.
+ *
+ * @param requested - The command the stage or request names — the DSL's `config.command`, or the
+ *   rendering of the API's argv — or `null`/`undefined`/`""` when it names none.
+ * @param poolDefault - The pool's `runner_pools.default_command`, or `null` when it has none or
+ *   the pool is not known.
+ * @returns The command and its source, or `undefined` when neither supplies one — the case
+ *   dispatch refuses `422 farm_command_required`.
+ */
+export function resolveBuildCommand(
+  requested: string | null | undefined,
+  poolDefault: string | null,
+): ResolvedBuildCommand | undefined {
+  if (requested !== null && requested !== undefined && requested !== "") {
+    return { source: "stage", text: requested };
+  }
+  if (poolDefault !== null && parseCommand(poolDefault) !== undefined) {
+    return { source: "pool", text: poolDefault };
+  }
+
+  return undefined;
+}

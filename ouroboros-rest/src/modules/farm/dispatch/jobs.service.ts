@@ -55,7 +55,7 @@ import {
   poolNotFound,
   repositoryNotFound,
 } from "../farm.errors";
-import { parseCommand, renderCommand } from "./command";
+import { renderCommand, resolveBuildCommand } from "./command";
 import { DispatchRepository, type WaitingJob } from "./dispatch.repository";
 import { DispatchService } from "./dispatcher";
 import { JobCompletions } from "./job.completions";
@@ -387,11 +387,11 @@ export class FarmJobsService {
     const repoId = await this.repository.repository(organizationId, owner, name);
     if (!repoId) throw repositoryNotFound(request.repository);
 
-    const command = request.command
-      ? renderCommand(request.command)
-      : pool.default_command !== null && parseCommand(pool.default_command)
-        ? pool.default_command
-        : undefined;
+    // The rule readiness checks too (`readiness.ts`, FE.3): the request's, else the pool's default.
+    const command = resolveBuildCommand(
+      request.command ? renderCommand(request.command) : undefined,
+      pool.default_command,
+    )?.text;
     if (!command) throw commandRequired(pool.name);
 
     const job = await this.repository.submit({

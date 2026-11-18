@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.43.8"
+  version: "0.43.9"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -12390,6 +12390,7 @@ paths:
         | `routes` | `route_unresolved` (a task kind has no route, or none to a kept hop); `route_unpriced` (the first kept hop's model has no price); `workflow_unreadable` (unknown) |
         | `stage_executors` | `engine_unavailable`, `no_executor` (only when the workflow has a model stage); `workflow_unreadable` |
         | `runner` | `build_pool_required` (a build stage names no pool, or names `$default` and the workspace has no pool), `pool_not_found`, `pool_disabled`, `no_runner`, `no_source_checkout` (per build stage's pool — a `$default` stage's is the workspace default pool, named in the reason); `workflow_unreadable` |
+        | `build_command` | `build_command_required` (a build stage sets no `command` and its pool — a `$default` stage's, the workspace default pool — has no default command, so dispatch would refuse `farm_command_required`; resolved by the rule dispatch uses: the stage's command, else the pool's); `workflow_unreadable` |
         | `repository` | `repository_disabled` |
         | `push_credential` | the workspace GitHub token: `github_not_configured`, `repository_unreadable`, `push_denied`; `permission_unconfirmed` (unknown) |
         | `pull_request_credential` | the issue's GitHub source: `no_issue_chosen` (unknown), `no_pr_source`, `pr_source_other_repository`, `repository_unreadable`, `push_denied`; `permission_unconfirmed` (unknown) |
@@ -54611,6 +54612,7 @@ components:
             - routes
             - stage_executors
             - runner
+            - build_command
             - repository
             - push_credential
             - pull_request_credential
@@ -54653,6 +54655,7 @@ components:
                 - workflow_not_found
                 - workflow_unpublished
                 - concurrency_ceiling
+                - build_command_required
             - type: "null"
         reason:
           type: string

@@ -12,7 +12,7 @@ import {
 } from "@/app/get-started/readiness-view";
 
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
-import { DEPLOYMENT_OFF, NO_RUNNER, PUSH_UNCONFIRMED, readiness } from "../helpers/readiness";
+import { DEPLOYMENT_OFF, NO_BUILD_COMMAND, NO_RUNNER, PUSH_UNCONFIRMED, readiness } from "../helpers/readiness";
 
 /**
  * Step 4's readiness card (DK.2, #1319): each state's design — passes collapsed, failures expanded
@@ -44,7 +44,7 @@ describe("the readiness card", () => {
     render(<ReadinessCard failure={null} readiness={readiness()} />);
 
     expect(card()).toHaveTextContent("acme-robotics/helios-firmware · #488 Typo sweep in operator manual + pairing guide · size S");
-    expect(within(rows()).getByText("✓ 12 checks passed")).toBeInTheDocument();
+    expect(within(rows()).getByText("✓ 13 checks passed")).toBeInTheDocument();
     expect(within(rows()).queryByText("A runner is online in pool-a.")).not.toBeInTheDocument();
     expect(card()).toHaveTextContent(DRY_RUN_LINE);
     expect(card()).toHaveTextContent("Estimate cap $2.00 per run · issue sized S (heuristic-v0)");
@@ -60,7 +60,7 @@ describe("the readiness card", () => {
 
     expect(within(rows()).getByRole("button", { name: "hide" })).toHaveAttribute("aria-expanded", "true");
     expect(within(rows()).getByText("A runner is online in pool-a.")).toBeInTheDocument();
-    expect(within(rows()).getAllByRole("img", { name: "Passed" })).toHaveLength(12);
+    expect(within(rows()).getAllByRole("img", { name: "Passed" })).toHaveLength(13);
   });
 
   it("expands a failure with its reason and its fix link", () => {
@@ -69,7 +69,18 @@ describe("the readiness card", () => {
     expect(within(rows()).getByRole("img", { name: "Failed" })).toBeInTheDocument();
     expect(within(rows()).getByText(NO_RUNNER.reason)).toBeInTheDocument();
     expect(within(rows()).getByRole("link", { name: "Build Farm · enrol a runner →" })).toHaveAttribute("href", "/build-farm");
-    expect(within(rows()).getByText("✓ 11 checks passed")).toBeInTheDocument();
+    expect(within(rows()).getByText("✓ 12 checks passed")).toBeInTheDocument();
+  });
+
+  it("turns red on a build stage with no resolvable command, linking to the stage", () => {
+    render(<ReadinessCard failure={null} readiness={readiness(NO_BUILD_COMMAND)} />);
+
+    expect(within(rows()).getByText(NO_BUILD_COMMAND.reason)).toBeInTheDocument();
+    expect(within(rows()).getByRole("link", { name: "Workflow · set the stage's build command →" })).toHaveAttribute(
+      "href",
+      "/workflows/quick-fixes?node=build",
+    );
+    expect(within(rows()).getByText("✓ 12 checks passed")).toBeInTheDocument();
   });
 
   it("explains an unknown beside its reason", () => {
