@@ -27962,9 +27962,9 @@ export interface components {
              */
             terminal: components["schemas"]["WorkflowTerminalAction"] | null;
             /**
-             * @description The rail's caption, composed — `6 stages · auto-merge`, `5 stages · paused`, or
+             * @description The rail's caption, composed — `6 stages · draft PR`, `5 stages · paused`, or
              *     `not published`.
-             * @example 6 stages · auto-merge
+             * @example 6 stages · draft PR
              */
             caption: string;
             /**
@@ -65879,7 +65879,7 @@ export interface operations {
                      *           "currentVersion": 14,
                      *           "stageCount": 6,
                      *           "terminal": "open_pr_automerge",
-                     *           "caption": "6 stages · auto-merge",
+                     *           "caption": "6 stages · draft PR",
                      *           "runs": 61,
                      *           "usagePercent": 61,
                      *           "usageCaption": "used by 61% of runs"

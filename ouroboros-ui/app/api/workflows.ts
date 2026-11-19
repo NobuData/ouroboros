@@ -9,7 +9,7 @@
  *
  * ### The rail is served, never recomposed
  *
- * `GET /api/v1/workflows` carries every caption already composed — `6 stages · auto-merge`,
+ * `GET /api/v1/workflows` carries every caption already composed — `6 stages · draft PR`,
  * `used by 61% of runs`, `no runs yet` — beside the facts they were composed from. The
  * contract is explicit about why: the rail and the page head must not be able to draw two
  * different sentences from one row, and a client that divided `runs` by a denominator it does

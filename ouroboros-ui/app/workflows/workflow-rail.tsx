@@ -17,7 +17,7 @@ import "./workflows.css";
  *
  * The name is `WorkflowRailEntry.name`, the caption is `caption` as P.4
  * ([#135](https://github.com/NobuData/ouroboros/issues/135)) composed it — `12 stages ·
- * auto-merge`, `5 stages · needs review`, `5 stages · paused`, `not published` — and nothing
+ * draft PR`, `5 stages · needs review`, `5 stages · paused`, `not published` — and nothing
  * here derives a second sentence from `stageCount` or `terminal`. `app/api/workflows.ts` says
  * why; what this component adds is the two treatments the mockup draws beside the words: the
  * accent-gradient item for the selected workflow, and the err-dot for a paused one.

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.43.10"
+  version: "0.43.11"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -23068,7 +23068,7 @@ paths:
                     currentVersion: 14
                     stageCount: 6
                     terminal: open_pr_automerge
-                    caption: 6 stages · auto-merge
+                    caption: 6 stages · draft PR
                     runs: 61
                     usagePercent: 61
                     usageCaption: used by 61% of runs
@@ -65284,9 +65284,9 @@ components:
         caption:
           type: string
           description: |-
-            The rail's caption, composed — `6 stages · auto-merge`, `5 stages · paused`, or
+            The rail's caption, composed — `6 stages · draft PR`, `5 stages · paused`, or
             `not published`.
-          examples: [6 stages · auto-merge]
+          examples: [6 stages · draft PR]
         runs:
           type: integer
           minimum: 0

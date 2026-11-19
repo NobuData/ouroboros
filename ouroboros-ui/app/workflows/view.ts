@@ -18,7 +18,7 @@
  * ### The one sentence this module composes, and the ones it does not
  *
  * The rail's captions and the head's usage figure arrive **composed** — `6 stages ·
- * auto-merge`, `used by 61% of runs`, `no runs yet` — and are printed as they arrive
+ * draft PR`, `used by 61% of runs`, `no runs yet` — and are printed as they arrive
  * (`app/api/workflows.ts` says why). What the contract serves as *structure* is the trigger:
  * `{event: "ticket_queued", conditions: {effort_lte: "m"}}`. The ticket asks for it **in
  * words**, and the honesty rule behind that is worth stating: a stored sentence would be wrong
@@ -577,7 +577,7 @@ export interface RailItem {
   readonly slug: string;
   /** The human title the rail prints. */
   readonly name: string;
-  /** The composed caption, printed as served — `6 stages · auto-merge`, `5 stages · paused`. */
+  /** The composed caption, printed as served — `6 stages · draft PR`, `5 stages · paused`. */
   readonly caption: string;
   /** Where the entry links — this workflow, on the surface the page is. */
   readonly href: string;

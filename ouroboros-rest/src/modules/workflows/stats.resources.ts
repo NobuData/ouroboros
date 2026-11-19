@@ -11,7 +11,7 @@
  * ## Why the captions are composed here rather than in the browser
  *
  * The roadmap's own sketch of the rail payload says so — `[{slug, name, status, caption
- * "6 stages · auto-merge", usage%}]` — and the reason is the honesty rule this ticket exists
+ * "6 stages · draft PR", usage%}]` — and the reason is the honesty rule this ticket exists
  * to serve. *`no runs yet`* is not a formatting choice: it is the answer, and a client handed
  * `{runs: 0, total: 0}` has to be told not to divide. Shipping the sentence removes the one
  * place a second implementation could invent `0%`.
@@ -65,7 +65,7 @@ export interface WorkflowStats {
    * this build knows. The word the rail prints for it is inside {@link caption}.
    */
   readonly terminal: TerminalAction | null;
-  /** The rail's caption: `6 stages · auto-merge`, `5 stages · paused`, `not published`. */
+  /** The rail's caption: `6 stages · draft PR`, `5 stages · paused`, `not published`. */
   readonly caption: string;
   /** How many of the window's runs carried this slug. */
   readonly runs: number;
