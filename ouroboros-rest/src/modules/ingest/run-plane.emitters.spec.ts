@@ -18,6 +18,7 @@ import { SpendApprovalEmitter, dollars, spendApprovalEmission } from "./spend-ap
 
 const ORG = "acme-robotics";
 const RUN = "0a1b2c3d-0000-4000-8000-000000001851";
+const PR = "0a1b2c3d-0000-4000-8000-000000000042";
 
 /** A run's card facts. */
 const RUN_FACTS = {
@@ -122,8 +123,43 @@ describe("run_needs_human", () => {
 
     database.answers({ rows: [{ status: "needs_human" }] });
     runRow();
+    database.answers({ rows: [] });
     expect((await emitter.handedOver(RUN, "attempt limit reached"))?.status).toBe("filed");
-    expect(harness.store.items[0]).toMatchObject({ kindId: "run_needs_human", severity: "err" });
+    expect(harness.store.items[0]).toMatchObject({
+      kindId: "run_needs_human",
+      severity: "err",
+      refs: [{ type: "run", id: RUN, label: "loop #1851" }],
+    });
+  });
+
+  it("links the draft PR a needs_review terminal opened, after the run (#1837)", async () => {
+    const emitter = new RunNeedsHumanEmitter(database.service, harness.registry);
+
+    database.answers({ rows: [{ status: "needs_human" }] });
+    runRow();
+    database.answers({ rows: [{ id: PR, external_number: 42 }] });
+
+    expect((await emitter.handedOver(RUN, "a person reviews the run"))?.status).toBe("filed");
+    expect(harness.store.items[0]?.refs).toEqual([
+      { type: "run", id: RUN, label: "loop #1851" },
+      { type: "pr", id: PR, label: "PR #42" },
+    ]);
+  });
+
+  it("reads the PR from the run's own workspace, newest first", async () => {
+    const emitter = new RunNeedsHumanEmitter(database.service, harness.registry);
+
+    database.answers({ rows: [{ status: "needs_human" }] });
+    runRow();
+    database.answers({ rows: [] });
+    await emitter.handedOver(RUN, "x");
+
+    const read = database.statements.find((statement) =>
+      statement.sql.includes('"external_number"'),
+    );
+    expect(read?.sql).toContain('"pull_requests"');
+    expect(read?.sql).toContain('order by "created_at" desc');
+    expect(read?.parameters).toEqual(expect.arrayContaining([RUN, ORG]));
   });
 
   it("is settled by the run moving to any status but needs_human", () => {

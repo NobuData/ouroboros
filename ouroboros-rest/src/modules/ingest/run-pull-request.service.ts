@@ -10,8 +10,8 @@
  *   502 pr_create_failed
  * ```
  *
- * The engine calls it at the `open_pr_automerge` terminal, after its last publish (DI.2) and
- * before it finishes the run `review`:
+ * The engine calls it at the `open_pr_automerge` and `needs_review` terminals (#1837), after its
+ * last publish (DI.2) and before it finishes the run `review` or `needs_human`:
  *
  * ```
  * open(run)

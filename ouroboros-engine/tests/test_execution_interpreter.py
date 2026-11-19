@@ -596,7 +596,7 @@ def test_a_gate_on_a_check_that_never_ran_fails_honestly(bench) -> None:
 @pytest.mark.parametrize(
     ("action", "outcome", "tree_kept"),
     [
-        ("needs_review", "needs_human", False),
+        ("needs_review", "needs_human", True),
         ("open_pr_automerge", "review", True),
         ("back_to_queue", "back_to_queue", False),
     ],

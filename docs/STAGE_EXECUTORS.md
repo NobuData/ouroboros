@@ -217,6 +217,29 @@ policy, events for another stage, and a missing outcome.
   step can find no session at all. When `resume()` fails, the interpreter starts one fresh
   attempt ([`DECISION_EXECUTION_ENGINE.md`](DECISION_EXECUTION_ENGINE.md) § *Axis 1*).
 
+## How a run ends — the terminals
+
+A stage executor never ends a run: the interpreter does, at the workflow's `term` node
+(`execution/interpreter.py`, `_term`). Each action ends it as follows:
+
+| Action | What the interpreter does | Run status |
+|---|---|---|
+| `open_pr_automerge` | Pushes the run branch (DI.2), opens its **draft** pull request (DI.3) | `review` |
+| `needs_review` | Pushes the run branch, opens its **draft** pull request, then hands the run to a person: REST files a *Take over a loop that needs a human?* card in Needs-you whose tag row links the PR (`loop #n · PR #n · issue #n`) ([#1837](https://github.com/NobuData/ouroboros/issues/1837)) | `needs_human` |
+| `back_to_queue` | Nothing is pushed; the tree is abandoned | `back_to_queue` |
+
+- The pull request is **always a draft**: REST passes `draft: true` to the host whatever the
+  workspace's dry-run policy says now, and the interpreter fails the run when the host answers
+  a ready one. A dry run performs neither terminal; its last row says *would open DRAFT PR*.
+- A refused push or pull request finishes the run `failed`, naming the cause, and **keeps the
+  tree** for a retry. A resumed terminal asks again; REST answers the PR already linked to the
+  run, so no second one is opened.
+- Without a branch publisher (no host credentials), nothing is pushed: both review terminals
+  finish with their status and keep the tree.
+- Of the shipped templates, *Quick fixes* and *Docs & chores* end at `open_pr_automerge`;
+  *Feature builder* (`ask-you`) and *Deep refactor* (`review`) end at `needs_review`. All four
+  open a draft PR.
+
 ## Registered executors
 
 | Executor | Kind | Module | Issue | Release |
