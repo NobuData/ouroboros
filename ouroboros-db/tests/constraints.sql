@@ -23745,7 +23745,7 @@ select pg_temp.must_reject(
 select pg_temp.must_reject(
   $$insert into ouroboros.workflow_templates
       (slug, version, name, description, stage_dots, effort_range, definition, tier, sort_order)
-    values ('quick-fixes', 4, 'Quick fixes', 'd', '["a"]', array['s'], '{}', 'starter', 1)$$,
+    values ('quick-fixes', 5, 'Quick fixes', 'd', '["a"]', array['s'], '{}', 'starter', 1)$$,
   'the next version is exactly one above the highest', 'workflow_templates_next_version');
 
 select pg_temp.must_raise(
@@ -23781,7 +23781,7 @@ select pg_temp.must_hold(
 insert into ouroboros.workflow_templates
     (slug, version, name, description, stage_dots, effort_range, caption, definition, tier,
      sort_order)
-  select slug, 3, name, description, stage_dots, effort_range, caption,
+  select slug, 4, name, description, stage_dots, effort_range, caption,
          jsonb_set(definition, '{trigger,conditions,effort_lte}', '"s"'), tier, sort_order
     from ouroboros.workflow_templates
    where organization_id is null and slug = 'quick-fixes' and version = 1;
@@ -23795,7 +23795,7 @@ select pg_temp.must_hold(
      from ouroboros.workflows wf
      join ouroboros.workflow_versions v on v.workflow_id = wf.id and v.version = 1
     where wf.id = 'a6800000-0000-0000-0000-000000000001'),
-  'publishing quick-fixes@v3 leaves the workflow instantiated from v1 unchanged');
+  'publishing quick-fixes@v4 leaves the workflow instantiated from v1 unchanged');
 
 select pg_temp.must_reject(
   $$insert into ouroboros.workflows (organization_id, slug, name, template_slug)
@@ -23829,14 +23829,14 @@ insert into ouroboros.workflow_templates
 select pg_temp.must_hold(
   (select array_agg(slug || '@' || version || ':' || coalesce(organization_id, 'global'))
      from ouroboros.workflow_templates_for('org-v068'))
-  = array['quick-fixes@1:org-v068', 'feature-builder@2:global', 'docs-chores@2:global',
+  = array['quick-fixes@1:org-v068', 'feature-builder@2:global', 'docs-chores@3:global',
           'deep-refactor@2:global'],
   'an organization''s row shadows the global of the same slug, in tile order');
 
 select pg_temp.must_hold(
   (select array_agg(slug || '@' || version || ':' || coalesce(organization_id, 'global'))
      from ouroboros.workflow_templates_for('org-v068-other'))
-  = array['quick-fixes@3:global', 'feature-builder@2:global', 'docs-chores@2:global',
+  = array['quick-fixes@4:global', 'feature-builder@2:global', 'docs-chores@3:global',
           'deep-refactor@2:global'],
   'another organization sees the latest global versions, not the override');
 
@@ -23905,7 +23905,7 @@ delete from ouroboros.organization where "id" in ('org-v068', 'org-v068-other');
 
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.workflow_templates where organization_id like 'org-v068%')
-  and (select count(*) = 9 from ouroboros.workflow_templates where organization_id is null),
+  and (select count(*) = 11 from ouroboros.workflow_templates where organization_id is null),
   'a deleted workspace takes its template overrides, and the global rows stay');
 
 -- ===========================================================================
@@ -28355,7 +28355,7 @@ update ouroboros.analysis_schedules set build_counter = 0
 select pg_temp.must_hold(
   (select count(*) = 1 from ouroboros.analysis_runs
     where organization_id = 'org-v080' and status = 'running'
-      and repo_ref = 'acme/helios-firmware'),
+      and repo_ref = 'acme/helios-firmware' and origin = 'live'),
   'the service reads runs and resets the counter');
 reset role;
 
