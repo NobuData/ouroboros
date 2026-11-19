@@ -29,8 +29,9 @@
 --      `push_fixup: false` (no push tool) and `touch_ci: false` — which is exactly the set L5
 --      allows, stated in the document rather than assumed.
 --   2. **The gate is the build's exit status.** `checks all_passed ["build"]` is how the
---      language spells "exit 0"; the `loop` edge back to `implement` with `max_retries: 1` is
---      the one retry (the interpreter bounds the loop at the target stage's retries plus one).
+--      language spells "exit 0"; the `loop` edge back to `implement` is bounded by the
+--      target stage's retries plus one; `implement` has `max_retries: 2` — three attempts, so
+--      the recorded slice can lose one to a refused write, fail the build once and then pass (#1817).
 --   3. **The terminal is `open_pr_automerge`, and the pull request opens as a draft.** The
 --      language has no draft terminal; the draft is the workspace's policy: `org_policies
 --      .dry_run` is on, live execution refuses to start for a repository whose policy is not
@@ -413,7 +414,7 @@ select '5eed00ac-0000-4000-8000-000000000001'::uuid, wf.id, 1,
         "mode": "prompt",
         "prompt_template": "Implement the plan.\n\nIssue: {{issue.title}}\nPlan:  {{plan}}\n\nChange only what the plan names. Every acceptance criterion needs a test.",
         "routing": { "inherit_task": "implement" },
-        "limits": { "max_retries": 1, "token_budget": 400000 },
+        "limits": { "max_retries": 2, "token_budget": 400000 },
         "permissions": { "push_fixup": false, "touch_ci": false }
       }
     },

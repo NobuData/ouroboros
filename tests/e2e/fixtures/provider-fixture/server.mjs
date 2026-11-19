@@ -63,6 +63,7 @@ import {
   authorized,
   checkRecording,
   decide,
+  newState,
   messageDocument,
   modelsListing,
   providerRoute,
@@ -126,6 +127,9 @@ let requests = [];
 
 /** Message ids, counted up: `msg_fixture_1`, `msg_fixture_2`, … */
 let answered = 0;
+
+/** Which recorded attempt each session is on (#1817) — forgotten with the log. */
+let attempts = newState();
 
 /**
  * Answer with a JSON document.
@@ -199,7 +203,7 @@ function messages(request, response, raw) {
     return;
   }
 
-  const verdict = decide(recording, body, request.headers);
+  const verdict = decide(recording, body, request.headers, attempts);
   const model = typeof body.model === "string" ? body.model : null;
 
   if (verdict.status !== 200) {
@@ -265,6 +269,7 @@ const server = createServer((request, response) => {
       } else if (pathname === "/__fixture/reset" && method === "POST") {
         requests = [];
         answered = 0;
+        attempts = newState();
         json(response, 200, { ok: true });
       } else {
         json(response, 404, anthropicError("not_found_error", "no such fixture control"));

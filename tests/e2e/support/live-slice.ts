@@ -77,6 +77,12 @@ export interface RecordedSession {
   readonly prompt_prefix?: string;
   readonly turns: readonly RecordedTurn[];
   readonly files_after?: Readonly<Record<string, string>>;
+  /** Later attempts after the session's own (#1817); one is picked by the failing check's output. */
+  readonly retries?: readonly {
+    readonly turns: readonly RecordedTurn[];
+    readonly files_after?: Readonly<Record<string, string>>;
+    readonly after_failed_check?: boolean;
+  }[];
 }
 
 /** The recording's shape, as far as the suite reads it. */

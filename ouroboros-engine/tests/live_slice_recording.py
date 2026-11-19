@@ -123,42 +123,75 @@ def plan_script() -> list[Turn]:
     ]
 
 
+#: Where attempt 1 plants a write: one level above the working tree, which the policy refuses.
+OUTSIDE_PATH = "../planted-outside-the-tree.txt"
+
+#: The line attempt 2 leaves the greeter with — a wrong fix, so the build fails once.
+WRONG_LINE = "printf 'Hello, %s?\\n' \"$name\""
+
+#: The final text of attempt 2, which leaves ``tests/check.sh`` failing.
+IMPLEMENT_WRONG_DONE = "Done: bin/greet prints a punctuation mark now."
+
+
+def _edit(old: str, new: str) -> Turn:
+    """One ``Edit`` of the greeter.
+
+    Args:
+        old: The text to replace.
+        new: Its replacement.
+
+    Returns:
+        The turn.
+    """
+    return Turn(
+        "Editing the greeter.",
+        [("Edit", {"file_path": GREETER, "old_string": old, "new_string": new})],
+    )
+
+
+def planted_write_script() -> list[Turn]:
+    """Attempt 1: reads, then tries to write outside the working tree.
+
+    The policy refuses the write and halts the attempt, so the script ends on it.
+
+    Returns:
+        Glob, read, the planted ``Write``.
+    """
+    return [
+        Turn("Finding the greeter script.", [("Glob", {"pattern": GREETER})]),
+        Turn(None, [("Read", {"file_path": GREETER})]),
+        Turn(
+            "Leaving a note beside the repository.",
+            [("Write", {"file_path": OUTSIDE_PATH, "content": "planted\n"})],
+        ),
+    ]
+
+
+def wrong_fix_script() -> list[Turn]:
+    """Attempt 2: a fix that is wrong, so ``tests/check.sh`` fails and the gate returns.
+
+    Returns:
+        Glob, read, an edit that prints ``?``, done.
+    """
+    return [
+        Turn("Finding the greeter script.", [("Glob", {"pattern": GREETER})]),
+        Turn(None, [("Read", {"file_path": GREETER})]),
+        _edit(BROKEN_LINE, WRONG_LINE),
+        Turn(IMPLEMENT_WRONG_DONE),
+    ]
+
+
 def implement_script() -> list[Turn]:
-    """The implement session's turns, with the deliberate failure.
+    """Attempt 3 (after the gate's return): the fix, with the deliberate tool failure.
 
     Returns:
         Glob, read, a wrong edit (refused by the tool), the right edit, done.
     """
-    script = GREETER
     return [
         Turn("Finding the greeter script.", [("Glob", {"pattern": "bin/greet"})]),
-        Turn(None, [("Read", {"file_path": script})]),
-        Turn(
-            "Adding the exclamation mark the README promises.",
-            [
-                (
-                    "Edit",
-                    {
-                        "file_path": script,
-                        "old_string": 'echo "Hello, $name"',
-                        "new_string": 'echo "Hello, $name!"',
-                    },
-                )
-            ],
-        ),
-        Turn(
-            "The script uses printf, not echo — correcting the edit.",
-            [
-                (
-                    "Edit",
-                    {
-                        "file_path": script,
-                        "old_string": BROKEN_LINE,
-                        "new_string": FIXED_LINE,
-                    },
-                )
-            ],
-        ),
+        Turn(None, [("Read", {"file_path": GREETER})]),
+        _edit('echo "Hello, $name"', 'echo "Hello, $name!"'),
+        _edit(WRONG_LINE, FIXED_LINE),
         Turn(IMPLEMENT_DONE),
     ]
 
@@ -190,13 +223,16 @@ class CapturingFacade(Facade):
         return super().answer(body, headers)
 
 
-def stage_context(tree: Path, stage: str, prompt: str) -> StageContext:
+def stage_context(
+    tree: Path, stage: str, prompt: str, attempt: int = 1
+) -> StageContext:
     """One attempt of ``stage`` over ``tree`` under L5.
 
     Args:
         tree: The working tree.
         stage: ``plan`` or ``implement``.
         prompt: The rendered prompt.
+        attempt: The attempt number.
 
     Returns:
         The context, routed to the slice workspace's alias for the stage.
@@ -204,7 +240,7 @@ def stage_context(tree: Path, stage: str, prompt: str) -> StageContext:
     return StageContext(
         run_id="0b5e0160-0000-4000-8000-000000001314",
         stage_key=stage,
-        attempt=1,
+        attempt=attempt,
         prompt=prompt,
         model=SESSIONS[stage]["alias"],
         policy=ToolPolicy(
@@ -231,7 +267,13 @@ def make_tree(tmp_path: Path, name: str) -> Path:
 
 
 def run_session(
-    tree: Path, stage: str, prompt: str, *, rest_url: str, cli_path: Path
+    tree: Path,
+    stage: str,
+    prompt: str,
+    *,
+    rest_url: str,
+    cli_path: Path,
+    attempt: int = 1,
 ) -> tuple[list[StageEvent], ClaudeAgentExecutor]:
     """Run one stage attempt through the real executor and CLI.
 
@@ -241,6 +283,7 @@ def run_session(
         prompt: The rendered prompt.
         rest_url: Where the Messages server answers (the facade path is appended).
         cli_path: The bundled CLI.
+        attempt: The attempt number.
 
     Returns:
         The events streamed, and the executor (its ``outcome`` says how it ended).
@@ -251,7 +294,8 @@ def run_session(
 
     async def collect() -> list[StageEvent]:
         return [
-            event async for event in executor.run(stage_context(tree, stage, prompt))
+            event
+            async for event in executor.run(stage_context(tree, stage, prompt, attempt))
         ]
 
     return asyncio.run(collect()), executor
@@ -284,7 +328,15 @@ def _tool_results(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _record_session(
-    tmp_path: Path, stage: str, prompt: str, script_for: Any, cli_path: Path
+    tmp_path: Path,
+    stage: str,
+    prompt: str,
+    script_for: Any,
+    cli_path: Path,
+    *,
+    attempt: int = 1,
+    tree: Path | None = None,
+    status: str = "completed",
 ) -> tuple[dict[str, Any], dict[str, Any], Path]:
     """Run one session against the scripted facade and shape what it captured.
 
@@ -294,6 +346,9 @@ def _record_session(
         prompt: The rendered prompt.
         script_for: ``plan_script`` or ``implement_script``.
         cli_path: The bundled CLI.
+        attempt: The attempt number.
+        tree: The tree an earlier attempt left, or ``None`` for a fresh copy.
+        status: How the session must end — ``halted`` for the planted write.
 
     Returns:
         The session's recording entry, the harness facts seen (betas, version, tools),
@@ -303,22 +358,22 @@ def _record_session(
         AssertionError: When the session did not complete, or a main request's turn was
             not answered by the script in order.
     """
-    tree = make_tree(tmp_path, stage)
+    tree = tree or make_tree(tmp_path, f"{stage}-{attempt}")
     script = script_for()
     facade = CapturingFacade(script)
     server = serve(facade)
     try:
         url = f"http://127.0.0.1:{server.server_address[1]}"
         _events, executor = run_session(
-            tree, stage, prompt, rest_url=url, cli_path=cli_path
+            tree, stage, prompt, rest_url=url, cli_path=cli_path, attempt=attempt
         )
     finally:
         server.shutdown()
         server.server_close()
 
     outcome = executor.outcome
-    assert outcome is not None and outcome.status == "completed", (
-        f"the {stage} session did not complete: {outcome}"
+    assert outcome is not None and outcome.status == status, (
+        f"the {stage} session did not end {status}: {outcome}"
     )
 
     with facade.lock:
@@ -422,11 +477,44 @@ def record(tmp_path: Path) -> dict[str, Any]:
     plan, plan_harness, _plan_tree = _record_session(
         tmp_path, "plan", PLAN_PROMPT, plan_script, CLI
     )
-    implement, implement_harness, implement_tree = _record_session(
-        tmp_path, "implement", IMPLEMENT_PROMPT, implement_script, CLI
+    # Attempt 1 plants a write outside the tree and is halted by the policy; attempt 2 leaves
+    # the greeter wrong (the build fails once, the gate returns); attempt 3 fixes it.
+    first, first_harness, first_tree = _record_session(
+        tmp_path,
+        "implement",
+        IMPLEMENT_PROMPT,
+        planted_write_script,
+        CLI,
+        attempt=1,
+        status="halted",
     )
-    assert plan_harness == implement_harness, (
-        f"the two sessions saw different harness facts: {plan_harness} / {implement_harness}"
+    assert not (first_tree.parent / "planted-outside-the-tree.txt").exists(), (
+        "the planted write reached the disk"
+    )
+    second, _second_harness, second_tree = _record_session(
+        tmp_path,
+        "implement",
+        IMPLEMENT_PROMPT,
+        wrong_fix_script,
+        CLI,
+        attempt=2,
+        tree=first_tree,
+    )
+    assert WRONG_LINE in (second_tree / GREETER).read_text(), (
+        "attempt 2 left no wrong fix"
+    )
+    second["files_after"] = {GREETER: sha256_of(second_tree / GREETER)}
+    implement, implement_harness, implement_tree = _record_session(
+        tmp_path,
+        "implement",
+        IMPLEMENT_PROMPT,
+        implement_script,
+        CLI,
+        attempt=3,
+        tree=second_tree,
+    )
+    assert plan_harness == first_harness == implement_harness, (
+        f"the sessions saw different harness facts: {plan_harness} / {implement_harness}"
     )
     assert len(implement_harness["anthropic_version"]) == 1, (
         f"more than one API version seen: {implement_harness['anthropic_version']}"
@@ -437,6 +525,17 @@ def record(tmp_path: Path) -> dict[str, Any]:
         FIXED_LINE in greeter.read_text() and BROKEN_LINE not in greeter.read_text()
     ), f"the implement session left bin/greet unfixed:\n{greeter.read_text()}"
     implement["files_after"] = {"bin/greet": sha256_of(greeter)}
+    # The session's own turns are attempt 1's; each later attempt follows, in order, and the
+    # one a failed check sent back is marked so the fixture picks it by the prompt's content.
+    first["retries"] = [
+        {"turns": second["turns"], "files_after": second["files_after"]},
+        {
+            "turns": implement["turns"],
+            "files_after": implement["files_after"],
+            "after_failed_check": True,
+        },
+    ]
+    implement = first
 
     return {
         "recording": "live-slice",
