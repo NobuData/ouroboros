@@ -5721,14 +5721,17 @@ select pg_temp.must_hold(
     where v.id = '5eed00ac-0000-4000-8000-000000000001'),
   'the document is plan → implement → build → gate → open a pull request');
 
+-- `plan` has one retry; `implement` has two, so the recorded slice can lose an attempt to a
+-- refused write, fail the build once and still pass (#1817).
 select pg_temp.must_hold(
   (select bool_and(node -> 'config' -> 'permissions' = '{"push_fixup": false, "touch_ci": false}'::jsonb
-                   and node -> 'config' -> 'limits' ->> 'max_retries' = '1')
+                   and node -> 'config' -> 'limits' ->> 'max_retries'
+                       = case node ->> 'id' when 'implement' then '2' else '1' end)
      from ouroboros.workflow_versions v,
           jsonb_array_elements(v.definition -> 'nodes') node
     where v.id = '5eed00ac-0000-4000-8000-000000000001'
       and node ->> 'type' = 'llm'),
-  'both model stages declare exactly the permissions L5 allows, and one retry');
+  'both model stages declare exactly the permissions L5 allows; plan has one retry, implement two');
 
 select pg_temp.must_hold(
   (select count(*) = 1

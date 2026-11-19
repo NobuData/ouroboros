@@ -1599,7 +1599,7 @@ check_equals 2 "$(grep -Ec '"permissions": \{ "push_fixup": false, "touch_ci": f
 check_contains "$LIVE_SLICE_BODY" '"predicate": \{ "kind": "checks", "op": "all_passed", "names": \["build"\] \}' \
   'the gate is the build stage'"'"'s exit status'
 check_contains "$LIVE_SLICE_BODY" '"kind": "loop",' \
-  'and a failure loops back — one retry, because implement allows one'
+  'and a failure loops back — implement allows two retries (#1817)'
 check_contains "$LIVE_SLICE_BODY" '"action": "open_pr_automerge"' \
   'the terminal opens a pull request; the draft is the dry-run policy'"'"'s'
 
