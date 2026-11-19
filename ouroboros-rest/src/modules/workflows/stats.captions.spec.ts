@@ -26,7 +26,7 @@ describe("the terminal behaviour", () => {
   it("names the furthest outcome when a definition ends in several places", () => {
     // `standard-fix` is the case: it ends at `Open PR & auto-merge` *and* at `Back to queue`,
     // because the `> M` branch splits the work and hands it back — and the mockup's rail reads
-    // `auto-merge`. The rule that produces that is precedence, not a graph walk.
+    // `draft PR`. The rule that produces that is precedence, not a graph walk.
     expect(terminalBehaviour(["back_to_queue", "open_pr_automerge"])).toBe("open_pr_automerge");
     expect(terminalBehaviour(["back_to_queue", "needs_review"])).toBe("needs_review");
     expect(terminalBehaviour(["back_to_queue"])).toBe("back_to_queue");
@@ -86,20 +86,20 @@ describe("the rail caption", () => {
     // the paused one is below, where the rule that produces it is the subject.
     expect(
       railCaption({ stageCount: 6, status: "active", terminalActions: ["open_pr_automerge"] }),
-    ).toBe("6 stages · auto-merge");
+    ).toBe("6 stages · draft PR");
     expect(
       railCaption({ stageCount: 7, status: "active", terminalActions: ["open_pr_automerge"] }),
-    ).toBe("7 stages · auto-merge");
+    ).toBe("7 stages · draft PR");
     expect(
       railCaption({ stageCount: 5, status: "active", terminalActions: ["needs_review"] }),
     ).toBe("5 stages · needs review");
     expect(
       railCaption({ stageCount: 4, status: "active", terminalActions: ["open_pr_automerge"] }),
-    ).toBe("4 stages · auto-merge");
+    ).toBe("4 stages · draft PR");
   });
 
   it("says `paused` instead of the behaviour, as the mockup's hotfix-p0 does", () => {
-    // `5 stages · paused`, and deliberately *not* `5 stages · auto-merge · paused`: a paused
+    // `5 stages · paused`, and deliberately *not* `5 stages · draft PR · paused`: a paused
     // workflow's terminal behaviour is not what a reader needs to know about it.
     expect(
       railCaption({ stageCount: 5, status: "paused", terminalActions: ["open_pr_automerge"] }),
@@ -139,7 +139,7 @@ describe("the rail caption", () => {
       terminalActions: ["needs_review"],
     });
 
-    expect(before).toBe("6 stages · auto-merge");
+    expect(before).toBe("6 stages · draft PR");
     expect(after).toBe("7 stages · needs review");
   });
 });

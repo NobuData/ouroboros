@@ -7,7 +7,7 @@
  * of the workspace's runs each one accounts for, and the captions those compose into.
  *
  * ```
- * definition in force ─▶ nodes.count · term actions ─▶ "6 stages · auto-merge"
+ * definition in force ─▶ nodes.count · term actions ─▶ "6 stages · draft PR"
  * runs (30d window)   ─▶ slug share                 ─▶ "used by 61% of runs"
  *                     └▶ no runs at all             ─▶ "no runs yet"   (never a fake %)
  * workflows.status    ─▶ paused                     ─▶ "5 stages · paused" + the err-dot

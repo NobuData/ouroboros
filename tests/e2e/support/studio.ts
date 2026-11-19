@@ -201,10 +201,10 @@ export interface SeededRailEntry {
  * favour, and this is where the leg holds the rail to the settlement.
  */
 export const SEEDED_RAIL: readonly SeededRailEntry[] = [
-  { name: "standard-fix", caption: "12 stages · auto-merge", paused: false },
-  { name: "feature-loop", caption: "7 stages · auto-merge", paused: false },
+  { name: "standard-fix", caption: "12 stages · draft PR", paused: false },
+  { name: "feature-loop", caption: "7 stages · draft PR", paused: false },
   { name: "deps-refresh", caption: "5 stages · needs review", paused: false },
-  { name: "docs-loop", caption: "4 stages · auto-merge", paused: false },
+  { name: "docs-loop", caption: "4 stages · draft PR", paused: false },
   { name: "hotfix-p0", caption: "5 stages · paused", paused: true },
 ];
 

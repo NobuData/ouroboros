@@ -2,7 +2,7 @@
  * The rail's captions, as functions over facts — P.4
  * ([#135](https://github.com/NobuData/ouroboros/issues/135)).
  *
- * Mockup 04 prints five strings this file is responsible for: `6 stages · auto-merge`,
+ * Mockup 04 prints five strings this file is responsible for: `6 stages · draft PR`,
  * `5 stages · needs review`, `5 stages · paused`, the head's `used by 61% of runs`, and the
  * honest `no runs yet` that replaces it in a workspace nothing has run.
  *
@@ -21,7 +21,7 @@
  * ## Where the two published numbers come from
  *
  * **A stage is a node.** The issue's own diagram says so — `nodes.count = 6 · term.action =
- * open_pr_automerge` → `6 stages · auto-merge` — and so does the rest of the product's
+ * open_pr_automerge` → `6 stages · draft PR` — and so does the rest of the product's
  * vocabulary: the canvas toolbar's **Add stage ▾** adds a node, the inspector's **Delete
  * stage** deletes one, and mockup 20's draft panel numbers `01 trigger` … `09 open PR` and
  * captions the list *9 stages*. So the count is `nodes.length`, and it needs no walk of the
@@ -54,7 +54,7 @@ export type TerminalAction = (typeof TERM_ACTIONS)[number];
 /**
  * The word the rail prints for each terminal behaviour.
  *
- * The mockup's own strings: `auto-merge` and `needs review` are on the rail as written, and
+ * The RC1 strings: `draft PR` (the terminal opens a draft PR and never merges; the action id stays `open_pr_automerge` so published versions load) and `needs review` are on the rail as written, and
  * `back to queue` is the third action's — the mini pill the canvas draws on `Back to queue`,
  * in the same lower-case prose as the other two.
  *
@@ -62,7 +62,7 @@ export type TerminalAction = (typeof TERM_ACTIONS)[number];
  * a fourth terminal behaviour must be given a word rather than silently caption nothing.
  */
 export const TERMINAL_CAPTIONS: Readonly<Record<TerminalAction, string>> = Object.freeze({
-  open_pr_automerge: "auto-merge",
+  open_pr_automerge: "draft PR",
   needs_review: "needs review",
   back_to_queue: "back to queue",
 });
@@ -73,7 +73,7 @@ export const TERMINAL_CAPTIONS: Readonly<Record<TerminalAction, string>> = Objec
  * A document may legally end in several places — `standard-fix` ends at `Open PR & auto-merge`
  * *and* at `Back to queue`, because the `> M` branch splits the work and hands it back — so
  * "the term node's action" needs a rule, and the mockup states the answer rather than the
- * rule: that workflow's caption is `auto-merge`.
+ * rule: that workflow's caption is `draft PR`.
  *
  * The rule is **the furthest outcome the workflow can reach**, which is the question a rail
  * caption answers — *what does this workflow do when it works?*
@@ -151,7 +151,7 @@ export interface RailCaptionFacts {
  * know about it — and the err-dot beside the name is the same fact drawn twice.
  *
  * @param facts - The definition's two derived numbers and the workflow's status.
- * @returns `6 stages · auto-merge`, `5 stages · paused`, `not published`, or — for a published
+ * @returns `6 stages · draft PR`, `5 stages · paused`, `not published`, or — for a published
  *   document naming no terminal this build knows — the stage segment alone.
  */
 export function railCaption(facts: RailCaptionFacts): string {

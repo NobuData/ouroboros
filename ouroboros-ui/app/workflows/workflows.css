@@ -247,7 +247,7 @@
 }
 
 /*
- * The mockup's `.wf-cap`: the served caption — `12 stages · auto-merge`, `5 stages · paused` —
+ * The mockup's `.wf-cap`: the served caption — `12 stages · draft PR`, `5 stages · paused` —
  * in mono because every part of it is a value, and faint because the name is the subject. It
  * wraps rather than the mockup's `nowrap`, so a long caption at the 150% font-scale step
  * stays inside its tile instead of being clipped by it.

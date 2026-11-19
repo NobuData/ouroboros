@@ -32,7 +32,7 @@ describe("one workflow's statistics", () => {
   it("carries the mockup's rail caption and its head subline together", () => {
     const stats = workflowStats(row(), 47, 77);
 
-    expect(stats.caption).toBe("6 stages · auto-merge");
+    expect(stats.caption).toBe("6 stages · draft PR");
     expect(stats.usageCaption).toBe("used by 61% of runs");
   });
 

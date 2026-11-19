@@ -213,10 +213,10 @@ describe("the workflow rail, against a migrated database", () => {
       const rail = await stats.forWorkspace(where.id);
 
       expect(rail.map((entry) => [entry.slug, entry.caption])).toEqual([
-        ["standard-fix", `${STANDARD_FIX_STAGES} stages · auto-merge`],
-        ["feature-loop", "7 stages · auto-merge"],
+        ["standard-fix", `${STANDARD_FIX_STAGES} stages · draft PR`],
+        ["feature-loop", "7 stages · draft PR"],
         ["deps-refresh", "5 stages · needs review"],
-        ["docs-loop", "4 stages · auto-merge"],
+        ["docs-loop", "4 stages · draft PR"],
         ["hotfix-p0", "5 stages · paused"],
       ]);
     });
@@ -269,7 +269,7 @@ describe("the workflow rail, against a migrated database", () => {
       expect(rail.map((entry) => [entry.slug, entry.caption])).toEqual([
         ["empty-canvas", "not published"],
         ["nodes-not-an-array", "not published"],
-        ["readable", "4 stages · auto-merge"],
+        ["readable", "4 stages · draft PR"],
       ]);
     });
 
@@ -302,7 +302,7 @@ describe("the workflow rail, against a migrated database", () => {
       });
 
       const [before] = await stats.forWorkspace(where.id);
-      expect(before.caption).toBe("6 stages · auto-merge");
+      expect(before.caption).toBe("6 stages · draft PR");
 
       await publish(id, 2, definition(7, "needs_review"));
 

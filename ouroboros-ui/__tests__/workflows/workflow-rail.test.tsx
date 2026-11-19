@@ -48,10 +48,10 @@ describe("the seeded rail", () => {
         .getAllByRole("link")
         .map((link) => link.querySelector(".studio-rail__caption")?.textContent),
     ).toEqual([
-      "12 stages · auto-merge",
-      "7 stages · auto-merge",
+      "12 stages · draft PR",
+      "7 stages · draft PR",
       "5 stages · needs review",
-      "4 stages · auto-merge",
+      "4 stages · draft PR",
       "5 stages · paused",
     ]);
   });

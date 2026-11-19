@@ -2695,7 +2695,7 @@ line that differs and why.
 ## The workflow rail's statistics
 
 **Every string on mockup 04's rail is computed on the read, and none of them is stored** (P.4,
-[#135](https://github.com/NobuData/ouroboros/issues/135)). `6 stages · auto-merge`,
+[#135](https://github.com/NobuData/ouroboros/issues/135)). `6 stages · draft PR`,
 `5 stages · needs review`, `5 stages · paused` and the page head's `used by 61% of runs` are
 derived from a definition, a `status` column and a count of runs — V029 says why from the other
 side: *"a stored count would be a number that drifts from the document it counts."*
@@ -2703,7 +2703,7 @@ side: *"a stored count would be a number that drifts from the document it counts
 ```ts
 const rail = await workflowStats.forWorkspace(organizationId);
 // [{ slug, name, status, currentVersion, stageCount, terminal,
-//    caption: "6 stages · auto-merge",
+//    caption: "6 stages · draft PR",
 //    runs, usagePercent: 61, usageCaption: "used by 61% of runs" }, …]
 ```
 

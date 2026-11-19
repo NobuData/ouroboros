@@ -189,7 +189,7 @@ describe("the rail", () => {
   });
 
   it("composes no second listing of its own", async () => {
-    const entries = [{ slug: "standard-fix", caption: "6 stages · auto-merge" }];
+    const entries = [{ slug: "standard-fix", caption: "6 stages · draft PR" }];
     const { service, stats } = harness();
     stats.forWorkspace.mockResolvedValue(entries as never);
 

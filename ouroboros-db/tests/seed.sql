@@ -2930,15 +2930,15 @@ select pg_temp.must_hold(
             case when stage_count is null then 'not published'
                  else stage_count::text || ' stage' || case when stage_count = 1 then '' else 's' end end
             || coalesce(' · ' || case when status = 'paused'                        then 'paused'
-                                      when 'open_pr_automerge' = any(terminals)     then 'auto-merge'
+                                      when 'open_pr_automerge' = any(terminals)     then 'draft PR'
                                       when 'needs_review'      = any(terminals)     then 'needs review'
                                       when 'back_to_queue'     = any(terminals)     then 'back to queue' end,
                         '')
             order by created_at, slug)
-          = array['12 stages · auto-merge',
-                  '7 stages · auto-merge',
+          = array['12 stages · draft PR',
+                  '7 stages · draft PR',
                   '5 stages · needs review',
-                  '4 stages · auto-merge',
+                  '4 stages · draft PR',
                   '5 stages · paused',
                   'not published']
      from rail),

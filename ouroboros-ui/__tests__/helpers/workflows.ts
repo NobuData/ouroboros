@@ -32,7 +32,7 @@ import { seededAliases, seededTaskKinds } from "./models";
  *
  * | The mockup draws | The product shows | Why |
  * |---|---|---|
- * | `6 stages · auto-merge` | `12 stages · auto-merge` | A stage is a node, and the seeded v14 is the mockup's own twelve-node canvas. The six-stage document the mockup's string was written for is v13. |
+ * | `6 stages · draft PR` | `12 stages · draft PR` | A stage is a node, and the seeded v14 is the mockup's own twelve-node canvas. The six-stage document the mockup's string was written for is v13. |
  * | `used by 61% of runs` | `used by 42% of runs` | Twenty-two of the dashboard seed's fifty-three runs in the window carry this slug, and no integer count of those runs rounds to 61%. |
  *
  * The other three active workflows' run counts are not asserted by any seed; the ones here
@@ -72,7 +72,7 @@ export function railEntry(overrides: Partial<WorkflowRailEntry> = {}): WorkflowR
     currentVersion: 14,
     stageCount: 12,
     terminal: "open_pr_automerge",
-    caption: "12 stages · auto-merge",
+    caption: "12 stages · draft PR",
     runs: 22,
     usagePercent: 42,
     usageCaption: "used by 42% of runs",
@@ -94,7 +94,7 @@ export function seededRail(): WorkflowRailEntry[] {
       name: "feature-loop",
       currentVersion: 1,
       stageCount: 7,
-      caption: "7 stages · auto-merge",
+      caption: "7 stages · draft PR",
       runs: 15,
       usagePercent: 28,
       usageCaption: "used by 28% of runs",
@@ -117,7 +117,7 @@ export function seededRail(): WorkflowRailEntry[] {
       name: "docs-loop",
       currentVersion: 1,
       stageCount: 4,
-      caption: "4 stages · auto-merge",
+      caption: "4 stages · draft PR",
       runs: 7,
       usagePercent: 13,
       usageCaption: "used by 13% of runs",

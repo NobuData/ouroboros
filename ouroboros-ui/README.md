@@ -6047,13 +6047,13 @@ Runs when a sized issue with effort ≤ M is queued. Last edited 2h ago · v14 �
  Visual   Code   Copilot soon
  ▔▔▔▔▔▔
 ▌standard-fix             ┌ · · · · · · · · · · · · · · · · · · · · · · · · · · · · · ┐
-│ 12 stages · auto-merge  · ┌TRIGGER──────┐  ┌MODEL────────┐  ┌FLOW─────────┐ ·
+│ 12 stages · draft PR  · ┌TRIGGER──────┐  ┌MODEL────────┐  ┌FLOW─────────┐ ·
 │ feature-loop            · │Issue queued │─▶│Understand & │─▶│Effort       │ ·
-│ 7 stages · auto-merge   · └─────────────┘  │scope        │  │re-check     │ ·
+│ 7 stages · draft PR   · └─────────────┘  │scope        │  │re-check     │ ·
 │ deps-refresh            ·                  └─────────────┘  └──────┬──────┘ ·
 │ 5 stages · needs review ·      ┌MODEL────────┐   > M ↘            │ ≤ M ↓ ·
 │ docs-loop               ·  ◀───│Split into   │◀──────────  ┌MODEL─▼───────┐ ·
-│ 4 stages · auto-merge   ·      │subtasks     │             │Write attack  │ ·
+│ 4 stages · draft PR   ·      │subtasks     │             │Write attack  │ ·
 │ hotfix-p0            ●  ·      └─────────────┘             │plan          │ ·
 │ 5 stages · paused       · · · · · · · · · · · · · · · · · · └──────────────┘ ·
 └ + New workflow          ├───────────────────────────────────────────────────────────┤
