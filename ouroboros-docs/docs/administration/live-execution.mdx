@@ -72,9 +72,7 @@ Then check it took:
 - The wizard's **Ready to run?** card, or the readiness route above, passes for the
   repository you want to start with. This is the check to trust.
 - `GET /api/v1/loop/capabilities` lists each stage of the loop and, when one is not live, a
-  reason. In this version it still reports execution as `no_task_queue` and pull-request
-  publishing as `not_implemented` even when live runs work; the readiness check does not
-  depend on either.
+  reason. Execution is live when the engine reports a task queue and a stage executor.
 
 ## What the loop can do
 
