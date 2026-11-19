@@ -92,8 +92,8 @@
 --   | `task_kinds` (2)               | `5eed00a8…` | the sort order: 1 plan, 2 implement     |
 --   | `routes` (2)                   | `5eed00a9…` | the kind's sort order                   |
 --   | `route_hops` (2)               | `5eed00aa…` | the kind's sort order                   |
---   | `workflows` (1)                | `5eed00ab…` | 1                                       |
---   | `workflow_versions` (1)        | `5eed00ac…` | the version                             |
+--   | `workflows` (4)                | `5eed00ab…` | 1 live-slice, 2–4 its variants (#2065)  |
+--   | `workflow_versions` (4)        | `5eed00ac…` | the workflow's suffix (all are v1)      |
 --   | `workflow_templates` (1)       | `5eed00ad…` | the version                             |
 --   | `org_policies` (1)             | —           | keyed by the workspace                  |
 --
@@ -485,14 +485,86 @@ select '5eed00ac-0000-4000-8000-000000000001'::uuid, wf.id, 1,
    and ${ouro_dev_seed}
 on conflict do nothing;
 
--- The pointer — the only update in this file. `is distinct from` is what makes it idempotent:
--- a second pass matches no row and does not move `updated_at` through the touch trigger.
+-- ---------------------------------------------------------------------------
+-- Three variants, one per other shipped template's ending (#2065).
+--
+-- The live-loop leg runs the chain once per shipped template, so each ending needs a workflow
+-- the recording can serve. The shipped templates' own stages (analyze, docs, code; build and
+-- test nodes with no command) have no route or recorded session here, so each variant is
+-- `live-slice`'s document with only its terminal node swapped for the template's: *Docs &
+-- chores* ends `open_pr_automerge` (its V157 title), *Feature builder* and *Deep refactor* end
+-- `needs_review`, titled as their templates title them. `live-slice` itself stands for *Quick
+-- fixes*, whose ending it shares. The ids' suffixes are 2–4 on both tables, since every
+-- version here is v1.
+--
+-- They are read from the published `live-slice` version rather than restated, so the four
+-- cannot drift in anything but the ending. Queue them by slug — they share `live-slice`'s
+-- trigger, so an unnamed queue request would not know which to pin.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.workflows (id, organization_id, slug, name, status, created_at)
+select seed.id::uuid, org."id", seed.slug, seed.slug, 'active', now() - interval '1 day'
+  from ouroboros.organization org
+ cross join (values
+   ('5eed00ab-0000-4000-8000-000000000002', 'live-slice-docs-chores'),
+   ('5eed00ab-0000-4000-8000-000000000003', 'live-slice-feature-builder'),
+   ('5eed00ab-0000-4000-8000-000000000004', 'live-slice-deep-refactor')
+ ) as seed (id, slug)
+ where org."slug" = 'acme-live-slice'
+   and ${ouro_dev_seed}
+on conflict do nothing;
+
+insert into ouroboros.workflow_versions
+    (id, workflow_id, version, definition, published_at, published_by, change_note,
+     created_at, updated_at)
+select seed.id::uuid, wf.id, 1,
+       jsonb_set(base.definition, '{nodes}',
+         (select jsonb_agg(case
+                             when node ->> 'id' = 'open-pr'
+                             then node || jsonb_build_object(
+                                    'title', seed.title,
+                                    'description', seed.description,
+                                    'config', jsonb_build_object('action', seed.action,
+                                                                 'options', seed.options))
+                             else node
+                           end order by position)
+            from jsonb_array_elements(base.definition -> 'nodes') with ordinality as nodes (node, position))),
+       now() - interval '1 day', person."id", 'First publish of the live slice variant.',
+       now() - interval '1 day', now() - interval '1 day'
+  from ouroboros.organization org
+ cross join (values
+   ('5eed00ac-0000-4000-8000-000000000002', 'live-slice-docs-chores', 'Open draft PR',
+    'Opens a draft pull request for you to review. Nothing merges until you say so.',
+    'open_pr_automerge', '{"merge_method": "squash", "delete_branch": true}'::jsonb),
+   ('5eed00ac-0000-4000-8000-000000000003', 'live-slice-feature-builder', 'Ask you',
+    'Opens the draft pull request, then hands the run to you.',
+    'needs_review', '{}'::jsonb),
+   ('5eed00ac-0000-4000-8000-000000000004', 'live-slice-deep-refactor', 'Open PRs for review',
+    'Opens the draft pull request, then hands the run to you.',
+    'needs_review', '{}'::jsonb)
+ ) as seed (id, slug, title, description, action, options)
+  join ouroboros.workflows wf on wf.organization_id = org."id" and wf.slug = seed.slug
+  join ouroboros.workflows live on live.organization_id = org."id" and live.slug = 'live-slice'
+  join ouroboros.workflow_versions base on base.workflow_id = live.id and base.version = 1
+  join ouroboros."user" person on person."email" = 'ken@acme-robotics.dev'
+ where org."slug" = 'acme-live-slice'
+   -- `workflow_version_next` is a BEFORE trigger and raises before the conflict is seen.
+   and not exists (select 1
+                     from ouroboros.workflow_versions prior
+                    where prior.workflow_id = wf.id
+                      and prior.version >= 1)
+   and ${ouro_dev_seed}
+on conflict do nothing;
+
+-- The pointer — the only update in this file, for `live-slice` and its three variants.
+-- `is distinct from` is what makes it idempotent: a second pass matches no row and does not
+-- move `updated_at` through the touch trigger.
 update ouroboros.workflows wf
    set current_version = 1
   from ouroboros.organization org
  where org."slug" = 'acme-live-slice'
    and wf.organization_id = org."id"
-   and wf.slug = 'live-slice'
+   and wf.slug in ('live-slice', 'live-slice-docs-chores', 'live-slice-feature-builder',
+                   'live-slice-deep-refactor')
    and wf.current_version is distinct from 1
    and ${ouro_dev_seed};
 

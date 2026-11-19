@@ -28,6 +28,56 @@ export const SLICE_REPOSITORY = "acme-robotics/helios-greeter";
 /** The slice's workflow (R__dev_seed_live_slice.sql). */
 export const SLICE_WORKFLOW = "live-slice";
 
+/**
+ * One shipped template's ending, as the slice runs it (#2065): the workflow that carries it in
+ * `R__dev_seed_live_slice.sql`, and where its run is left.
+ *
+ * `open_pr_automerge` finishes the run in `review`; `needs_review` — *Ask you* and *Open PRs for
+ * review* — finishes it `needs_human` and files the *Take over a loop that needs a human?* card.
+ * Both open a draft pull request first.
+ */
+export interface SliceTemplate {
+  /** The shipped template the variant stands for. */
+  readonly template: string;
+  /** The workflow's slug in the slice workspace. */
+  readonly workflow: string;
+  /** The terminal node's action. */
+  readonly terminal: "open_pr_automerge" | "needs_review";
+  /** The status the run ends in. */
+  readonly status: "review" | "needs_human";
+}
+
+/** The four shipped templates, in the order the leg runs them. `live-slice` is *Quick fixes*. */
+export const SLICE_TEMPLATES: readonly SliceTemplate[] = [
+  {
+    template: "Quick fixes",
+    workflow: "live-slice",
+    terminal: "open_pr_automerge",
+    status: "review",
+  },
+  {
+    template: "Docs & chores",
+    workflow: "live-slice-docs-chores",
+    terminal: "open_pr_automerge",
+    status: "review",
+  },
+  {
+    template: "Feature builder",
+    workflow: "live-slice-feature-builder",
+    terminal: "needs_review",
+    status: "needs_human",
+  },
+  {
+    template: "Deep refactor",
+    workflow: "live-slice-deep-refactor",
+    terminal: "needs_review",
+    status: "needs_human",
+  },
+];
+
+/** The decision a run that ends `needs_human` files, as the inbox words it. */
+export const NEEDS_HUMAN_QUESTION = "Take over a loop that needs a human?";
+
 /** The mirrored issue the slice runs on — `acme-robotics/helios-greeter#1`. */
 export const SLICE_ISSUE = {
   id: "5eed00a3-0000-4000-8000-000000000001",
@@ -255,15 +305,22 @@ export async function confirmSliceItem(context: BrowserContext): Promise<void> {
  * Queue the slice issue, or find it already queued — a warm stack, or a failure-mode pair, may
  * have left the item waiting — and confirm it for a live run.
  *
+ * The workflow is always named: the slice's four workflows share a trigger, so an unnamed
+ * request would leave the pin to chance.
+ *
  * @param context - Signed in as an approver.
+ * @param workflow - The workflow's slug; `live-slice` unless a template's variant is run.
  */
-export async function queueSliceIssue(context: BrowserContext): Promise<void> {
+export async function queueSliceIssue(
+  context: BrowserContext,
+  workflow: string = SLICE_WORKFLOW,
+): Promise<void> {
   if ((await sliceQueueItem(context)) === undefined) {
     await requestAs(
       context,
       "POST",
       "/api/v1/backlog/queue",
-      { issueIds: [SLICE_ISSUE.id] },
+      { issueIds: [SLICE_ISSUE.id], workflow },
       "queueing the slice issue",
     );
   }
@@ -321,4 +378,29 @@ export async function awaitRunnerBack(context: BrowserContext, since: Date): Pro
       { message: "the runner did not come back after rest was recreated", timeout: 60_000 },
     )
     .toBe(true);
+}
+
+/** An inbox card, as far as the leg reads it. */
+export interface InboxCard {
+  readonly id: string;
+  readonly question: string;
+  readonly refs: readonly { readonly type: string; readonly id: string; readonly label: string }[];
+}
+
+/**
+ * The inbox cards that reference a run.
+ *
+ * @param context - Signed in.
+ * @param runId - The run.
+ * @returns Its cards, newest first as the inbox lists them.
+ */
+export async function inboxCardsOfRun(
+  context: BrowserContext,
+  runId: string,
+): Promise<InboxCard[]> {
+  const inbox = await readAs<{ items: InboxCard[] }>(context, "/api/v1/inbox");
+
+  return inbox.items.filter((card) =>
+    card.refs.some((ref) => ref.type === "run" && ref.id === runId),
+  );
 }

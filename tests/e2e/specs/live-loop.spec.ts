@@ -23,7 +23,11 @@
  *   1. a subscription-shaped credential cannot be saved (DH.4, #1304);
  *   2. with the deployment switch off, a confirmed item is admitted to nothing (DG.2, L10);
  *   3. with the switch on and the repository not under dry-run, still nothing (DI.4, L7);
- *   4. with dry-run back on, the same item runs the whole loop — the chain;
+ *   4. with dry-run back on, the same item runs the whole loop — the chain, once per shipped
+ *      template (#2065): *Quick fixes* and *Docs & chores* end in `review`; *Feature builder*
+ *      and *Deep refactor* end `needs_human`, with the *Take over a loop that needs a human?*
+ *      card carrying the draft pull request. Each is a variant of `live-slice` that differs only
+ *      in its ending (R__dev_seed_live_slice.sql), queued by name one after another;
  *   5. the run simulator's secret cannot open a run that renders as live (DJ.1, R4).
  *
  * Not here yet, and why: a build that **fails once by design** and a gate that returns to
@@ -40,12 +44,15 @@ import { type BrowserContext, type Page, expect, test } from "@playwright/test";
 
 import {
   awaitRunnerBack,
+  inboxCardsOfRun,
+  NEEDS_HUMAN_QUESTION,
   openTheCeiling,
   queueSliceIssue,
   QUIET_MS,
   RUN_MS,
   SLICE_ISSUE,
   SLICE_SOURCE_ID,
+  SLICE_TEMPLATES,
   SLICE_WORKSPACE,
   SUBSCRIPTION_SHAPED_TOKEN,
   type RunRow,
@@ -92,6 +99,20 @@ let before = new Set<string>();
  */
 async function newRuns(context: BrowserContext): Promise<RunRow[]> {
   return (await sliceRuns(context)).filter((run) => !before.has(run.id));
+}
+
+/**
+ * The slice issue's live runs this leg caused and no earlier template's chain has claimed.
+ *
+ * @param context - Signed in.
+ * @param claimed - The runs the earlier chains already took.
+ * @returns The unclaimed live runs.
+ */
+async function unclaimedLiveRuns(
+  context: BrowserContext,
+  claimed: ReadonlySet<string>,
+): Promise<RunRow[]> {
+  return (await newRuns(context)).filter((run) => run.origin === "live" && !claimed.has(run.id));
 }
 
 /** The run console's payload, as far as this leg reads it. */
@@ -253,127 +274,177 @@ test.describe("leg 34: the live loop, an issue to a draft pull request (#1321)",
     expect(readiness.ready).toBe(false);
   });
 
-  test("the chain: queued issue → live run → pushed branch → runner build → draft pull request", async ({
-    context,
-    page,
-  }) => {
-    test.setTimeout(RUN_MS + 2 * 60 * 1000);
-    await enterSlice(context);
-    await requestAs(
+  // The chain, once per shipped template (#2065). The first run takes the item the negative legs
+  // left queued; each later one queues the issue again, by name, once the run before it has
+  // consumed the item. `claimed` keeps a later chain from reading an earlier chain's run.
+  const claimed = new Set<string>();
+
+  for (const [index, template] of SLICE_TEMPLATES.entries()) {
+    test(`the chain, ${template.template}: queued issue → live run → pushed branch → runner build → draft pull request, ${template.terminal} ends the run ${template.status}`, async ({
       context,
-      "PATCH",
-      "/api/v1/policies/dry-run",
-      { dryRun: true },
-      "turning dry-run back on",
-    );
+      page,
+    }) => {
+      test.setTimeout(RUN_MS + 2 * 60 * 1000);
+      await enterSlice(context);
 
-    // --- admission: the same confirmed item is claimed, and a live run opens -------------------
-    let run: RunRow | undefined;
-    await expect
-      .poll(
-        async () => {
-          run = (await newRuns(context)).find((candidate) => candidate.origin === "live");
-          if (run !== undefined) return run.origin;
-          // Not admitted yet: what the queue says, so a run that never opens says why.
-          const waiting = (await sliceQueueItem(context))?.waiting?.reason;
-          return `not opened (${waiting ?? "admitted, no run yet"})`;
-        },
-        { message: "no run opened for the slice issue", timeout: 60_000 },
-      )
-      .toBe("live");
-    const runId = run!.id;
+      if (index === 0) {
+        await requestAs(
+          context,
+          "PATCH",
+          "/api/v1/policies/dry-run",
+          { dryRun: true },
+          "turning dry-run back on",
+        );
+      } else {
+        // A clean request log, so the session assertions below are about this run alone.
+        await resetProviderFixture();
+        await queueSliceIssue(context, template.workflow);
+      }
 
-    await page.goto(`/runs/${runId}?from=dashboard`);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText(`#${SLICE_ISSUE.number}`);
-    await expect(page.getByText("Simulated run.")).toHaveCount(0);
-    await expect(page.locator(".origin-badge")).toHaveCount(0);
+      // --- admission: the confirmed item is claimed, and a live run opens ----------------------
+      let run: RunRow | undefined;
+      await expect
+        .poll(
+          async () => {
+            run = (await unclaimedLiveRuns(context, claimed))[0];
+            if (run !== undefined) return run.origin;
+            // Not admitted yet: what the queue says, so a run that never opens says why.
+            const waiting = (await sliceQueueItem(context))?.waiting?.reason;
+            return `not opened (${waiting ?? "admitted, no run yet"})`;
+          },
+          { message: `no run opened for ${template.workflow}`, timeout: 60_000 },
+        )
+        .toBe("live");
+      const runId = run!.id;
+      claimed.add(runId);
 
-    // --- the run reaches review with its pull request, or says why it stopped -----------------
-    let consoleRead: RunConsole | undefined;
-    await expect
-      .poll(
-        async () => {
-          consoleRead = await readAs<RunConsole>(context, `/api/v1/runs/${runId}`);
-          const { status } = consoleRead.run;
-          if (["failed", "canceled", "needs_human"].includes(status)) {
-            return `${status}: ${await lastWord(context, runId)}`;
-          }
-          if (status === "review" && consoleRead.run.prNumber !== null) return "review";
-          // Still moving: where, so a run that never gets further says which stage it is stuck in.
-          return `${status} at ${consoleRead.run.stageLabel}`;
-        },
-        { message: "the live run did not reach review with a pull request", timeout: RUN_MS },
-      )
-      .toBe("review");
-    const { resources } = consoleRead!;
+      await page.goto(`/runs/${runId}?from=dashboard`);
+      await expect(page.getByRole("heading", { level: 1 })).toContainText(`#${SLICE_ISSUE.number}`);
+      await expect(page.getByText("Simulated run.")).toHaveCount(0);
+      await expect(page.locator(".origin-badge")).toHaveCount(0);
 
-    // --- plan and implement were served by their own recorded sessions, through the facade -----
-    const recording = readRecording();
-    const main = (await fixtureRequests()).filter((request) => request.main);
-    for (const session of ["plan", "implement"]) {
-      const served = main.filter((request) => request.session === session);
-      expect(served.length, `the ${session} session was never asked`).toBeGreaterThan(0);
-      expect(
-        served.every((request) => request.status === 200 && request.mismatch === undefined),
-      ).toBe(true);
-      expect(served.every((request) => request.model === recording.sessions[session]?.model)).toBe(
-        true,
+      // --- the run ends the way its template ends, or says why it stopped ----------------------
+      const stops = ["failed", "canceled", "needs_human"].filter(
+        (status) => status !== template.status,
       );
-    }
+      let consoleRead: RunConsole | undefined;
+      await expect
+        .poll(
+          async () => {
+            consoleRead = await readAs<RunConsole>(context, `/api/v1/runs/${runId}`);
+            const { status } = consoleRead.run;
+            if (stops.includes(status)) return `${status}: ${await lastWord(context, runId)}`;
+            // `review` waits on its pull request; `needs_human` is final once it is reached.
+            if (
+              status === template.status &&
+              (status !== "review" || consoleRead.run.prNumber !== null)
+            ) {
+              return template.status;
+            }
+            // Still moving: where, so a run that never gets further says which stage it is stuck in.
+            return `${status} at ${consoleRead.run.stageLabel}`;
+          },
+          {
+            message: `the ${template.workflow} run did not end ${template.status} with a pull request`,
+            timeout: RUN_MS,
+          },
+        )
+        .toBe(template.status);
+      const { resources } = consoleRead!;
 
-    // --- the branch is a real ref on the git host -------------------------------------------
-    const refs = await (
-      await fetch(
-        `${GIT_HOST_URL}/refs/${LIVE_SLICE_REPOSITORY.owner}/${LIVE_SLICE_REPOSITORY.name}`,
-      )
-    ).text();
-    const branch = `ouro/run-${runId}-${String(SLICE_ISSUE.number)}`;
-    const line = refs.split("\n").find((entry) => entry.startsWith(`${branch} `));
-    expect(line, `the git host holds no ${branch}:\n${refs}`).toBeDefined();
-    const sha = line!.split(" ")[1];
-    const main_ = refs
-      .split("\n")
-      .find((entry) => entry.startsWith("main "))!
-      .split(" ")[1];
-    expect(sha, "the run branch must carry the loop's commit, not main's").not.toBe(main_);
+      // --- plan and implement were served by their own recorded sessions, through the facade ---
+      const recording = readRecording();
+      const main = (await fixtureRequests()).filter((request) => request.main);
+      for (const session of ["plan", "implement"]) {
+        const served = main.filter((request) => request.session === session);
+        expect(served.length, `the ${session} session was never asked`).toBeGreaterThan(0);
+        expect(
+          served.every((request) => request.status === 200 && request.mismatch === undefined),
+        ).toBe(true);
+        expect(
+          served.every((request) => request.model === recording.sessions[session]?.model),
+        ).toBe(true);
+      }
 
-    // --- the build ran on the enrolled runner, against that exact commit ---------------------
-    expect(resources.farm?.jobStatus).toBe("succeeded");
-    expect(resources.farm?.runnerName).toBe("forge-compose");
-    const log = await readAs<{ bytes: string }>(
-      context,
-      `/api/v1/farm/jobs/${resources.farm!.buildJobId!}/log`,
-    );
-    expect(log.bytes).toContain(sha);
-    expect(log.bytes).toContain("ok   greet World -> Hello, World!");
+      // --- the branch is a real ref on the git host ---------------------------------------------
+      const refs = await (
+        await fetch(
+          `${GIT_HOST_URL}/refs/${LIVE_SLICE_REPOSITORY.owner}/${LIVE_SLICE_REPOSITORY.name}`,
+        )
+      ).text();
+      const branch = `ouro/run-${runId}-${String(SLICE_ISSUE.number)}`;
+      const line = refs.split("\n").find((entry) => entry.startsWith(`${branch} `));
+      expect(line, `the git host holds no ${branch}:\n${refs}`).toBeDefined();
+      const sha = line!.split(" ")[1];
+      const main_ = refs
+        .split("\n")
+        .find((entry) => entry.startsWith("main "))!
+        .split(" ")[1];
+      expect(sha, "the run branch must carry the loop's commit, not main's").not.toBe(main_);
 
-    // --- a draft pull request, with the run's id, recorded by the tracker ----------------------
-    const pulls = await readAs<{
-      items: { id: string; number: number; draft: boolean; origin: string }[];
-    }>(context, `/api/v1/pull-requests?runId=${runId}`);
-    expect(pulls.items).toHaveLength(1);
-    const pull = pulls.items[0];
-    expect(pull).toMatchObject({ number: consoleRead!.run.prNumber, draft: true, origin: "live" });
-    const recorded = (await (
-      await fetch(
-        `${TRACKER_URL}/__sandbox/pulls/${LIVE_SLICE_REPOSITORY.owner}/${LIVE_SLICE_REPOSITORY.name}/${String(pull.number)}`,
-      )
-    ).json()) as { draft?: boolean; head?: { ref?: string } };
-    expect(recorded.draft).toBe(true);
-    expect(recorded.head?.ref).toBe(branch);
+      // --- the build ran on the enrolled runner, against that exact commit ----------------------
+      expect(resources.farm?.jobStatus).toBe("succeeded");
+      expect(resources.farm?.runnerName).toBe("forge-compose");
+      const log = await readAs<{ bytes: string }>(
+        context,
+        `/api/v1/farm/jobs/${resources.farm!.buildJobId!}/log`,
+      );
+      expect(log.bytes).toContain(sha);
+      expect(log.bytes).toContain("ok   greet World -> Hello, World!");
 
-    // --- usage reconciles to a cost --------------------------------------------------------
-    expect(resources.tokens.used).toBeGreaterThan(0);
-    expect(Number(resources.cost.costCents)).toBeGreaterThan(0);
-    expect(resources.cost.unpricedEvents).toBe(0);
+      // --- a draft pull request, with the run's id, recorded by the tracker ---------------------
+      const pulls = await readAs<{
+        items: { id: string; number: number; draft: boolean; origin: string }[];
+      }>(context, `/api/v1/pull-requests?runId=${runId}`);
+      expect(pulls.items).toHaveLength(1);
+      const pull = pulls.items[0];
+      expect(pull).toMatchObject({ draft: true, origin: "live" });
+      if (consoleRead!.run.prNumber !== null) {
+        expect(pull.number).toBe(consoleRead!.run.prNumber);
+      }
+      const recorded = (await (
+        await fetch(
+          `${TRACKER_URL}/__sandbox/pulls/${LIVE_SLICE_REPOSITORY.owner}/${LIVE_SLICE_REPOSITORY.name}/${String(pull.number)}`,
+        )
+      ).json()) as { draft?: boolean; head?: { ref?: string } };
+      expect(recorded.draft).toBe(true);
+      expect(recorded.head?.ref).toBe(branch);
 
-    // --- the dashboard, the run console, the farm and the pull-request page agree -------------
-    await expectDrawn(page, "/dashboard", SLICE_ISSUE.title);
-    await expect(page.locator(".origin-strip")).toHaveCount(0);
-    await expectDrawn(page, `/runs/${runId}?from=dashboard`, "review");
-    await expectDrawn(page, "/build-farm", "forge-compose");
-    await expectDrawn(page, `/prs/${pull.id}`, "Draft");
-  });
+      // --- a run handed to a person says so, and names the pull request ------------------------
+      if (template.status === "needs_human") {
+        let card: Awaited<ReturnType<typeof inboxCardsOfRun>>[number] | undefined;
+        await expect
+          .poll(
+            async () => {
+              card = (await inboxCardsOfRun(context, runId)).find(
+                (candidate) => candidate.question === NEEDS_HUMAN_QUESTION,
+              );
+              return card?.question ?? "no card for the run yet";
+            },
+            { message: `${template.template} filed no needs-human decision`, timeout: 30_000 },
+          )
+          .toBe(NEEDS_HUMAN_QUESTION);
+        expect(
+          card!.refs.some((ref) => ref.type === "pr" && ref.id === pull.id),
+          `the decision carries no pr ref for ${pull.id}: ${JSON.stringify(card!.refs)}`,
+        ).toBe(true);
+      }
+
+      // --- usage reconciles to a cost -----------------------------------------------------------
+      expect(resources.tokens.used).toBeGreaterThan(0);
+      expect(Number(resources.cost.costCents)).toBeGreaterThan(0);
+      expect(resources.cost.unpricedEvents).toBe(0);
+
+      // --- the dashboard, the run console, the farm and the pull-request page agree -------------
+      await expectDrawn(page, `/prs/${pull.id}`, "Draft");
+      if (index === 0) {
+        await expectDrawn(page, "/dashboard", SLICE_ISSUE.title);
+        await expect(page.locator(".origin-strip")).toHaveCount(0);
+        await expectDrawn(page, `/runs/${runId}?from=dashboard`, "review");
+        await expectDrawn(page, "/build-farm", "forge-compose");
+      }
+    });
+  }
 
   test("the simulator's secret cannot open a run that renders as live", async ({
     context,
