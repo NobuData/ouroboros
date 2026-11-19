@@ -23,18 +23,15 @@ export async function engineFilesNamed(name: string): Promise<string[]> {
     throw new Error(`engineFilesNamed takes a bare file name, not ${JSON.stringify(name)}`);
   }
 
+  // `find` exits 1 when it meets a directory it may not read (the engine runs unprivileged);
+  // what it printed is the answer, so the shell swallows the status.
   const out = await compose(
     "exec",
     "-T",
     ENGINE_SERVICE,
-    "find",
-    "/",
-    "-xdev",
-    "-name",
-    name,
-    "-not",
-    "-path",
-    "/proc/*",
+    "sh",
+    "-c",
+    `find / -xdev -name '${name}' -not -path '/proc/*' 2>/dev/null || true`,
   );
 
   return out
