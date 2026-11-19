@@ -78,7 +78,7 @@ from ouroboros_engine.control_plane.execution import FinishOutcome, RunStarted
 from ouroboros_engine.control_plane.ingest import ChangeSet, StageReturn
 from ouroboros_engine.control_plane.transport import TransportError
 from ouroboros_engine.execution.build import BuildSettings, BuildWatcher, command_argv
-from ouroboros_engine.execution.checks import CheckResult
+from ouroboros_engine.execution.checks import CheckResult, bound_tail
 from ouroboros_engine.execution.controls import Controls, RunAborted, Running
 from ouroboros_engine.execution.events import StageEvent
 from ouroboros_engine.execution.facts import Judgement, TicketFacts, judge
@@ -101,6 +101,7 @@ from ouroboros_engine.execution.stage import (
     render_prompt,
     stage_model,
     stage_policy,
+    with_failed_checks,
     with_notes,
 )
 from ouroboros_engine.execution.state import ExecutionState, edge_id
@@ -139,6 +140,8 @@ class _Run:
         workspace: The open working tree, until it is closed or finished.
         executor: The attempt running now, so a lost heartbeat can abort it.
         returned_from: The gate return the next attempt reports, after a loop.
+        failed_checks: The failing checks (name, evidence, log tail) the next attempt's prompt
+            carries after a gate return (#1816); consumed by that attempt.
         controls: A person's controls: pending, and how they are claimed and acked.
         halt: The change-set answer that stopped the running stage for a person.
     """
@@ -151,6 +154,7 @@ class _Run:
     workspace: RunWorkspace | None = None
     executor: StageExecutor | None = None
     returned_from: StageReturn | None = field(default=None)
+    failed_checks: list[tuple[str, str, tuple[str, ...]]] = field(default_factory=list)
     halt: ChangeSet | None = None
 
     def lose(self, code: str) -> None:
@@ -589,6 +593,7 @@ class Interpreter:
         await run.reporter.transition(
             node.id, "active", attempt, returned_from=returned_from
         )
+        failed_checks, run.failed_checks = run.failed_checks, []
         started = run.started
         prompt = render_prompt(
             config,
@@ -601,12 +606,24 @@ class Interpreter:
             run_id=started.run_id,
             stage_key=node.id,
             attempt=attempt,
-            prompt=with_notes(prompt, await run.controls.notes_for(attempt)),
+            prompt=with_notes(
+                with_failed_checks(prompt, failed_checks),
+                await run.controls.notes_for(attempt),
+            ),
             model=stage_model(config, started.model, started.task_models),
             policy=stage_policy(
                 config, str(run.workspace.path), started.protected_paths
             ),
         )
+        if failed_checks:
+            await run.reporter.note(
+                node.id,
+                attempt,
+                "Retry prompt carries the failing check output: "
+                + ", ".join(f"`{name}`" for name, _, _ in failed_checks)
+                + ".",
+                payload={"failedChecks": [name for name, _, _ in failed_checks]},
+            )
         executor = self._registry.create(kind)
         return await self._drive(run, executor, executor.run(context))
 
@@ -873,6 +890,7 @@ class Interpreter:
             exit_code=job.exit_code,
             job_number=job.number,
             ccache_hit_rate_pct=None if job.ccache is None else job.ccache.hit_rate_pct,
+            log_tail=bound_tail(job.log_tail) if not passed else (),
         )
         await run.reporter.transition(
             node.id, "succeeded" if passed else "failed", attempt
@@ -1054,6 +1072,11 @@ class Interpreter:
         run.returned_from = StageReturn(
             stage_key=node.id, kind="gate", reason=judgement.failure or "gate_rejected"
         )
+        run.failed_checks = [
+            (name, result.describe(name), result.log_tail)
+            for name, result in run.state.checks.items()
+            if not result.passed
+        ]
         # A new round: its builds are what the gate decides on next, never this round's.
         run.state.checks.clear()
         return loop.to
@@ -1083,7 +1106,8 @@ class Interpreter:
                 "kind": "gate",
                 "holds": judgement.holds,
                 "checks": {
-                    name: result.to_json() for name, result in run.state.checks.items()
+                    name: result.to_json(with_tail=False)
+                    for name, result in run.state.checks.items()
                 },
             },
         )

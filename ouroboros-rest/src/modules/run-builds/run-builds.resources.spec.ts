@@ -87,3 +87,15 @@ describe("a run's build, as the engine reads it", () => {
     });
   });
 });
+
+describe("a failed build's log tail (#1816)", () => {
+  it("is null unless the read carried one", () => {
+    expect(runBuildResource(view(), null).logTail).toBeNull();
+  });
+
+  it("is carried as given, oldest first, redacted lines untouched", () => {
+    const tail = ["make: *** [build] Error 2", "token=[REDACTED]"];
+
+    expect(runBuildResource(view({ exit_code: 2 }), null, tail).logTail).toEqual(tail);
+  });
+});

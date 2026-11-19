@@ -50,6 +50,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 
 import type { Run } from "../db/schema";
+import { readTail } from "../analyzer/corpus/log.tail";
 import { DomainError } from "../errors/error.envelope";
 import { FARM_ERRORS } from "../farm/farm.errors";
 import { FarmJobsService } from "../farm/dispatch/jobs.service";
@@ -67,7 +68,12 @@ import {
   runBuildNotFound,
 } from "./run-builds.errors";
 import { RunBuildsRepository } from "./run-builds.repository";
-import { runBuildResource, type RunBuildResource, type RunBuildView } from "./run-builds.resources";
+import {
+  RUN_BUILD_TAIL_LINES,
+  runBuildResource,
+  type RunBuildResource,
+  type RunBuildView,
+} from "./run-builds.resources";
 
 /** V153's unique index — a second first-submission of one stage attempt. */
 const STAGE_KEY_INDEX = "build_jobs_run_stage_key";
@@ -183,7 +189,7 @@ export class RunBuildsService {
     const run = await this.builds.findRun(runId);
     if (run === undefined) throw runNotFound(runId);
 
-    return this.answer(run, await this.latest(run, jobId));
+    return this.answer(run, await this.latest(run, jobId), true);
   }
 
   /**
@@ -296,14 +302,27 @@ export class RunBuildsService {
    *
    * @param run - The run.
    * @param view - The latest attempt.
+   * @param withLogTail - Whether a failed build's log tail is read and carried (the read route).
    * @returns `{job}`.
    */
-  private async answer(run: Run, view: RunBuildView): Promise<RunBuildAnswer> {
+  private async answer(run: Run, view: RunBuildView, withLogTail = false): Promise<RunBuildAnswer> {
     const queueState =
       phaseOf(view.job) === "waiting"
         ? (await this.jobs.dispatchState(run.organization_id, view.job.id)).queueState
         : null;
 
-    return { job: runBuildResource(view, queueState) };
+    const tail =
+      withLogTail && phaseOf(view.job) === "failed"
+        ? (
+            await readTail(
+              (before) => this.builds.logChunks(view.job.id, before),
+              RUN_BUILD_TAIL_LINES,
+            )
+          ).lines
+        : null;
+
+    return {
+      job: runBuildResource(view, queueState, tail !== null && tail.length > 0 ? tail : null),
+    };
   }
 }

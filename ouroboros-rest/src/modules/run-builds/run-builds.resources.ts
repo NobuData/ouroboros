@@ -13,6 +13,9 @@ import type { CcacheStats } from "../farm/gateway/terminal";
 import type { DispatchQueueState } from "../farm/dispatch/jobs.resources";
 import { phaseOf, type JobPhase } from "../farm/dispatch/job.states";
 
+/** The most log lines a failed build's answer carries. */
+export const RUN_BUILD_TAIL_LINES = 60;
+
 /** A ccache result as a gate reads it: the counts, and the hit rate they make. */
 export interface CcacheSummary {
   readonly hits: number;
@@ -55,6 +58,12 @@ export interface RunBuildResource {
   readonly ccache: CcacheSummary | null;
   /** How many automatic retries the chain took before this attempt. */
   readonly retries: number;
+  /**
+   * The last lines of a failed build's log, oldest first — what the gate's retry is told (#1816).
+   * `null` unless this is the read of a `failed` build with a stored log; the stored log is
+   * already redacted. Bounded by {@link RUN_BUILD_TAIL_LINES}.
+   */
+  readonly logTail: readonly string[] | null;
   readonly queuedAt: string;
   readonly offeredAt: string | null;
   readonly startedAt: string | null;
@@ -90,11 +99,13 @@ export function ccacheSummary(stats: unknown): CcacheSummary | null {
  *
  * @param view - The latest attempt, with its pool's and runner's names.
  * @param queueState - Where a waiting job stands; ignored in every other phase.
+ * @param logTail - The failed build's log tail, when the route read it; `null` otherwise.
  * @returns The resource.
  */
 export function runBuildResource(
   view: RunBuildView,
   queueState: DispatchQueueState | null,
+  logTail: readonly string[] | null = null,
 ): RunBuildResource {
   const { job } = view;
   const phase = phaseOf(job);
@@ -112,6 +123,7 @@ export function runBuildResource(
     exitCode: job.exit_code,
     ccache: ccacheSummary(job.ccache_stats),
     retries: view.retries,
+    logTail,
     queuedAt: job.queued_at.toISOString(),
     offeredAt: job.offered_at?.toISOString() ?? null,
     startedAt: job.started_at?.toISOString() ?? null,

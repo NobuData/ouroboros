@@ -8,11 +8,12 @@
  */
 
 import { Injectable } from "@nestjs/common";
-import type { Kysely, Transaction } from "kysely";
+import { sql, type Kysely, type Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
 import { selectDefaultPool } from "../farm/fleet/default-pool";
 import type { BuildJobStatus, Database, Run } from "../db/schema";
+import type { LogChunk } from "../analyzer/corpus/log.tail";
 import type { RunBuildView } from "./run-builds.resources";
 
 /** The connection or an open transaction. */
@@ -30,6 +31,25 @@ export class RunBuildsRepository {
    * @param database - The typed connection. Injected, never constructed.
    */
   constructor(private readonly database: DatabaseService) {}
+
+  /**
+   * One page of a build's stored log, newest chunk first.
+   *
+   * @param jobId - The build job.
+   * @param beforeSeq - Resume before this chunk, or `null` for the newest page.
+   * @returns The chunks.
+   */
+  async logChunks(jobId: string, beforeSeq: number | null): Promise<LogChunk[]> {
+    const before = beforeSeq === null ? sql`true` : sql`c.seq < ${beforeSeq}`;
+    const { rows } = await sql<LogChunk>`
+      select c.seq, c.content
+        from ouroboros.build_log_chunks c
+       where c.job_id = ${jobId} and ${before}
+       order by c.seq desc
+       limit 8`.execute(this.database.db);
+
+    return rows;
+  }
 
   /**
    * Run work in one transaction.
