@@ -17,12 +17,12 @@ import { Injectable } from "@nestjs/common";
 import { AppConfigService } from "../config/config.service";
 import { PROVIDER_CONNECTION_KINDS } from "../db/schema";
 import { EngineClient } from "../engine/engine.client";
+import { GithubCredentialsService } from "../github/github.credentials.service";
 import { INVOCATION_GATEWAY_AVAILABLE } from "../internal/invoke.contract";
 import { OrgPolicyService } from "../policies/org-policy.service";
 import { invocationCleared } from "../providers/invocation.terms";
 import {
   loopCapabilities,
-  PR_PUBLISHING_IMPLEMENTED,
   type LoopCapabilitiesResource,
   type LoopFacts,
 } from "./loop.capabilities";
@@ -45,12 +45,14 @@ export class LoopCapabilitiesService {
    * @param engine - The engine's status.
    * @param policies - The workspace's dry-run policy.
    * @param loop - The workspace's connections and runners.
+   * @param credentials - The workspace's GitHub token, for the pull-request stage.
    */
   constructor(
     private readonly config: AppConfigService,
     private readonly engine: EngineClient,
     private readonly policies: OrgPolicyService,
     private readonly loop: LoopRepository,
+    private readonly credentials: GithubCredentialsService,
   ) {}
 
   /**
@@ -60,11 +62,12 @@ export class LoopCapabilitiesService {
    * @returns The report.
    */
   async read(organizationId: string): Promise<LoopCapabilitiesResource> {
-    const [invocableConnection, runners, engine, dryRun] = await Promise.all([
+    const [invocableConnection, runners, engine, dryRun, githubCredential] = await Promise.all([
       this.loop.invocableConnectionExists(organizationId, INVOCABLE_KINDS),
       this.loop.runnerPresence(organizationId),
       this.engineFacts(),
       this.policies.dryRun(organizationId),
+      this.credentials.isConfigured(organizationId),
     ]);
 
     return loopCapabilities({
@@ -73,7 +76,7 @@ export class LoopCapabilitiesService {
       invocableConnection,
       engine,
       runners,
-      prPublishingImplemented: PR_PUBLISHING_IMPLEMENTED,
+      githubCredential,
       dryRun,
     });
   }

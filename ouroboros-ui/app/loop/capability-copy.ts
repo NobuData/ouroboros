@@ -14,7 +14,7 @@
 
 import type { LoopCapabilities, LoopReason, LoopStage } from "@/app/api/loop";
 import { DOCS_URL } from "@/app/external";
-import { BUILD_FARM_PATH, POLICIES_PATH, PROVIDERS_PATH } from "@/app/paths";
+import { BUILD_FARM_PATH, POLICIES_PATH, PROVIDERS_PATH, SOURCES_PATH } from "@/app/paths";
 
 /** Where a reason is fixed. */
 export interface CapabilityFix {
@@ -70,6 +70,9 @@ const BUILD_FARM: CapabilityFix = { label: "Build Farm →", href: BUILD_FARM_PA
 /** Policies — where the dry-run policy is set. */
 export const POLICIES: CapabilityFix = { label: "Policies →", href: POLICIES_PATH, external: false };
 
+/** Ticket sources — where the workspace's GitHub token is stored. */
+const GITHUB_TOKEN: CapabilityFix = { label: "Sources →", href: SOURCES_PATH, external: false };
+
 /** What this version has built, for a stage it has not. */
 const WHAT_IS_BUILT: CapabilityFix = {
   label: "What is built",
@@ -119,6 +122,10 @@ export const REASON_COPY: Readonly<
   policy_not_dry_run: {
     sentence: "The workspace's dry-run policy is off — pull requests are not published.",
     fix: POLICIES,
+  },
+  no_github_credential: {
+    sentence: "No GitHub token is stored for this workspace — draft pull requests cannot be opened.",
+    fix: GITHUB_TOKEN,
   },
 };
 

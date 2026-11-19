@@ -1,6 +1,7 @@
 import type { AppConfigService } from "../config/config.service";
 import type { EngineClient } from "../engine/engine.client";
 import { engineUnavailable } from "../engine/engine.errors";
+import type { GithubCredentialsService } from "../github/github.credentials.service";
 import type { OrgPolicyService } from "../policies/org-policy.service";
 import type { LoopRepository, RunnerPresence } from "./loop.repository";
 import { LoopCapabilitiesService } from "./loop.service";
@@ -14,6 +15,7 @@ interface Rig {
   >;
   readonly engine: jest.Mocked<Pick<EngineClient, "status">>;
   readonly policies: jest.Mocked<Pick<OrgPolicyService, "dryRun">>;
+  readonly credentials: jest.Mocked<Pick<GithubCredentialsService, "isConfigured">>;
 }
 
 /**
@@ -29,6 +31,7 @@ function rig(
     runners?: RunnerPresence;
     status?: () => Promise<unknown>;
     dryRun?: boolean;
+    githubToken?: boolean;
   } = {},
 ): Rig {
   const repository = {
@@ -47,6 +50,7 @@ function rig(
       ),
   };
   const policies = { dryRun: jest.fn().mockResolvedValue(options.dryRun ?? false) };
+  const credentials = { isConfigured: jest.fn().mockResolvedValue(options.githubToken ?? false) };
   const config = {
     liveExecutionEnabled: options.liveExecutionEnabled ?? false,
   } as AppConfigService;
@@ -55,9 +59,10 @@ function rig(
     engine as unknown as EngineClient,
     policies as unknown as OrgPolicyService,
     repository as unknown as LoopRepository,
+    credentials as unknown as GithubCredentialsService,
   );
 
-  return { service, repository, engine, policies };
+  return { service, repository, engine, policies, credentials };
 }
 
 describe("LoopCapabilitiesService (DG.2, #1300)", () => {
@@ -144,8 +149,52 @@ describe("LoopCapabilitiesService (DG.2, #1300)", () => {
     expect(report.stages.execution).toEqual({ available: true, reason: null, sinceVersion: null });
     expect(report.stages.guardrailEnforcement.available).toBe(true);
     expect(report.executors).toEqual(["harness"]);
-    // PR publishing has not shipped.
-    expect(report.stages.prPublishing.reason).toBe("not_implemented");
+    // No GitHub token: no draft PR can be opened.
+    expect(report.stages.prPublishing.reason).toBe("no_github_credential");
+  });
+
+  describe("PR publishing is derived from the deployment (FF.2, #1841)", () => {
+    const status = (): Promise<unknown> =>
+      Promise.resolve({
+        service: "ouroboros-engine",
+        version: "0.8.0",
+        uptimeSeconds: 1,
+        taskQueue: true,
+        executors: ["harness"],
+      });
+
+    it("is available with a GitHub token, whatever the dry-run policy", async () => {
+      for (const dryRun of [true, false]) {
+        const { service, credentials } = rig({
+          liveExecutionEnabled: true,
+          githubToken: true,
+          dryRun,
+          status,
+        });
+
+        const report = await service.read(WORKSPACE);
+
+        expect(report.stages.prPublishing).toEqual({
+          available: true,
+          reason: null,
+          sinceVersion: null,
+        });
+        expect(report.draftOnly).toBe(dryRun);
+        expect(credentials.isConfigured).toHaveBeenCalledWith(WORKSPACE);
+      }
+    });
+
+    it("is unavailable without a GitHub write token", async () => {
+      const { service } = rig({ liveExecutionEnabled: true, githubToken: false, status });
+
+      const report = await service.read(WORKSPACE);
+
+      expect(report.stages.prPublishing).toEqual({
+        available: false,
+        reason: "no_github_credential",
+        sinceVersion: null,
+      });
+    });
   });
 
   it("passes the workspace's connections and runners through", async () => {

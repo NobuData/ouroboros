@@ -16,13 +16,15 @@
  * execution              deployment_disabled → engine_unavailable → no_task_queue → no_executor
  * guardrailEnforcement   execution_unavailable
  * buildIntegration       no_runner → no_source_checkout
- * prPublishing           execution_unavailable → not_implemented → policy_not_dry_run
+ * prPublishing           execution_unavailable → no_github_credential
  * ```
  *
  * Guardrail enforcement is the tool policy every executor asks before a tool runs (DH.1), so
- * it is live exactly when execution is. Pull-request publishing additionally needs DI.2/DI.3's
- * code ({@link PR_PUBLISHING_IMPLEMENTED}) and a workspace whose dry-run policy is on — the
- * slice opens draft pull requests only (decision **L7**).
+ * it is live exactly when execution is. Pull-request publishing additionally needs the
+ * workspace's GitHub write token — the one a run pushes its branch and opens its pull request
+ * with. It is **derived, never declared** (FF.2, [#1841](https://github.com/NobuData/ouroboros/issues/1841)):
+ * the stage opens *draft* pull requests only (decision **L7**), whatever the dry-run policy, so
+ * the policy gates merging instead — {@link LoopCapabilitiesResource.draftOnly}.
  *
  * The reason codes are a stable vocabulary ({@link LOOP_REASONS}): the UI keys copy on them,
  * and none names another workspace's row, so a reason never leaks one.
@@ -62,18 +64,15 @@ export const LOOP_REASONS = [
   "no_runner",
   // Build integration: runners are online, and none can check out source (#991).
   "no_source_checkout",
-  // Pull-request publishing: the workspace's dry-run policy is off (decision L7).
+  // Pull-request publishing: the workspace's dry-run policy is off (decision L7). No longer
+  // emitted by the report (FF.2); kept because clients key copy on it.
   "policy_not_dry_run",
+  // Pull-request publishing: the workspace has no GitHub token to push and open a draft with.
+  "no_github_credential",
 ] as const;
 
 /** One reason. */
 export type LoopReason = (typeof LOOP_REASONS)[number];
-
-/**
- * Whether pull-request publishing (DI.2, DI.3) has shipped in this build. `false` until the
- * commit that implements it sets it, the way `INVOCATION_GATEWAY_AVAILABLE` is set by AF.2.
- */
-export const PR_PUBLISHING_IMPLEMENTED: boolean = false;
 
 /**
  * The `ouroboros-rest` release that first shipped each stage, or `null` while none has. Set by
@@ -112,8 +111,8 @@ export interface LoopFacts {
     /** Whether any of those can check out source. */
     readonly sourceCheckout: boolean;
   };
-  /** Whether pull-request publishing has shipped ({@link PR_PUBLISHING_IMPLEMENTED}). */
-  readonly prPublishingImplemented: boolean;
+  /** Whether the workspace has a GitHub token stored — the write credential for push and PR. */
+  readonly githubCredential: boolean;
   /** The workspace's effective dry-run policy. */
   readonly dryRun: boolean;
 }
@@ -132,6 +131,11 @@ export interface LoopStageCapability {
 export interface LoopCapabilitiesResource {
   /** `OURO_LIVE_EXECUTION_ENABLED`. */
   readonly deploymentEnabled: boolean;
+  /**
+   * Whether the workspace is draft-only: its dry-run policy is on, so pull requests open as
+   * drafts and merging is not offered. `false` means a merge is permitted.
+   */
+  readonly draftOnly: boolean;
   /** One answer per stage. */
   readonly stages: Readonly<Record<LoopStage, LoopStageCapability>>;
   /** The stage-executor kinds the engine has registered; empty when it reports none. */
@@ -176,8 +180,7 @@ export function loopCapabilities(facts: LoopFacts): LoopCapabilitiesResource {
     ]),
     prPublishing: firstReason([
       [executionDown, "execution_unavailable"],
-      [!facts.prPublishingImplemented, "not_implemented"],
-      [!facts.dryRun, "policy_not_dry_run"],
+      [!facts.githubCredential, "no_github_credential"],
     ]),
   };
 
@@ -194,6 +197,7 @@ export function loopCapabilities(facts: LoopFacts): LoopCapabilitiesResource {
 
   return {
     deploymentEnabled: facts.deploymentEnabled,
+    draftOnly: facts.dryRun,
     stages,
     executors: facts.engine.reachable ? [...facts.engine.executors] : [],
   };

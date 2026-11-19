@@ -3,20 +3,22 @@
  * `GET /api/v1/loop/capabilities`.
  *
  * It reads; it owns no table. The engine's status comes through `EngineModule`, the dry-run
- * policy through `PoliciesModule`, and the two workspace reads are its own repository's.
+ * policy through `PoliciesModule`, whether a GitHub token is stored through `GithubModule`, and
+ * the two workspace reads are its own repository's.
  */
 
 import { Module } from "@nestjs/common";
 
 import { DbModule } from "../db/db.module";
 import { EngineModule } from "../engine/engine.module";
+import { GithubModule } from "../github/github.module";
 import { PoliciesModule } from "../policies/policies.module";
 import { LoopCapabilitiesController } from "./loop.controller";
 import { LoopRepository } from "./loop.repository";
 import { LoopCapabilitiesService } from "./loop.service";
 
 @Module({
-  imports: [DbModule, EngineModule, PoliciesModule],
+  imports: [DbModule, EngineModule, GithubModule, PoliciesModule],
   controllers: [LoopCapabilitiesController],
   providers: [LoopRepository, LoopCapabilitiesService],
   // The connection check live-run admission shares (DI.4, #1312).
