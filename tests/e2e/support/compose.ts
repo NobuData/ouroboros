@@ -146,7 +146,8 @@ export async function composeOutcome(...args: readonly string[]): Promise<Compos
 /**
  * Run `docker compose …` at the repository root.
  *
- * Exported for exactly one other module, `support/farm-runner.ts`, which drives the stack's
+ * Exported for exactly two other modules, `support/farm-runner.ts` and `support/engine-disk.ts`,
+ * which drive the stack's
  * build machine and keeps this module's discipline in its own signatures: it names one service
  * and offers no way to name another. A spec never imports this.
  *

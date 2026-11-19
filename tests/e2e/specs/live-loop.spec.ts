@@ -30,10 +30,12 @@
  *      in its ending (R__dev_seed_live_slice.sql), queued by name one after another;
  *   5. the run simulator's secret cannot open a run that renders as live (DJ.1, R4).
  *
- * Not here yet, and why: a build that **fails once by design** and a gate that returns to
- * `implement` (a retry is not told why it was returned — #1816 — and the recording has one
- * `implement` attempt), and a **planted write outside the tree** (it needs a recorded attempt that
- * makes one). Both need a new recording (#1817).
+ * The recording has three `implement` attempts (#1817). The first plants a write outside the
+ * tree, which the workspace refuses and which halts that attempt; the second leaves `bin/greet`
+ * wrong, so the first build fails and the gate returns the run — with the failing output in the
+ * retry's prompt (#1816); the third fixes it and the second build passes. Each chain asserts all
+ * of it: two builds (failed, then passed), the gate's return, the refused write, and nothing
+ * outside the tree on the engine's disk.
  *
  * **Warm or cold.** It notes the slice issue's runs before it starts and asserts only on runs it
  * caused, so a failure-mode pair (scripts/verify-failure-modes.sh) can run it again on the stack
@@ -73,6 +75,7 @@ import {
   setFixtureProviderKey,
   testFixtureConnection,
 } from "../support/live-slice";
+import { engineFilesNamed } from "../support/engine-disk";
 import { requestAs } from "../support/rest";
 import { SEED_OWNER } from "../support/seed";
 import { SESSION_COOKIE, sessionTokenOf, signIn } from "../support/session";
@@ -287,6 +290,9 @@ test.describe("leg 34: the live loop, an issue to a draft pull request (#1321)",
       test.setTimeout(RUN_MS + 2 * 60 * 1000);
       await enterSlice(context);
 
+      // Every run starts the recording's attempts from the first.
+      await resetProviderFixture();
+
       if (index === 0) {
         await requestAs(
           context,
@@ -296,8 +302,6 @@ test.describe("leg 34: the live loop, an issue to a draft pull request (#1321)",
           "turning dry-run back on",
         );
       } else {
-        // A clean request log, so the session assertions below are about this run alone.
-        await resetProviderFixture();
         await queueSliceIssue(context, template.workflow);
       }
 
@@ -366,6 +370,53 @@ test.describe("leg 34: the live loop, an issue to a draft pull request (#1321)",
           served.every((request) => request.model === recording.sessions[session]?.model),
         ).toBe(true);
       }
+      // All three implement attempts were played, turn for turn.
+      const implement = recording.sessions.implement;
+      const implementTurns =
+        implement.turns.length + (implement.retries ?? []).reduce((n, r) => n + r.turns.length, 0);
+      expect(
+        main.filter((request) => request.session === "implement"),
+        "the implement session should be asked for all three attempts' turns",
+      ).toHaveLength(implementTurns);
+
+      // --- the transcript: the refused write, the failed build, the return, the passing build ---
+      const said = (
+        await readAs<{ entries: { actor: string; body: string }[] }>(
+          context,
+          `/api/v1/runs/${runId}/events?limit=200`,
+        )
+      ).entries;
+      const bodies = said.map((entry) => `${entry.actor}: ${entry.body}`);
+      const at = (pattern: RegExp): number => bodies.findIndex((line) => pattern.test(line));
+      const refused = at(/^tool: The path is outside the run's working tree\./);
+      const failed = at(/^system: Build #\d+ failed on forge-compose \(exit [1-9]/);
+      const returned = at(/^gate: Gate `[^`]+` did not pass: `build` failed/);
+      const told = at(/failing check output: `build`/);
+      const passed = at(/^system: Build #\d+ passed on forge-compose/);
+      expect(refused, `no refused write in the transcript:\n${bodies.join("\n")}`).toBeGreaterThan(
+        -1,
+      );
+      expect(
+        [refused, failed, returned, told, passed].every((position) => position > -1),
+        `the transcript lacks a step of refused → failed build → return → told → passing build:\n${bodies.join("\n")}`,
+      ).toBe(true);
+      expect([refused, failed, returned, told, passed], "the steps happen in that order").toEqual(
+        [refused, failed, returned, told, passed].sort((a, b) => a - b),
+      );
+      expect(
+        new Set(
+          bodies.flatMap((line) =>
+            [...line.matchAll(/Build #(\d+) (?:failed|passed)/g)].map((m) => m[1]),
+          ),
+        ).size,
+        "two build jobs ran: one failed, one passed",
+      ).toBe(2);
+
+      // --- the refused write left nothing on the engine's disk ----------------------------------
+      expect(
+        await engineFilesNamed("planted-outside-the-tree.txt"),
+        "the planted write reached the engine's disk",
+      ).toEqual([]);
 
       // --- the branch is a real ref on the git host ---------------------------------------------
       const refs = await (

@@ -41,6 +41,7 @@ from live_slice_recording import (
     sha256_of,
     without_timestamp,
 )
+from ouroboros_engine.execution.stage import with_failed_checks
 
 pytestmark = needs_cli
 
@@ -74,17 +75,48 @@ def test_the_committed_recording_is_what_the_pinned_harness_produces(
     )
 
 
-def test_the_recording_carries_the_deliberate_failure_and_its_correction() -> None:
-    recording = json.loads(RECORDING_PATH.read_text())
-    turns = recording["sessions"]["implement"]["turns"]
-    flags = [
-        [result["is_error"] for result in turn["expect"]["tool_results"]]
+def _flags(turns: list[dict[str, object]]) -> list[list[bool]]:
+    """Whether each turn's expected tool results are errors.
+
+    Args:
+        turns: A session's recorded turns.
+
+    Returns:
+        One list of ``is_error`` flags per turn.
+    """
+    return [
+        [result["is_error"] for result in turn["expect"]["tool_results"]]  # type: ignore[index]
         for turn in turns
     ]
-    assert flags == [[], [False], [False], [True], [False]], flags
+
+
+def test_the_recording_carries_a_planted_write_a_failing_attempt_and_the_fix() -> None:
+    recording = json.loads(RECORDING_PATH.read_text())
+    session = recording["sessions"]["implement"]
+    wrong, fixed = session["retries"]
+
+    # Attempt 1: ends on a Write above the working tree, which the policy refuses.
+    planted = session["turns"][-1]["content"][-1]
+    assert planted["name"] == "Write" and planted["input"]["file_path"].startswith(
+        "../"
+    )
+    assert _flags(session["turns"]) == [[], [False], [False]]
+
+    # Attempt 2: a wrong fix, so the build fails once and the gate returns.
+    assert not wrong.get("after_failed_check")
+    assert [turn["content"][-1]["name"] for turn in wrong["turns"][:-1]] == [
+        "Glob",
+        "Read",
+        "Edit",
+    ]
+    assert wrong["files_after"]["bin/greet"] != fixed["files_after"]["bin/greet"]
+
+    # Attempt 3: picked by the failing check's output in its prompt; keeps the tool failure.
+    assert fixed["after_failed_check"] is True
+    assert _flags(fixed["turns"]) == [[], [False], [False], [True], [False]]
     edits = [
         block
-        for turn in turns
+        for turn in fixed["turns"]
         for block in turn["content"]
         if block["type"] == "tool_use" and block["name"] == "Edit"
     ]
@@ -235,22 +267,63 @@ def test_the_fixture_drives_both_sessions_to_completion(
         make_tree(tmp_path, "untouched") / "bin" / "greet"
     ).read_text(), "the plan session must change nothing"
 
+    # Attempt 1: the planted write is refused and halts it, whatever the recording says next.
     implement_tree = make_tree(tmp_path, "implement")
-    _events, coder = run_session(
+    _events, halted = run_session(
         implement_tree,
         "implement",
         IMPLEMENT_PROMPT,
         rest_url=fixture.url,
         cli_path=CLI,
+        attempt=1,
+    )
+    assert halted.outcome is not None and halted.outcome.status == "halted", (
+        halted.outcome
+    )
+    assert not (implement_tree.parent / "planted-outside-the-tree.txt").exists()
+
+    # Attempt 2: the same prompt, taken in order — a wrong fix.
+    _events, wrong = run_session(
+        implement_tree,
+        "implement",
+        IMPLEMENT_PROMPT,
+        rest_url=fixture.url,
+        cli_path=CLI,
+        attempt=2,
+    )
+    assert wrong.outcome is not None and wrong.outcome.status == "completed", (
+        wrong.outcome
+    )
+    greeter = implement_tree / "bin" / "greet"
+    assert FIXED_LINE not in greeter.read_text()
+    assert (
+        sha256_of(greeter)
+        == (
+            recording["sessions"]["implement"]["retries"][0]["files_after"]["bin/greet"]
+        )
+    )
+
+    # Attempt 3: picked by the failing check's output in the prompt (#1816).
+    retry_prompt = with_failed_checks(
+        IMPLEMENT_PROMPT, [("build", "`build` failed (exit 2)", ["FAIL greet"])]
+    )
+    _events, coder = run_session(
+        implement_tree,
+        "implement",
+        retry_prompt,
+        rest_url=fixture.url,
+        cli_path=CLI,
+        attempt=3,
     )
     assert coder.outcome is not None and coder.outcome.status == "completed", (
         coder.outcome
     )
-    greeter = implement_tree / "bin" / "greet"
     assert FIXED_LINE in greeter.read_text()
     assert (
         sha256_of(greeter)
-        == recording["sessions"]["implement"]["files_after"]["bin/greet"]
+        == (
+            recording["sessions"]["implement"]["retries"][1]["files_after"]["bin/greet"]
+        )
     )
 
     seen = fixture.requests()

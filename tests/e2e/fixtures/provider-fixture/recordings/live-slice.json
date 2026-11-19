@@ -8,7 +8,7 @@
     "produced_by": "ouroboros-engine/tests/test_live_slice_recording.py with OURO_RECORD_LIVE_SLICE=1",
     "model_turns": "scripted in ouroboros-engine/tests/live_slice_recording.py; the harness's requests, tool results and the files it left are captured from a run of the pinned claude-agent-sdk"
   },
-  "recorded_at": "2026-10-16T17:49:34Z",
+  "recorded_at": "2026-11-19T13:42:01Z",
   "harness": {
     "sdk": "0.2.167",
     "cli": "2.1.300",
@@ -176,66 +176,225 @@
           "content": [
             {
               "type": "text",
-              "text": "Adding the exclamation mark the README promises."
+              "text": "Leaving a note beside the repository."
             },
             {
               "type": "tool_use",
               "id": "toolu_02_0",
-              "name": "Edit",
+              "name": "Write",
               "input": {
-                "file_path": "bin/greet",
-                "old_string": "echo \"Hello, $name\"",
-                "new_string": "echo \"Hello, $name!\""
+                "file_path": "../planted-outside-the-tree.txt",
+                "content": "planted\n"
               }
-            }
-          ]
-        },
-        {
-          "expect": {
-            "tool_results": [
-              {
-                "tool_use_id": "toolu_02_0",
-                "is_error": true
-              }
-            ]
-          },
-          "content": [
-            {
-              "type": "text",
-              "text": "The script uses printf, not echo \u2014 correcting the edit."
-            },
-            {
-              "type": "tool_use",
-              "id": "toolu_03_0",
-              "name": "Edit",
-              "input": {
-                "file_path": "bin/greet",
-                "old_string": "printf 'Hello, %s\\n' \"$name\"",
-                "new_string": "printf 'Hello, %s!\\n' \"$name\""
-              }
-            }
-          ]
-        },
-        {
-          "expect": {
-            "tool_results": [
-              {
-                "tool_use_id": "toolu_03_0",
-                "is_error": false
-              }
-            ]
-          },
-          "content": [
-            {
-              "type": "text",
-              "text": "Done: bin/greet now prints the exclamation mark; sh tests/check.sh passes."
             }
           ]
         }
       ],
-      "files_after": {
-        "bin/greet": "1da2336dafaddd0bdeed8e7ecf0106266e0a2bbc60b5088df91bf72d2bf66b0b"
-      }
+      "retries": [
+        {
+          "turns": [
+            {
+              "expect": {
+                "tool_results": []
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Finding the greeter script."
+                },
+                {
+                  "type": "tool_use",
+                  "id": "toolu_00_0",
+                  "name": "Glob",
+                  "input": {
+                    "pattern": "bin/greet"
+                  }
+                }
+              ]
+            },
+            {
+              "expect": {
+                "tool_results": [
+                  {
+                    "tool_use_id": "toolu_00_0",
+                    "is_error": false
+                  }
+                ]
+              },
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "toolu_01_0",
+                  "name": "Read",
+                  "input": {
+                    "file_path": "bin/greet"
+                  }
+                }
+              ]
+            },
+            {
+              "expect": {
+                "tool_results": [
+                  {
+                    "tool_use_id": "toolu_01_0",
+                    "is_error": false
+                  }
+                ]
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Editing the greeter."
+                },
+                {
+                  "type": "tool_use",
+                  "id": "toolu_02_0",
+                  "name": "Edit",
+                  "input": {
+                    "file_path": "bin/greet",
+                    "old_string": "printf 'Hello, %s\\n' \"$name\"",
+                    "new_string": "printf 'Hello, %s?\\n' \"$name\""
+                  }
+                }
+              ]
+            },
+            {
+              "expect": {
+                "tool_results": [
+                  {
+                    "tool_use_id": "toolu_02_0",
+                    "is_error": false
+                  }
+                ]
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Done: bin/greet prints a punctuation mark now."
+                }
+              ]
+            }
+          ],
+          "files_after": {
+            "bin/greet": "6577c30f332100dad6e23a0a1ed5ae95047b33d9fd653b3d63c71b1fbd89ee5e"
+          }
+        },
+        {
+          "turns": [
+            {
+              "expect": {
+                "tool_results": []
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Finding the greeter script."
+                },
+                {
+                  "type": "tool_use",
+                  "id": "toolu_00_0",
+                  "name": "Glob",
+                  "input": {
+                    "pattern": "bin/greet"
+                  }
+                }
+              ]
+            },
+            {
+              "expect": {
+                "tool_results": [
+                  {
+                    "tool_use_id": "toolu_00_0",
+                    "is_error": false
+                  }
+                ]
+              },
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "toolu_01_0",
+                  "name": "Read",
+                  "input": {
+                    "file_path": "bin/greet"
+                  }
+                }
+              ]
+            },
+            {
+              "expect": {
+                "tool_results": [
+                  {
+                    "tool_use_id": "toolu_01_0",
+                    "is_error": false
+                  }
+                ]
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Editing the greeter."
+                },
+                {
+                  "type": "tool_use",
+                  "id": "toolu_02_0",
+                  "name": "Edit",
+                  "input": {
+                    "file_path": "bin/greet",
+                    "old_string": "echo \"Hello, $name\"",
+                    "new_string": "echo \"Hello, $name!\""
+                  }
+                }
+              ]
+            },
+            {
+              "expect": {
+                "tool_results": [
+                  {
+                    "tool_use_id": "toolu_02_0",
+                    "is_error": true
+                  }
+                ]
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Editing the greeter."
+                },
+                {
+                  "type": "tool_use",
+                  "id": "toolu_03_0",
+                  "name": "Edit",
+                  "input": {
+                    "file_path": "bin/greet",
+                    "old_string": "printf 'Hello, %s?\\n' \"$name\"",
+                    "new_string": "printf 'Hello, %s!\\n' \"$name\""
+                  }
+                }
+              ]
+            },
+            {
+              "expect": {
+                "tool_results": [
+                  {
+                    "tool_use_id": "toolu_03_0",
+                    "is_error": false
+                  }
+                ]
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Done: bin/greet now prints the exclamation mark; sh tests/check.sh passes."
+                }
+              ]
+            }
+          ],
+          "files_after": {
+            "bin/greet": "1da2336dafaddd0bdeed8e7ecf0106266e0a2bbc60b5088df91bf72d2bf66b0b"
+          },
+          "after_failed_check": true
+        }
+      ]
     }
   }
 }

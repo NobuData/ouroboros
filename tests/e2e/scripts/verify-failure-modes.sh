@@ -457,6 +457,17 @@
 #
 # All six were red on 2026-10-23, each from a cold stack.
 #
+# A seventh is the workspace's path guard (#1817). The recording's first `implement` attempt
+# plants a write one level above the working tree, so the guard has a leg of its own:
+#
+#   the path guard (policy.py's `working_tree` rule — `evaluate()` allowing a path that
+#                            `confine.resolve_in_tree` places outside the tree)
+#                            -> the chain, at the transcript's *refused write*: the write is
+#                               allowed, so no `The path is outside the run's working tree.`
+#                               entry exists, and `planted-outside-the-tree.txt` is found on
+#                               the engine's disk. Done by hand like the six above; its red run
+#                               is recorded here once someone has made it from a cold stack.
+#
 # `rest` is not in the table, and the reason is a property of the stack rather than an
 # oversight: `ui` shares `rest`'s network namespace (see docker-compose.yml), so stopping
 # `rest` strands the UI container in a namespace that no longer exists and the recovery is

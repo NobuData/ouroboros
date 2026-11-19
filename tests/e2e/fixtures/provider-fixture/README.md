@@ -26,7 +26,7 @@ asks:
 | `harness.sdk`, `harness.cli` | the Claude Agent SDK and bundled CLI versions the harness's side was captured from |
 | `harness.anthropic_version`, `harness.anthropic_beta` | the API version and the sorted beta set that harness sends — the fingerprint the check below compares |
 | `harness.tools` | the tools the executor offered |
-| `sessions.<name>` | `alias`, `model`, `prompt_prefix`, the `turns`, and `files_after` (a digest of what the session leaves on disk) |
+| `sessions.<name>` | `alias`, `model`, `prompt_prefix`, the `turns`, `files_after` (a digest of what the session leaves on disk) and, optionally, `retries` — the later attempts of a stage that runs more than once (#1817), each its own `turns` and `files_after` |
 
 **The model's turns are scripted; the harness's side is captured.** The assistant content in
 each turn is the script in `ouroboros-engine/tests/live_slice_recording.py` — one session that
@@ -54,6 +54,7 @@ where the engine puts a run's tree, and the replay answers it verbatim.
    betas missing and extra, and is logged with `mismatch: "harness"`. This is deliberate and
    loud: a recording made with a different harness is *reported as such*, in the first line a
    person reads, instead of failing somewhere deep in a session.
+4a. **The attempt** (#1817): the session's own `turns` are attempt 1 and each of `retries` follows. A retry marked `after_failed_check` is chosen by content — the first user text carries a failing check's output (`<check-output`, #1816); the others are taken in order, one per session start, which is the one thing the fixture remembers (forgotten by `POST /__fixture/reset`).
 5. The turn is the number of `tool_use` blocks in the assistant history — content, never
    message counts, because a resumed session replays its history one block per message.
 6. The turn's expected tool results (ids and `is_error`) must be what the request carries;

@@ -65,6 +65,11 @@ export function checkRecording(document) {
         if (!Array.isArray(session.turns) || session.turns.length === 0) {
           problems.push(`session ${name} has no turns`);
         }
+        for (const retry of Array.isArray(session.retries) ? session.retries : []) {
+          if (!Array.isArray(retry.turns) || retry.turns.length === 0) {
+            problems.push(`session ${name} has a retry with no turns`);
+          }
+        }
       }
     }
   }
@@ -74,6 +79,62 @@ export function checkRecording(document) {
   }
 
   return recording;
+}
+
+/** What a retry's prompt carries after a gate returned the run for a failed check (#1816). */
+export const FAILED_CHECK_MARKER = "<check-output";
+
+/**
+ * One session's attempts, in order: its own `turns` are attempt 1, and each of `retries`
+ * follows. A retry marked `after_failed_check` is the one the failing check's output in the
+ * prompt selects — by content; the others (a policy halt's retry has the same prompt as the
+ * attempt before it) are taken in order, which is the one place the fixture keeps state.
+ *
+ * @param {Record<string, any>} session The recorded session.
+ * @returns {Record<string, any>[]} `{ turns, after_failed_check?, files_after? }` each.
+ */
+export function attemptsOf(session) {
+  return [{ turns: session.turns }, ...(Array.isArray(session.retries) ? session.retries : [])];
+}
+
+/**
+ * The attempt a request belongs to. A session's first request (turn 0) picks it and the
+ * rest of that session's turns follow it.
+ *
+ * @param {Record<string, any>} session The recorded session.
+ * @param {string} name The session's name.
+ * @param {number} turn The turn asked for.
+ * @param {string} promptText The first user text.
+ * @param {{ starts: Record<string, number>, current: Record<string, number> }} state The fixture's state.
+ * @returns {Record<string, any>} The attempt.
+ */
+export function attemptFor(session, name, turn, promptText, state) {
+  const attempts = attemptsOf(session);
+
+  if (turn > 0 && state.current[name] !== undefined) return attempts[state.current[name]];
+
+  const marked = promptText.includes(FAILED_CHECK_MARKER);
+  let index;
+
+  if (marked) {
+    index = attempts.findIndex((attempt) => attempt.after_failed_check === true);
+    if (index === -1) index = attempts.length - 1;
+  } else {
+    const ordered = attempts
+      .map((attempt, at) => ({ attempt, at }))
+      .filter(({ attempt }) => attempt.after_failed_check !== true);
+    const started = state.starts[name] ?? 0;
+    state.starts[name] = started + 1;
+    index = ordered[Math.min(started, ordered.length - 1)].at;
+  }
+
+  state.current[name] = index;
+  return attempts[index];
+}
+
+/** A fresh state for {@link attemptFor}. */
+export function newState() {
+  return { starts: {}, current: {} };
 }
 
 /** The sentence every refusal ends with — where a stale recording is made fresh. */
@@ -292,10 +353,12 @@ export function expectationMismatch(recording, turn, expected, observed) {
  * @param {Record<string, any>} recording The recording.
  * @param {Record<string, any>} body The request body.
  * @param {Record<string, string | string[] | undefined>} headers The request headers.
+ * @param {{ starts: Record<string, number>, current: Record<string, number> }} [state] Which
+ *   attempt each session is on; the server holds one and resets it with the log.
  * @returns {{ status: 200, content: unknown[], session: string | null, turn: number | null, main: boolean }
  *   | { status: 400, message: string, mismatch: "harness" | "turn" | "session", session: string | null, turn: number | null, main: true }}
  */
-export function decide(recording, body, headers) {
+export function decide(recording, body, headers, state = newState()) {
   if (!isMain(body)) {
     return { status: 200, content: recording.side_traffic, session: null, turn: null, main: false };
   }
@@ -330,7 +393,8 @@ export function decide(recording, body, headers) {
   }
 
   const turn = turnOf(body);
-  if (turn >= session.turns.length) {
+  const { turns } = attemptFor(session, name, turn, firstUserText(body), state);
+  if (turn >= turns.length) {
     return {
       status: 400,
       mismatch: "turn",
@@ -339,12 +403,12 @@ export function decide(recording, body, headers) {
       main: true,
       message:
         `the harness asked session ${name} for turn ${String(turn)}, and recording ` +
-        `${recording.recording} (${harnessLabel(recording)}) holds ${String(session.turns.length)} ` +
-        `turns (0–${String(session.turns.length - 1)}). ${reRecordHint()}`,
+        `${recording.recording} (${harnessLabel(recording)}) holds ${String(turns.length)} ` +
+        `turns (0–${String(turns.length - 1)}). ${reRecordHint()}`,
     };
   }
 
-  const scripted = session.turns[turn];
+  const scripted = turns[turn];
   const expectation = expectationMismatch(
     recording,
     turn,
@@ -510,6 +574,11 @@ export function recordingSummary(recording) {
           model: session.model,
           prompt_prefix: session.prompt_prefix ?? null,
           turns: session.turns.length,
+          retries: (session.retries ?? []).map((retry) => ({
+            turns: retry.turns.length,
+            after_failed_check: retry.after_failed_check === true,
+            files_after: retry.files_after ?? null,
+          })),
           files_after: session.files_after ?? null,
         },
       ]),
