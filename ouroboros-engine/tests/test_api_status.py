@@ -1,5 +1,7 @@
 """`/v0/status` — the version and uptime of the process behind the internal boundary."""
 
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -7,6 +9,8 @@ from ouroboros_engine import __version__
 from ouroboros_engine.api.v0 import V0_PREFIX
 from ouroboros_engine.core.uptime import Uptime
 from ouroboros_engine.execution.executors.claude_agent_env import bundled_cli
+from ouroboros_engine.tasks.queue import TaskQueue
+from ouroboros_engine.tasks.registry import default_registry as default_task_registry
 
 STATUS_PATH = f"{V0_PREFIX}/status"
 
@@ -54,7 +58,14 @@ def test_uptime_grows_between_calls(client: TestClient) -> None:
 def test_status_carries_exactly_the_documented_fields(client: TestClient) -> None:
     body = client.get(STATUS_PATH).json()
 
-    assert set(body) == {"service", "version", "uptime_seconds", "executors"}, (
+    assert set(body) == {
+        "service",
+        "version",
+        "uptime_seconds",
+        "executors",
+        "task_queue",
+        "task_queue_depth",
+    }, (
         "ouroboros-rest's typed client codes against this shape; adding a field is a "
         "contract change, and removing one is a /v1 (ouroboros_engine.api.v0)"
     )
@@ -91,6 +102,8 @@ def test_the_status_response_is_documented_by_schema(client: TestClient) -> None
         "version",
         "uptime_seconds",
         "executors",
+        "task_queue",
+        "task_queue_depth",
     }
 
 
@@ -125,3 +138,38 @@ def test_status_is_tagged_as_the_versioned_contract(client: TestClient) -> None:
     document = client.get("/openapi.json").json()
 
     assert document["paths"][STATUS_PATH]["get"]["tags"] == ["v0"]
+
+
+def test_status_reports_a_running_task_queue_and_its_depth(client: TestClient) -> None:
+    # The `client` fixture runs the lifespan, so the worker pool is up and idle.
+    body = client.get(STATUS_PATH).json()
+
+    assert body["task_queue"] is True
+    assert body["task_queue_depth"] == 0
+
+
+def test_status_reports_a_stopped_task_queue(client: TestClient) -> None:
+    queue = TaskQueue(default_task_registry())
+    client.app.state.tasks = queue
+
+    body = client.get(STATUS_PATH).json()
+
+    assert body["task_queue"] is False, "a pool that never started accepts nothing"
+    assert body["task_queue_depth"] == 0
+
+
+def test_the_queue_counts_tasks_waiting_for_a_worker() -> None:
+    async def scenario() -> tuple[int, int, int]:
+        queue = TaskQueue(default_task_registry(), workers=1)
+        before = queue.depth
+        await queue.start()
+        try:
+            queue.submit("echo", {"message": "a"})
+            queue.submit("echo", {"message": "b"})
+            # Nothing has yielded to the worker yet, so both are still waiting.
+            waiting = queue.depth
+        finally:
+            await queue.stop()
+        return before, waiting, queue.depth
+
+    assert asyncio.run(scenario()) == (0, 2, 0)

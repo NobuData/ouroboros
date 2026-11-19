@@ -91,6 +91,7 @@ describe("a call the engine answers", () => {
       version: ENGINE_STATUS_BODY.version,
       uptimeSeconds: ENGINE_STATUS_BODY.uptime_seconds,
       executors: [],
+      taskQueue: ENGINE_STATUS_BODY.task_queue,
     });
   });
 

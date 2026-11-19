@@ -36,12 +36,19 @@ class ServiceStatus(BaseModel):
         executors: The stage-executor kinds this process has registered (#160), sorted.
             Empty means it claims and executes nothing; ``ouroboros-rest``'s admission
             (#1312) reads it when a claim does not declare its own.
+        task_queue: Whether the worker pool behind ``/v0/tasks`` is running (#54) — ``false``
+            after a shutdown or before startup, when a submission is refused. ``ouroboros-rest``'s
+            loop capability report reads it as ``taskQueue``.
+        task_queue_depth: Tasks accepted and still waiting for a worker; ``0`` when
+            ``task_queue`` is ``false``.
     """
 
     service: str = Field(examples=["ouroboros-engine"])
     version: str = Field(examples=["0.2.0"])
     uptime_seconds: float = Field(ge=0, examples=[1234.567])
     executors: list[str] = Field(examples=[["native"]])
+    task_queue: bool = Field(examples=[True])
+    task_queue_depth: int = Field(ge=0, examples=[0])
 
 
 @router.get(
@@ -61,9 +68,12 @@ async def read_status(request: Request) -> ServiceStatus:
         reads as precision this does not have.
     """
     uptime = request.app.state.uptime.seconds()
+    tasks = request.app.state.tasks
     return ServiceStatus(
         service="ouroboros-engine",
         version=__version__,
         uptime_seconds=round(uptime, 3),
         executors=request.app.state.executors.kinds(),
+        task_queue=tasks.started,
+        task_queue_depth=tasks.depth,
     )
