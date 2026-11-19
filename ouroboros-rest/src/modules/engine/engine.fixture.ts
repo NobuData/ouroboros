@@ -153,6 +153,9 @@ export const ENGINE_STATUS_BODY = {
   uptime_seconds: 1234.567,
   // Required by the engine's `ServiceStatus` since #160: the registered stage-executor kinds.
   executors: [],
+  // Required since FF.1 (#1840): whether the worker pool is running, and how many tasks wait.
+  task_queue: true,
+  task_queue_depth: 0,
 };
 
 /**

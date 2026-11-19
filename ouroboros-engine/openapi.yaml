@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.7.47
+  version: 0.7.48
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -150,6 +150,8 @@ paths:
                 version: 0.7.15
                 uptime_seconds: 1234.567
                 executors: []
+                task_queue: true
+                task_queue_depth: 0
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -2656,7 +2658,7 @@ components:
       title: ServiceStatus
       description: The body of a `GET /v0/status` response.
       additionalProperties: false
-      required: [service, version, uptime_seconds, executors]
+      required: [service, version, uptime_seconds, executors, task_queue, task_queue_depth]
       properties:
         service:
           type: string
@@ -2686,6 +2688,19 @@ components:
             means it claims and executes nothing; `ouroboros-rest`'s admission (#1312)
             reads it when a queue claim declares no executors of its own.
           examples: [[native]]
+        task_queue:
+          type: boolean
+          description: |-
+            Whether the worker pool behind `/v0/tasks` is running (#54). `false` before
+            startup and after shutdown, when a submission is refused.
+          examples: [true]
+        task_queue_depth:
+          type: integer
+          minimum: 0
+          description: |-
+            Tasks accepted and still waiting for a worker; `0` when `task_queue` is
+            `false`.
+          examples: [0]
 
     ExecutionAccepted:
       type: object

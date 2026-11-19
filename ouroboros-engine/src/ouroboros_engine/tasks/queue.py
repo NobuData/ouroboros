@@ -155,6 +155,11 @@ class TaskQueue:
         """Whether the worker pool is running."""
         return bool(self._pool)
 
+    @property
+    def depth(self) -> int:
+        """How many submitted tasks are waiting for a worker; ``0`` when stopped."""
+        return 0 if self._queue is None else self._queue.qsize()
+
     async def start(self) -> None:
         """Start the worker pool on the running loop. Calling it twice does nothing."""
         if self._pool:
