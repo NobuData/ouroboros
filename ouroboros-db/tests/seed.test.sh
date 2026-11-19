@@ -1576,9 +1576,10 @@ check_equals 1 "$(count_lines '^update ouroboros\.' "$LIVE_SLICE_BODY")" \
 check_contains "$LIVE_SLICE_BODY" 'current_version is distinct from' \
   'and it only writes a pointer that is actually moving'
 
-# Three BEFORE triggers raise before a conflict is seen, so three inserts carry the guard.
-check_equals 3 "$(count_lines 'not exists \(select 1' "$LIVE_SLICE_BODY")" \
-  'the estimate, the version and the tile hold their density triggers off a row that already exists'
+# Three BEFORE triggers raise before a conflict is seen, so four inserts carry the guard — the
+# estimate, the version, the variants' versions (#2065) and the tile.
+check_equals 4 "$(count_lines 'not exists \(select 1' "$LIVE_SLICE_BODY")" \
+  'the estimate, the versions (live-slice and its variants) and the tile hold their density triggers off a row that already exists'
 
 # The one document, under its own dollar-quoted tag, written once; the tile reads it back from
 # the version row rather than restating it. Named here as well as in ouroboros-rest's

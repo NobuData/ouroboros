@@ -5738,6 +5738,34 @@ select pg_temp.must_hold(
       and edge ->> 'kind' = 'loop' and edge ->> 'from' = 'gate' and edge ->> 'to' = 'implement'),
   'a failed build loops back to implement');
 
+-- --- the three variants: live-slice's document with another shipped template's ending (#2065) ---
+select pg_temp.must_hold(
+  (select array_agg(wf.slug || ':' || (node -> 'config' ->> 'action') || ':' || (node ->> 'title')
+                    order by wf.slug)
+          = array['live-slice-deep-refactor:needs_review:Open PRs for review',
+                  'live-slice-docs-chores:open_pr_automerge:Open draft PR',
+                  'live-slice-feature-builder:needs_review:Ask you']
+     from ouroboros.workflows wf
+     join ouroboros.workflow_versions v on v.workflow_id = wf.id and v.version = 1
+    cross join lateral jsonb_array_elements(v.definition -> 'nodes') node
+    where wf.organization_id = '5eed009e-0000-4000-8000-000000000001'
+      and wf.slug like 'live-slice-%' and wf.status = 'active' and wf.current_version = 1
+      and node ->> 'id' = 'open-pr'),
+  'each variant is published at v1 and ends the way its shipped template does');
+
+select pg_temp.must_hold(
+  (select bool_and((v.definition - 'nodes') = (base.definition - 'nodes')
+                   and (select array_agg(n ->> 'id' order by o)
+                          from jsonb_array_elements(v.definition -> 'nodes') with ordinality as x (n, o))
+                       = array['issue-queued', 'plan', 'implement', 'build', 'gate', 'open-pr'])
+     from ouroboros.workflows wf
+     join ouroboros.workflow_versions v on v.workflow_id = wf.id
+     cross join ouroboros.workflow_versions base
+    where wf.organization_id = '5eed009e-0000-4000-8000-000000000001'
+      and wf.slug like 'live-slice-%'
+      and base.id = '5eed00ac-0000-4000-8000-000000000001'),
+  'the variants share live-slice''s trigger, edges and stages — only the ending differs');
+
 -- --- the tile: the workspace's own, after the four shipped ones -------------------------------
 select pg_temp.must_hold(
   (select array_agg(tile.slug || ':' || tile.tier || ':' || (tile.organization_id is null)::text
@@ -5793,8 +5821,8 @@ select pg_temp.must_hold(
      (select count(*) from ouroboros.workflows where id::text like '5eed00ab-%'),
      (select count(*) from ouroboros.workflow_versions where id::text like '5eed00ac-%'),
      (select count(*) from ouroboros.workflow_templates where id::text like '5eed00ad-%')]
-   = array[1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 1, 1]::bigint[]),
-  'the live-slice seed wrote its twenty fixed-id rows — and, applied twice, no twenty-first');
+   = array[1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 1]::bigint[]),
+  'the live-slice seed wrote its twenty-six fixed-id rows — and, applied twice, no twenty-seventh');
 
 -- ===========================================================================
 -- R__dev_seed_workspace_interventions.sql — mockup 15's "where loops still need humans" (#434)
