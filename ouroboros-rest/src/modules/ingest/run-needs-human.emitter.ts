@@ -7,6 +7,10 @@
  * {@link RunNeedsHumanEmitter.handedOver} is the plane's hook: one card per run (`runs` /
  * `run:<id>`), naming the stage it stopped at and why.
  *
+ * **The pull request.** A run that reached a `needs_review` terminal pushed its branch and opened
+ * a draft PR before handing itself over (#1837); the card's tag row links it — `loop #1851 ·
+ * PR #42 · issue #479` — so the person reviews the PR from the inbox.
+ *
  * **What calls it.** Nothing in this service moves a run to `needs_human` yet — the status exists
  * (V079's intervention trigger reads it), and the executor that sets it reports through the
  * internal contract when it does. The hook is wired and tested and driven by the harness until then.
@@ -20,7 +24,12 @@ import { Injectable, Optional, type OnModuleDestroy, type OnModuleInit } from "@
 import { DatabaseService } from "../db/db.service";
 import type { RunStatus } from "../db/schema";
 import { DecisionKindRegistry } from "../decisions/decision-kind.registry";
-import { clipFact, runCardFacts, type RunCardFacts } from "../decisions/decision.refs";
+import {
+  clipFact,
+  runCardFacts,
+  runPullRequestRef,
+  type RunCardFacts,
+} from "../decisions/decision.refs";
 import type { DecisionEmission, DecisionEmitOutcome } from "../decisions/decision.types";
 import { DecisionSourceWatcher, runTerminatedDetector } from "../decisions/decision.watchers";
 
@@ -115,6 +124,14 @@ export class RunNeedsHumanEmitter implements OnModuleInit, OnModuleDestroy {
 
     const run = await runCardFacts(db, runId);
 
-    return run === undefined ? null : this.registry.emit(runNeedsHumanEmission(run, reason));
+    if (run === undefined) {
+      return null;
+    }
+
+    const pr = await runPullRequestRef(db, runId, run.organizationId);
+    // `run`, then the PR, then `ticket` — the tag row reads loop · PR · issue.
+    const refs = pr === undefined ? run.refs : [...run.refs.slice(0, 1), pr, ...run.refs.slice(1)];
+
+    return this.registry.emit(runNeedsHumanEmission({ ...run, refs }, reason));
   }
 }

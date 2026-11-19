@@ -1,4 +1,4 @@
-"""The draft pull request at the ``open_pr_automerge`` terminal (DI.3, #1311).
+"""The draft pull request at the review terminals (DI.3, #1311; ``needs_review``, #1837).
 
 After the branch publisher pushed the run branch (DI.2), the interpreter asks
 ``ouroboros-rest`` to open the branch's draft pull request through
@@ -55,6 +55,9 @@ from test_execution_publisher import (
 
 #: A workflow that reaches the pull-request terminal: no infra stage on the way.
 DOC = chain(trigger(), llm("write-docs"), term("done", "open_pr_automerge"))
+
+#: The same work ending at the human gate (#1837): push, draft pull request, ``needs_human``.
+REVIEW_DOC = chain(trigger(), llm("write-docs"), term("ask-you", "needs_review"))
 
 #: The fake control plane's pull request.
 PR_URL = "https://github.com/acme/helios-firmware/pull/42"
@@ -257,6 +260,108 @@ def test_without_a_publisher_no_pull_request_is_asked_for(
     finished = control.finished()
     assert finished is not None and finished.outcome == "review"
     assert "ready for its pull request" in finished.reason
+
+
+# --- the human gate (#1837) -----------------------------------------------------------------
+
+
+def _review_engine(
+    seeded: SeededRepo, workspaces: RunWorkspaces
+) -> tuple[Interpreter, FakeControl, CountingTransport]:
+    """An interpreter with a publisher, over a run that ends at ``needs_review``."""
+    transport = CountingTransport()
+    engine, control = interpreter(
+        seeded, workspaces, REVIEW_DOC, transport, writes("a.md")
+    )
+    return engine, control, transport
+
+
+def test_needs_review_pushes_opens_the_draft_and_finishes_needs_human_naming_it(
+    seeded: SeededRepo, workspaces: RunWorkspaces
+) -> None:
+    engine, control, transport = _review_engine(seeded, workspaces)
+
+    asyncio.run(engine.execute(RUN))
+
+    finished = control.finished()
+    assert finished is not None and finished.outcome == "needs_human"
+    assert finished.stage_key == "ask-you"
+    assert f"draft pull request #42 opened: {PR_URL}" in finished.reason
+    assert "for a person's review" in finished.reason
+    assert control.pull_requests_created == 1
+    assert len(transport.calls) == 1 and TARGET in host_refs(seeded)
+    ops = control.ops()
+    assert ops.index("push") < ops.index("pull_request") < ops.index("finish")
+    assert not workspaces.path_of(RUN).exists(), "pushed and opened: the tree is gone"
+
+
+def test_needs_review_fails_on_an_answer_that_is_not_a_draft(
+    seeded: SeededRepo, workspaces: RunWorkspaces
+) -> None:
+    engine, control, _ = _review_engine(seeded, workspaces)
+    control.pull_request_draft = False
+
+    asyncio.run(engine.execute(RUN))
+
+    finished = control.finished()
+    assert finished is not None and finished.outcome == "failed"
+    assert "not a draft" in finished.reason
+    assert _kept(workspaces)
+
+
+def test_needs_review_fails_on_a_refused_pull_request_and_keeps_the_tree(
+    seeded: SeededRepo, workspaces: RunWorkspaces
+) -> None:
+    engine, control, _ = _review_engine(seeded, workspaces)
+    control.refusals["pull_request"] = [refusal("draft_refused", 409)]
+
+    asyncio.run(engine.execute(RUN))
+
+    finished = control.finished()
+    assert finished is not None and finished.outcome == "failed"
+    assert finished.stage_key == "ask-you"
+    assert "(draft_refused)" in finished.reason
+    assert _kept(workspaces)
+
+
+def test_needs_review_asks_for_no_pull_request_when_the_push_was_refused(
+    seeded: SeededRepo, workspaces: RunWorkspaces
+) -> None:
+    engine, control, _ = _review_engine(seeded, workspaces)
+    control.refusals["push"] = [refusal("protected_branch", 422)]
+
+    asyncio.run(engine.execute(RUN))
+
+    assert "pull_request" not in control.ops()
+    finished = control.finished()
+    assert finished is not None and finished.outcome == "failed"
+    assert control.pull_requests_created == 0
+
+
+def test_needs_review_without_a_publisher_finishes_needs_human_and_keeps_the_tree(
+    seeded: SeededRepo, workspaces: RunWorkspaces
+) -> None:
+    control = FakeControl(REVIEW_DOC, remote=str(seeded.path))
+    registry = ExecutorRegistry()
+    registry.register("native", Executors(writes("a.md")))
+    engine = Interpreter(
+        control,
+        workspaces.clones,
+        workspaces,
+        registry,
+        worker="engine-test",
+        heartbeat_seconds=5,
+        sleep=never,
+        poll_sleep=never,
+    )
+
+    asyncio.run(engine.execute(RUN))
+
+    assert "pull_request" not in control.ops()
+    finished = control.finished()
+    assert finished is not None and finished.outcome == "needs_human"
+    assert "a person reviews the run" in finished.reason
+    assert _kept(workspaces), "nothing reached the host: the work stays for the person"
 
 
 # --- the refusal sentence -------------------------------------------------------------------

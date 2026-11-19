@@ -85,3 +85,32 @@ export async function runCardFacts(
     refs,
   };
 }
+
+/**
+ * The `PR #n` tag of the pull request a run opened — the newest one linked to it — so a card can
+ * link it (#1837: a run that ends at `needs_review` opens its draft PR before it hands itself to a
+ * person). Only kinds whose `ref_shape` allows `pr` may carry it.
+ *
+ * @param db - The query builder.
+ * @param runId - The run.
+ * @param organizationId - Its workspace; a PR elsewhere is never named.
+ * @returns The ref, or undefined when the run has opened no pull request.
+ */
+export async function runPullRequestRef(
+  db: Kysely<Database>,
+  runId: string,
+  organizationId: string,
+): Promise<DecisionRef | undefined> {
+  const pr = await db
+    .selectFrom("pull_requests")
+    .select(["id", "external_number"])
+    .where("run_id", "=", runId)
+    .where("organization_id", "=", organizationId)
+    .orderBy("created_at", "desc")
+    .limit(1)
+    .executeTakeFirst();
+
+  return pr === undefined
+    ? undefined
+    : { type: "pr", id: pr.id, label: `PR #${String(pr.external_number)}` };
+}

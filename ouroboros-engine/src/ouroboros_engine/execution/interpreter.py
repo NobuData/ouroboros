@@ -23,9 +23,10 @@ flow ``gate``        passes → the default edge; fails → its ``loop`` edge, b
                      loop target's ``max_retries``; undecidable → the run fails, saying why.
                      ``require`` is judged on this round's checks — build exit codes and
                      succeeded model stages — with ccache results as evidence
-term                 ``needs_review`` → ``needs_human``; ``open_pr_automerge`` → the run
-                     branch is pushed (DI.2), its draft pull request opened (DI.3), then
-                     ``review``; ``back_to_queue`` → ``back_to_queue``
+term                 ``open_pr_automerge`` and ``needs_review`` → the run branch is pushed
+                     (DI.2), its draft pull request opened (DI.3), then ``review`` and
+                     ``needs_human`` (whose Needs-you card links the pull request, #1837)
+                     respectively; ``back_to_queue`` → ``back_to_queue``
 ==================== =======================================================================
 
 **It keeps nothing it cannot lose** (A.1). The position is checkpointed to the control plane
@@ -1096,31 +1097,22 @@ class Interpreter:
             config: Its config.
         """
         if config.action == "open_pr_automerge":
-            assert run.workspace is not None  # noqa: S101
-            await self._before_finish(run, node.id)
-            await asyncio.to_thread(run.workspace.checkpoint, node.id)
-            if not await self._publish(run, node.id):
-                return
-            reason = (
+            await self._finish_with_pull_request(
+                run,
+                node,
+                "review",
                 f"The workflow reached `{node.id}`; the branch is ready for its pull "
-                "request."
+                "request.",
+                f"The workflow reached `{node.id}`",
             )
-            if self._publisher is not None:
-                opened = await self._open_pull_request(run, node.id)
-                if opened is None:
-                    return
-                reason = f"The workflow reached `{node.id}`; {opened}."
-            await run.reporter.finish("review", reason, node.id)
-            if self._publisher is not None and run.workspace.published() is not None:
-                workspace, run.workspace = run.workspace, None
-                await asyncio.to_thread(workspace.finish, "pushed")
             return
         if config.action == "needs_review":
-            await self._end(
+            await self._finish_with_pull_request(
                 run,
+                node,
                 "needs_human",
                 f"The workflow ended at `{node.id}`: a person reviews the run.",
-                node.id,
+                f"The workflow ended at `{node.id}` for a person's review",
             )
             return
         await self._end(
@@ -1129,6 +1121,45 @@ class Interpreter:
             f"The workflow ended at `{node.id}`: the ticket goes back to the queue.",
             node.id,
         )
+
+    async def _finish_with_pull_request(
+        self,
+        run: _Run,
+        node: WorkflowNode,
+        outcome: FinishOutcome,
+        unpublished: str,
+        lead: str,
+    ) -> None:
+        """Push the run branch, open its draft pull request, then finish the run (DI.2, DI.3).
+
+        Both terminals that hand the work to review end here: ``open_pr_automerge`` finishes
+        ``review``, ``needs_review`` finishes ``needs_human`` — whose Needs-you card then
+        links the pull request (#1837). Without a publisher nothing reaches the host, the run
+        finishes with ``unpublished`` as its reason, and the tree is kept. A refused push or pull
+        request finishes the run ``failed`` instead, keeping the tree.
+
+        Args:
+            run: The execution.
+            node: The terminal.
+            outcome: How the run ends once its pull request is open.
+            unpublished: The reason when there is no publisher.
+            lead: The reason's first clause; ``; <the pull request>.`` follows it.
+        """
+        assert run.workspace is not None  # noqa: S101
+        await self._before_finish(run, node.id)
+        await asyncio.to_thread(run.workspace.checkpoint, node.id)
+        if not await self._publish(run, node.id):
+            return
+        reason = unpublished
+        if self._publisher is not None:
+            opened = await self._open_pull_request(run, node.id)
+            if opened is None:
+                return
+            reason = f"{lead}; {opened}."
+        await run.reporter.finish(outcome, reason, node.id)
+        if self._publisher is not None and run.workspace.published() is not None:
+            workspace, run.workspace = run.workspace, None
+            await asyncio.to_thread(workspace.finish, "pushed")
 
     async def _publish(self, run: _Run, stage_key: str) -> bool:
         """Push the run branch, when there is a publisher and something new to push (DI.2).
@@ -1163,7 +1194,7 @@ class Interpreter:
         """Open the run branch's draft pull request, after the branch was pushed (DI.3).
 
         Called only with a publisher: without one nothing reached the host to open a pull
-        request from, and the run finishes ``review`` as before. ``ouroboros-rest``
+        request from, and the run finishes as before. ``ouroboros-rest``
         composes and opens the pull request, always as a draft, and answers the one already
         open for the run when there is one — so a resumed terminal asks again and opens no
         second pull request.
@@ -1178,7 +1209,7 @@ class Interpreter:
             stage_key: The terminal the pull request is opened at.
 
         Returns:
-            The clause naming the pull request for the ``review`` reason, or ``None`` when
+            The clause naming the pull request for the finish reason, or ``None`` when
             the run was finished ``failed``.
         """
         try:
