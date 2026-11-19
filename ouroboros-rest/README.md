@@ -4322,6 +4322,7 @@ workspace is the session's.
 
 ```
 { deploymentEnabled: false,
+  draftOnly: true,
   stages: {
     invocation:           {available: false, reason: "not_implemented",       sinceVersion: null},
     execution:            {available: false, reason: "deployment_disabled",   sinceVersion: null},
@@ -4340,7 +4341,13 @@ each stage that is not live carries the first reason that holds:
 | `execution` | `OURO_LIVE_EXECUTION_ENABLED` is on and the engine's `GET /v0/status` reports `task_queue: true` and at least one `executors` kind | `deployment_disabled` → `engine_unavailable` → `no_task_queue` → `no_executor` |
 | `guardrailEnforcement` | execution is — the tool policy runs inside every executor | `execution_unavailable` |
 | `buildIntegration` | one of the workspace's runners is active, online and reports `git: true` (#991) | `no_runner` → `no_source_checkout` |
-| `prPublishing` | execution is, DI.2/DI.3 have shipped (`PR_PUBLISHING_IMPLEMENTED`), and the workspace's dry-run policy is on (decision **L7**) | `execution_unavailable` → `not_implemented` → `policy_not_dry_run` |
+| `prPublishing` | execution is, and the workspace has a GitHub token stored (`GithubCredentialsService.isConfigured`) — a draft pull request can be opened (FF.2, #1841) | `execution_unavailable` → `no_github_credential` |
+
+`prPublishing` is derived, not declared (the old `PR_PUBLISHING_IMPLEMENTED` constant is gone): live
+runs always open **draft** pull requests (decision **L7**), so the dry-run policy no longer gates the
+stage — `draftOnly` reports it separately, `true` while dry-run is on and merging is not offered.
+`policy_not_dry_run` stays in the reason vocabulary for clients that key copy on it, but this
+report no longer emits it.
 
 The switch defaults to off, so a deployment that upgrades never starts executing because a
 release made it possible. An engine that does not answer is the `engine_unavailable` reason, not a

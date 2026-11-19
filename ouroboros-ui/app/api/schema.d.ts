@@ -3923,7 +3923,13 @@ export interface paths {
          *     | `execution` | `deployment_disabled` (`OURO_LIVE_EXECUTION_ENABLED` is off) → `engine_unavailable` → `no_task_queue` → `no_executor` |
          *     | `guardrailEnforcement` | `execution_unavailable` — the tool policy runs inside execution |
          *     | `buildIntegration` | `no_runner` (none online) → `no_source_checkout` (none can check out source) |
-         *     | `prPublishing` | `execution_unavailable` → `not_implemented` → `policy_not_dry_run` (the workspace's dry-run policy is off) |
+         *     | `prPublishing` | `execution_unavailable` → `no_github_credential` (the workspace has no GitHub token to push and open a draft pull request with) |
+         *
+         *     `prPublishing` means *a draft pull request can be opened* (FF.2,
+         *     [#1841](https://github.com/NobuData/ouroboros/issues/1841)); it is derived from the
+         *     workspace's stored GitHub token, never declared. `draftOnly` reports the merge side
+         *     separately: `true` while the workspace's dry-run policy is on, so pull requests stay drafts
+         *     and merging is not offered.
          *
          *     With the deployment switch off, `execution` is unavailable whatever else is true. An engine
          *     that does not answer is a reason, never an error of this route. The codes are stable; a
@@ -19759,6 +19765,8 @@ export interface components {
         LoopCapabilities: {
             /** @description `OURO_LIVE_EXECUTION_ENABLED` — whether this deployment allows live execution at all. */
             deploymentEnabled: boolean;
+            /** @description Whether the workspace is draft-only — its dry-run policy is on, so pull requests open as drafts and merging is not offered. `false` means a merge is permitted. */
+            draftOnly: boolean;
             stages: {
                 invocation: components["schemas"]["LoopStageCapability"];
                 execution: components["schemas"]["LoopStageCapability"];
@@ -19824,7 +19832,7 @@ export interface components {
             /** @description Whether the stage is live for this workspace in this deployment. */
             available: boolean;
             /** @description Why not, or `null` when it is. Stable codes — add, never rename. */
-            reason: ("not_implemented" | "no_invocable_connection" | "deployment_disabled" | "engine_unavailable" | "no_task_queue" | "no_executor" | "execution_unavailable" | "no_runner" | "no_source_checkout" | "policy_not_dry_run") | null;
+            reason: ("not_implemented" | "no_invocable_connection" | "deployment_disabled" | "engine_unavailable" | "no_task_queue" | "no_executor" | "execution_unavailable" | "no_runner" | "no_source_checkout" | "policy_not_dry_run" | "no_github_credential") | null;
             /** @description The ouroboros-rest release that first shipped the stage, or `null` while none has. */
             sinceVersion: string | null;
         };
@@ -50597,6 +50605,7 @@ export interface operations {
                     /**
                      * @example {
                      *       "deploymentEnabled": false,
+                     *       "draftOnly": true,
                      *       "stages": {
                      *         "invocation": {
                      *           "available": false,

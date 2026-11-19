@@ -20,6 +20,7 @@ export function live(): LoopCapabilities {
 
   return {
     deploymentEnabled: true,
+    draftOnly: true,
     stages: {
       invocation: stage,
       execution: stage,

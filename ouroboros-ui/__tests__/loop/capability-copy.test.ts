@@ -23,6 +23,7 @@ const REASONS: readonly LoopReason[] = [
   "no_runner",
   "no_source_checkout",
   "policy_not_dry_run",
+  "no_github_credential",
 ];
 
 describe("stageNotice", () => {
@@ -62,6 +63,9 @@ describe("stageNotice", () => {
     expect(stageNotice(withOff({ prPublishing: "policy_not_dry_run" }), "prPublishing")?.fix.href).toBe(
       "/settings#policies",
     );
+    expect(
+      stageNotice(withOff({ prPublishing: "no_github_credential" }), "prPublishing")?.fix.href,
+    ).toBe("/settings/sources");
   });
 });
 

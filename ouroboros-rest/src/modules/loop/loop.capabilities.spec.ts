@@ -2,7 +2,6 @@ import {
   LOOP_REASONS,
   LOOP_STAGES,
   loopCapabilities,
-  PR_PUBLISHING_IMPLEMENTED,
   STAGE_SINCE_VERSION,
   type LoopFacts,
   type LoopReason,
@@ -16,7 +15,7 @@ const TODAY: LoopFacts = {
   invocableConnection: false,
   engine: { reachable: true, taskQueue: false, executors: [] },
   runners: { online: false, sourceCheckout: false },
-  prPublishingImplemented: false,
+  githubCredential: false,
   dryRun: false,
 };
 
@@ -27,7 +26,7 @@ const ALL_LIVE: LoopFacts = {
   invocableConnection: true,
   engine: { reachable: true, taskQueue: true, executors: ["native", "harness"] },
   runners: { online: true, sourceCheckout: true },
-  prPublishingImplemented: true,
+  githubCredential: true,
   dryRun: true,
 };
 
@@ -49,6 +48,7 @@ describe("the loop capability report (DG.2, #1300)", () => {
     it("reports every stage unavailable, each with the reason the issue names", () => {
       expect(loopCapabilities(TODAY)).toEqual({
         deploymentEnabled: false,
+        draftOnly: false,
         stages: {
           invocation: { available: false, reason: "not_implemented", sinceVersion: null },
           execution: { available: false, reason: "deployment_disabled", sinceVersion: null },
@@ -64,8 +64,7 @@ describe("the loop capability report (DG.2, #1300)", () => {
       });
     });
 
-    it("has shipped no stage and no PR publishing yet", () => {
-      expect(PR_PUBLISHING_IMPLEMENTED).toBe(false);
+    it("has shipped no stage yet", () => {
       expect(Object.values(STAGE_SINCE_VERSION)).toEqual([null, null, null, null, null]);
     });
   });
@@ -103,14 +102,15 @@ describe("the loop capability report (DG.2, #1300)", () => {
         "buildIntegration",
         { runners: { online: true, sourceCheckout: false } },
       ],
-      ["policy_not_dry_run", "prPublishing", { dryRun: false }],
+      ["no_github_credential", "prPublishing", { githubCredential: false }],
     ];
 
     it("covers every code in the vocabulary", () => {
       const covered = new Set(cases.map(([reason]) => reason));
 
-      // `not_implemented` and `execution_unavailable` also reach a second stage, below.
-      expect([...covered].sort()).toEqual([...LOOP_REASONS].sort());
+      // `execution_unavailable` also reaches a second stage, below. `policy_not_dry_run` is kept
+      // in the vocabulary for clients that key copy on it, but the report no longer emits it.
+      expect([...covered, "policy_not_dry_run"].sort()).toEqual([...LOOP_REASONS].sort());
     });
 
     it.each(cases)("%s — makes %s unavailable", (reason, stage, change) => {
@@ -120,10 +120,18 @@ describe("the loop capability report (DG.2, #1300)", () => {
       expect(reasonOf(ALL_LIVE, stage)).toBeNull();
     });
 
-    it("not_implemented — PR publishing waits on DI.2/DI.3's code", () => {
-      expect(reasonOf(live({ prPublishingImplemented: false }), "prPublishing")).toBe(
-        "not_implemented",
+    it("no_github_credential — a draft PR needs the workspace's GitHub token", () => {
+      expect(reasonOf(live({ githubCredential: false }), "prPublishing")).toBe(
+        "no_github_credential",
       );
+    });
+
+    it("never reports policy_not_dry_run — drafts open whatever the policy; it gates merge", () => {
+      const off = loopCapabilities(live({ dryRun: false }));
+
+      expect(off.stages.prPublishing.available).toBe(true);
+      expect(off.draftOnly).toBe(false);
+      expect(loopCapabilities(ALL_LIVE).draftOnly).toBe(true);
     });
 
     it("execution_unavailable — PR publishing waits on execution", () => {
@@ -194,16 +202,13 @@ describe("the loop capability report (DG.2, #1300)", () => {
       ).toBe("no_runner");
     });
 
-    it("names execution before PR publishing's own code and policy", () => {
+    it("names execution before PR publishing's own credential", () => {
       expect(
-        reasonOf(
-          live({ deploymentEnabled: false, prPublishingImplemented: false, dryRun: false }),
-          "prPublishing",
-        ),
+        reasonOf(live({ deploymentEnabled: false, githubCredential: false }), "prPublishing"),
       ).toBe("execution_unavailable");
-      expect(
-        reasonOf(live({ prPublishingImplemented: false, dryRun: false }), "prPublishing"),
-      ).toBe("not_implemented");
+      expect(reasonOf(live({ githubCredential: false }), "prPublishing")).toBe(
+        "no_github_credential",
+      );
     });
   });
 
