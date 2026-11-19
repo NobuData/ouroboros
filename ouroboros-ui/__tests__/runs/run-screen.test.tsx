@@ -298,6 +298,17 @@ describe("the deployment notice, under DG.2's report (DG.3)", () => {
     expect(within(note).getByRole("link", { name: "Build Farm →" })).toHaveAttribute("href", BUILD_FARM_PATH);
   });
 
+  it("never says live runs cannot start on a live run — whatever the queue reports", () => {
+    for (const reason of ["no_task_queue", "no_executor"] as const) {
+      answerCapabilities(withOff({ execution: reason }));
+      const { unmount } = draw();
+
+      expect(screen.queryByRole("note")).toBeNull();
+      expect(document.body.textContent).not.toMatch(/live runs cannot start/);
+      unmount();
+    }
+  });
+
   it("keeps a simulated run's banner, and only it, in either state", () => {
     for (const report of [live(), deploymentOff()]) {
       answerCapabilities(report);

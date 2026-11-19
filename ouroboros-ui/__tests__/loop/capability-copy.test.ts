@@ -82,6 +82,18 @@ describe("runConsoleNotice — the issue's diagram", () => {
     expect(notice?.fix.label).toBe("Build Farm →");
   });
 
+  it("never says live runs cannot start over a run that is going — no queue, no executor", () => {
+    for (const reason of ["no_task_queue", "no_executor"] as const) {
+      expect(runConsoleNotice(withOff({ execution: reason }))).toBeNull();
+    }
+  });
+
+  it("falls through to the build notice when the contradicted reason hides execution's", () => {
+    const notice = runConsoleNotice(withOff({ execution: "no_task_queue", buildIntegration: "no_runner" }));
+
+    expect(notice?.reason).toBe("no_runner");
+  });
+
   it("all live → nothing", () => {
     expect(runConsoleNotice(live())).toBeNull();
   });

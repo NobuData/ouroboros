@@ -150,8 +150,10 @@ notice is not shown.
 Where you see them:
 
 - **The run console**, above the head of a run that is still going: the execution notice
-  when live execution is off, or the build notice when only the farm is missing. A
-  simulated run shows its own banner instead, and a finished run shows neither.
+  when live execution is off or the engine is not answering, or the build notice when only
+  the farm is missing. A run that is going has a task queue and an executor, so it never
+  shows the two notices about them. A simulated run shows its own banner instead, and a
+  finished run shows neither.
 - **Models › Registry**, on the **Resolution chain** card: a chain no run has resolved
   yet is tagged **simulated — no run has resolved it yet**, with the invocation notice
   under it when no model can be called. A chain a run did resolve is tagged with that

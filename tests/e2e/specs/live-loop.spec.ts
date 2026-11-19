@@ -322,6 +322,7 @@ test.describe("leg 34: the live loop, an issue to a draft pull request (#1321)",
       await expect(page.getByRole("heading", { level: 1 })).toContainText(`#${SLICE_ISSUE.number}`);
       await expect(page.getByText("Simulated run.")).toHaveCount(0);
       await expect(page.locator(".origin-badge")).toHaveCount(0);
+      await expect(page.getByText("live runs cannot start")).toHaveCount(0);
 
       // --- the run ends the way its template ends, or says why it stopped ----------------------
       const stops = ["failed", "canceled", "needs_human"].filter(

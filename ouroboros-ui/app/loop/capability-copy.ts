@@ -159,10 +159,21 @@ export function stageNotice(
 }
 
 /**
- * The run console's one deployment-level notice — the issue's diagram:
+ * Reasons a run that is already going disproves: a run the engine claimed and is executing has,
+ * by being there, a task queue and an executor. Saying "live runs cannot start" over it is the
+ * contradiction FF.3 ([#1842](https://github.com/NobuData/ouroboros/issues/1842)) removes.
+ */
+const CONTRADICTED_BY_A_LIVE_RUN: ReadonlySet<LoopReason> = new Set<LoopReason>([
+  "no_task_queue",
+  "no_executor",
+]);
+
+/**
+ * The run console's one deployment-level notice, for a run that is still going:
  *
  * ```
  * execution unavailable                 → execution's reason         (How to enable, …)
+ *   — except no task queue / no executor, which the live run itself disproves
  * execution live, builds not integrated → "No runner is online — …"  (Build Farm →)
  * all live                              → nothing
  * ```
@@ -171,7 +182,12 @@ export function stageNotice(
  * @returns The notice, or null.
  */
 export function runConsoleNotice(capabilities: LoopCapabilities | null): StageNotice | null {
-  return stageNotice(capabilities, "execution") ?? stageNotice(capabilities, "buildIntegration");
+  const execution = stageNotice(capabilities, "execution");
+
+  return (
+    (execution !== null && !CONTRADICTED_BY_A_LIVE_RUN.has(execution.reason) ? execution : null) ??
+    stageNotice(capabilities, "buildIntegration")
+  );
 }
 
 /**
