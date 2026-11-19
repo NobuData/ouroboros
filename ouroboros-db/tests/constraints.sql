@@ -23635,6 +23635,23 @@ select pg_temp.must_hold(
     where v1.organization_id is null and v1.version = 1),
   'and v2 changes nothing but the stage configs — the graph, copy and trigger are v1''s');
 
+-- --- V157 (#1838): v3 retitles the open_pr_automerge node and promises no merge ------------------
+select pg_temp.must_hold(
+  (select count(*) = 2
+          and bool_and(jsonb_path_exists(definition,
+                '$.nodes[*] ? (@.config.action == "open_pr_automerge" && @.title == "Open draft PR")')
+                and definition::text !~* 'auto-merge|merges it')
+     from ouroboros.workflow_templates where organization_id is null and version = 3),
+  'quick-fixes and docs-chores have a v3 whose terminal is titled Open draft PR, action id kept');
+
+select pg_temp.must_hold(
+  (select count(*) = 4
+     from ouroboros.workflow_templates
+    where organization_id is null and version in (1, 2)
+      and jsonb_path_exists(definition,
+            '$.nodes[*] ? (@.config.action == "open_pr_automerge")')),
+  'and v1 and v2 are untouched, so a stored version still loads');
+
 -- --- the table refuses what it must ---------------------------------------------------------------
 select pg_temp.must_reject(
   $$insert into ouroboros.workflow_templates
