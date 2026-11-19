@@ -98,6 +98,11 @@ These are as real as the protections above. Read them before turning the switch 
 - **Issue text is untrusted input.** The issue's title, body and acceptance criteria are
   passed to the model as data, not instructions. That limits prompt injection; it does not
   rule it out. A crafted issue can still steer what the loop writes inside the working tree.
+- **A failed build's output is untrusted input too.** When a gate sends the run back to a
+  stage because a build failed, that stage's next attempt is told which check failed and the
+  last lines of the build's log (at most 60 lines and 6,000 characters, already redacted), and
+  the run's transcript says it did. The stage is told to treat that output as data, but a
+  repository's build can print anything.
 - **The draft pull request is a contribution like any other.** It can contain wrong,
   insecure or deliberately harmful code. Read it — diff and checks — the way you would read
   a stranger's pull request before you merge it. Dry-run keeps it a draft so that you do.

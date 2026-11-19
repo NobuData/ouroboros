@@ -135,6 +135,8 @@ class RunBuild(_Response):
         exit_code: The command's exit code, once finished.
         ccache: The ccache result, or ``None``.
         retries: Automatic retries before this attempt.
+        log_tail: A failed build's last log lines, oldest first, already redacted by the
+            control plane (#1816); ``None`` when not failed or no log was stored.
     """
 
     job_id: str
@@ -148,6 +150,7 @@ class RunBuild(_Response):
     exit_code: int | None = None
     ccache: CcacheSummary | None = None
     retries: int = 0
+    log_tail: list[str] | None = Field(default=None, max_length=200)
 
     @property
     def finished(self) -> bool:

@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.43.12"
+  version: "0.43.13"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -2463,6 +2463,7 @@ paths:
                   exitCode: null
                   ccache: null
                   retries: 0
+                  logTail: null
                   queuedAt: "2026-10-16T12:00:00.000Z"
                   offeredAt: "2026-10-16T12:00:01.000Z"
                   startedAt: null
@@ -2554,6 +2555,7 @@ paths:
                     misses: 216
                     hitRatePct: 78.4
                   retries: 0
+                  logTail: null
                   queuedAt: "2026-10-16T12:00:00.000Z"
                   offeredAt: "2026-10-16T12:00:01.000Z"
                   startedAt: "2026-10-16T12:00:02.000Z"
@@ -2635,6 +2637,7 @@ paths:
                   exitCode: null
                   ccache: null
                   retries: 0
+                  logTail: null
                   queuedAt: "2026-10-16T12:00:00.000Z"
                   offeredAt: null
                   startedAt: null
@@ -5636,7 +5639,7 @@ components:
       additionalProperties: false
       required:
         [jobId, number, phase, queueState, pool, runnerName, stageKey, stageAttempt, exitCode,
-         ccache, retries, queuedAt, offeredAt, startedAt, finishedAt]
+         ccache, retries, logTail, queuedAt, offeredAt, startedAt, finishedAt]
       properties:
         jobId:
           type: string
@@ -5669,6 +5672,14 @@ components:
         retries:
           type: integer
           minimum: 0
+        logTail:
+          type: [array, "null"]
+          maxItems: 60
+          items:
+            type: string
+          description: |-
+            The last lines of a `failed` build's stored (already redacted) log, oldest first, on
+            the read route only (#1816); null otherwise or when the build stored no log.
         queuedAt:
           type: string
           format: date-time
