@@ -61,7 +61,7 @@ to the next. A run starts at the trigger and follows edges until it reaches a te
 | **Model stage** | ◆ | A model does the work — analyse, plan, implement, review — from a prompt or a skill, on a routed or pinned model |
 | **Build or test** | ▣ | A command run on your build farm, on a runner pool — building, or running the test suite |
 | **Decision or gate** | ◇ | Chooses the next edge from a condition: effort, labels, source, paths, or whether checks passed |
-| **Terminal** | ● | Where a run ends: open a pull request and auto-merge it, open a pull request and hand it over for review, or send the issue back to the queue |
+| **Terminal** | ● | Where a run ends: open a draft pull request, open a draft pull request and hand it over for review, or send the issue back to the queue |
 
 The chips on a card summarise its settings: the skill or prompt template, the model or
 **routed by task**, the runner pool and command, or the condition.
@@ -70,14 +70,14 @@ The chips on a card summarise its settings: the skill or prompt template, the mo
 
 Both pull-request terminals push the run's branch and open a **draft** pull request for it:
 
-- **Open a pull request and auto-merge it** leaves the run in review.
+- **Open draft PR** leaves the run in review.
 - **Hand it over for review** also files a **Take over a loop that needs a human?** card in
   the [Needs-you inbox](../inbox.mdx#decision-kinds), tagged with the draft pull request
   (for example **loop #1851** · **PR #42**), so you review the work from there. Nothing merges
   until you say so.
 
 All four shipped templates open a draft pull request. **Quick fixes** and **Docs & chores**
-end at **Open PR & auto-merge**. **Feature builder** ends at **Ask you**, and **Deep refactor**
+end at **Open draft PR**. **Feature builder** ends at **Ask you**, and **Deep refactor**
 at **Open PRs for review**, both of which hand the run over for review.
 <Since version="0.43.10" module="ouroboros-rest" />
 
