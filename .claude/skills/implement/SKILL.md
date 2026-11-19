@@ -72,31 +72,42 @@ git checkout -b ticket-<number>
 - Check for code reuse; extract repeated logic into separate reusable modules.
 - **Docs match the implemented behaviour:** every page touched names labels, routes, flags and variables as built, and its screenshots are current (recaptured in this ticket, or unaffected).
 - DO NOT RUN END TO END TESTS
-- Only run unit tests.  End-to-end and integration are not necessary to run.  Tests should limit the number of threads run at the same time to 1/2 the threads available on the CPU.
+- Only run unit tests.  End-to-end and integration are not necessary to run.  Every test run is capped at **half the CPU threads** — use the commands in Phase 5, never a bare `yarn test` / `jest` / `go test`.
 
 ## Phase 5: Verify and Test
 
-Verify **each module the ticket touched**, from that module's directory — never the root `yarn test` or `yarn build` (the root run exhausts the machine):
+Verify **each module the ticket touched**, from that module's directory — never the root `yarn test` or `yarn build` (the root run exhausts the machine).
+
+**Resource cap (mandatory).** Test runners default to every core, which has crashed the host. Compute half the CPU threads once, in the same shell command as each test run (shell state does not persist between calls):
+
+```bash
+HALF=$(( $( (sysctl -n hw.ncpu 2>/dev/null || nproc) ) / 2 )); [ "$HALF" -ge 1 ] || HALF=1
+```
+
+Then use exactly these commands — never a bare `yarn test`, `jest` or `go test`:
 
 | Module | Checks |
 | --- | --- |
-| `ouroboros-rest` | `yarn lint`, `yarn typecheck`, `yarn build`, `npx jest -w 3` |
-| `ouroboros-ui` | `yarn lint`, `yarn typecheck`, `yarn test`; `yarn api:sync` after a REST OpenAPI change |
-| `ouroboros-engine` | `uv run ruff check .`, `uv run ruff format --check .`, `uv run pytest` |
-| `ouroboros-db` | `tests/constraints.sql` on a freshly migrated throwaway `postgres:17-alpine`, `scripts/run-tests.sh ouroboros-db/tests` |
-| `ouroboros-runner` | `make lint`, `make test` |
+| `ouroboros-rest` | `yarn lint`, `yarn typecheck`, `yarn build`, `npx jest --maxWorkers=$HALF` |
+| `ouroboros-ui` | `yarn lint`, `yarn typecheck`, `yarn test --maxWorkers=$HALF`; `yarn api:sync` after a REST OpenAPI change |
+| `ouroboros-engine` | `uv run ruff check .`, `uv run ruff format --check .`, `uv run pytest` (single process; never add `-n auto`, use `-n $HALF` if xdist is ever needed) |
+| `ouroboros-db` | `tests/constraints.sql` on a freshly migrated throwaway `postgres:17-alpine` started with `--cpus=$HALF`, `scripts/run-tests.sh ouroboros-db/tests` |
+| `ouroboros-runner` | `make lint`, `GOMAXPROCS=$HALF GOFLAGS=-p=$HALF make test` |
+| `ouroboros-docs` | `yarn test --maxWorkers=$HALF` (other checks below) |
+
+- **Never run two test suites at the same time** — the cap is per run, so two concurrent runs use the whole machine again. Backgrounding one slow suite is fine; start the next suite only after it exits.
 
 Keep it to one pass:
 
-- Run each module's full suite **once**, when the work is done. Start the slow ones (the REST unit suite, the docs build) in the background and carry on with the next step meanwhile.
+- Run each module's full suite **once**, when the work is done. A slow one (the REST unit suite, the docs build) may run in the background while you do non-test work (lint, docs, CHANGELOG) — but only one test suite or build at a time.
 - After a small late edit, rerun the specs it touches plus lint and typecheck — not the whole suite again.
 - Run `scripts/run-tests.sh scripts/tests` only when the ticket changes CI workflows, `.env.example` or `scripts/`. It takes over ten minutes.
 - A failure in a module the ticket did not touch: check it against `main` once, note it in the PR, move on.
 - Check that a command really ran: a wrong flag can print usage and still exit 0.
 
-- When `ouroboros-docs/**` changed, run from `ouroboros-docs/` (it is outside the turbo graph): `yarn lint`, `yarn typecheck`, `yarn test`, every `yarn check:*` (`check:brand`, `check:screenshots`, `check:config-reference`, `check:cli-flags`, `check:coverage`) and `yarn build` — a broken link or anchor fails the build.
+- When `ouroboros-docs/**` changed, run from `ouroboros-docs/` (it is outside the turbo graph): `yarn lint`, `yarn typecheck`, `yarn test --maxWorkers=$HALF`, every `yarn check:*` (`check:brand`, `check:screenshots`, `check:config-reference`, `check:cli-flags`, `check:coverage`) and `yarn build` — a broken link or anchor fails the build.
 - DO NOT RUN END TO END TESTS
-- Test the whole of each touched module, not just the changed files, so regressions are checked.  Tests should limit the number of threads run at the same time to 1/2 the threads available on the CPU.
+- Test the whole of each touched module, not just the changed files, so regressions are checked — always with the half-CPU commands above.
 - Fix **any failures introduced that block ticket** and **any tests or build issues** before proceeding.
 
 ## Phase 6: Note Work
