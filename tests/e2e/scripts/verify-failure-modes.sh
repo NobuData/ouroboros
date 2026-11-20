@@ -465,8 +465,12 @@
 #                            -> the chain, at the transcript's *refused write*: the write is
 #                               allowed, so no `The path is outside the run's working tree.`
 #                               entry exists, and `planted-outside-the-tree.txt` is found on
-#                               the engine's disk. Done by hand like the six above; its red run
-#                               is recorded here once someone has made it from a cold stack.
+#                               the engine's disk. Done by hand like the six above: red on
+#                               2026-11-19 with `resolve_in_tree`'s result defaulted to the
+#                               requested path in the engine container — the chain failed at
+#                               *the implement session was served without a mismatch* (the
+#                               recording's attempt 1 played on past the planted write); green
+#                               again after the container was recreated.
 #
 # `rest` is not in the table, and the reason is a property of the stack rather than an
 # oversight: `ui` shares `rest`'s network namespace (see docker-compose.yml), so stopping
